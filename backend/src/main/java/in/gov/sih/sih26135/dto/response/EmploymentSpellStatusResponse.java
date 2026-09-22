@@ -1,0 +1,13 @@
+package in.gov.sih.sih26135.dto.response;
+
+import java.time.LocalDateTime;
+
+public record EmploymentSpellStatusResponse(
+    Long id,
+    String statusCode,
+    String statusName,
+    Boolean isActiveFlag,
+    Integer sortOrder,
+    LocalDateTime createdAt,
+    LocalDateTime updatedAt
+) {}
