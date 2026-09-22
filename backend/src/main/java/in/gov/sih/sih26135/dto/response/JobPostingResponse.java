@@ -1,0 +1,39 @@
+package in.gov.sih.sih26135.dto.response;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+
+public record JobPostingResponse(
+    Long id,
+    String postingCode,
+    String postingTitle,
+    String description,
+    Long employerId,
+    String employerName,
+    Long employerBranchId,
+    String employerBranchName,
+    Long jobRoleId,
+    String jobRoleName,
+    Long engagementTypeId,
+    String engagementTypeCode,
+    Long qualificationLevelId,
+    String qualificationLevelName,
+    Integer vacancies,
+    BigDecimal minSalary,
+    BigDecimal maxSalary,
+    Long salaryFrequencyId,
+    String salaryFrequencyCode,
+    String currencyCode,
+    Long stateId,
+    Long districtId,
+    Long locationId,
+    LocalDate postedDate,
+    LocalDate closingDate,
+    Long jobPostingStatusId,
+    String jobPostingStatusCode,
+    Long createdByUserId,
+    LocalDateTime createdAt,
+    LocalDateTime updatedAt,
+    LocalDateTime deletedAt
+) {}
