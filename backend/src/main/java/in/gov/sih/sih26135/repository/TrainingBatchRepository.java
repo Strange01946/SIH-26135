@@ -22,4 +22,6 @@ public interface TrainingBatchRepository extends JpaRepository<TrainingBatch, Lo
   List<TrainingBatch> findByProgramId(Long programId);
 
   List<TrainingBatch> findByBatchStatusId(Long batchStatusId);
+
+  boolean existsByCourseIdAndProgramId(Long courseId, Long programId);
 }
