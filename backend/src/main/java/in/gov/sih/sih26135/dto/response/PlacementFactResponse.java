@@ -1,0 +1,45 @@
+package in.gov.sih.sih26135.dto.response;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
+public record PlacementFactResponse(
+    Long placementId,
+    String placementNumber,
+    Long traineeId,
+    Long enrollmentId,
+    Long courseId,
+    Long programId,
+    Long providerId,
+    Long employerId,
+    Long jobRoleId,
+    Long engagementTypeId,
+    String engagementTypeCode,
+    Boolean isWageEmployment,
+    Boolean isSelfEmployment,
+    Boolean isApprenticeship,
+    Boolean isInternship,
+    Long placementSourceId,
+    String placementSourceCode,
+    Long placementStatusId,
+    String placementStatusCode,
+    Boolean placementStatusJoinedFlag,
+    Boolean isUnsuccessfulFlag,
+    Long joiningStatusId,
+    String joiningStatusCode,
+    Boolean isJoinedFlag,
+    Integer joinedFlag,
+    BigDecimal offeredSalary,
+    BigDecimal joiningSalary,
+    Long salaryFrequencyId,
+    String currencyCode,
+    LocalDate offerDate,
+    LocalDate actualJoiningDate,
+    Long workStateId,
+    Long workDistrictId,
+    Long recordVerificationStatusId,
+    String recordVerificationStatusCode,
+    Boolean isVerifiedFlag,
+    Long traineeStateId,
+    Long traineeDistrictId
+) {}
