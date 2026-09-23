@@ -1,0 +1,39 @@
+package in.gov.sih.sih26135.dto.response;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+
+public record SkillGapObservationResponse(
+    Long id,
+    Long skillGapId,
+    String skillGapNumber,
+    Integer observationNumber,
+    Long observedSkillLevelId,
+    String observedSkillLevelCode,
+    String observedSkillLevelName,
+    Integer observedSkillLevelRank,
+    Long requiredSkillLevelId,
+    String requiredSkillLevelCode,
+    String requiredSkillLevelName,
+    Integer requiredSkillLevelRank,
+    Long targetSkillLevelId,
+    String targetSkillLevelCode,
+    String targetSkillLevelName,
+    Integer targetSkillLevelRank,
+    Integer gapLevelDelta,
+    Long skillGapSeverityId,
+    String skillGapSeverityCode,
+    String skillGapSeverityName,
+    Integer skillGapSeverityRank,
+    Long skillGapStatusId,
+    String skillGapStatusCode,
+    String skillGapStatusName,
+    Long skillGapSourceId,
+    String skillGapSourceCode,
+    String skillGapSourceName,
+    LocalDate observedOn,
+    Long observedByUserId,
+    String notes,
+    LocalDateTime createdAt,
+    LocalDateTime updatedAt
+) {}
