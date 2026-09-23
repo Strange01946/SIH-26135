@@ -1,0 +1,43 @@
+package in.gov.sih.sih26135.dto.response;
+
+import java.time.LocalDateTime;
+
+public record EmploymentVerificationRequestResponse(
+    Long id,
+    String requestNumber,
+    Long employmentRecordId,
+    String employmentRecordNumber,
+    Long traineeId,
+    String traineeRegistrationNumber,
+    String traineeFirstName,
+    String traineeLastName,
+    Long placementRecordId,
+    String placementRecordNumber,
+    Long employerId,
+    String employerName,
+    Integer cycleNumber,
+    Boolean isReverification,
+    Long statusId,
+    String statusCode,
+    String statusName,
+    Boolean isOpenFlag,
+    Boolean isCompletedFlag,
+    Long preferredMethodId,
+    String preferredMethodCode,
+    String preferredMethodName,
+    Long employmentInfoSourceId,
+    String employmentInfoSourceCode,
+    String employmentInfoSourceName,
+    Long requestedByUserId,
+    Long assignedVerifierUserId,
+    Long followupTaskId,
+    Long surveyResponseId,
+    LocalDateTime requestedAt,
+    LocalDateTime dueAt,
+    LocalDateTime firstAttemptAt,
+    LocalDateTime completedAt,
+    Integer openRequestKey,
+    String remarks,
+    LocalDateTime createdAt,
+    LocalDateTime updatedAt
+) {}
