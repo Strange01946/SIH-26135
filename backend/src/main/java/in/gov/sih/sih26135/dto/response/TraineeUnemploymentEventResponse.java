@@ -1,0 +1,43 @@
+package in.gov.sih.sih26135.dto.response;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+
+public record TraineeUnemploymentEventResponse(
+    Long id,
+    Long traineeId,
+    String traineeRegistrationNumber,
+    String traineeFirstName,
+    String traineeLastName,
+    Integer periodNumber,
+    LocalDate startDate,
+    LocalDate endDate,
+    Boolean isCurrent,
+    Integer currentPeriodKey,
+    Long labourStatusId,
+    Long unemploymentReasonId,
+    String unemploymentReasonCode,
+    String unemploymentReasonName,
+    Long precedingEmploymentId,
+    String precedingEmploymentNumber,
+    Long employmentExitEventId,
+    Long succeedingEmploymentId,
+    String succeedingEmploymentNumber,
+    Long enrollmentId,
+    String enrollmentNumber,
+    Long placementId,
+    String placementNumber,
+    Long followupTaskId,
+    Long surveyResponseId,
+    Long employmentInfoSourceId,
+    String employmentInfoSourceCode,
+    String employmentInfoSourceName,
+    Long recordVerificationStatusId,
+    String recordVerificationStatusCode,
+    String recordVerificationStatusName,
+    LocalDateTime verifiedAt,
+    Long verifiedByUserId,
+    String remarks,
+    LocalDateTime createdAt,
+    LocalDateTime updatedAt
+) {}
