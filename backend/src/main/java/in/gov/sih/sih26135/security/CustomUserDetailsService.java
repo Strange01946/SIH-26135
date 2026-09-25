@@ -77,6 +77,10 @@ public class CustomUserDetailsService implements UserDetailsService {
       throw new UsernameNotFoundException("User account is not active (status: " + status.getStatusCode() + "): " + identifier);
     }
 
+    if (user.getLockedUntil() != null && user.getLockedUntil().isAfter(java.time.LocalDateTime.now())) {
+      throw new UsernameNotFoundException("User account is locked: " + identifier);
+    }
+
     List<GrantedAuthority> authorities = buildEffectiveAuthorities(user.getId());
 
     return org.springframework.security.core.userdetails.User.builder()
