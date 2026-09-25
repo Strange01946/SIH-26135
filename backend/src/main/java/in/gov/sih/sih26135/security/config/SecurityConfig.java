@@ -3,6 +3,7 @@ package in.gov.sih.sih26135.security.config;
 import in.gov.sih.sih26135.security.jwt.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -18,8 +19,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  * <ul>
  *   <li>Stateless session management (no HTTP sessions created or used).</li>
  *   <li>Bearer token extraction and authentication via {@link JwtAuthenticationFilter}.</li>
- *   <li>Public access permitted only for health checks and future authentication endpoints.</li>
- *   <li>Authentication required across all business REST API endpoints.</li>
+ *   <li>Public access permitted strictly for POST /api/v1/auth/login, POST /api/v1/auth/refresh, /actuator/health, /error.</li>
+ *   <li>Authentication required for GET /api/v1/auth/me and all business REST API endpoints.</li>
  * </ul>
  */
 @Configuration
@@ -44,7 +45,8 @@ public class SecurityConfig {
         .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         // Request authorization boundary: public vs authenticated
         .authorizeHttpRequests(authorize -> authorize
-            .requestMatchers("/api/v1/auth/**").permitAll()
+            .requestMatchers(HttpMethod.POST, "/api/v1/auth/login", "/api/v1/auth/refresh").permitAll()
+            .requestMatchers("/api/v1/auth/me").authenticated()
             .requestMatchers("/actuator/health").permitAll()
             .requestMatchers("/error").permitAll()
             .anyRequest().authenticated()
