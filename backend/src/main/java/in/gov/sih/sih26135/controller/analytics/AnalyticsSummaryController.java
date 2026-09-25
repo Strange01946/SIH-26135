@@ -31,6 +31,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 /**
  * REST controller for exposing analytical summary aggregates and leaderboards mapped to database views.
@@ -44,6 +45,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/v1/analytics/summaries")
+@PreAuthorize("hasAuthority('analytics.read')")
 public class AnalyticsSummaryController {
 
   private final AttritionReasonSummaryService attritionReasonSummaryService;

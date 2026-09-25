@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 /**
  * REST controller for orchestrating Placement to Employment transition workflows.
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping({"/api/v1/workflows/placement-employment", "/api/v1/workflows/placement-employments"})
+@PreAuthorize("hasAnyAuthority('placement.manage', 'employment.manage')")
 public class PlacementEmploymentWorkflowController {
 
   private final PlacementEmploymentWorkflowService placementEmploymentWorkflowService;

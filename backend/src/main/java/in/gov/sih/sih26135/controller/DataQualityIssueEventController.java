@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 /**
  * REST controller for managing Data Quality Issue Event domain resources.
@@ -28,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/v1/data-quality-issue-events")
+@PreAuthorize("hasAnyAuthority('audit.read', 'system.manage')")
 public class DataQualityIssueEventController {
 
   private final DataQualityIssueEventService dataQualityIssueEventService;

@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -44,6 +45,7 @@ public class TraineeController {
    * @return 200 OK with TraineeResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
+  @PreAuthorize("hasAuthority('trainee.read')")
   public ResponseEntity<ApiResponse<TraineeResponse>> getById(@PathVariable Long id) {
     TraineeResponse response = traineeService.getById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
@@ -57,6 +59,7 @@ public class TraineeController {
    * @return 200 OK with list of trainees or single matched trainee enveloped in ApiResponse
    */
   @GetMapping
+  @PreAuthorize("hasAuthority('trainee.read')")
   public ResponseEntity<ApiResponse<?>> getTrainees(
       @RequestParam(value = "registrationNumber", required = false) String registrationNumber,
       @RequestParam(value = "userId", required = false) Long userId) {
@@ -81,6 +84,7 @@ public class TraineeController {
    * @return 201 Created with created TraineeResponse enveloped in ApiResponse
    */
   @PostMapping
+  @PreAuthorize("hasAuthority('trainee.write')")
   public ResponseEntity<ApiResponse<TraineeResponse>> createTrainee(
       @RequestBody CreateTraineeRequest request,
       @RequestHeader(value = "X-Actor-User-Id", required = false) Long actorUserId,
@@ -99,6 +103,7 @@ public class TraineeController {
    * @return 200 OK with updated TraineeResponse enveloped in ApiResponse
    */
   @PutMapping("/{id}")
+  @PreAuthorize("hasAuthority('trainee.write')")
   public ResponseEntity<ApiResponse<TraineeResponse>> updateTrainee(
       @PathVariable Long id,
       @RequestBody UpdateTraineeRequest request,
@@ -115,6 +120,7 @@ public class TraineeController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
+  @PreAuthorize("hasAuthority('trainee.write')")
   public ResponseEntity<ApiResponse<Void>> deleteTrainee(
       @PathVariable Long id,
       @RequestHeader(value = "X-Actor-User-Id", required = false) Long actorUserId) {

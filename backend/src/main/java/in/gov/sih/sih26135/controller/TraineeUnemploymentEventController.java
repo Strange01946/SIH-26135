@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 /**
  * REST controller for managing Trainee Unemployment Event domain resources.
@@ -33,6 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/v1/trainee-unemployment-events")
+@PreAuthorize("hasAuthority('employment.manage')")
 public class TraineeUnemploymentEventController {
 
   private final TraineeUnemploymentEventService traineeUnemploymentEventService;

@@ -92,6 +92,16 @@ public class GlobalExceptionHandler {
     return new ResponseEntity<>(errorResponse, HttpStatus.NOT_FOUND);
   }
 
+  @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+  public void handleAccessDeniedException(org.springframework.security.access.AccessDeniedException ex) {
+    throw ex;
+  }
+
+  @ExceptionHandler(org.springframework.security.core.AuthenticationException.class)
+  public void handleAuthenticationException(org.springframework.security.core.AuthenticationException ex) {
+    throw ex;
+  }
+
   @ExceptionHandler(Exception.class)
   public ResponseEntity<ErrorResponse> handleGenericException(Exception ex, HttpServletRequest request) {
     log.error("Unhandled exception processing request to {}", request.getRequestURI(), ex);

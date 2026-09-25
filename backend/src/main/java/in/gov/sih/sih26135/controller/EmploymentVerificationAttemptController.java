@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 /**
  * REST controller for managing Employment Verification Attempt domain resources.
@@ -29,6 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/v1/employment-verification-attempts")
+@PreAuthorize("hasAuthority('verification.manage')")
 public class EmploymentVerificationAttemptController {
 
   private final EmploymentVerificationAttemptService employmentVerificationAttemptService;

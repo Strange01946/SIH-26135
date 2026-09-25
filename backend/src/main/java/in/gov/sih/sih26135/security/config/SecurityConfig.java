@@ -6,6 +6,7 @@ import in.gov.sih.sih26135.security.jwt.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -15,13 +16,14 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 /**
  * Spring Security configuration establishing the stateless HTTP request processing pipeline,
- * security exception handling, and the JWT authentication boundary.
+ * security exception handling, method-level authorization, and the JWT authentication boundary.
  *
  * <p>Enforces:
  * <ul>
  *   <li>Stateless session management (no HTTP sessions created or used).</li>
  *   <li>Standardized JSON error handling for 401 Unauthorized via {@link RestAuthenticationEntryPoint}.</li>
  *   <li>Standardized JSON error handling for 403 Forbidden via {@link RestAccessDeniedHandler}.</li>
+ *   <li>Method-level RBAC authorization via {@link EnableMethodSecurity}.</li>
  *   <li>Bearer token extraction and authentication via {@link JwtAuthenticationFilter}.</li>
  *   <li>Public access permitted strictly for POST /api/v1/auth/login, POST /api/v1/auth/refresh, /actuator/health, /error.</li>
  *   <li>Authentication required for GET /api/v1/auth/me and all business REST API endpoints.</li>
@@ -29,6 +31,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  */
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 public class SecurityConfig {
 
   private final JwtAuthenticationFilter jwtAuthenticationFilter;
