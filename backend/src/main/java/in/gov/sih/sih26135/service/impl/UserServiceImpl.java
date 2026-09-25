@@ -22,6 +22,7 @@ import in.gov.sih.sih26135.repository.UserRoleRepository;
 import in.gov.sih.sih26135.service.UserService;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +36,7 @@ public class UserServiceImpl implements UserService {
   private final RoleRepository roleRepository;
   private final UserMapper userMapper;
   private final UserRoleMapper userRoleMapper;
+  private final PasswordEncoder passwordEncoder;
 
   public UserServiceImpl(
       UserRepository userRepository,
@@ -42,13 +44,15 @@ public class UserServiceImpl implements UserService {
       UserRoleRepository userRoleRepository,
       RoleRepository roleRepository,
       UserMapper userMapper,
-      UserRoleMapper userRoleMapper) {
+      UserRoleMapper userRoleMapper,
+      PasswordEncoder passwordEncoder) {
     this.userRepository = userRepository;
     this.refUserStatusRepository = refUserStatusRepository;
     this.userRoleRepository = userRoleRepository;
     this.roleRepository = roleRepository;
     this.userMapper = userMapper;
     this.userRoleMapper = userRoleMapper;
+    this.passwordEncoder = passwordEncoder;
   }
 
   @Override
@@ -91,8 +95,14 @@ public class UserServiceImpl implements UserService {
     if (request.getEmail() == null || request.getEmail().isBlank()) {
       throw new BadRequestException("Email is required");
     }
-    if (request.getPasswordHash() == null || request.getPasswordHash().isBlank()) {
-      throw new BadRequestException("Password hash is required");
+    if (request.getPassword() == null || request.getPassword().isBlank()) {
+      throw new BadRequestException("Password is required");
+    }
+    if (request.getPassword().length() < 8) {
+      throw new BadRequestException("Password must be at least 8 characters in length");
+    }
+    if (request.getPassword().length() > 128) {
+      throw new BadRequestException("Password cannot exceed 128 characters in length");
     }
     if (request.getUserStatusId() == null) {
       throw new BadRequestException("User status ID is required");
@@ -111,6 +121,8 @@ public class UserServiceImpl implements UserService {
     User user = userMapper.toEntity(request);
     user.setUsername(request.getUsername().trim());
     user.setEmail(request.getEmail().trim());
+    user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+    user.setPasswordAlgo("argon2id");
     LocalDateTime now = LocalDateTime.now();
     user.setCreatedAt(now);
     user.setUpdatedAt(now);

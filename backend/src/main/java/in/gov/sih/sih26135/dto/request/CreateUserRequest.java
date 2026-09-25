@@ -1,11 +1,16 @@
 package in.gov.sih.sih26135.dto.request;
 
+/**
+ * Request payload for creating a new User.
+ *
+ * <p>Accepts raw password from client which is strictly validated and hashed server-side
+ * before database persistence. Raw password is never stored, exposed, or logged.
+ */
 public class CreateUserRequest {
 
   private String username;
   private String email;
-  private String passwordHash;
-  private String passwordAlgo = "argon2id";
+  private String password;
   private Long userStatusId;
   private Long organizationId;
   private Long departmentId;
@@ -20,8 +25,7 @@ public class CreateUserRequest {
   public CreateUserRequest(
       String username,
       String email,
-      String passwordHash,
-      String passwordAlgo,
+      String password,
       Long userStatusId,
       Long organizationId,
       Long departmentId,
@@ -31,8 +35,7 @@ public class CreateUserRequest {
       Long employerId) {
     this.username = username;
     this.email = email;
-    this.passwordHash = passwordHash;
-    this.passwordAlgo = passwordAlgo != null ? passwordAlgo : "argon2id";
+    this.password = password;
     this.userStatusId = userStatusId;
     this.organizationId = organizationId;
     this.departmentId = departmentId;
@@ -58,20 +61,12 @@ public class CreateUserRequest {
     this.email = email;
   }
 
-  public String getPasswordHash() {
-    return passwordHash;
+  public String getPassword() {
+    return password;
   }
 
-  public void setPasswordHash(String passwordHash) {
-    this.passwordHash = passwordHash;
-  }
-
-  public String getPasswordAlgo() {
-    return passwordAlgo;
-  }
-
-  public void setPasswordAlgo(String passwordAlgo) {
-    this.passwordAlgo = passwordAlgo;
+  public void setPassword(String password) {
+    this.password = password;
   }
 
   public Long getUserStatusId() {
@@ -128,5 +123,20 @@ public class CreateUserRequest {
 
   public void setEmployerId(Long employerId) {
     this.employerId = employerId;
+  }
+
+  @Override
+  public String toString() {
+    return "CreateUserRequest{" +
+        "username='" + username + '\'' +
+        ", email='" + email + '\'' +
+        ", userStatusId=" + userStatusId +
+        ", organizationId=" + organizationId +
+        ", departmentId=" + departmentId +
+        ", stateId=" + stateId +
+        ", districtId=" + districtId +
+        ", trainingProviderId=" + trainingProviderId +
+        ", employerId=" + employerId +
+        '}';
   }
 }

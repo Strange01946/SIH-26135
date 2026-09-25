@@ -44,10 +44,6 @@ public class UserMapper {
     User user = new User();
     user.setUsername(request.getUsername());
     user.setEmail(request.getEmail());
-    user.setPasswordHash(request.getPasswordHash());
-    if (request.getPasswordAlgo() != null && !request.getPasswordAlgo().isBlank()) {
-      user.setPasswordAlgo(request.getPasswordAlgo());
-    }
     user.setUserStatusId(request.getUserStatusId());
     user.setOrganizationId(request.getOrganizationId());
     user.setDepartmentId(request.getDepartmentId());
