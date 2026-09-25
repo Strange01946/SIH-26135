@@ -20,6 +20,9 @@ public class ApiResponse<T> {
   @JsonInclude(JsonInclude.Include.NON_NULL)
   private final String path;
 
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  private final String code;
+
   @JsonCreator
   public ApiResponse(
       @JsonProperty("success") Boolean success,
@@ -27,7 +30,18 @@ public class ApiResponse<T> {
       @JsonProperty("data") T data,
       @JsonProperty("timestamp") Instant timestamp,
       @JsonProperty("path") String path) {
-    this.success = true;
+    this(success, null, message, data, timestamp, path);
+  }
+
+  public ApiResponse(
+      Boolean success,
+      String code,
+      String message,
+      T data,
+      Instant timestamp,
+      String path) {
+    this.success = success != null ? success : true;
+    this.code = code;
     this.message = message;
     this.data = data;
     this.timestamp = timestamp != null ? timestamp : Instant.now();
@@ -35,11 +49,7 @@ public class ApiResponse<T> {
   }
 
   private ApiResponse(String message, T data, String path) {
-    this.success = true;
-    this.message = message;
-    this.data = data;
-    this.timestamp = Instant.now();
-    this.path = path;
+    this(true, null, message, data, Instant.now(), path);
   }
 
   /**
@@ -101,8 +111,48 @@ public class ApiResponse<T> {
     return new ApiResponse<>("Operation completed successfully", data, null);
   }
 
+  /**
+   * Creates an error API response with a machine-readable code, human-readable message, and request path.
+   *
+   * @param code    machine-readable error code
+   * @param message human-readable error message
+   * @param path    request URI path
+   * @param <T>     data type
+   * @return error ApiResponse instance with null data and success=false
+   */
+  public static <T> ApiResponse<T> error(String code, String message, String path) {
+    return new ApiResponse<>(false, code, message, null, Instant.now(), path);
+  }
+
+  /**
+   * Creates an error API response with a message and request path.
+   *
+   * @param message human-readable error message
+   * @param path    request URI path
+   * @param <T>     data type
+   * @return error ApiResponse instance with null data and success=false
+   */
+  public static <T> ApiResponse<T> error(String message, String path) {
+    return new ApiResponse<>(false, null, message, null, Instant.now(), path);
+  }
+
+  /**
+   * Creates an error API response with a message and no path.
+   *
+   * @param message human-readable error message
+   * @param <T>     data type
+   * @return error ApiResponse instance with null data and success=false
+   */
+  public static <T> ApiResponse<T> error(String message) {
+    return new ApiResponse<>(false, null, message, null, Instant.now(), null);
+  }
+
   public boolean isSuccess() {
     return success;
+  }
+
+  public String getCode() {
+    return code;
   }
 
   public String getMessage() {
@@ -125,6 +175,7 @@ public class ApiResponse<T> {
   public String toString() {
     return "ApiResponse{" +
         "success=" + success +
+        ", code='" + code + '\'' +
         ", message='" + message + '\'' +
         ", data=" + data +
         ", timestamp=" + timestamp +

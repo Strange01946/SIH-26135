@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.security.config;
 
+import in.gov.sih.sih26135.security.handler.RestAccessDeniedHandler;
+import in.gov.sih.sih26135.security.handler.RestAuthenticationEntryPoint;
 import in.gov.sih.sih26135.security.jwt.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -12,12 +14,14 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Spring Security configuration establishing the stateless HTTP request processing pipeline
- * and the JWT authentication boundary.
+ * Spring Security configuration establishing the stateless HTTP request processing pipeline,
+ * security exception handling, and the JWT authentication boundary.
  *
  * <p>Enforces:
  * <ul>
  *   <li>Stateless session management (no HTTP sessions created or used).</li>
+ *   <li>Standardized JSON error handling for 401 Unauthorized via {@link RestAuthenticationEntryPoint}.</li>
+ *   <li>Standardized JSON error handling for 403 Forbidden via {@link RestAccessDeniedHandler}.</li>
  *   <li>Bearer token extraction and authentication via {@link JwtAuthenticationFilter}.</li>
  *   <li>Public access permitted strictly for POST /api/v1/auth/login, POST /api/v1/auth/refresh, /actuator/health, /error.</li>
  *   <li>Authentication required for GET /api/v1/auth/me and all business REST API endpoints.</li>
@@ -28,9 +32,16 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
   private final JwtAuthenticationFilter jwtAuthenticationFilter;
+  private final RestAuthenticationEntryPoint restAuthenticationEntryPoint;
+  private final RestAccessDeniedHandler restAccessDeniedHandler;
 
-  public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+  public SecurityConfig(
+      JwtAuthenticationFilter jwtAuthenticationFilter,
+      RestAuthenticationEntryPoint restAuthenticationEntryPoint,
+      RestAccessDeniedHandler restAccessDeniedHandler) {
     this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+    this.restAuthenticationEntryPoint = restAuthenticationEntryPoint;
+    this.restAccessDeniedHandler = restAccessDeniedHandler;
   }
 
   @Bean
@@ -43,6 +54,11 @@ public class SecurityConfig {
         .formLogin(AbstractHttpConfigurer::disable)
         // Stateless session policy: no HttpSession will be created or used
         .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+        // Standardized security exception handling
+        .exceptionHandling(exception -> exception
+            .authenticationEntryPoint(restAuthenticationEntryPoint)
+            .accessDeniedHandler(restAccessDeniedHandler)
+        )
         // Request authorization boundary: public vs authenticated
         .authorizeHttpRequests(authorize -> authorize
             .requestMatchers(HttpMethod.POST, "/api/v1/auth/login", "/api/v1/auth/refresh").permitAll()
