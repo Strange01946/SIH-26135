@@ -1,5 +1,8 @@
 package in.gov.sih.sih26135.entity;
 
+import java.time.LocalDateTime;
+import java.util.Objects;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -9,8 +12,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import java.time.LocalDateTime;
-import java.util.Objects;
 
 @Entity
 @Table(name = "system_event_logs")
@@ -64,6 +65,7 @@ public class SystemEventLog {
     this.eventCode = eventCode;
     this.eventSummary = eventSummary;
     this.occurredAt = occurredAt;
+    this.createdAt = LocalDateTime.now(); 
   }
 
   public Long getId() {

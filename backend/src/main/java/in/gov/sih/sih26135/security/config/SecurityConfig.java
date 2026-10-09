@@ -1,8 +1,5 @@
 package in.gov.sih.sih26135.security.config;
 
-import in.gov.sih.sih26135.security.handler.RestAccessDeniedHandler;
-import in.gov.sih.sih26135.security.handler.RestAuthenticationEntryPoint;
-import in.gov.sih.sih26135.security.jwt.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -17,6 +14,10 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.web.cors.CorsConfigurationSource;
+
+import in.gov.sih.sih26135.security.handler.RestAccessDeniedHandler;
+import in.gov.sih.sih26135.security.handler.RestAuthenticationEntryPoint;
+import in.gov.sih.sih26135.security.jwt.JwtAuthenticationFilter;
 
 /**
  * Spring Security configuration establishing the stateless HTTP request processing pipeline,
@@ -91,6 +92,11 @@ public class SecurityConfig {
             .requestMatchers("/api/v1/auth/me").authenticated()
             .requestMatchers("/actuator/health").permitAll()
             .requestMatchers("/error").permitAll()
+            .requestMatchers(
+    "/swagger-ui/**",
+    "/swagger-ui.html",
+    "/v3/api-docs/**"
+).permitAll()
             .anyRequest().authenticated()
         )
         // Register JWT authentication filter before the standard username/password filter
