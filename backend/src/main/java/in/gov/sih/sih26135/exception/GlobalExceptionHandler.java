@@ -102,6 +102,114 @@ public class GlobalExceptionHandler {
     throw ex;
   }
 
+  @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+  public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(
+      org.springframework.dao.DataIntegrityViolationException ex,
+      HttpServletRequest request) {
+    log.warn("Database integrity violation on {}: {}", request.getRequestURI(), ex.getMessage());
+
+    String rootMsg = ex.getRootCause() != null ? ex.getRootCause().getMessage() : ex.getMessage();
+    String errorMsg = rootMsg != null ? rootMsg : "";
+
+    if (errorMsg.contains("uk_employment_records_current_per_type")) {
+      ErrorResponse errorResponse = new ErrorResponse(
+          HttpStatus.CONFLICT.value(),
+          HttpStatus.CONFLICT.getReasonPhrase(),
+          "ACTIVE_SPELL_ALREADY_EXISTS",
+          "Trainee already has an active current spell for this engagement type",
+          request.getRequestURI()
+      );
+      return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
+
+    if (errorMsg.contains("uk_employment_records_placement")) {
+      ErrorResponse errorResponse = new ErrorResponse(
+          HttpStatus.CONFLICT.value(),
+          HttpStatus.CONFLICT.getReasonPhrase(),
+          "DUPLICATE_PLACEMENT_EMPLOYMENT",
+          "Placement record is already linked to another employment record",
+          request.getRequestURI()
+      );
+      return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
+
+    if (errorMsg.contains("uk_employment_records_number")) {
+      ErrorResponse errorResponse = new ErrorResponse(
+          HttpStatus.CONFLICT.value(),
+          HttpStatus.CONFLICT.getReasonPhrase(),
+          "EMPLOYMENT_NUMBER_ALREADY_EXISTS",
+          "Employment number already exists",
+          request.getRequestURI()
+      );
+      return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
+
+    if (errorMsg.contains("uk_employment_records_trainee_employer_start")) {
+      ErrorResponse errorResponse = new ErrorResponse(
+          HttpStatus.CONFLICT.value(),
+          HttpStatus.CONFLICT.getReasonPhrase(),
+          "DUPLICATE_TRAINEE_EMPLOYER_START",
+          "Employment record already exists for trainee, employer and start date",
+          request.getRequestURI()
+      );
+      return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
+
+    if (errorMsg.contains("uk_emp_verif_requests_open")) {
+      ErrorResponse errorResponse = new ErrorResponse(
+          HttpStatus.CONFLICT.value(),
+          HttpStatus.CONFLICT.getReasonPhrase(),
+          "OPEN_REQUEST_EXISTS",
+          "An open verification request already exists for this employment record",
+          request.getRequestURI()
+      );
+      return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
+
+    if (errorMsg.contains("uk_emp_verif_requests_cycle")) {
+      ErrorResponse errorResponse = new ErrorResponse(
+          HttpStatus.CONFLICT.value(),
+          HttpStatus.CONFLICT.getReasonPhrase(),
+          "DUPLICATE_CYCLE_NUMBER",
+          "Verification request for this employment record and cycle number already exists",
+          request.getRequestURI()
+      );
+      return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
+
+    if (errorMsg.contains("uk_emp_verif_requests_number")) {
+      ErrorResponse errorResponse = new ErrorResponse(
+          HttpStatus.CONFLICT.value(),
+          HttpStatus.CONFLICT.getReasonPhrase(),
+          "DUPLICATE_REQUEST_NUMBER",
+          "Request number already exists",
+          request.getRequestURI()
+      );
+      return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
+
+    if (errorMsg.contains("uk_unemployment_events_current")) {
+      ErrorResponse errorResponse = new ErrorResponse(
+          HttpStatus.CONFLICT.value(),
+          HttpStatus.CONFLICT.getReasonPhrase(),
+          "ACTIVE_PERIOD_ALREADY_EXISTS",
+          "Trainee already has an active unemployment period",
+          request.getRequestURI()
+      );
+      return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
+
+    log.error("Unrecognized database integrity violation on {}: {}", request.getRequestURI(), ex.getMessage(), ex);
+    ErrorResponse errorResponse = new ErrorResponse(
+        HttpStatus.INTERNAL_SERVER_ERROR.value(),
+        HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase(),
+        "INTERNAL_SERVER_ERROR",
+        "An unexpected database error occurred. Please try again later.",
+        request.getRequestURI()
+    );
+    return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+  }
+
   @ExceptionHandler(Exception.class)
   public ResponseEntity<ErrorResponse> handleGenericException(Exception ex, HttpServletRequest request) {
     log.error("Unhandled exception processing request to {}", request.getRequestURI(), ex);

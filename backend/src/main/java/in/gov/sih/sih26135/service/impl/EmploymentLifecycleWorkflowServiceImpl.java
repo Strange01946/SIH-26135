@@ -13,7 +13,11 @@ import in.gov.sih.sih26135.dto.response.SalaryHistoryResponse;
 import in.gov.sih.sih26135.dto.response.TraineeCareerTimelineResponse;
 import in.gov.sih.sih26135.dto.response.TraineeUnemploymentEventResponse;
 import in.gov.sih.sih26135.dto.response.UnemploymentToEmploymentTransitionResponse;
+import in.gov.sih.sih26135.entity.TraineeUnemploymentEvent;
 import in.gov.sih.sih26135.exception.BadRequestException;
+import in.gov.sih.sih26135.exception.ConflictException;
+import in.gov.sih.sih26135.exception.ResourceNotFoundException;
+import in.gov.sih.sih26135.repository.TraineeUnemploymentEventRepository;
 import in.gov.sih.sih26135.service.EmploymentExitEventService;
 import in.gov.sih.sih26135.service.EmploymentLifecycleWorkflowService;
 import in.gov.sih.sih26135.service.EmploymentRecordService;
@@ -31,16 +35,19 @@ public class EmploymentLifecycleWorkflowServiceImpl implements EmploymentLifecyc
   private final EmploymentExitEventService employmentExitEventService;
   private final TraineeUnemploymentEventService traineeUnemploymentEventService;
   private final SalaryHistoryService salaryHistoryService;
+  private final TraineeUnemploymentEventRepository traineeUnemploymentEventRepository;
 
   public EmploymentLifecycleWorkflowServiceImpl(
       EmploymentRecordService employmentRecordService,
       EmploymentExitEventService employmentExitEventService,
       TraineeUnemploymentEventService traineeUnemploymentEventService,
-      SalaryHistoryService salaryHistoryService) {
+      SalaryHistoryService salaryHistoryService,
+      TraineeUnemploymentEventRepository traineeUnemploymentEventRepository) {
     this.employmentRecordService = employmentRecordService;
     this.employmentExitEventService = employmentExitEventService;
     this.traineeUnemploymentEventService = traineeUnemploymentEventService;
     this.salaryHistoryService = salaryHistoryService;
+    this.traineeUnemploymentEventRepository = traineeUnemploymentEventRepository;
   }
 
   @Override
@@ -105,20 +112,30 @@ public class EmploymentLifecycleWorkflowServiceImpl implements EmploymentLifecyc
       throw new BadRequestException("New employment request is required", "NEW_EMPLOYMENT_REQUEST_REQUIRED");
     }
 
-    TraineeUnemploymentEventResponse unempEvent = traineeUnemploymentEventService.getUnemploymentEventById(
-        request.getUnemploymentEventId());
+    TraineeUnemploymentEvent unempEvent = traineeUnemploymentEventRepository.findByIdForUpdate(
+        request.getUnemploymentEventId())
+        .orElseThrow(() -> new ResourceNotFoundException("TraineeUnemploymentEvent", "unemploymentEventId"));
+
+    if (!Boolean.TRUE.equals(unempEvent.getIsCurrent())
+        || unempEvent.getEndDate() != null
+        || unempEvent.getSucceedingEmployment() != null) {
+      throw new ConflictException(
+          "Unemployment event is not currently active and cannot be transitioned to employment",
+          "UNEMPLOYMENT_EVENT_NOT_ACTIVE"
+      );
+    }
 
     CreateEmploymentRecordRequest newEmpReq = request.getNewEmploymentRequest();
     if (newEmpReq.getTraineeId() == null) {
-      newEmpReq.setTraineeId(unempEvent.traineeId());
-    } else if (!newEmpReq.getTraineeId().equals(unempEvent.traineeId())) {
+      newEmpReq.setTraineeId(unempEvent.getTrainee().getId());
+    } else if (!newEmpReq.getTraineeId().equals(unempEvent.getTrainee().getId())) {
       throw new BadRequestException(
           "New employment record trainee does not match unemployment event trainee",
           "TRAINEE_UNEMPLOYMENT_MISMATCH"
       );
     }
 
-    if (newEmpReq.getStartDate() != null && newEmpReq.getStartDate().isBefore(unempEvent.startDate())) {
+    if (newEmpReq.getStartDate() != null && newEmpReq.getStartDate().isBefore(unempEvent.getStartDate())) {
       throw new BadRequestException(
           "New employment start date cannot precede unemployment start date",
           "EMPLOYMENT_START_BEFORE_UNEMPLOYMENT"
@@ -128,27 +145,27 @@ public class EmploymentLifecycleWorkflowServiceImpl implements EmploymentLifecyc
     EmploymentRecordResponse newEmployment = employmentRecordService.createEmploymentRecord(newEmpReq);
 
     UpdateTraineeUnemploymentEventRequest updateUnemp = new UpdateTraineeUnemploymentEventRequest();
-    updateUnemp.setPeriodNumber(unempEvent.periodNumber());
-    updateUnemp.setStartDate(unempEvent.startDate());
+    updateUnemp.setPeriodNumber(unempEvent.getPeriodNumber());
+    updateUnemp.setStartDate(unempEvent.getStartDate());
     updateUnemp.setEndDate(newEmployment.startDate());
     updateUnemp.setIsCurrent(false);
-    updateUnemp.setLabourStatusId(unempEvent.labourStatusId());
-    updateUnemp.setUnemploymentReasonId(unempEvent.unemploymentReasonId());
-    updateUnemp.setPrecedingEmploymentId(unempEvent.precedingEmploymentId());
-    updateUnemp.setEmploymentExitEventId(unempEvent.employmentExitEventId());
+    updateUnemp.setLabourStatusId(unempEvent.getLabourStatusId());
+    updateUnemp.setUnemploymentReasonId(unempEvent.getUnemploymentReason().getId());
+    updateUnemp.setPrecedingEmploymentId(unempEvent.getPrecedingEmployment() != null ? unempEvent.getPrecedingEmployment().getId() : null);
+    updateUnemp.setEmploymentExitEventId(unempEvent.getEmploymentExitEvent() != null ? unempEvent.getEmploymentExitEvent().getId() : null);
     updateUnemp.setSucceedingEmploymentId(newEmployment.id());
-    updateUnemp.setEnrollmentId(unempEvent.enrollmentId());
-    updateUnemp.setPlacementId(unempEvent.placementId());
-    updateUnemp.setFollowupTaskId(unempEvent.followupTaskId());
-    updateUnemp.setSurveyResponseId(unempEvent.surveyResponseId());
-    updateUnemp.setEmploymentInfoSourceId(unempEvent.employmentInfoSourceId());
-    updateUnemp.setRecordVerificationStatusId(unempEvent.recordVerificationStatusId());
-    updateUnemp.setVerifiedAt(unempEvent.verifiedAt());
-    updateUnemp.setVerifiedByUserId(unempEvent.verifiedByUserId());
-    updateUnemp.setRemarks(unempEvent.remarks());
+    updateUnemp.setEnrollmentId(unempEvent.getEnrollment() != null ? unempEvent.getEnrollment().getId() : null);
+    updateUnemp.setPlacementId(unempEvent.getPlacementRecord() != null ? unempEvent.getPlacementRecord().getId() : null);
+    updateUnemp.setFollowupTaskId(unempEvent.getFollowupTask() != null ? unempEvent.getFollowupTask().getId() : null);
+    updateUnemp.setSurveyResponseId(unempEvent.getSurveyResponse() != null ? unempEvent.getSurveyResponse().getId() : null);
+    updateUnemp.setEmploymentInfoSourceId(unempEvent.getEmploymentInfoSource().getId());
+    updateUnemp.setRecordVerificationStatusId(unempEvent.getRecordVerificationStatus().getId());
+    updateUnemp.setVerifiedAt(unempEvent.getVerifiedAt());
+    updateUnemp.setVerifiedByUserId(unempEvent.getVerifiedByUserId());
+    updateUnemp.setRemarks(unempEvent.getRemarks());
 
     TraineeUnemploymentEventResponse updatedUnemp = traineeUnemploymentEventService.updateUnemploymentEvent(
-        unempEvent.id(), updateUnemp);
+        unempEvent.getId(), updateUnemp);
 
     SalaryHistoryResponse initialSalary = null;
     if (request.getInitialSalaryRequest() != null) {

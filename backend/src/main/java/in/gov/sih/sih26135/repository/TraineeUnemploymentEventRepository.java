@@ -1,15 +1,23 @@
 package in.gov.sih.sih26135.repository;
 
 import in.gov.sih.sih26135.entity.TraineeUnemploymentEvent;
+import jakarta.persistence.LockModeType;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public interface TraineeUnemploymentEventRepository extends
     JpaRepository<TraineeUnemploymentEvent, Long> {
+
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT e FROM TraineeUnemploymentEvent e WHERE e.id = :id")
+  Optional<TraineeUnemploymentEvent> findByIdForUpdate(@Param("id") Long id);
 
   Optional<TraineeUnemploymentEvent> findByTraineeIdAndPeriodNumber(Long traineeId,
       Integer periodNumber);

@@ -9,13 +9,21 @@ import in.gov.sih.sih26135.dto.response.PlacementRecordResponse;
 import in.gov.sih.sih26135.dto.response.PlacementToEmploymentTransitionResponse;
 import in.gov.sih.sih26135.dto.response.SalaryHistoryResponse;
 import in.gov.sih.sih26135.dto.response.TraineePlacementEmploymentSummaryResponse;
+import in.gov.sih.sih26135.entity.RefJoiningStatus;
+import in.gov.sih.sih26135.entity.RefPlacementStatus;
 import in.gov.sih.sih26135.exception.BadRequestException;
+import in.gov.sih.sih26135.exception.ConflictException;
+import in.gov.sih.sih26135.exception.ResourceNotFoundException;
+import in.gov.sih.sih26135.repository.EmploymentRecordRepository;
+import in.gov.sih.sih26135.repository.RefJoiningStatusRepository;
+import in.gov.sih.sih26135.repository.RefPlacementStatusRepository;
 import in.gov.sih.sih26135.service.EmploymentRecordService;
 import in.gov.sih.sih26135.service.PlacementEmploymentWorkflowService;
 import in.gov.sih.sih26135.service.PlacementRecordService;
 import in.gov.sih.sih26135.service.SalaryHistoryService;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,17 +31,28 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class PlacementEmploymentWorkflowServiceImpl implements PlacementEmploymentWorkflowService {
 
+  private static final Set<String> ALLOWED_PLACEMENT_STATUS_CODES = Set.of("OFFERED", "ACCEPTED", "JOINED");
+
   private final PlacementRecordService placementRecordService;
   private final EmploymentRecordService employmentRecordService;
   private final SalaryHistoryService salaryHistoryService;
+  private final EmploymentRecordRepository employmentRecordRepository;
+  private final RefPlacementStatusRepository refPlacementStatusRepository;
+  private final RefJoiningStatusRepository refJoiningStatusRepository;
 
   public PlacementEmploymentWorkflowServiceImpl(
       PlacementRecordService placementRecordService,
       EmploymentRecordService employmentRecordService,
-      SalaryHistoryService salaryHistoryService) {
+      SalaryHistoryService salaryHistoryService,
+      EmploymentRecordRepository employmentRecordRepository,
+      RefPlacementStatusRepository refPlacementStatusRepository,
+      RefJoiningStatusRepository refJoiningStatusRepository) {
     this.placementRecordService = placementRecordService;
     this.employmentRecordService = employmentRecordService;
     this.salaryHistoryService = salaryHistoryService;
+    this.employmentRecordRepository = employmentRecordRepository;
+    this.refPlacementStatusRepository = refPlacementStatusRepository;
+    this.refJoiningStatusRepository = refJoiningStatusRepository;
   }
 
   @Override
@@ -51,6 +70,50 @@ public class PlacementEmploymentWorkflowServiceImpl implements PlacementEmployme
     }
 
     PlacementRecordResponse placement = placementRecordService.getPlacementRecordById(request.getPlacementId());
+
+    if (placement.deletedAt() != null) {
+      throw new BadRequestException("Placement record is deleted and cannot be transitioned to employment", "PLACEMENT_RECORD_DELETED");
+    }
+
+    if (!ALLOWED_PLACEMENT_STATUS_CODES.contains(placement.placementStatusCode())) {
+      throw new BadRequestException(
+          "Placement record status '" + placement.placementStatusCode() + "' is not eligible for employment transition",
+          "INVALID_PLACEMENT_STATUS"
+      );
+    }
+
+    if ("NO_SHOW".equalsIgnoreCase(placement.joiningStatusCode())) {
+      throw new BadRequestException(
+          "Placement record with joining status 'NO_SHOW' cannot be transitioned to employment",
+          "INVALID_JOINING_STATUS"
+      );
+    }
+
+    if (request.getPlacementStatusId() != null) {
+      RefPlacementStatus targetStatus = refPlacementStatusRepository.findById(request.getPlacementStatusId())
+          .orElseThrow(() -> new ResourceNotFoundException("RefPlacementStatus", "placementStatusId"));
+      if (Boolean.TRUE.equals(targetStatus.getIsUnsuccessfulFlag()) || !ALLOWED_PLACEMENT_STATUS_CODES.contains(targetStatus.getStatusCode())) {
+        throw new BadRequestException(
+            "Target placement status '" + targetStatus.getStatusCode() + "' is not eligible for employment transition",
+            "INVALID_PLACEMENT_STATUS"
+        );
+      }
+    }
+
+    if (request.getPlacementJoiningStatusId() != null) {
+      RefJoiningStatus targetJoiningStatus = refJoiningStatusRepository.findById(request.getPlacementJoiningStatusId())
+          .orElseThrow(() -> new ResourceNotFoundException("RefJoiningStatus", "placementJoiningStatusId"));
+      if ("NO_SHOW".equalsIgnoreCase(targetJoiningStatus.getStatusCode())) {
+        throw new BadRequestException(
+            "Target joining status 'NO_SHOW' is not eligible for employment transition",
+            "INVALID_JOINING_STATUS"
+        );
+      }
+    }
+
+    if (employmentRecordRepository.findByPlacementRecordId(placement.id()).isPresent()) {
+      throw new ConflictException("Placement record is already linked to another employment record", "DUPLICATE_PLACEMENT_EMPLOYMENT");
+    }
 
     CreateEmploymentRecordRequest empReq = request.getEmploymentRecordRequest();
     if (empReq.getTraineeId() == null) {

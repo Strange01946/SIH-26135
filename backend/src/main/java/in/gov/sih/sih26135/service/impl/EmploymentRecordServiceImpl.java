@@ -315,6 +315,9 @@ public class EmploymentRecordServiceImpl implements EmploymentRecordService {
     if (isCurrent && endDate != null) {
       throw new BadRequestException("Current employment spell cannot have an end date", "CURRENT_SPELL_HAS_END_DATE");
     }
+    if (!isCurrent && endDate == null) {
+      throw new BadRequestException("Non-current employment spell must have an end date", "NON_CURRENT_SPELL_MISSING_END_DATE");
+    }
 
     // uk_employment_records_trainee_employer_start: (trainee_id, employer_id, start_date)
     boolean duplicateStartExists = employmentRecordRepository.findByTraineeId(trainee.getId()).stream()
@@ -415,9 +418,33 @@ public class EmploymentRecordServiceImpl implements EmploymentRecordService {
       record.setEmploymentSpellStatus(spellStatus);
     }
 
-    LocalDate startDate = request.getStartDate() != null ? request.getStartDate() : record.getStartDate();
-    LocalDate endDate = request.getEndDate() != null ? request.getEndDate() : record.getEndDate();
-    if (endDate != null && endDate.isBefore(startDate)) {
+    LocalDate effectiveStartDate = request.getStartDate() != null ? request.getStartDate() : record.getStartDate();
+
+    // Determine effective isCurrent
+    Boolean effectiveIsCurrent;
+    if (request.getIsCurrent() != null) {
+      effectiveIsCurrent = request.getIsCurrent();
+    } else if (request.getEndDate() != null) {
+      effectiveIsCurrent = false;
+    } else {
+      effectiveIsCurrent = record.getIsCurrent();
+    }
+
+    // Determine effective endDate
+    LocalDate effectiveEndDate;
+    if (Boolean.TRUE.equals(effectiveIsCurrent)) {
+      if (request.getEndDate() != null) {
+        throw new BadRequestException("Current employment spell cannot have an end date", "CURRENT_SPELL_HAS_END_DATE");
+      }
+      effectiveEndDate = null;
+    } else {
+      effectiveEndDate = request.getEndDate() != null ? request.getEndDate() : record.getEndDate();
+      if (effectiveEndDate == null) {
+        throw new BadRequestException("Non-current employment spell must have an end date", "NON_CURRENT_SPELL_MISSING_END_DATE");
+      }
+    }
+
+    if (effectiveEndDate != null && effectiveEndDate.isBefore(effectiveStartDate)) {
       throw new BadRequestException("End date cannot be before start date", "INVALID_DATE_RANGE");
     }
 
@@ -426,24 +453,16 @@ public class EmploymentRecordServiceImpl implements EmploymentRecordService {
     boolean duplicateStartExists = employmentRecordRepository.findByTraineeId(record.getTrainee().getId()).stream()
         .anyMatch(r -> !r.getId().equals(id)
             && Objects.equals(r.getEmployer() != null ? r.getEmployer().getId() : null, effectiveEmployerId)
-            && r.getStartDate().equals(startDate));
+            && Objects.equals(r.getStartDate(), effectiveStartDate));
     if (duplicateStartExists) {
       throw new ConflictException("Employment record already exists for trainee, employer and start date", "DUPLICATE_TRAINEE_EMPLOYER_START");
     }
 
     if (request.getStartDate() != null) {
-      record.setStartDate(request.getStartDate());
-    }
-    if (request.getEndDate() != null) {
-      record.setEndDate(request.getEndDate());
+      record.setStartDate(effectiveStartDate);
     }
 
-    Boolean isCurrent = request.getIsCurrent() != null ? request.getIsCurrent() : record.getIsCurrent();
-    if (Boolean.TRUE.equals(isCurrent) && record.getEndDate() != null) {
-      throw new BadRequestException("Current employment spell cannot have an end date", "CURRENT_SPELL_HAS_END_DATE");
-    }
-
-    if (Boolean.TRUE.equals(isCurrent)) {
+    if (Boolean.TRUE.equals(effectiveIsCurrent)) {
       final Long engTypeId = engagementType.getId();
       boolean activeSpellExists = employmentRecordRepository.findByTraineeIdAndIsCurrent(record.getTrainee().getId(), true).stream()
           .anyMatch(r -> !r.getId().equals(id) && r.getDeletedAt() == null && r.getEngagementType().getId().equals(engTypeId));
@@ -451,7 +470,9 @@ public class EmploymentRecordServiceImpl implements EmploymentRecordService {
         throw new ConflictException("Trainee already has an active current spell for this engagement type", "ACTIVE_SPELL_ALREADY_EXISTS");
       }
     }
-    record.setIsCurrent(isCurrent);
+
+    record.setIsCurrent(effectiveIsCurrent);
+    record.setEndDate(effectiveEndDate);
 
     if (request.getStartingSalary() != null) {
       if (request.getStartingSalary().compareTo(BigDecimal.ZERO) < 0) {
@@ -523,6 +544,7 @@ public class EmploymentRecordServiceImpl implements EmploymentRecordService {
         .orElseThrow(() -> new ResourceNotFoundException("EmploymentRecord", "id"));
     if (record.getDeletedAt() == null) {
       record.setDeletedAt(LocalDateTime.now());
+      record.setIsCurrent(false);
       employmentRecordRepository.save(record);
     }
   }

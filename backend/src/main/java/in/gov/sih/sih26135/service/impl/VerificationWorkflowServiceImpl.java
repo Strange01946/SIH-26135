@@ -16,6 +16,7 @@ import in.gov.sih.sih26135.dto.response.EmploymentVerificationSummaryResponse;
 import in.gov.sih.sih26135.dto.response.RecordVerificationVerdictResponse;
 import in.gov.sih.sih26135.dto.response.SurveyResponseResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
+import in.gov.sih.sih26135.exception.ConflictException;
 import in.gov.sih.sih26135.service.EmploymentRecordService;
 import in.gov.sih.sih26135.service.EmploymentVerificationAttemptService;
 import in.gov.sih.sih26135.service.EmploymentVerificationEvidenceService;
@@ -94,6 +95,29 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
       throw new BadRequestException(
           "Employment record does not belong to survey respondent trainee",
           "TRAINEE_EMPLOYMENT_MISMATCH"
+      );
+    }
+
+    List<EmploymentVerificationRequestResponse> existingRequests =
+        employmentVerificationRequestService.getRequestsByEmploymentId(emp.id());
+
+    boolean hasOpenRequest = existingRequests.stream()
+        .anyMatch(r -> Boolean.TRUE.equals(r.isOpenFlag())
+            || "REQUESTED".equalsIgnoreCase(r.statusCode())
+            || "IN_PROGRESS".equalsIgnoreCase(r.statusCode()));
+    if (hasOpenRequest) {
+      throw new ConflictException(
+          "An open verification request already exists for this employment record",
+          "OPEN_REQUEST_EXISTS"
+      );
+    }
+
+    boolean surveyAlreadyInitiated = existingRequests.stream()
+        .anyMatch(r -> surveyResponse.getId().equals(r.surveyResponseId()));
+    if (surveyAlreadyInitiated) {
+      throw new ConflictException(
+          "A verification request has already been initiated for this survey response",
+          "OPEN_REQUEST_EXISTS"
       );
     }
 

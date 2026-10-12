@@ -140,6 +140,25 @@ public class EmploymentVerificationRequestServiceImpl implements EmploymentVerif
     List<EmploymentVerificationRequest> existingRequests =
         employmentVerificationRequestRepository.findByEmploymentRecordId(employment.getId());
 
+    RefEmploymentVerificationRequestStatus status;
+    if (request.getStatusId() != null) {
+      status = refEmploymentVerificationRequestStatusRepository.findById(request.getStatusId())
+          .orElseThrow(() -> new ResourceNotFoundException("RefEmploymentVerificationRequestStatus", "statusId"));
+    } else {
+      status = refEmploymentVerificationRequestStatusRepository.findByStatusCode("REQUESTED")
+          .orElseThrow(() -> new ResourceNotFoundException("RefEmploymentVerificationRequestStatus", "REQUESTED"));
+    }
+
+    if (Boolean.TRUE.equals(status.getIsOpenFlag())) {
+      boolean openRequestExists = existingRequests.stream()
+          .anyMatch(r -> r.getEmploymentVerificationRequestStatus() != null
+              && Boolean.TRUE.equals(r.getEmploymentVerificationRequestStatus().getIsOpenFlag()))
+          || employmentVerificationRequestRepository.findByEmploymentRecordIdAndOpenRequestKey(employment.getId(), 1).isPresent();
+      if (openRequestExists) {
+        throw new ConflictException("An open verification request already exists for this employment record", "OPEN_REQUEST_EXISTS");
+      }
+    }
+
     Integer cycleNumber = request.getCycleNumber();
     Boolean isReverification = request.getIsReverification();
     if (cycleNumber == null) {
@@ -172,21 +191,6 @@ public class EmploymentVerificationRequestServiceImpl implements EmploymentVerif
 
     if (employmentVerificationRequestRepository.findByEmploymentRecordIdAndCycleNumber(employment.getId(), cycleNumber).isPresent()) {
       throw new ConflictException("Verification request for this employment record and cycle number already exists", "DUPLICATE_CYCLE_NUMBER");
-    }
-
-    RefEmploymentVerificationRequestStatus status;
-    if (request.getStatusId() != null) {
-      status = refEmploymentVerificationRequestStatusRepository.findById(request.getStatusId())
-          .orElseThrow(() -> new ResourceNotFoundException("RefEmploymentVerificationRequestStatus", "statusId"));
-    } else {
-      status = refEmploymentVerificationRequestStatusRepository.findByStatusCode("REQUESTED")
-          .orElseThrow(() -> new ResourceNotFoundException("RefEmploymentVerificationRequestStatus", "REQUESTED"));
-    }
-
-    if (Boolean.TRUE.equals(status.getIsOpenFlag())) {
-      if (employmentVerificationRequestRepository.findByEmploymentRecordIdAndOpenRequestKey(employment.getId(), 1).isPresent()) {
-        throw new ConflictException("An open verification request already exists for this employment record", "OPEN_REQUEST_EXISTS");
-      }
     }
 
     RefEmploymentVerificationMethod preferredMethod = null;
