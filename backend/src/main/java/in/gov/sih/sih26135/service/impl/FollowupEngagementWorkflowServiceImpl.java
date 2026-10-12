@@ -16,6 +16,7 @@ import in.gov.sih.sih26135.service.CommunicationLogService;
 import in.gov.sih.sih26135.service.FollowupEngagementWorkflowService;
 import in.gov.sih.sih26135.service.FollowupTaskService;
 import in.gov.sih.sih26135.service.SurveyResponseService;
+import in.gov.sih.sih26135.service.TraineeConsentService;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -28,14 +29,17 @@ public class FollowupEngagementWorkflowServiceImpl implements FollowupEngagement
   private final FollowupTaskService followupTaskService;
   private final SurveyResponseService surveyResponseService;
   private final CommunicationLogService communicationLogService;
+  private final TraineeConsentService traineeConsentService;
 
   public FollowupEngagementWorkflowServiceImpl(
       FollowupTaskService followupTaskService,
       SurveyResponseService surveyResponseService,
-      CommunicationLogService communicationLogService) {
+      CommunicationLogService communicationLogService,
+      TraineeConsentService traineeConsentService) {
     this.followupTaskService = followupTaskService;
     this.surveyResponseService = surveyResponseService;
     this.communicationLogService = communicationLogService;
+    this.traineeConsentService = traineeConsentService;
   }
 
   @Override
@@ -63,6 +67,8 @@ public class FollowupEngagementWorkflowServiceImpl implements FollowupEngagement
           "TRAINEE_TASK_MISMATCH"
       );
     }
+
+    traineeConsentService.validateConsent(task.getTraineeId(), "EMPLOYMENT_FOLLOW_UP");
 
     surveyReq.setFollowupTaskId(task.getId());
     if (surveyReq.getEnrollmentId() == null) {
@@ -120,6 +126,8 @@ public class FollowupEngagementWorkflowServiceImpl implements FollowupEngagement
           "TRAINEE_TASK_MISMATCH"
       );
     }
+
+    traineeConsentService.validateConsent(task.getTraineeId(), "EMPLOYMENT_FOLLOW_UP");
 
     commReq.setFollowupTaskId(task.getId());
     CommunicationLogResponse commLog = communicationLogService.logCommunication(commReq);

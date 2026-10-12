@@ -18,4 +18,10 @@ public interface TraineeConsentService {
   TraineeConsentResponse createConsent(CreateTraineeConsentRequest request, Long actorUserId);
 
   TraineeConsentResponse updateConsentStatus(Long consentId, UpdateTraineeConsentStatusRequest request, Long actorUserId);
+
+  boolean hasActiveConsent(Long traineeId, String consentCode);
+
+  void validateConsent(Long traineeId, String consentCode);
+
+  void validateConsent(Long traineeId, Long consentTypeId);
 }

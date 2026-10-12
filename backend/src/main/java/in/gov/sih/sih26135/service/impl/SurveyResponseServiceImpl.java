@@ -17,6 +17,7 @@ import in.gov.sih.sih26135.repository.SurveyResponseRepository;
 import in.gov.sih.sih26135.repository.TraineeRepository;
 import in.gov.sih.sih26135.repository.TrainingEnrollmentRepository;
 import in.gov.sih.sih26135.service.SurveyResponseService;
+import in.gov.sih.sih26135.service.TraineeConsentService;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -34,6 +35,7 @@ public class SurveyResponseServiceImpl implements SurveyResponseService {
   private final FollowupTaskRepository followupTaskRepository;
   private final SurveyResponseAnswerRepository surveyResponseAnswerRepository;
   private final SurveyResponseMapper surveyResponseMapper;
+  private final TraineeConsentService traineeConsentService;
 
   public SurveyResponseServiceImpl(
       SurveyResponseRepository surveyResponseRepository,
@@ -41,13 +43,15 @@ public class SurveyResponseServiceImpl implements SurveyResponseService {
       TrainingEnrollmentRepository trainingEnrollmentRepository,
       FollowupTaskRepository followupTaskRepository,
       SurveyResponseAnswerRepository surveyResponseAnswerRepository,
-      SurveyResponseMapper surveyResponseMapper) {
+      SurveyResponseMapper surveyResponseMapper,
+      TraineeConsentService traineeConsentService) {
     this.surveyResponseRepository = surveyResponseRepository;
     this.traineeRepository = traineeRepository;
     this.trainingEnrollmentRepository = trainingEnrollmentRepository;
     this.followupTaskRepository = followupTaskRepository;
     this.surveyResponseAnswerRepository = surveyResponseAnswerRepository;
     this.surveyResponseMapper = surveyResponseMapper;
+    this.traineeConsentService = traineeConsentService;
   }
 
   @Override
@@ -100,6 +104,7 @@ public class SurveyResponseServiceImpl implements SurveyResponseService {
       if (followupTask.getSurveyId() != null && !followupTask.getSurveyId().equals(request.getSurveyId())) {
         throw new BadRequestException("Followup task survey ID does not match response survey ID", "SURVEY_MISMATCH");
       }
+      traineeConsentService.validateConsent(trainee.getId(), "EMPLOYMENT_FOLLOW_UP");
     }
 
     LocalDateTime startedAt = request.getStartedAt() != null ? request.getStartedAt() : LocalDateTime.now();
@@ -157,6 +162,10 @@ public class SurveyResponseServiceImpl implements SurveyResponseService {
         throw new BadRequestException("Followup task survey ID does not match response survey ID", "SURVEY_MISMATCH");
       }
       response.setFollowupTask(followupTask);
+    }
+
+    if (response.getFollowupTask() != null) {
+      traineeConsentService.validateConsent(trainee.getId(), "EMPLOYMENT_FOLLOW_UP");
     }
 
     if (request.getSurveyResponseStatusId() != null) {

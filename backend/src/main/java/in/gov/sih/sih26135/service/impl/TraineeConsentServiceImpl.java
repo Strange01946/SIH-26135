@@ -16,6 +16,7 @@ import in.gov.sih.sih26135.repository.TraineeConsentRepository;
 import in.gov.sih.sih26135.repository.TraineeRepository;
 import in.gov.sih.sih26135.service.TraineeConsentService;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -160,5 +161,139 @@ public class TraineeConsentServiceImpl implements TraineeConsentService {
     consent.setUpdatedAt(LocalDateTime.now());
     TraineeConsent saved = traineeConsentRepository.save(consent);
     return traineeConsentMapper.toResponse(saved);
+  }
+
+  @Override
+  public boolean hasActiveConsent(Long traineeId, String consentCode) {
+    if (traineeId == null || consentCode == null || consentCode.isBlank()) {
+      return false;
+    }
+    if (!traineeRepository.existsById(traineeId)) {
+      return false;
+    }
+    RefConsentType consentType = refConsentTypeRepository.findByConsentCode(consentCode).orElse(null);
+    if (consentType == null) {
+      return false;
+    }
+    List<TraineeConsent> consents = traineeConsentRepository.findByTraineeIdAndConsentTypeId(traineeId, consentType.getId());
+    if (consents == null || consents.isEmpty()) {
+      return false;
+    }
+    TraineeConsent authoritative = consents.stream()
+        .max(Comparator.comparing((TraineeConsent c) -> c.getUpdatedAt() != null ? c.getUpdatedAt() : (c.getCreatedAt() != null ? c.getCreatedAt() : LocalDateTime.MIN))
+            .thenComparing(TraineeConsent::getId, Comparator.nullsLast(Comparator.naturalOrder())))
+        .orElse(consents.get(0));
+
+    RefConsentStatus status = authoritative.getConsentStatus();
+    String statusCode = status != null ? status.getStatusCode() : null;
+    if (!"GRANTED".equalsIgnoreCase(statusCode)) {
+      return false;
+    }
+
+    LocalDateTime now = LocalDateTime.now();
+    if (authoritative.getRevokedAt() != null && !authoritative.getRevokedAt().isAfter(now)) {
+      return false;
+    }
+    if (authoritative.getExpiresAt() != null && !authoritative.getExpiresAt().isAfter(now)) {
+      return false;
+    }
+    if (authoritative.getGrantedAt() != null && authoritative.getGrantedAt().isAfter(now)) {
+      return false;
+    }
+    return true;
+  }
+
+  @Override
+  public void validateConsent(Long traineeId, String consentCode) {
+    if (traineeId == null) {
+      throw new BadRequestException("Trainee ID is required for consent validation", "TRAINEE_ID_REQUIRED");
+    }
+    if (consentCode == null || consentCode.isBlank()) {
+      throw new BadRequestException("Consent code is required for consent validation", "CONSENT_CODE_REQUIRED");
+    }
+    if (!traineeRepository.existsById(traineeId)) {
+      throw new ResourceNotFoundException("Trainee", "id");
+    }
+    RefConsentType consentType = refConsentTypeRepository.findByConsentCode(consentCode)
+        .orElseThrow(() -> new ResourceNotFoundException("ConsentType", "consentCode"));
+
+    checkConsentValidityOrThrow(traineeId, consentType.getId(), consentCode);
+  }
+
+  @Override
+  public void validateConsent(Long traineeId, Long consentTypeId) {
+    if (traineeId == null) {
+      throw new BadRequestException("Trainee ID is required for consent validation", "TRAINEE_ID_REQUIRED");
+    }
+    if (consentTypeId == null) {
+      throw new BadRequestException("Consent type ID is required for consent validation", "CONSENT_TYPE_ID_REQUIRED");
+    }
+    if (!traineeRepository.existsById(traineeId)) {
+      throw new ResourceNotFoundException("Trainee", "id");
+    }
+    RefConsentType consentType = refConsentTypeRepository.findById(consentTypeId)
+        .orElseThrow(() -> new ResourceNotFoundException("ConsentType", "id"));
+
+    checkConsentValidityOrThrow(traineeId, consentTypeId, consentType.getConsentCode());
+  }
+
+  private void checkConsentValidityOrThrow(Long traineeId, Long consentTypeId, String consentCode) {
+    List<TraineeConsent> consents = traineeConsentRepository.findByTraineeIdAndConsentTypeId(traineeId, consentTypeId);
+    if (consents == null || consents.isEmpty()) {
+      throw new BadRequestException(
+          "Trainee has not granted consent for " + consentCode,
+          "CONSENT_REQUIRED"
+      );
+    }
+
+    TraineeConsent authoritative = consents.stream()
+        .max(Comparator.comparing((TraineeConsent c) -> c.getUpdatedAt() != null ? c.getUpdatedAt() : (c.getCreatedAt() != null ? c.getCreatedAt() : LocalDateTime.MIN))
+            .thenComparing(TraineeConsent::getId, Comparator.nullsLast(Comparator.naturalOrder())))
+        .orElse(consents.get(0));
+
+    RefConsentStatus status = authoritative.getConsentStatus();
+    String statusCode = status != null ? status.getStatusCode() : null;
+
+    if (statusCode == null || !"GRANTED".equalsIgnoreCase(statusCode)) {
+      if ("REVOKED".equalsIgnoreCase(statusCode)) {
+        throw new BadRequestException(
+            "Trainee consent for " + consentCode + " has been revoked",
+            "CONSENT_REVOKED"
+        );
+      } else if ("EXPIRED".equalsIgnoreCase(statusCode)) {
+        throw new BadRequestException(
+            "Trainee consent for " + consentCode + " has expired",
+            "CONSENT_EXPIRED"
+        );
+      } else {
+        throw new BadRequestException(
+            "Trainee has not granted consent for " + consentCode,
+            "CONSENT_NOT_GRANTED"
+        );
+      }
+    }
+
+    LocalDateTime now = LocalDateTime.now();
+
+    if (authoritative.getRevokedAt() != null && !authoritative.getRevokedAt().isAfter(now)) {
+      throw new BadRequestException(
+          "Trainee consent for " + consentCode + " has been revoked",
+          "CONSENT_REVOKED"
+      );
+    }
+
+    if (authoritative.getExpiresAt() != null && !authoritative.getExpiresAt().isAfter(now)) {
+      throw new BadRequestException(
+          "Trainee consent for " + consentCode + " has expired",
+          "CONSENT_EXPIRED"
+      );
+    }
+
+    if (authoritative.getGrantedAt() != null && authoritative.getGrantedAt().isAfter(now)) {
+      throw new BadRequestException(
+          "Trainee consent for " + consentCode + " is not yet effective",
+          "CONSENT_NOT_YET_EFFECTIVE"
+      );
+    }
   }
 }

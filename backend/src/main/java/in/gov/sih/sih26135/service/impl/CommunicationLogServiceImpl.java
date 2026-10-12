@@ -27,6 +27,7 @@ import in.gov.sih.sih26135.repository.SurveyResponseRepository;
 import in.gov.sih.sih26135.repository.TraineeRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
 import in.gov.sih.sih26135.service.CommunicationLogService;
+import in.gov.sih.sih26135.service.TraineeConsentService;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -47,6 +48,7 @@ public class CommunicationLogServiceImpl implements CommunicationLogService {
   private final RefConsentTypeRepository refConsentTypeRepository;
   private final UserRepository userRepository;
   private final CommunicationLogMapper communicationLogMapper;
+  private final TraineeConsentService traineeConsentService;
 
   public CommunicationLogServiceImpl(
       CommunicationLogRepository communicationLogRepository,
@@ -59,7 +61,8 @@ public class CommunicationLogServiceImpl implements CommunicationLogService {
       RefCommunicationStatusRepository refCommunicationStatusRepository,
       RefConsentTypeRepository refConsentTypeRepository,
       UserRepository userRepository,
-      CommunicationLogMapper communicationLogMapper) {
+      CommunicationLogMapper communicationLogMapper,
+      TraineeConsentService traineeConsentService) {
     this.communicationLogRepository = communicationLogRepository;
     this.traineeRepository = traineeRepository;
     this.followupTaskRepository = followupTaskRepository;
@@ -71,6 +74,7 @@ public class CommunicationLogServiceImpl implements CommunicationLogService {
     this.refConsentTypeRepository = refConsentTypeRepository;
     this.userRepository = userRepository;
     this.communicationLogMapper = communicationLogMapper;
+    this.traineeConsentService = traineeConsentService;
   }
 
   @Override
@@ -142,10 +146,32 @@ public class CommunicationLogServiceImpl implements CommunicationLogService {
     RefCommunicationStatus status = refCommunicationStatusRepository.findById(request.getCommunicationStatusId())
         .orElseThrow(() -> new ResourceNotFoundException("RefCommunicationStatus", "communicationStatusId"));
 
+    boolean isOutbound = direction != null && "OUTBOUND".equalsIgnoreCase(direction.getDirectionCode());
+    if (isOutbound) {
+      if (channel.getRequiredConsentType() != null) {
+        traineeConsentService.validateConsent(trainee.getId(), channel.getRequiredConsentType().getConsentCode());
+      }
+      if (purpose.getRequiredConsentType() != null) {
+        traineeConsentService.validateConsent(trainee.getId(), purpose.getRequiredConsentType().getConsentCode());
+      }
+    }
+
     RefConsentType consentType = null;
+    LocalDateTime consentCheckedAt = null;
+
     if (request.getConsentTypeId() != null) {
       consentType = refConsentTypeRepository.findById(request.getConsentTypeId())
           .orElseThrow(() -> new ResourceNotFoundException("RefConsentType", "consentTypeId"));
+      traineeConsentService.validateConsent(trainee.getId(), consentType.getConsentCode());
+      consentCheckedAt = LocalDateTime.now();
+    } else if (isOutbound) {
+      if (channel.getRequiredConsentType() != null) {
+        consentType = channel.getRequiredConsentType();
+        consentCheckedAt = LocalDateTime.now();
+      } else if (purpose.getRequiredConsentType() != null) {
+        consentType = purpose.getRequiredConsentType();
+        consentCheckedAt = LocalDateTime.now();
+      }
     }
 
     if (request.getInitiatedByUserId() != null) {
@@ -166,6 +192,13 @@ public class CommunicationLogServiceImpl implements CommunicationLogService {
     }
 
     LocalDateTime now = LocalDateTime.now();
+    if (consentType != null) {
+      entity.setConsentType(consentType);
+      entity.setConsentCheckedAt(consentCheckedAt != null ? consentCheckedAt : now);
+    } else {
+      entity.setConsentType(null);
+      entity.setConsentCheckedAt(null);
+    }
     entity.setCreatedAt(now);
     entity.setUpdatedAt(now);
 
