@@ -15,8 +15,15 @@ import in.gov.sih.sih26135.dto.response.EmploymentVerificationResponse;
 import in.gov.sih.sih26135.dto.response.EmploymentVerificationSummaryResponse;
 import in.gov.sih.sih26135.dto.response.RecordVerificationVerdictResponse;
 import in.gov.sih.sih26135.dto.response.SurveyResponseResponse;
+import in.gov.sih.sih26135.entity.RefUserStatus;
+import in.gov.sih.sih26135.entity.User;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ConflictException;
+import in.gov.sih.sih26135.exception.InvalidCredentialsException;
+import in.gov.sih.sih26135.exception.ResourceNotFoundException;
+import in.gov.sih.sih26135.repository.RefUserStatusRepository;
+import in.gov.sih.sih26135.repository.UserRepository;
+import in.gov.sih.sih26135.security.UserPrincipal;
 import in.gov.sih.sih26135.service.EmploymentRecordService;
 import in.gov.sih.sih26135.service.EmploymentVerificationAttemptService;
 import in.gov.sih.sih26135.service.EmploymentVerificationEvidenceService;
@@ -28,6 +35,9 @@ import in.gov.sih.sih26135.service.VerificationWorkflowService;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,7 +52,32 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
   private final EmploymentVerificationAttemptService employmentVerificationAttemptService;
   private final EmploymentVerificationService employmentVerificationService;
   private final EmploymentVerificationEvidenceService employmentVerificationEvidenceService;
+  private final UserRepository userRepository;
+  private final RefUserStatusRepository refUserStatusRepository;
 
+  @Autowired
+  public VerificationWorkflowServiceImpl(
+      EmploymentRecordService employmentRecordService,
+      FollowupTaskService followupTaskService,
+      SurveyResponseService surveyResponseService,
+      EmploymentVerificationRequestService employmentVerificationRequestService,
+      EmploymentVerificationAttemptService employmentVerificationAttemptService,
+      EmploymentVerificationService employmentVerificationService,
+      EmploymentVerificationEvidenceService employmentVerificationEvidenceService,
+      UserRepository userRepository,
+      RefUserStatusRepository refUserStatusRepository) {
+    this.employmentRecordService = employmentRecordService;
+    this.followupTaskService = followupTaskService;
+    this.surveyResponseService = surveyResponseService;
+    this.employmentVerificationRequestService = employmentVerificationRequestService;
+    this.employmentVerificationAttemptService = employmentVerificationAttemptService;
+    this.employmentVerificationService = employmentVerificationService;
+    this.employmentVerificationEvidenceService = employmentVerificationEvidenceService;
+    this.userRepository = userRepository;
+    this.refUserStatusRepository = refUserStatusRepository;
+  }
+
+  @Deprecated
   public VerificationWorkflowServiceImpl(
       EmploymentRecordService employmentRecordService,
       FollowupTaskService followupTaskService,
@@ -51,13 +86,17 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
       EmploymentVerificationAttemptService employmentVerificationAttemptService,
       EmploymentVerificationService employmentVerificationService,
       EmploymentVerificationEvidenceService employmentVerificationEvidenceService) {
-    this.employmentRecordService = employmentRecordService;
-    this.followupTaskService = followupTaskService;
-    this.surveyResponseService = surveyResponseService;
-    this.employmentVerificationRequestService = employmentVerificationRequestService;
-    this.employmentVerificationAttemptService = employmentVerificationAttemptService;
-    this.employmentVerificationService = employmentVerificationService;
-    this.employmentVerificationEvidenceService = employmentVerificationEvidenceService;
+    this(
+        employmentRecordService,
+        followupTaskService,
+        surveyResponseService,
+        employmentVerificationRequestService,
+        employmentVerificationAttemptService,
+        employmentVerificationService,
+        employmentVerificationEvidenceService,
+        null,
+        null
+    );
   }
 
   @Override
@@ -147,6 +186,46 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
     }
 
     CreateEmploymentVerificationRequest verReq = request.getVerificationRequest();
+
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
+      throw new InvalidCredentialsException("User is not authenticated");
+    }
+
+    if (this.userRepository == null) {
+      throw new IllegalStateException("UserRepository is required for verifier validation");
+    }
+    if (this.refUserStatusRepository == null) {
+      throw new IllegalStateException("RefUserStatusRepository is required for verifier validation");
+    }
+
+    Long authenticatedUserId = resolveAuthenticatedUserId(authentication);
+
+    User verifierUser = userRepository.findById(authenticatedUserId)
+        .orElseThrow(() -> new ResourceNotFoundException("User", "id"));
+
+    if (verifierUser.getDeletedAt() != null) {
+      throw new InvalidCredentialsException("User account has been deleted");
+    }
+
+    if (verifierUser.getUserStatusId() == null) {
+      throw new InvalidCredentialsException("User account status reference is missing");
+    }
+
+    RefUserStatus status = refUserStatusRepository.findById(verifierUser.getUserStatusId())
+        .orElseThrow(() -> new InvalidCredentialsException("User account status record not found"));
+
+    if (status.getStatusCode() == null || !"ACTIVE".equalsIgnoreCase(status.getStatusCode())) {
+      throw new InvalidCredentialsException("User account is not active");
+    }
+
+    if (verifierUser.getLockedUntil() != null && verifierUser.getLockedUntil().isAfter(LocalDateTime.now())) {
+      throw new InvalidCredentialsException("User account is locked");
+    }
+
+    // Authoritative verifier identity derived from authenticated security context
+    verReq.setVerifiedByUserId(authenticatedUserId);
+
     EmploymentVerificationResponse verification = employmentVerificationService.createEmploymentVerification(verReq);
 
     List<EmploymentVerificationEvidenceResponse> evidenceList = new ArrayList<>();
@@ -213,5 +292,28 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
     }
 
     return new EmploymentVerificationSummaryResponse(emp, requests, attempts, verifications);
+  }
+
+  private Long resolveAuthenticatedUserId(Authentication authentication) {
+    Object principal = authentication.getPrincipal();
+    if (principal instanceof UserPrincipal up) {
+      if (up.getId() != null) {
+        return up.getId();
+      }
+      if (up.getUsername() != null && !up.getUsername().isBlank()) {
+        return userRepository.findByUsernameOrEmail(up.getUsername(), up.getUsername())
+            .map(User::getId)
+            .orElseThrow(() -> new ResourceNotFoundException("User", "username"));
+      }
+    } else if (principal instanceof org.springframework.security.core.userdetails.UserDetails ud) {
+      return userRepository.findByUsernameOrEmail(ud.getUsername(), ud.getUsername())
+          .map(User::getId)
+          .orElseThrow(() -> new ResourceNotFoundException("User", "username"));
+    } else if (principal instanceof String str && !"anonymousUser".equals(str)) {
+      return userRepository.findByUsernameOrEmail(str, str)
+          .map(User::getId)
+          .orElseThrow(() -> new ResourceNotFoundException("User", "username"));
+    }
+    throw new InvalidCredentialsException("Unable to resolve authenticated user identity");
   }
 }

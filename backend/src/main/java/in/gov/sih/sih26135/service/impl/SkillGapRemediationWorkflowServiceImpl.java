@@ -13,6 +13,7 @@ import in.gov.sih.sih26135.dto.response.SkillGapResponse;
 import in.gov.sih.sih26135.dto.response.TraineeSkillGapProfileResponse;
 import in.gov.sih.sih26135.dto.response.TrainingEnrollmentResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
+import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.service.SkillGapAssessmentService;
 import in.gov.sih.sih26135.service.SkillGapRecommendationService;
 import in.gov.sih.sih26135.service.SkillGapRemediationWorkflowService;
@@ -76,9 +77,52 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
     List<SkillGapRecommendationResponse> createdRecs = new ArrayList<>();
     if (request.getRecommendationRequests() != null && !request.getRecommendationRequests().isEmpty()) {
       for (CreateSkillGapRecommendationRequest recReq : request.getRecommendationRequests()) {
-        if (recReq.getSkillGapId() == null) {
-          recReq.setSkillGapId(createdGaps.get(0).id());
+        if (recReq == null) {
+          throw new BadRequestException("Recommendation request cannot be null", "RECOMMENDATION_REQUEST_NULL");
         }
+
+        Long targetGapId = recReq.getSkillGapId();
+
+        if (targetGapId == null) {
+          if (createdGaps.size() == 1) {
+            targetGapId = createdGaps.get(0).id();
+            recReq.setSkillGapId(targetGapId);
+          } else {
+            throw new BadRequestException(
+                "Skill gap ID is required for recommendation when multiple skill gaps are created",
+                "SKILL_GAP_ID_REQUIRED"
+            );
+          }
+        } else {
+          final Long explicitGapId = recReq.getSkillGapId();
+          SkillGapResponse targetGap = createdGaps.stream()
+              .filter(g -> g.id().equals(explicitGapId))
+              .findFirst()
+              .orElse(null);
+
+          if (targetGap == null) {
+            targetGap = skillGapService.getSkillGapById(explicitGapId);
+          }
+
+          if (targetGap == null) {
+            throw new ResourceNotFoundException("SkillGap", "skillGapId");
+          }
+
+          if (!targetGap.traineeId().equals(assessment.traineeId())) {
+            throw new BadRequestException(
+                "Skill gap does not belong to assessment trainee",
+                "SKILL_GAP_TRAINEE_MISMATCH"
+            );
+          }
+
+          if (!targetGap.skillGapAssessmentId().equals(assessment.id())) {
+            throw new BadRequestException(
+                "Skill gap does not belong to the current assessment",
+                "SKILL_GAP_ASSESSMENT_MISMATCH"
+            );
+          }
+        }
+
         createdRecs.add(skillGapRecommendationService.createRecommendation(recReq));
       }
     }
