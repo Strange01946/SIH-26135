@@ -9,14 +9,24 @@ import in.gov.sih.sih26135.dto.response.RecordAssessmentAndIssueCertificateRespo
 import in.gov.sih.sih26135.dto.response.TraineeAssessmentResponse;
 import in.gov.sih.sih26135.dto.response.TraineeTrainingOutcomeSummaryResponse;
 import in.gov.sih.sih26135.dto.response.TrainingEnrollmentResponse;
+import in.gov.sih.sih26135.entity.CourseSkill;
+import in.gov.sih.sih26135.entity.RefSkillGapStatus;
+import in.gov.sih.sih26135.entity.SkillGap;
 import in.gov.sih.sih26135.exception.BadRequestException;
+import in.gov.sih.sih26135.exception.ResourceNotFoundException;
+import in.gov.sih.sih26135.repository.CourseSkillRepository;
+import in.gov.sih.sih26135.repository.RefSkillGapStatusRepository;
+import in.gov.sih.sih26135.repository.SkillGapRepository;
 import in.gov.sih.sih26135.service.AssessmentResultService;
 import in.gov.sih.sih26135.service.CertificationService;
 import in.gov.sih.sih26135.service.TraineeAssessmentService;
 import in.gov.sih.sih26135.service.TrainingEnrollmentService;
 import in.gov.sih.sih26135.service.TrainingOutcomeWorkflowService;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,20 +34,32 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkflowService {
 
+  private static final String STATUS_CODE_IN_REMEDIATION = "IN_REMEDIATION";
+  private static final String STATUS_CODE_RESOLVED = "RESOLVED";
+
   private final TrainingEnrollmentService trainingEnrollmentService;
   private final TraineeAssessmentService traineeAssessmentService;
   private final AssessmentResultService assessmentResultService;
   private final CertificationService certificationService;
+  private final CourseSkillRepository courseSkillRepository;
+  private final SkillGapRepository skillGapRepository;
+  private final RefSkillGapStatusRepository refSkillGapStatusRepository;
 
   public TrainingOutcomeWorkflowServiceImpl(
       TrainingEnrollmentService trainingEnrollmentService,
       TraineeAssessmentService traineeAssessmentService,
       AssessmentResultService assessmentResultService,
-      CertificationService certificationService) {
+      CertificationService certificationService,
+      CourseSkillRepository courseSkillRepository,
+      SkillGapRepository skillGapRepository,
+      RefSkillGapStatusRepository refSkillGapStatusRepository) {
     this.trainingEnrollmentService = trainingEnrollmentService;
     this.traineeAssessmentService = traineeAssessmentService;
     this.assessmentResultService = assessmentResultService;
     this.certificationService = certificationService;
+    this.courseSkillRepository = courseSkillRepository;
+    this.skillGapRepository = skillGapRepository;
+    this.refSkillGapStatusRepository = refSkillGapStatusRepository;
   }
 
   @Override
@@ -108,9 +130,90 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
       updateReq.setDropoutRemarks(enrollment.getDropoutRemarks());
 
       updatedEnrollment = trainingEnrollmentService.updateEnrollment(targetEnrollmentId, updateReq);
+
+      // WF-001: Resolve IN_REMEDIATION skill gaps when:
+      //   (a) the new enrollment status is a completion status, AND
+      //   (b) the assessment result is a pass.
+      if (Boolean.TRUE.equals(updatedEnrollment.getIsCompletedFlag())
+          && Boolean.TRUE.equals(result.getIsPassFlag())) {
+        resolveInRemediationGapsForCompletion(
+            updatedEnrollment.getTraineeId(),
+            updatedEnrollment.getCourseId(),
+            updatedEnrollment.getActualCompletionDate()
+        );
+      }
     }
 
     return new RecordAssessmentAndIssueCertificateResponse(result, certification, updatedEnrollment);
+  }
+
+  /**
+   * Resolves any current IN_REMEDIATION skill gaps for the given trainee whose gap skill is taught
+   * by the completed course. Each eligible gap has its status set to RESOLVED, resolvedOn set to
+   * the actual completion date, and isCurrent set to false (archiving it from the current-gap view).
+   *
+   * <p>Invoked only when both the enrollment status is a completion status and the assessment
+   * result records a pass. Gaps with any other status (OPEN, RESOLVED, CLOSED_UNRESOLVED) are
+   * left untouched.
+   */
+  private void resolveInRemediationGapsForCompletion(
+      Long traineeId, Long courseId, LocalDate resolvedOn) {
+    if (traineeId == null || courseId == null) {
+      return;
+    }
+
+    // Find every skill taught by the completed course.
+    List<CourseSkill> courseSkills = courseSkillRepository.findByCourseId(courseId);
+    if (courseSkills == null || courseSkills.isEmpty()) {
+      return;
+    }
+    Set<Long> taughtSkillIds = courseSkills.stream()
+        .filter(cs -> cs != null && cs.getSkillId() != null)
+        .map(CourseSkill::getSkillId)
+        .collect(Collectors.toSet());
+
+    if (taughtSkillIds.isEmpty()) {
+      return;
+    }
+
+    // Find all current IN_REMEDIATION gaps for this trainee.
+    List<SkillGap> inRemediationGaps = skillGapRepository
+        .findByTraineeIdAndIsCurrentTrueAndSkillGapStatusStatusCode(
+            traineeId, STATUS_CODE_IN_REMEDIATION);
+
+    if (inRemediationGaps == null || inRemediationGaps.isEmpty()) {
+      return;
+    }
+
+    // Keep only gaps whose skill reference is valid and taught by the completed course.
+    List<SkillGap> eligibleGaps = inRemediationGaps.stream()
+        .filter(g -> g != null && g.getSkill() != null && g.getSkill().getId() != null)
+        .filter(g -> taughtSkillIds.contains(g.getSkill().getId()))
+        .toList();
+
+    if (eligibleGaps.isEmpty()) {
+      return;
+    }
+
+    // Look up RESOLVED status once. Fail closed if it is missing from the database.
+    RefSkillGapStatus resolvedStatus = refSkillGapStatusRepository
+        .findByStatusCode(STATUS_CODE_RESOLVED)
+        .orElseThrow(() -> new ResourceNotFoundException("RefSkillGapStatus", "statusCode"));
+
+    LocalDate effectiveResolvedOn = resolvedOn != null ? resolvedOn : LocalDate.now();
+    LocalDateTime now = LocalDateTime.now();
+
+    for (SkillGap gap : eligibleGaps) {
+      if (gap.getIdentifiedOn() != null && effectiveResolvedOn.isBefore(gap.getIdentifiedOn())) {
+        throw new BadRequestException(
+            "Resolved date cannot be before identified date", "RESOLVED_DATE_BEFORE_IDENTIFIED");
+      }
+      gap.setSkillGapStatus(resolvedStatus);
+      gap.setResolvedOn(effectiveResolvedOn);
+      gap.setIsCurrent(false);
+      gap.setUpdatedAt(now);
+      skillGapRepository.save(gap);
+    }
   }
 
   @Override

@@ -34,5 +34,8 @@ public interface SkillGapRepository extends JpaRepository<SkillGap, Long> {
 
   List<SkillGap> findByTraineeIdAndIsCurrentTrue(Long traineeId);
 
+  List<SkillGap> findByTraineeIdAndIsCurrentTrueAndSkillGapStatusStatusCode(
+      Long traineeId, String statusCode);
+
   List<SkillGap> findBySkillIdAndIsCurrentTrue(Long skillId);
 }
