@@ -12,7 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class MysqlConnectionTest {
+public class MysqlConnectionTest {
 
   public static final String EXPECTED_TEST_CATALOG = "SIH26135_TEST";
   public static final String FORBIDDEN_PRODUCTION_CATALOG = "SIH26135";

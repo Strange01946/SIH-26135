@@ -61,6 +61,26 @@ public class EmploymentLifecycleWorkflowServiceImpl implements EmploymentLifecyc
       throw new BadRequestException("Exit event request is required", "EXIT_EVENT_REQUEST_REQUIRED");
     }
 
+    if (request.getUnemploymentEventRequest() != null) {
+      CreateTraineeUnemploymentEventRequest unempReq = request.getUnemploymentEventRequest();
+      if (unempReq.getTraineeId() != null
+          && request.getExitEventRequest().getTraineeId() != null
+          && !unempReq.getTraineeId().equals(request.getExitEventRequest().getTraineeId())) {
+        throw new BadRequestException(
+            "Unemployment event trainee does not match exit event trainee",
+            "TRAINEE_EXIT_UNEMPLOYMENT_MISMATCH"
+        );
+      }
+      if (unempReq.getStartDate() != null
+          && request.getExitEventRequest().getSeparationDate() != null
+          && unempReq.getStartDate().isBefore(request.getExitEventRequest().getSeparationDate())) {
+        throw new BadRequestException(
+            "Unemployment start date cannot be before separation date",
+            "UNEMPLOYMENT_START_BEFORE_SEPARATION"
+        );
+      }
+    }
+
     EmploymentExitEventResponse exitEvent = employmentExitEventService.createExitEvent(request.getExitEventRequest());
 
     TraineeUnemploymentEventResponse unemploymentEvent = null;
@@ -140,6 +160,16 @@ public class EmploymentLifecycleWorkflowServiceImpl implements EmploymentLifecyc
           "New employment start date cannot precede unemployment start date",
           "EMPLOYMENT_START_BEFORE_UNEMPLOYMENT"
       );
+    }
+
+    if (request.getInitialSalaryRequest() != null) {
+      CreateSalaryHistoryRequest salaryReq = request.getInitialSalaryRequest();
+      if (salaryReq.getTraineeId() != null && !salaryReq.getTraineeId().equals(unempEvent.getTrainee().getId())) {
+        throw new BadRequestException(
+            "Initial salary trainee does not match unemployment event trainee",
+            "TRAINEE_UNEMPLOYMENT_MISMATCH"
+        );
+      }
     }
 
     EmploymentRecordResponse newEmployment = employmentRecordService.createEmploymentRecord(newEmpReq);

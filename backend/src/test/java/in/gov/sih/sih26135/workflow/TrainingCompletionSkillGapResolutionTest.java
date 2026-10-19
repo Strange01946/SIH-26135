@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import in.gov.sih.sih26135.dto.request.CreateAssessmentResultRequest;
+import in.gov.sih.sih26135.dto.request.CreateCertificationRequest;
 import in.gov.sih.sih26135.dto.request.RecordAssessmentAndIssueCertificateRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTrainingEnrollmentRequest;
 import in.gov.sih.sih26135.dto.response.AssessmentResultResponse;
@@ -19,6 +20,7 @@ import in.gov.sih.sih26135.entity.CourseSkill;
 import in.gov.sih.sih26135.entity.RefSkillGapStatus;
 import in.gov.sih.sih26135.entity.Skill;
 import in.gov.sih.sih26135.entity.SkillGap;
+import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.repository.CourseSkillRepository;
 import in.gov.sih.sih26135.repository.RefSkillGapStatusRepository;
@@ -421,6 +423,122 @@ class TrainingCompletionSkillGapResolutionTest {
           .isInstanceOf(ResourceNotFoundException.class);
 
       // Gap must not be partially updated
+      verify(skillGapRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Throws BadRequestException upfront when completion status provided without enrollment ID")
+    void shouldThrowBadRequestWhenCompletionStatusProvidedWithoutEnrollmentId() {
+      RecordAssessmentAndIssueCertificateRequest req = new RecordAssessmentAndIssueCertificateRequest();
+      req.setAssessmentResultRequest(new CreateAssessmentResultRequest());
+      req.setCompletionEnrollmentStatusId(3L);
+      req.setEnrollmentId(null);
+
+      assertThatThrownBy(() -> service.recordAssessmentResultAndIssueCertificate(req))
+          .isInstanceOf(BadRequestException.class)
+          .extracting("errorCode").isEqualTo("ENROLLMENT_ID_REQUIRED");
+
+      verify(assessmentResultService, never()).createAssessmentResult(any());
+      verify(certificationService, never()).createCertification(any());
+    }
+
+    @Test
+    @DisplayName("Throws BadRequestException upfront when certification trainee does not match assessment result trainee")
+    void shouldThrowBadRequestWhenCertificationTraineeDoesNotMatchAssessmentTrainee() {
+      RecordAssessmentAndIssueCertificateRequest req = new RecordAssessmentAndIssueCertificateRequest();
+      CreateAssessmentResultRequest assessReq = new CreateAssessmentResultRequest();
+      assessReq.setTraineeId(TRAINEE_ID);
+      req.setAssessmentResultRequest(assessReq);
+
+      CreateCertificationRequest certReq = new CreateCertificationRequest();
+      certReq.setTraineeId(999L);
+      req.setCertificationRequest(certReq);
+
+      assertThatThrownBy(() -> service.recordAssessmentResultAndIssueCertificate(req))
+          .isInstanceOf(BadRequestException.class)
+          .extracting("errorCode").isEqualTo("CERTIFICATION_TRAINEE_MISMATCH");
+
+      verify(assessmentResultService, never()).createAssessmentResult(any());
+      verify(certificationService, never()).createCertification(any());
+    }
+
+    @Test
+    @DisplayName("Throws BadRequestException upfront when assessment result trainee does not match authoritative enrollment trainee")
+    void shouldThrowBadRequestUpfrontWhenAssessmentResultTraineeMismatchesEnrollmentTrainee() {
+      RecordAssessmentAndIssueCertificateRequest req = new RecordAssessmentAndIssueCertificateRequest();
+      CreateAssessmentResultRequest assessReq = new CreateAssessmentResultRequest();
+      assessReq.setTraineeId(999L); // Mismatched trainee
+      req.setAssessmentResultRequest(assessReq);
+      req.setEnrollmentId(ENROLLMENT_ID);
+      req.setCompletionEnrollmentStatusId(3L);
+
+      when(trainingEnrollmentService.getById(ENROLLMENT_ID))
+          .thenReturn(buildEnrollment(false)); // traineeId is TRAINEE_ID (100L)
+
+      assertThatThrownBy(() -> service.recordAssessmentResultAndIssueCertificate(req))
+          .isInstanceOf(BadRequestException.class)
+          .extracting("errorCode").isEqualTo("ENROLLMENT_TRAINEE_MISMATCH");
+
+      // Verify ZERO writes occurred: assessment result, certification, enrollment update, and gap save are never called
+      verify(assessmentResultService, never()).createAssessmentResult(any());
+      verify(certificationService, never()).createCertification(any());
+      verify(trainingEnrollmentService, never()).updateEnrollment(anyLong(), any());
+      verify(skillGapRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Throws BadRequestException upfront when certification request trainee does not match authoritative enrollment trainee")
+    void shouldThrowBadRequestUpfrontWhenCertificationTraineeMismatchesEnrollmentTrainee() {
+      RecordAssessmentAndIssueCertificateRequest req = new RecordAssessmentAndIssueCertificateRequest();
+      CreateAssessmentResultRequest assessReq = new CreateAssessmentResultRequest();
+      req.setAssessmentResultRequest(assessReq);
+      req.setEnrollmentId(ENROLLMENT_ID);
+      req.setCompletionEnrollmentStatusId(3L);
+
+      CreateCertificationRequest certReq = new CreateCertificationRequest();
+      certReq.setTraineeId(999L); // Mismatched trainee
+      req.setCertificationRequest(certReq);
+
+      when(trainingEnrollmentService.getById(ENROLLMENT_ID))
+          .thenReturn(buildEnrollment(false));
+
+      assertThatThrownBy(() -> service.recordAssessmentResultAndIssueCertificate(req))
+          .isInstanceOf(BadRequestException.class)
+          .extracting("errorCode").isEqualTo("ENROLLMENT_TRAINEE_MISMATCH");
+
+      verify(assessmentResultService, never()).createAssessmentResult(any());
+      verify(certificationService, never()).createCertification(any());
+      verify(trainingEnrollmentService, never()).updateEnrollment(anyLong(), any());
+      verify(skillGapRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Throws BadRequestException before certification or enrollment mutation when created assessment result trainee mismatches enrollment trainee")
+    void shouldThrowBadRequestBeforeCertificationWhenCreatedResultTraineeMismatchesEnrollmentTrainee() {
+      RecordAssessmentAndIssueCertificateRequest req = new RecordAssessmentAndIssueCertificateRequest();
+      CreateAssessmentResultRequest assessReq = new CreateAssessmentResultRequest();
+      req.setAssessmentResultRequest(assessReq);
+      req.setEnrollmentId(ENROLLMENT_ID);
+      req.setCompletionEnrollmentStatusId(3L);
+
+      CreateCertificationRequest certReq = new CreateCertificationRequest();
+      req.setCertificationRequest(certReq);
+
+      when(trainingEnrollmentService.getById(ENROLLMENT_ID))
+          .thenReturn(buildEnrollment(false)); // traineeId is TRAINEE_ID (100L)
+
+      AssessmentResultResponse resultWithDiffTrainee = buildResult(true);
+      resultWithDiffTrainee.setTraineeId(888L); // Different trainee returned
+      when(assessmentResultService.createAssessmentResult(any()))
+          .thenReturn(resultWithDiffTrainee);
+
+      assertThatThrownBy(() -> service.recordAssessmentResultAndIssueCertificate(req))
+          .isInstanceOf(BadRequestException.class)
+          .extracting("errorCode").isEqualTo("ENROLLMENT_TRAINEE_MISMATCH");
+
+      // Verify certificate creation, enrollment update, and gap resolution were never reached
+      verify(certificationService, never()).createCertification(any());
+      verify(trainingEnrollmentService, never()).updateEnrollment(anyLong(), any());
       verify(skillGapRepository, never()).save(any());
     }
 

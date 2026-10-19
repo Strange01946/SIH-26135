@@ -125,6 +125,16 @@ public class PlacementEmploymentWorkflowServiceImpl implements PlacementEmployme
       );
     }
 
+    if (request.getInitialSalaryRequest() != null) {
+      CreateSalaryHistoryRequest salaryReq = request.getInitialSalaryRequest();
+      if (salaryReq.getTraineeId() != null && !salaryReq.getTraineeId().equals(placement.traineeId())) {
+        throw new BadRequestException(
+            "Initial salary trainee does not match placement record trainee",
+            "TRAINEE_PLACEMENT_MISMATCH"
+        );
+      }
+    }
+
     empReq.setPlacementId(placement.id());
 
     if (empReq.getEnrollmentId() == null) {

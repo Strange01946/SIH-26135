@@ -342,4 +342,72 @@ class PlacementToEmploymentTransitionTest {
 
     verify(employmentRecordService, never()).createEmploymentRecord(any());
   }
+
+  @Test
+  @DisplayName("Initial salary trainee mismatch is rejected upfront before updating placement or creating employment")
+  void testTransitionPlacement_initialSalaryTraineeMismatch_rejectedUpfront() {
+    PlacementRecordResponse placement = buildPlacementResponse("OFFERED", "PENDING", null);
+    when(placementRecordService.getPlacementRecordById(10L)).thenReturn(placement);
+    when(employmentRecordRepository.findByPlacementRecordId(10L)).thenReturn(Optional.empty());
+
+    CreateEmploymentRecordRequest empReq = new CreateEmploymentRecordRequest();
+    empReq.setTraineeId(100L);
+
+    CreateSalaryHistoryRequest salaryReq = new CreateSalaryHistoryRequest();
+    salaryReq.setTraineeId(999L); // Mismatched trainee
+
+    PlacementToEmploymentTransitionRequest request = new PlacementToEmploymentTransitionRequest();
+    request.setPlacementId(10L);
+    request.setEmploymentRecordRequest(empReq);
+    request.setInitialSalaryRequest(salaryReq);
+
+    assertThatThrownBy(() -> workflowService.transitionPlacementToEmployment(request))
+        .isInstanceOf(BadRequestException.class)
+        .extracting("errorCode").isEqualTo("TRAINEE_PLACEMENT_MISMATCH");
+
+    verify(employmentRecordService, never()).createEmploymentRecord(any());
+    verify(salaryHistoryService, never()).createSalaryHistory(any());
+  }
+
+  @Test
+  @DisplayName("Salary history creation failure propagates cleanly for transaction rollback")
+  void testTransitionPlacement_salaryCreationFailure_propagatesException() {
+    PlacementRecordResponse placement = buildPlacementResponse("OFFERED", "PENDING", null);
+    when(placementRecordService.getPlacementRecordById(10L)).thenReturn(placement);
+    when(employmentRecordRepository.findByPlacementRecordId(10L)).thenReturn(Optional.empty());
+
+    CreateEmploymentRecordRequest empReq = new CreateEmploymentRecordRequest();
+    empReq.setTraineeId(100L);
+
+    CreateSalaryHistoryRequest salaryReq = new CreateSalaryHistoryRequest();
+    salaryReq.setTraineeId(100L);
+
+    PlacementToEmploymentTransitionRequest request = new PlacementToEmploymentTransitionRequest();
+    request.setPlacementId(10L);
+    request.setEmploymentRecordRequest(empReq);
+    request.setInitialSalaryRequest(salaryReq);
+
+    EmploymentRecordResponse empResp = new EmploymentRecordResponse(
+        1L, "EMP-OFFERED", 100L, "REG-100", "Aditya", "Kumar",
+        200L, "ENR-200", 10L, "PLC-001", 600L, "Tech Corp",
+        700L, "Branch A", 800L, "Software Engineer", 1L, "REGULAR_WAGE",
+        1L, "ACTIVE", "Active spell", true,
+        LocalDate.of(2026, 2, 1), null, true,
+        new BigDecimal("50000.00"), 1L, "MONTHLY", "INR",
+        null, 1L, 1L, 1L, "DIRECT", "Direct",
+        1L, "VERIFIED", LocalDateTime.now(), 1L,
+        null, null, null, null,
+        LocalDateTime.now(), LocalDateTime.now(), null
+    );
+    when(employmentRecordService.createEmploymentRecord(any())).thenReturn(empResp);
+    when(salaryHistoryService.createSalaryHistory(any()))
+        .thenThrow(new IllegalStateException("Simulated database failure during salary history creation"));
+
+    assertThatThrownBy(() -> workflowService.transitionPlacementToEmployment(request))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("Simulated database failure during salary history creation");
+
+    verify(employmentRecordService).createEmploymentRecord(any());
+    verify(salaryHistoryService).createSalaryHistory(any());
+  }
 }

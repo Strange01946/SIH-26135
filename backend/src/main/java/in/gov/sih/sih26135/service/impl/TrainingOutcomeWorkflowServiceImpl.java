@@ -73,11 +73,57 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
       throw new BadRequestException("Assessment result request is required", "ASSESSMENT_RESULT_REQUEST_REQUIRED");
     }
 
+    CreateCertificationRequest certRequest = request.getCertificationRequest();
+    if (certRequest != null && certRequest.getTraineeId() != null
+        && request.getAssessmentResultRequest().getTraineeId() != null
+        && !certRequest.getTraineeId().equals(request.getAssessmentResultRequest().getTraineeId())) {
+      throw new BadRequestException(
+          "Certification trainee ID does not match assessment result trainee",
+          "CERTIFICATION_TRAINEE_MISMATCH"
+      );
+    }
+
+    Long targetEnrollmentId = null;
+    TrainingEnrollmentResponse targetEnrollment = null;
+    if (request.getCompletionEnrollmentStatusId() != null) {
+      targetEnrollmentId = request.getEnrollmentId();
+      if (targetEnrollmentId == null && certRequest != null) {
+        targetEnrollmentId = certRequest.getEnrollmentId();
+      }
+      if (targetEnrollmentId == null) {
+        throw new BadRequestException(
+            "Enrollment ID is required to update enrollment status",
+            "ENROLLMENT_ID_REQUIRED"
+        );
+      }
+      targetEnrollment = trainingEnrollmentService.getById(targetEnrollmentId);
+      if (request.getAssessmentResultRequest().getTraineeId() != null
+          && !targetEnrollment.getTraineeId().equals(request.getAssessmentResultRequest().getTraineeId())) {
+        throw new BadRequestException(
+            "Enrollment trainee does not match assessment result trainee",
+            "ENROLLMENT_TRAINEE_MISMATCH"
+        );
+      }
+      if (certRequest != null && certRequest.getTraineeId() != null
+          && !targetEnrollment.getTraineeId().equals(certRequest.getTraineeId())) {
+        throw new BadRequestException(
+            "Enrollment trainee does not match assessment result trainee",
+            "ENROLLMENT_TRAINEE_MISMATCH"
+        );
+      }
+    }
+
     AssessmentResultResponse result = assessmentResultService.createAssessmentResult(
         request.getAssessmentResultRequest());
 
+    if (targetEnrollment != null && !targetEnrollment.getTraineeId().equals(result.getTraineeId())) {
+      throw new BadRequestException(
+          "Enrollment trainee does not match assessment result trainee",
+          "ENROLLMENT_TRAINEE_MISMATCH"
+      );
+    }
+
     CertificationResponse certification = null;
-    CreateCertificationRequest certRequest = request.getCertificationRequest();
     if (certRequest != null) {
       if (!Boolean.TRUE.equals(result.getIsPassFlag())) {
         throw new BadRequestException(
@@ -97,37 +143,18 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
     }
 
     TrainingEnrollmentResponse updatedEnrollment = null;
-    if (request.getCompletionEnrollmentStatusId() != null) {
-      Long targetEnrollmentId = request.getEnrollmentId();
-      if (targetEnrollmentId == null && certRequest != null) {
-        targetEnrollmentId = certRequest.getEnrollmentId();
-      }
-      if (targetEnrollmentId == null) {
-        throw new BadRequestException(
-            "Enrollment ID is required to update enrollment status",
-            "ENROLLMENT_ID_REQUIRED"
-        );
-      }
-
-      TrainingEnrollmentResponse enrollment = trainingEnrollmentService.getById(targetEnrollmentId);
-      if (!enrollment.getTraineeId().equals(result.getTraineeId())) {
-        throw new BadRequestException(
-            "Enrollment trainee does not match assessment result trainee",
-            "ENROLLMENT_TRAINEE_MISMATCH"
-        );
-      }
-
+    if (targetEnrollment != null) {
       UpdateTrainingEnrollmentRequest updateReq = new UpdateTrainingEnrollmentRequest();
-      updateReq.setStartDate(enrollment.getStartDate());
-      updateReq.setExpectedCompletionDate(enrollment.getExpectedCompletionDate());
+      updateReq.setStartDate(targetEnrollment.getStartDate());
+      updateReq.setExpectedCompletionDate(targetEnrollment.getExpectedCompletionDate());
       updateReq.setActualCompletionDate(
-          enrollment.getActualCompletionDate() != null
-              ? enrollment.getActualCompletionDate()
+          targetEnrollment.getActualCompletionDate() != null
+              ? targetEnrollment.getActualCompletionDate()
               : LocalDate.now()
       );
       updateReq.setEnrollmentStatusId(request.getCompletionEnrollmentStatusId());
-      updateReq.setDropoutReasonId(enrollment.getDropoutReasonId());
-      updateReq.setDropoutRemarks(enrollment.getDropoutRemarks());
+      updateReq.setDropoutReasonId(targetEnrollment.getDropoutReasonId());
+      updateReq.setDropoutRemarks(targetEnrollment.getDropoutRemarks());
 
       updatedEnrollment = trainingEnrollmentService.updateEnrollment(targetEnrollmentId, updateReq);
 
