@@ -2,7 +2,9 @@ package in.gov.sih.sih26135.controller.workflow;
 
 import in.gov.sih.sih26135.dto.request.RecordSkillGapAssessmentWithGapsRequest;
 import in.gov.sih.sih26135.dto.request.SkillGapRemediationEnrollmentRequest;
+import in.gov.sih.sih26135.dto.request.TraineeRecommendationDecisionRequest;
 import in.gov.sih.sih26135.dto.response.RecordSkillGapAssessmentWithGapsResponse;
+import in.gov.sih.sih26135.dto.response.SkillGapRecommendationResponse;
 import in.gov.sih.sih26135.dto.response.SkillGapRemediationEnrollmentResponse;
 import in.gov.sih.sih26135.dto.response.TraineeSkillGapProfileResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
@@ -12,6 +14,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -89,6 +92,60 @@ public class SkillGapRemediationWorkflowController {
             "Trainee enrolled in remediation course successfully",
             response,
             httpRequest.getRequestURI()));
+  }
+
+  /**
+   * Accepts a skill gap recommendation for a trainee.
+   *
+   * @param id recommendation identifier
+   * @param request optional decision payload containing traineeId, remarks, actorUserId
+   * @param httpRequest HTTP servlet request for URI extraction and parameter validation
+   * @return 200 OK with updated SkillGapRecommendationResponse enveloped in ApiResponse
+   */
+  @PostMapping("/recommendations/{id}/accept")
+  public ResponseEntity<ApiResponse<SkillGapRecommendationResponse>> acceptRecommendation(
+      @PathVariable("id") Long id,
+      @RequestBody(required = false) TraineeRecommendationDecisionRequest request,
+      HttpServletRequest httpRequest) {
+    if (!httpRequest.getParameterMap().isEmpty()) {
+      throw new BadRequestException(
+          "Unsupported query parameters: " + httpRequest.getParameterMap().keySet(),
+          "UNSUPPORTED_PARAMETER"
+      );
+    }
+    SkillGapRecommendationResponse response =
+        skillGapRemediationWorkflowService.acceptRecommendation(id, request);
+    return ResponseEntity.ok(ApiResponse.success(
+        "Skill gap recommendation accepted successfully",
+        response,
+        httpRequest.getRequestURI()));
+  }
+
+  /**
+   * Rejects a skill gap recommendation with mandatory remarks explaining the rejection.
+   *
+   * @param id recommendation identifier
+   * @param request decision payload containing traineeId, mandatory remarks, actorUserId
+   * @param httpRequest HTTP servlet request for URI extraction and parameter validation
+   * @return 200 OK with updated SkillGapRecommendationResponse enveloped in ApiResponse
+   */
+  @PostMapping("/recommendations/{id}/reject")
+  public ResponseEntity<ApiResponse<SkillGapRecommendationResponse>> rejectRecommendation(
+      @PathVariable("id") Long id,
+      @RequestBody(required = false) TraineeRecommendationDecisionRequest request,
+      HttpServletRequest httpRequest) {
+    if (!httpRequest.getParameterMap().isEmpty()) {
+      throw new BadRequestException(
+          "Unsupported query parameters: " + httpRequest.getParameterMap().keySet(),
+          "UNSUPPORTED_PARAMETER"
+      );
+    }
+    SkillGapRecommendationResponse response =
+        skillGapRemediationWorkflowService.rejectRecommendation(id, request);
+    return ResponseEntity.ok(ApiResponse.success(
+        "Skill gap recommendation rejected successfully",
+        response,
+        httpRequest.getRequestURI()));
   }
 
   /**

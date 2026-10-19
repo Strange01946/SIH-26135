@@ -294,6 +294,7 @@ public class GlobalExceptionHandler {
       in.gov.sih.sih26135.dto.request.ResolveDataQualityIssueRequest.class,
       in.gov.sih.sih26135.dto.request.SkillGapRemediationEnrollmentRequest.class,
       in.gov.sih.sih26135.dto.request.TerminateEmpanelmentRequest.class,
+      in.gov.sih.sih26135.dto.request.TraineeRecommendationDecisionRequest.class,
       in.gov.sih.sih26135.dto.request.UnemploymentToEmploymentTransitionRequest.class,
       in.gov.sih.sih26135.dto.request.UpdateAssessmentRequest.class,
       in.gov.sih.sih26135.dto.request.UpdateAssessmentResultRequest.class,

@@ -1,0 +1,1803 @@
+warning: in the working copy of 'backend/src/main/java/in/gov/sih/sih26135/exception/GlobalExceptionHandler.java', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/main/java/in/gov/sih/sih26135/service/SkillGapRemediationWorkflowService.java', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/main/java/in/gov/sih/sih26135/service/impl/SkillGapRemediationWorkflowServiceImpl.java', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/test/java/in/gov/sih/sih26135/workflow/SkillGapRemediationWorkflowAssociationTest.java', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/backend/src/main/java/in/gov/sih/sih26135/exception/GlobalExceptionHandler.java b/backend/src/main/java/in/gov/sih/sih26135/exception/GlobalExceptionHandler.java[m
+[1mindex ead22d1..de087e1 100644[m
+[1m--- a/backend/src/main/java/in/gov/sih/sih26135/exception/GlobalExceptionHandler.java[m
+[1m+++ b/backend/src/main/java/in/gov/sih/sih26135/exception/GlobalExceptionHandler.java[m
+[36m@@ -294,6 +294,7 @@[m [mpublic class GlobalExceptionHandler {[m
+       in.gov.sih.sih26135.dto.request.ResolveDataQualityIssueRequest.class,[m
+       in.gov.sih.sih26135.dto.request.SkillGapRemediationEnrollmentRequest.class,[m
+       in.gov.sih.sih26135.dto.request.TerminateEmpanelmentRequest.class,[m
+[32m+[m[32m      in.gov.sih.sih26135.dto.request.TraineeRecommendationDecisionRequest.class,[m
+       in.gov.sih.sih26135.dto.request.UnemploymentToEmploymentTransitionRequest.class,[m
+       in.gov.sih.sih26135.dto.request.UpdateAssessmentRequest.class,[m
+       in.gov.sih.sih26135.dto.request.UpdateAssessmentResultRequest.class,[m
+[1mdiff --git a/backend/src/main/java/in/gov/sih/sih26135/service/SkillGapRemediationWorkflowService.java b/backend/src/main/java/in/gov/sih/sih26135/service/SkillGapRemediationWorkflowService.java[m
+[1mindex 082d3cc..bab6de3 100644[m
+[1m--- a/backend/src/main/java/in/gov/sih/sih26135/service/SkillGapRemediationWorkflowService.java[m
+[1m+++ b/backend/src/main/java/in/gov/sih/sih26135/service/SkillGapRemediationWorkflowService.java[m
+[36m@@ -2,7 +2,9 @@[m [mpackage in.gov.sih.sih26135.service;[m
+ [m
+ import in.gov.sih.sih26135.dto.request.RecordSkillGapAssessmentWithGapsRequest;[m
+ import in.gov.sih.sih26135.dto.request.SkillGapRemediationEnrollmentRequest;[m
+[32m+[m[32mimport in.gov.sih.sih26135.dto.request.TraineeRecommendationDecisionRequest;[m
+ import in.gov.sih.sih26135.dto.response.RecordSkillGapAssessmentWithGapsResponse;[m
+[32m+[m[32mimport in.gov.sih.sih26135.dto.response.SkillGapRecommendationResponse;[m
+ import in.gov.sih.sih26135.dto.response.SkillGapRemediationEnrollmentResponse;[m
+ import in.gov.sih.sih26135.dto.response.TraineeSkillGapProfileResponse;[m
+ [m
+[36m@@ -11,6 +13,12 @@[m [mpublic interface SkillGapRemediationWorkflowService {[m
+   RecordSkillGapAssessmentWithGapsResponse recordAssessmentWithGapsAndRecommendations([m
+       RecordSkillGapAssessmentWithGapsRequest request);[m
+ [m
+[32m+[m[32m  SkillGapRecommendationResponse acceptRecommendation([m
+[32m+[m[32m      Long recommendationId, TraineeRecommendationDecisionRequest request);[m
+[32m+[m
+[32m+[m[32m  SkillGapRecommendationResponse rejectRecommendation([m
+[32m+[m[32m      Long recommendationId, TraineeRecommendationDecisionRequest request);[m
+[32m+[m
+   SkillGapRemediationEnrollmentResponse enrollTraineeInRemediationCourse([m
+       SkillGapRemediationEnrollmentRequest request);[m
+ [m
+[1mdiff --git a/backend/src/main/java/in/gov/sih/sih26135/service/impl/SkillGapRemediationWorkflowServiceImpl.java b/backend/src/main/java/in/gov/sih/sih26135/service/impl/SkillGapRemediationWorkflowServiceImpl.java[m
+[1mindex a1d050f..a02d906 100644[m
+[1m--- a/backend/src/main/java/in/gov/sih/sih26135/service/impl/SkillGapRemediationWorkflowServiceImpl.java[m
+[1m+++ b/backend/src/main/java/in/gov/sih/sih26135/service/impl/SkillGapRemediationWorkflowServiceImpl.java[m
+[36m@@ -5,6 +5,7 @@[m [mimport in.gov.sih.sih26135.dto.request.CreateSkillGapRequest;[m
+ import in.gov.sih.sih26135.dto.request.CreateTrainingEnrollmentRequest;[m
+ import in.gov.sih.sih26135.dto.request.RecordSkillGapAssessmentWithGapsRequest;[m
+ import in.gov.sih.sih26135.dto.request.SkillGapRemediationEnrollmentRequest;[m
+[32m+[m[32mimport in.gov.sih.sih26135.dto.request.TraineeRecommendationDecisionRequest;[m
+ import in.gov.sih.sih26135.dto.response.RecordSkillGapAssessmentWithGapsResponse;[m
+ import in.gov.sih.sih26135.dto.response.SkillGapAssessmentResponse;[m
+ import in.gov.sih.sih26135.dto.response.SkillGapRecommendationResponse;[m
+[36m@@ -12,15 +13,35 @@[m [mimport in.gov.sih.sih26135.dto.response.SkillGapRemediationEnrollmentResponse;[m
+ import in.gov.sih.sih26135.dto.response.SkillGapResponse;[m
+ import in.gov.sih.sih26135.dto.response.TraineeSkillGapProfileResponse;[m
+ import in.gov.sih.sih26135.dto.response.TrainingEnrollmentResponse;[m
+[32m+[m[32mimport in.gov.sih.sih26135.entity.RefSkillGapStatus;[m
+[32m+[m[32mimport in.gov.sih.sih26135.entity.SkillGap;[m
+[32m+[m[32mimport in.gov.sih.sih26135.entity.SkillGapRecommendation;[m
+[32m+[m[32mimport in.gov.sih.sih26135.entity.Trainee;[m
+ import in.gov.sih.sih26135.exception.BadRequestException;[m
+[32m+[m[32mimport in.gov.sih.sih26135.exception.InvalidCredentialsException;[m
+ import in.gov.sih.sih26135.exception.ResourceNotFoundException;[m
+[32m+[m[32mimport in.gov.sih.sih26135.mapper.SkillGapRecommendationMapper;[m
+[32m+[m[32mimport in.gov.sih.sih26135.repository.CourseSkillRepository;[m
+[32m+[m[32mimport in.gov.sih.sih26135.repository.RefSkillGapStatusRepository;[m
+[32m+[m[32mimport in.gov.sih.sih26135.repository.SkillGapRecommendationRepository;[m
+[32m+[m[32mimport in.gov.sih.sih26135.repository.SkillGapRepository;[m
+[32m+[m[32mimport in.gov.sih.sih26135.repository.TraineeRepository;[m
+[32m+[m[32mimport in.gov.sih.sih26135.security.UserPrincipal;[m
+ import in.gov.sih.sih26135.service.SkillGapAssessmentService;[m
+ import in.gov.sih.sih26135.service.SkillGapRecommendationService;[m
+ import in.gov.sih.sih26135.service.SkillGapRemediationWorkflowService;[m
+ import in.gov.sih.sih26135.service.SkillGapService;[m
+ import in.gov.sih.sih26135.service.TrainingEnrollmentService;[m
+[32m+[m[32mimport java.time.LocalDate;[m
+[32m+[m[32mimport java.time.LocalDateTime;[m
+ import java.util.ArrayList;[m
+ import java.util.List;[m
+[32m+[m[32mimport java.util.Optional;[m
+[32m+[m[32mimport org.slf4j.Logger;[m
+[32m+[m[32mimport org.slf4j.LoggerFactory;[m
+[32m+[m[32mimport org.springframework.security.core.Authentication;[m
+[32m+[m[32mimport org.springframework.security.core.GrantedAuthority;[m
+[32m+[m[32mimport org.springframework.security.core.context.SecurityContextHolder;[m
+ import org.springframework.stereotype.Service;[m
+ import org.springframework.transaction.annotation.Transactional;[m
+ [m
+[36m@@ -28,20 +49,40 @@[m [mimport org.springframework.transaction.annotation.Transactional;[m
+ @Transactional(readOnly = true)[m
+ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediationWorkflowService {[m
+ [m
+[32m+[m[32m  private static final Logger log = LoggerFactory.getLogger(SkillGapRemediationWorkflowServiceImpl.class);[m
+[32m+[m
+   private final SkillGapAssessmentService skillGapAssessmentService;[m
+   private final SkillGapService skillGapService;[m
+   private final SkillGapRecommendationService skillGapRecommendationService;[m
+   private final TrainingEnrollmentService trainingEnrollmentService;[m
+[32m+[m[32m  private final CourseSkillRepository courseSkillRepository;[m
+[32m+[m[32m  private final SkillGapRepository skillGapRepository;[m
+[32m+[m[32m  private final SkillGapRecommendationRepository skillGapRecommendationRepository;[m
+[32m+[m[32m  private final RefSkillGapStatusRepository refSkillGapStatusRepository;[m
+[32m+[m[32m  private final TraineeRepository traineeRepository;[m
+[32m+[m[32m  private final SkillGapRecommendationMapper skillGapRecommendationMapper;[m
+ [m
+   public SkillGapRemediationWorkflowServiceImpl([m
+       SkillGapAssessmentService skillGapAssessmentService,[m
+       SkillGapService skillGapService,[m
+       SkillGapRecommendationService skillGapRecommendationService,[m
+[31m-      TrainingEnrollmentService trainingEnrollmentService) {[m
+[32m+[m[32m      TrainingEnrollmentService trainingEnrollmentService,[m
+[32m+[m[32m      CourseSkillRepository courseSkillRepository,[m
+[32m+[m[32m      SkillGapRepository skillGapRepository,[m
+[32m+[m[32m      SkillGapRecommendationRepository skillGapRecommendationRepository,[m
+[32m+[m[32m      RefSkillGapStatusRepository refSkillGapStatusRepository,[m
+[32m+[m[32m      TraineeRepository traineeRepository,[m
+[32m+[m[32m      SkillGapRecommendationMapper skillGapRecommendationMapper) {[m
+     this.skillGapAssessmentService = skillGapAssessmentService;[m
+     this.skillGapService = skillGapService;[m
+     this.skillGapRecommendationService = skillGapRecommendationService;[m
+     this.trainingEnrollmentService = trainingEnrollmentService;[m
+[32m+[m[32m    this.courseSkillRepository = courseSkillRepository;[m
+[32m+[m[32m    this.skillGapRepository = skillGapRepository;[m
+[32m+[m[32m    this.skillGapRecommendationRepository = skillGapRecommendationRepository;[m
+[32m+[m[32m    this.refSkillGapStatusRepository = refSkillGapStatusRepository;[m
+[32m+[m[32m    this.traineeRepository = traineeRepository;[m
+[32m+[m[32m    this.skillGapRecommendationMapper = skillGapRecommendationMapper;[m
+   }[m
+ [m
+   @Override[m
+[36m@@ -93,32 +134,52 @@[m [mpublic class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati[m
+                 "SKILL_GAP_ID_REQUIRED"[m
+             );[m
+           }[m
+[31m-        } else {[m
+[31m-          final Long explicitGapId = recReq.getSkillGapId();[m
+[31m-          SkillGapResponse targetGap = createdGaps.stream()[m
+[31m-              .filter(g -> g.id().equals(explicitGapId))[m
+[31m-              .findFirst()[m
+[31m-              .orElse(null);[m
+[31m-[m
+[31m-          if (targetGap == null) {[m
+[31m-            targetGap = skillGapService.getSkillGapById(explicitGapId);[m
+[31m-          }[m
+[32m+[m[32m        }[m
+ [m
+[31m-          if (targetGap == null) {[m
+[31m-            throw new ResourceNotFoundException("SkillGap", "skillGapId");[m
+[31m-          }[m
+[32m+[m[32m        final Long resolvedGapId = targetGapId;[m
+[32m+[m[32m        SkillGapResponse targetGap = createdGaps.stream()[m
+[32m+[m[32m            .filter(g -> g.id().equals(resolvedGapId))[m
+[32m+[m[32m            .findFirst()[m
+[32m+[m[32m            .orElse(null);[m
+[32m+[m
+[32m+[m[32m        if (targetGap == null) {[m
+[32m+[m[32m          targetGap = skillGapService.getSkillGapById(resolvedGapId);[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        if (targetGap == null) {[m
+[32m+[m[32m          throw new ResourceNotFoundException("SkillGap", "skillGapId");[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        if (targetGap.traineeId() == null || !targetGap.traineeId().equals(assessment.traineeId())) {[m
+[32m+[m[32m          throw new BadRequestException([m
+[32m+[m[32m              "Skill gap does not belong to assessment trainee",[m
+[32m+[m[32m              "SKILL_GAP_TRAINEE_MISMATCH"[m
+[32m+[m[32m          );[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        if (targetGap.skillGapAssessmentId() == null || !targetGap.skillGapAssessmentId().equals(assessment.id())) {[m
+[32m+[m[32m          throw new BadRequestException([m
+[32m+[m[32m              "Skill gap does not belong to the current assessment",[m
+[32m+[m[32m              "SKILL_GAP_ASSESSMENT_MISMATCH"[m
+[32m+[m[32m          );[m
+[32m+[m[32m        }[m
+ [m
+[31m-          if (!targetGap.traineeId().equals(assessment.traineeId())) {[m
+[32m+[m[32m        // Validate Course-Skill relevance when a course is explicitly recommended - FAIL CLOSED[m
+[32m+[m[32m        if (recReq.getRecommendedCourseId() != null) {[m
+[32m+[m[32m          if (targetGap.skillId() == null) {[m
+             throw new BadRequestException([m
+[31m-                "Skill gap does not belong to assessment trainee",[m
+[31m-                "SKILL_GAP_TRAINEE_MISMATCH"[m
+[32m+[m[32m                "Skill gap does not specify an identified skill",[m
+[32m+[m[32m                "SKILL_REQUIRED"[m
+             );[m
+           }[m
+[31m-[m
+[31m-          if (!targetGap.skillGapAssessmentId().equals(assessment.id())) {[m
+[32m+[m[32m          if (courseSkillRepository == null) {[m
+[32m+[m[32m            throw new IllegalStateException("CourseSkillRepository is required for course-skill validation");[m
+[32m+[m[32m          }[m
+[32m+[m[32m          if (!courseSkillRepository.existsByCourseIdAndSkillId([m
+[32m+[m[32m              recReq.getRecommendedCourseId(), targetGap.skillId())) {[m
+             throw new BadRequestException([m
+[31m-                "Skill gap does not belong to the current assessment",[m
+[31m-                "SKILL_GAP_ASSESSMENT_MISMATCH"[m
+[32m+[m[32m                "Recommended course does not teach the identified gap skill",[m
+[32m+[m[32m                "COURSE_SKILL_MISMATCH"[m
+             );[m
+           }[m
+         }[m
+[36m@@ -130,6 +191,210 @@[m [mpublic class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati[m
+     return new RecordSkillGapAssessmentWithGapsResponse(assessment, createdGaps, createdRecs);[m
+   }[m
+ [m
+[32m+[m[32m  @Override[m
+[32m+[m[32m  @Transactional[m
+[32m+[m[32m  public SkillGapRecommendationResponse acceptRecommendation([m
+[32m+[m[32m      Long recommendationId, TraineeRecommendationDecisionRequest request) {[m
+[32m+[m[32m    if (recommendationId == null) {[m
+[32m+[m[32m      throw new BadRequestException("Recommendation ID is required", "RECOMMENDATION_ID_REQUIRED");[m
+[32m+[m[32m    }[m
+[32m+[m[32m    if (skillGapRecommendationRepository == null) {[m
+[32m+[m[32m      throw new IllegalStateException("SkillGapRecommendationRepository is required");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // 1. Resolve trusted authenticated identity - FAIL CLOSED (never fallback to request body)[m
+[32m+[m[32m    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();[m
+[32m+[m[32m    Long authUserId = resolveAuthenticatedUserId(authentication);[m
+[32m+[m[32m    boolean isAdmin = isAdministrativeCaller(authentication);[m
+[32m+[m
+[32m+[m[32m    SkillGapRecommendation rec = skillGapRecommendationRepository.findById(recommendationId)[m
+[32m+[m[32m        .orElseThrow(() -> new ResourceNotFoundException("SkillGapRecommendation", "recommendationId"));[m
+[32m+[m
+[32m+[m[32m    if (rec.getSkillGap() == null || rec.getSkillGap().getTrainee() == null) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "Recommendation is not linked to a valid skill gap trainee",[m
+[32m+[m[32m          "TRAINEE_REQUIRED"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    Long recTraineeId = rec.getSkillGap().getTrainee().getId();[m
+[32m+[m
+[32m+[m[32m    // 2. Trainee ownership verification - FAIL CLOSED[m
+[32m+[m[32m    if (traineeRepository == null) {[m
+[32m+[m[32m      throw new IllegalStateException("TraineeRepository is required for trainee ownership verification");[m
+[32m+[m[32m    }[m
+[32m+[m[32m    Optional<Trainee> authTrainee = traineeRepository.findByUserId(authUserId);[m
+[32m+[m[32m    if (authTrainee.isPresent()) {[m
+[32m+[m[32m      if (!authTrainee.get().getId().equals(recTraineeId)) {[m
+[32m+[m[32m        throw new BadRequestException([m
+[32m+[m[32m            "Authenticated trainee does not match recommendation trainee",[m
+[32m+[m[32m            "TRAINEE_MISMATCH"[m
+[32m+[m[32m        );[m
+[32m+[m[32m      }[m
+[32m+[m[32m    } else if (!isAdmin) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "User is not authorized to act on this trainee recommendation",[m
+[32m+[m[32m          "TRAINEE_MISMATCH"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // 3. Client-supplied trainee check if provided[m
+[32m+[m[32m    if (request != null && request.getTraineeId() != null) {[m
+[32m+[m[32m      if (!request.getTraineeId().equals(recTraineeId)) {[m
+[32m+[m[32m        throw new BadRequestException([m
+[32m+[m[32m            "Trainee ID does not match recommendation trainee",[m
+[32m+[m[32m            "TRAINEE_MISMATCH"[m
+[32m+[m[32m        );[m
+[32m+[m[32m      }[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // Check if recommendation is already accepted[m
+[32m+[m[32m    if (Boolean.TRUE.equals(rec.getIsAcceptedFlag())) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "Recommendation has already been accepted",[m
+[32m+[m[32m          "ALREADY_ACCEPTED"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // Check if linked skill gap is already resolved or closed - FAIL CLOSED[m
+[32m+[m[32m    if (rec.getSkillGap().getSkillGapStatus() == null || rec.getSkillGap().getSkillGapStatus().getStatusCode() == null) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "Skill gap status is missing or invalid",[m
+[32m+[m[32m          "INVALID_GAP_STATUS"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    String statusCode = rec.getSkillGap().getSkillGapStatus().getStatusCode();[m
+[32m+[m[32m    if ("RESOLVED".equals(statusCode) || "CLOSED_UNRESOLVED".equals(statusCode)[m
+[32m+[m[32m        || "SUPERSEDED".equals(statusCode)) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "Cannot accept recommendation for a closed or resolved skill gap",[m
+[32m+[m[32m          "INVALID_GAP_STATUS"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    rec.setIsAcceptedFlag(true);[m
+[32m+[m[32m    rec.setAcceptedOn(LocalDate.now());[m
+[32m+[m[32m    if (request != null && request.getRemarks() != null && !request.getRemarks().isBlank()) {[m
+[32m+[m[32m      rec.setRemarks(request.getRemarks().trim());[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // Preserve original creator if already present; only populate from authenticated user if null[m
+[32m+[m[32m    if (rec.getCreatedByUserId() == null) {[m
+[32m+[m[32m      rec.setCreatedByUserId(authUserId);[m
+[32m+[m[32m    }[m
+[32m+[m[32m    rec.setUpdatedAt(LocalDateTime.now());[m
+[32m+[m[32m    log.info("Skill gap recommendation id={} accepted by user id={}", recommendationId, authUserId);[m
+[32m+[m
+[32m+[m[32m    SkillGapRecommendation saved = skillGapRecommendationRepository.save(rec);[m
+[32m+[m[32m    return skillGapRecommendationMapper.toResponse(saved);[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  @Override[m
+[32m+[m[32m  @Transactional[m
+[32m+[m[32m  public SkillGapRecommendationResponse rejectRecommendation([m
+[32m+[m[32m      Long recommendationId, TraineeRecommendationDecisionRequest request) {[m
+[32m+[m[32m    if (recommendationId == null) {[m
+[32m+[m[32m      throw new BadRequestException("Recommendation ID is required", "RECOMMENDATION_ID_REQUIRED");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // Non-blank remarks explaining rejection are mandatory[m
+[32m+[m[32m    if (request == null || request.getRemarks() == null || request.getRemarks().trim().isEmpty()) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "Rejection reason remarks are required",[m
+[32m+[m[32m          "REJECTION_REMARKS_REQUIRED"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    if (skillGapRecommendationRepository == null) {[m
+[32m+[m[32m      throw new IllegalStateException("SkillGapRecommendationRepository is required");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // 1. Resolve trusted authenticated identity - FAIL CLOSED (never fallback to request body)[m
+[32m+[m[32m    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();[m
+[32m+[m[32m    Long authUserId = resolveAuthenticatedUserId(authentication);[m
+[32m+[m[32m    boolean isAdmin = isAdministrativeCaller(authentication);[m
+[32m+[m
+[32m+[m[32m    SkillGapRecommendation rec = skillGapRecommendationRepository.findById(recommendationId)[m
+[32m+[m[32m        .orElseThrow(() -> new ResourceNotFoundException("SkillGapRecommendation", "recommendationId"));[m
+[32m+[m
+[32m+[m[32m    if (rec.getSkillGap() == null || rec.getSkillGap().getTrainee() == null) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "Recommendation is not linked to a valid skill gap trainee",[m
+[32m+[m[32m          "TRAINEE_REQUIRED"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    Long recTraineeId = rec.getSkillGap().getTrainee().getId();[m
+[32m+[m
+[32m+[m[32m    // 2. Trainee ownership verification - FAIL CLOSED[m
+[32m+[m[32m    if (traineeRepository == null) {[m
+[32m+[m[32m      throw new IllegalStateException("TraineeRepository is required for trainee ownership verification");[m
+[32m+[m[32m    }[m
+[32m+[m[32m    Optional<Trainee> authTrainee = traineeRepository.findByUserId(authUserId);[m
+[32m+[m[32m    if (authTrainee.isPresent()) {[m
+[32m+[m[32m      if (!authTrainee.get().getId().equals(recTraineeId)) {[m
+[32m+[m[32m        throw new BadRequestException([m
+[32m+[m[32m            "Authenticated trainee does not match recommendation trainee",[m
+[32m+[m[32m            "TRAINEE_MISMATCH"[m
+[32m+[m[32m        );[m
+[32m+[m[32m      }[m
+[32m+[m[32m    } else if (!isAdmin) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "User is not authorized to act on this trainee recommendation",[m
+[32m+[m[32m          "TRAINEE_MISMATCH"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // 3. Client-supplied trainee check if provided[m
+[32m+[m[32m    if (request.getTraineeId() != null) {[m
+[32m+[m[32m      if (!request.getTraineeId().equals(recTraineeId)) {[m
+[32m+[m[32m        throw new BadRequestException([m
+[32m+[m[32m            "Trainee ID does not match recommendation trainee",[m
+[32m+[m[32m            "TRAINEE_MISMATCH"[m
+[32m+[m[32m        );[m
+[32m+[m[32m      }[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // Cannot reject a recommendation that is already accepted - FAIL CLOSED[m
+[32m+[m[32m    if (Boolean.TRUE.equals(rec.getIsAcceptedFlag())) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "Cannot reject an already accepted recommendation",[m
+[32m+[m[32m          "INVALID_STATE_TRANSITION"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // Prevent rejecting a recommendation whose linked gap is already in active remediation - FAIL CLOSED[m
+[32m+[m[32m    if (rec.getSkillGap().getSkillGapStatus() == null || rec.getSkillGap().getSkillGapStatus().getStatusCode() == null) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "Skill gap status is missing or invalid",[m
+[32m+[m[32m          "INVALID_GAP_STATUS"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    String statusCode = rec.getSkillGap().getSkillGapStatus().getStatusCode();[m
+[32m+[m[32m    if ("IN_REMEDIATION".equals(statusCode)) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "Cannot reject recommendation that is already in active remediation",[m
+[32m+[m[32m          "INVALID_STATE_TRANSITION"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    rec.setIsAcceptedFlag(false);[m
+[32m+[m[32m    rec.setAcceptedOn(null);[m
+[32m+[m[32m    rec.setRemarks(request.getRemarks().trim());[m
+[32m+[m
+[32m+[m[32m    // Preserve original creator if already present; only populate from authenticated user if null[m
+[32m+[m[32m    if (rec.getCreatedByUserId() == null) {[m
+[32m+[m[32m      rec.setCreatedByUserId(authUserId);[m
+[32m+[m[32m    }[m
+[32m+[m[32m    rec.setUpdatedAt(LocalDateTime.now());[m
+[32m+[m[32m    log.info("Skill gap recommendation id={} rejected by user id={}", recommendationId, authUserId);[m
+[32m+[m
+[32m+[m[32m    SkillGapRecommendation saved = skillGapRecommendationRepository.save(rec);[m
+[32m+[m[32m    return skillGapRecommendationMapper.toResponse(saved);[m
+[32m+[m[32m  }[m
+[32m+[m
+   @Override[m
+   @Transactional[m
+   public SkillGapRemediationEnrollmentResponse enrollTraineeInRemediationCourse([m
+[36m@@ -144,8 +409,24 @@[m [mpublic class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati[m
+       throw new BadRequestException("Enrollment request is required", "ENROLLMENT_REQUEST_REQUIRED");[m
+     }[m
+ [m
+[32m+[m[32m    // 1. Resolve trusted authenticated identity - FAIL CLOSED[m
+[32m+[m[32m    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();[m
+[32m+[m[32m    Long authUserId = resolveAuthenticatedUserId(authentication);[m
+[32m+[m[32m    boolean isAdmin = isAdministrativeCaller(authentication);[m
+[32m+[m
+     SkillGapRecommendationResponse rec = skillGapRecommendationService.getRecommendationById([m
+         request.getRecommendationId());[m
+[32m+[m[32m    if (rec == null) {[m
+[32m+[m[32m      throw new ResourceNotFoundException("SkillGapRecommendation", "recommendationId");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // 2. Strict Persisted Acceptance Requirement - NO INLINE ACCEPTANCE BYPASS[m
+[32m+[m[32m    if (!Boolean.TRUE.equals(rec.isAcceptedFlag())) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "Remediation course enrollment requires an accepted recommendation",[m
+[32m+[m[32m          "RECOMMENDATION_NOT_ACCEPTED"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+ [m
+     if (rec.recommendedCourseId() == null) {[m
+       throw new BadRequestException([m
+[36m@@ -164,12 +445,147 @@[m [mpublic class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati[m
+       );[m
+     }[m
+ [m
+[32m+[m[32m    // 3. Fetch the linked skill gap entity - FAIL CLOSED[m
+[32m+[m[32m    if (rec.skillGapId() == null) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "Skill gap recommendation is not linked to a skill gap",[m
+[32m+[m[32m          "SKILL_GAP_ID_REQUIRED"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m[32m    if (skillGapRepository == null) {[m
+[32m+[m[32m      throw new IllegalStateException("SkillGapRepository is required for remediation workflow");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    SkillGap gapEntity = skillGapRepository.findById(rec.skillGapId())[m
+[32m+[m[32m        .orElseThrow(() -> new ResourceNotFoundException("SkillGap", "skillGapId"));[m
+[32m+[m
+[32m+[m[32m    // 4. Trainee consistency verification - FAIL CLOSED[m
+[32m+[m[32m    if (gapEntity.getTrainee() == null || gapEntity.getTrainee().getId() == null) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "Skill gap does not have an associated trainee",[m
+[32m+[m[32m          "TRAINEE_REQUIRED"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    Long gapTraineeId = gapEntity.getTrainee().getId();[m
+[32m+[m[32m    if (enrolReq.getTraineeId() == null) {[m
+[32m+[m[32m      enrolReq.setTraineeId(gapTraineeId);[m
+[32m+[m[32m    } else if (!enrolReq.getTraineeId().equals(gapTraineeId)) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "Enrollment trainee does not match recommendation trainee",[m
+[32m+[m[32m          "TRAINEE_MISMATCH"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // Server-side authenticated trainee ownership verification - FAIL CLOSED[m
+[32m+[m[32m    if (traineeRepository == null) {[m
+[32m+[m[32m      throw new IllegalStateException("TraineeRepository is required for trainee ownership verification");[m
+[32m+[m[32m    }[m
+[32m+[m[32m    Optional<Trainee> authTrainee = traineeRepository.findByUserId(authUserId);[m
+[32m+[m[32m    if (authTrainee.isPresent()) {[m
+[32m+[m[32m      if (!authTrainee.get().getId().equals(gapTraineeId)) {[m
+[32m+[m[32m        throw new BadRequestException([m
+[32m+[m[32m            "Authenticated trainee does not match recommendation trainee",[m
+[32m+[m[32m            "TRAINEE_MISMATCH"[m
+[32m+[m[32m        );[m
+[32m+[m[32m      }[m
+[32m+[m[32m    } else if (!isAdmin) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "User is not authorized to act on this trainee enrollment",[m
+[32m+[m[32m          "TRAINEE_MISMATCH"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // 5. Course-to-Skill relevance check - FAIL CLOSED[m
+[32m+[m[32m    if (gapEntity.getSkill() == null || gapEntity.getSkill().getId() == null) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "Skill gap does not specify an identified skill",[m
+[32m+[m[32m          "SKILL_REQUIRED"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m[32m    if (courseSkillRepository == null) {[m
+[32m+[m[32m      throw new IllegalStateException("CourseSkillRepository is required for course-skill validation");[m
+[32m+[m[32m    }[m
+[32m+[m[32m    if (!courseSkillRepository.existsByCourseIdAndSkillId([m
+[32m+[m[32m        enrolReq.getCourseId(), gapEntity.getSkill().getId())) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "Course does not teach the skill associated with this recommendation",[m
+[32m+[m[32m          "COURSE_SKILL_MISMATCH"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // 6. Active state and non-remediable status prevention - FAIL CLOSED[m
+[32m+[m[32m    if (!Boolean.TRUE.equals(gapEntity.getIsCurrent())) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "Cannot enroll in remediation for an inactive skill gap",[m
+[32m+[m[32m          "SKILL_GAP_NOT_ACTIVE"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    if (gapEntity.getSkillGapStatus() == null || gapEntity.getSkillGapStatus().getStatusCode() == null) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "Skill gap status is missing or invalid",[m
+[32m+[m[32m          "INVALID_GAP_STATUS"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    String currentStatusCode = gapEntity.getSkillGapStatus().getStatusCode();[m
+[32m+[m[32m    if ("RESOLVED".equals(currentStatusCode)[m
+[32m+[m[32m        || "CLOSED_UNRESOLVED".equals(currentStatusCode)[m
+[32m+[m[32m        || "SUPERSEDED".equals(currentStatusCode)) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "Cannot enroll in remediation for a closed, resolved, or superseded skill gap",[m
+[32m+[m[32m          "SKILL_GAP_NOT_ACTIVE"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    if ("IN_REMEDIATION".equals(currentStatusCode)) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "Skill gap is already in active remediation",[m
+[32m+[m[32m          "DUPLICATE_REMEDIATION_ENROLLMENT"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    if (!"OPEN".equals(currentStatusCode)) {[m
+[32m+[m[32m      throw new BadRequestException([m
+[32m+[m[32m          "Only OPEN skill gaps can be transitioned to remediation",[m
+[32m+[m[32m          "INVALID_GAP_STATUS"[m
+[32m+[m[32m      );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // 7. Resolve IN_REMEDIATION status reference - FAIL CLOSED[m
+[32m+[m[32m    if (refSkillGapStatusRepository == null) {[m
+[32m+[m[32m      throw new IllegalStateException("RefSkillGapStatusRepository is required for status transition");[m
+[32m+[m[32m    }[m
+[32m+[m[32m    RefSkillGapStatus inRemediationStatus = refSkillGapStatusRepository[m
+[32m+[m[32m        .findByStatusCode("IN_REMEDIATION")[m
+[32m+[m[32m        .orElseThrow(() -> new ResourceNotFoundException("RefSkillGapStatus", "statusCode"));[m
+[32m+[m
+[32m+[m[32m    // 8. UPFRONT VALIDATION OF RECOMMENDATION STATUS UPDATE BEFORE ANY SIDE EFFECTS[m
+[32m+[m[32m    if (request.getRecommendationStatusUpdate() != null) {[m
+[32m+[m[32m      if (request.getRecommendationStatusUpdate().getIsAcceptedFlag() != null) {[m
+[32m+[m[32m        throw new BadRequestException([m
+[32m+[m[32m            "Recommendation acceptance status cannot be mutated during remediation enrollment",[m
+[32m+[m[32m            "INVALID_STATE_TRANSITION"[m
+[32m+[m[32m        );[m
+[32m+[m[32m      }[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // 9. Create the training enrollment[m
+     TrainingEnrollmentResponse createdEnrollment = trainingEnrollmentService.createEnrollment(enrolReq);[m
+ [m
+[32m+[m[32m    // 10. Transition linked SkillGap to IN_REMEDIATION status in same transaction[m
+[32m+[m[32m    gapEntity.setSkillGapStatus(inRemediationStatus);[m
+[32m+[m[32m    gapEntity.setUpdatedAt(LocalDateTime.now());[m
+[32m+[m[32m    skillGapRepository.save(gapEntity);[m
+[32m+[m
+[32m+[m[32m    // 11. Apply non-acceptance recommendation metadata updates if supplied[m
+     if (request.getRecommendationStatusUpdate() != null) {[m
+       rec = skillGapRecommendationService.updateRecommendation(rec.id(), request.getRecommendationStatusUpdate());[m
+     }[m
+ [m
+[32m+[m[32m    log.info("Enrolled trainee id={} in remediation course id={} for skill gap id={}",[m
+[32m+[m[32m        gapTraineeId, enrolReq.getCourseId(), gapEntity.getId());[m
+     return new SkillGapRemediationEnrollmentResponse(rec, createdEnrollment);[m
+   }[m
+ [m
+[36m@@ -189,4 +605,27 @@[m [mpublic class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati[m
+ [m
+     return new TraineeSkillGapProfileResponse(traineeId, assessments, currentGaps, recs);[m
+   }[m
+[32m+[m
+[32m+[m[32m  private Long resolveAuthenticatedUserId(Authentication authentication) {[m
+[32m+[m[32m    if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {[m
+[32m+[m[32m      throw new InvalidCredentialsException("User is not authenticated");[m
+[32m+[m[32m    }[m
+[32m+[m[32m    Object principal = authentication.getPrincipal();[m
+[32m+[m[32m    if (principal instanceof UserPrincipal up && up.getId() != null) {[m
+[32m+[m[32m      return up.getId();[m
+[32m+[m[32m    }[m
+[32m+[m[32m    throw new InvalidCredentialsException("Unable to resolve authenticated user identity");[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  private boolean isAdministrativeCaller(Authentication authentication) {[m
+[32m+[m[32m    if (authentication == null || authentication.getAuthorities() == null) {[m
+[32m+[m[32m      return false;[m
+[32m+[m[32m    }[m
+[32m+[m[32m    return authentication.getAuthorities().stream()[m
+[32m+[m[32m        .map(GrantedAuthority::getAuthority)[m
+[32m+[m[32m        .anyMatch(auth -> "assessment.manage".equals(auth)[m
+[32m+[m[32m            || "enrollment.manage".equals(auth)[m
+[32m+[m[32m            || "admin".equalsIgnoreCase(auth)[m
+[32m+[m[32m            || "ROLE_ADMIN".equalsIgnoreCase(auth));[m
+[32m+[m[32m  }[m
+ }[m
+[1mdiff --git a/backend/src/test/java/in/gov/sih/sih26135/workflow/SkillGapRemediationWorkflowAssociationTest.java b/backend/src/test/java/in/gov/sih/sih26135/workflow/SkillGapRemediationWorkflowAssociationTest.java[m
+[1mindex 225f489..ad23f27 100644[m
+[1m--- a/backend/src/test/java/in/gov/sih/sih26135/workflow/SkillGapRemediationWorkflowAssociationTest.java[m
+[1m+++ b/backend/src/test/java/in/gov/sih/sih26135/workflow/SkillGapRemediationWorkflowAssociationTest.java[m
+[36m@@ -3,6 +3,8 @@[m [mpackage in.gov.sih.sih26135.workflow;[m
+ import static org.assertj.core.api.Assertions.assertThat;[m
+ import static org.assertj.core.api.Assertions.assertThatThrownBy;[m
+ import static org.mockito.ArgumentMatchers.any;[m
+[32m+[m[32mimport static org.mockito.ArgumentMatchers.eq;[m
+[32m+[m[32mimport static org.mockito.Mockito.lenient;[m
+ import static org.mockito.Mockito.never;[m
+ import static org.mockito.Mockito.times;[m
+ import static org.mockito.Mockito.verify;[m
+[36m@@ -14,6 +16,8 @@[m [mimport in.gov.sih.sih26135.dto.request.CreateSkillGapRequest;[m
+ import in.gov.sih.sih26135.dto.request.CreateTrainingEnrollmentRequest;[m
+ import in.gov.sih.sih26135.dto.request.RecordSkillGapAssessmentWithGapsRequest;[m
+ import in.gov.sih.sih26135.dto.request.SkillGapRemediationEnrollmentRequest;[m
+[32m+[m[32mimport in.gov.sih.sih26135.dto.request.TraineeRecommendationDecisionRequest;[m
+[32m+[m[32mimport in.gov.sih.sih26135.dto.request.UpdateSkillGapRecommendationRequest;[m
+ import in.gov.sih.sih26135.dto.response.RecordSkillGapAssessmentWithGapsResponse;[m
+ import in.gov.sih.sih26135.dto.response.SkillGapAssessmentResponse;[m
+ import in.gov.sih.sih26135.dto.response.SkillGapRecommendationResponse;[m
+[36m@@ -21,8 +25,23 @@[m [mimport in.gov.sih.sih26135.dto.response.SkillGapRemediationEnrollmentResponse;[m
+ import in.gov.sih.sih26135.dto.response.SkillGapResponse;[m
+ import in.gov.sih.sih26135.dto.response.TraineeSkillGapProfileResponse;[m
+ import in.gov.sih.sih26135.dto.response.TrainingEnrollmentResponse;[m
+[32m+[m[32mimport in.gov.sih.sih26135.entity.Course;[m
+[32m+[m[32mimport in.gov.sih.sih26135.entity.RefSkillGapActionType;[m
+[32m+[m[32mimport in.gov.sih.sih26135.entity.RefSkillGapStatus;[m
+[32m+[m[32mimport in.gov.sih.sih26135.entity.Skill;[m
+[32m+[m[32mimport in.gov.sih.sih26135.entity.SkillGap;[m
+[32m+[m[32mimport in.gov.sih.sih26135.entity.SkillGapRecommendation;[m
+[32m+[m[32mimport in.gov.sih.sih26135.entity.Trainee;[m
+ import in.gov.sih.sih26135.exception.BadRequestException;[m
+[32m+[m[32mimport in.gov.sih.sih26135.exception.InvalidCredentialsException;[m
+ import in.gov.sih.sih26135.exception.ResourceNotFoundException;[m
+[32m+[m[32mimport in.gov.sih.sih26135.mapper.SkillGapRecommendationMapper;[m
+[32m+[m[32mimport in.gov.sih.sih26135.repository.CourseSkillRepository;[m
+[32m+[m[32mimport in.gov.sih.sih26135.repository.RefSkillGapStatusRepository;[m
+[32m+[m[32mimport in.gov.sih.sih26135.repository.SkillGapRecommendationRepository;[m
+[32m+[m[32mimport in.gov.sih.sih26135.repository.SkillGapRepository;[m
+[32m+[m[32mimport in.gov.sih.sih26135.repository.TraineeRepository;[m
+[32m+[m[32mimport in.gov.sih.sih26135.security.UserPrincipal;[m
+ import in.gov.sih.sih26135.service.SkillGapAssessmentService;[m
+ import in.gov.sih.sih26135.service.SkillGapRecommendationService;[m
+ import in.gov.sih.sih26135.service.SkillGapService;[m
+[36m@@ -32,6 +51,8 @@[m [mimport java.time.LocalDate;[m
+ import java.time.LocalDateTime;[m
+ import java.util.Collections;[m
+ import java.util.List;[m
+[32m+[m[32mimport java.util.Optional;[m
+[32m+[m[32mimport org.junit.jupiter.api.AfterEach;[m
+ import org.junit.jupiter.api.BeforeEach;[m
+ import org.junit.jupiter.api.DisplayName;[m
+ import org.junit.jupiter.api.Nested;[m
+[36m@@ -40,6 +61,9 @@[m [mimport org.junit.jupiter.api.extension.ExtendWith;[m
+ import org.mockito.ArgumentCaptor;[m
+ import org.mockito.Mock;[m
+ import org.mockito.junit.jupiter.MockitoExtension;[m
+[32m+[m[32mimport org.springframework.security.authentication.UsernamePasswordAuthenticationToken;[m
+[32m+[m[32mimport org.springframework.security.core.authority.SimpleGrantedAuthority;[m
+[32m+[m[32mimport org.springframework.security.core.context.SecurityContextHolder;[m
+ [m
+ @ExtendWith(MockitoExtension.class)[m
+ class SkillGapRemediationWorkflowAssociationTest {[m
+[36m@@ -48,6 +72,11 @@[m [mclass SkillGapRemediationWorkflowAssociationTest {[m
+   @Mock private SkillGapService skillGapService;[m
+   @Mock private SkillGapRecommendationService skillGapRecommendationService;[m
+   @Mock private TrainingEnrollmentService trainingEnrollmentService;[m
+[32m+[m[32m  @Mock private CourseSkillRepository courseSkillRepository;[m
+[32m+[m[32m  @Mock private SkillGapRepository skillGapRepository;[m
+[32m+[m[32m  @Mock private SkillGapRecommendationRepository skillGapRecommendationRepository;[m
+[32m+[m[32m  @Mock private RefSkillGapStatusRepository refSkillGapStatusRepository;[m
+[32m+[m[32m  @Mock private TraineeRepository traineeRepository;[m
+ [m
+   private SkillGapRemediationWorkflowServiceImpl workflowService;[m
+ [m
+[36m@@ -60,8 +89,32 @@[m [mclass SkillGapRemediationWorkflowAssociationTest {[m
+         skillGapAssessmentService,[m
+         skillGapService,[m
+         skillGapRecommendationService,[m
+[31m-        trainingEnrollmentService[m
+[32m+[m[32m        trainingEnrollmentService,[m
+[32m+[m[32m        courseSkillRepository,[m
+[32m+[m[32m        skillGapRepository,[m
+[32m+[m[32m        skillGapRecommendationRepository,[m
+[32m+[m[32m        refSkillGapStatusRepository,[m
+[32m+[m[32m        traineeRepository,[m
+[32m+[m[32m        new SkillGapRecommendationMapper()[m
+     );[m
+[32m+[m[32m    lenient().when(courseSkillRepository.existsByCourseIdAndSkillId(any(), any())).thenReturn(true);[m
+[32m+[m
+[32m+[m[32m    UserPrincipal adminPrincipal = new UserPrincipal(1L, "adminUser");[m
+[32m+[m[32m    SecurityContextHolder.getContext().setAuthentication([m
+[32m+[m[32m        new UsernamePasswordAuthenticationToken([m
+[32m+[m[32m            adminPrincipal,[m
+[32m+[m[32m            null,[m
+[32m+[m[32m            List.of([m
+[32m+[m[32m                new SimpleGrantedAuthority("assessment.manage"),[m
+[32m+[m[32m                new SimpleGrantedAuthority("enrollment.manage")[m
+[32m+[m[32m            )[m
+[32m+[m[32m        )[m
+[32m+[m[32m    );[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  @AfterEach[m
+[32m+[m[32m  void tearDown() {[m
+[32m+[m[32m    SecurityContextHolder.clearContext();[m
+   }[m
+ [m
+   private SkillGapAssessmentResponse buildAssessment(Long id, Long traineeId) {[m
+[36m@@ -90,14 +143,69 @@[m [mclass SkillGapRemediationWorkflowAssociationTest {[m
+ [m
+   private SkillGapRecommendationResponse buildRecommendationResponse([m
+       Long id, Long skillGapId, Long courseId) {[m
+[32m+[m[32m    return buildRecommendationResponse(id, skillGapId, courseId, false);[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  private SkillGapRecommendationResponse buildRecommendationResponse([m
+[32m+[m[32m      Long id, Long skillGapId, Long courseId, Boolean isAccepted) {[m
+     return new SkillGapRecommendationResponse([m
+         id, skillGapId, "SG-2026-" + skillGapId, 1, 1L, "UPSKILL", "Upskill",[m
+         courseId, "CRS-" + courseId, "Course " + courseId,[m
+[31m-        null, null, null, false, null, "Recommended upskilling",[m
+[32m+[m[32m        null, null, null, isAccepted, isAccepted ? LocalDate.now() : null, "Recommended upskilling",[m
+         1L, LocalDateTime.now().minusDays(1), LocalDateTime.now()[m
+     );[m
+   }[m
+ [m
+[32m+[m[32m  private SkillGapRecommendation buildRecommendationEntity([m
+[32m+[m[32m      Long id, Long skillGapId, Long courseId, Long skillId, Boolean isAccepted,[m
+[32m+[m[32m      String gapStatusCode, Boolean gapIsCurrent) {[m
+[32m+[m[32m    Trainee trainee = new Trainee();[m
+[32m+[m[32m    trainee.setId(TRAINEE_ID);[m
+[32m+[m
+[32m+[m[32m    Skill skill = new Skill();[m
+[32m+[m[32m    skill.setId(skillId != null ? skillId : 101L);[m
+[32m+[m[32m    skill.setSkillCode("SK-" + (skillId != null ? skillId : 101L));[m
+[32m+[m[32m    skill.setSkillName("Skill " + (skillId != null ? skillId : 101L));[m
+[32m+[m
+[32m+[m[32m    RefSkillGapStatus gapStatus = new RefSkillGapStatus();[m
+[32m+[m[32m    gapStatus.setId(1L);[m
+[32m+[m[32m    gapStatus.setStatusCode(gapStatusCode != null ? gapStatusCode : "OPEN");[m
+[32m+[m[32m    gapStatus.setStatusName("Status " + (gapStatusCode != null ? gapStatusCode : "OPEN"));[m
+[32m+[m
+[32m+[m[32m    SkillGap gap = new SkillGap();[m
+[32m+[m[32m    gap.setId(skillGapId);[m
+[32m+[m[32m    gap.setSkillGapNumber("SG-2026-" + skillGapId);[m
+[32m+[m[32m    gap.setTrainee(trainee);[m
+[32m+[m[32m    gap.setSkill(skill);[m
+[32m+[m[32m    gap.setSkillGapStatus(gapStatus);[m
+[32m+[m[32m    gap.setIsCurrent(gapIsCurrent != null ? gapIsCurrent : true);[m
+[32m+[m
+[32m+[m[32m    Course course = new Course();[m
+[32m+[m[32m    course.setId(courseId != null ? courseId : 501L);[m
+[32m+[m[32m    course.setCourseCode("CRS-" + (courseId != null ? courseId : 501L));[m
+[32m+[m[32m    course.setCourseName("Course " + (courseId != null ? courseId : 501L));[m
+[32m+[m
+[32m+[m[32m    RefSkillGapActionType actionType = new RefSkillGapActionType();[m
+[32m+[m[32m    actionType.setId(1L);[m
+[32m+[m[32m    actionType.setActionCode("UPSKILL");[m
+[32m+[m[32m    actionType.setActionName("Upskill");[m
+[32m+[m
+[32m+[m[32m    SkillGapRecommendation rec = new SkillGapRecommendation();[m
+[32m+[m[32m    rec.setId(id);[m
+[32m+[m[32m    rec.setSkillGap(gap);[m
+[32m+[m[32m    rec.setRecommendationNumber(1);[m
+[32m+[m[32m    rec.setSkillGapActionType(actionType);[m
+[32m+[m[32m    rec.setRecommendedCourse(course);[m
+[32m+[m[32m    rec.setRecommendedSkill(skill);[m
+[32m+[m[32m    rec.setIsAcceptedFlag(isAccepted);[m
+[32m+[m[32m    rec.setAcceptedOn(Boolean.TRUE.equals(isAccepted) ? LocalDate.now() : null);[m
+[32m+[m[32m    rec.setRemarks("Recommendation notes");[m
+[32m+[m[32m    rec.setCreatedByUserId(1L);[m
+[32m+[m[32m    rec.setCreatedAt(LocalDateTime.now().minusDays(1));[m
+[32m+[m[32m    rec.setUpdatedAt(LocalDateTime.now());[m
+[32m+[m[32m    return rec;[m
+[32m+[m[32m  }[m
+[32m+[m
+   @Nested[m
+   @DisplayName("1. Valid Skill-Gap Association Tests")[m
+   class ValidAssociationTests {[m
+[36m@@ -426,6 +534,60 @@[m [mclass SkillGapRemediationWorkflowAssociationTest {[m
+ [m
+       verify(skillGapService, never()).createSkillGap(any());[m
+     }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Rejects recommendation when recommended course does not teach the identified gap skill")[m
+[32m+[m[32m    void shouldRejectRecommendationWhenCourseDoesNotTeachGapSkill() {[m
+[32m+[m[32m      RecordSkillGapAssessmentWithGapsRequest request = new RecordSkillGapAssessmentWithGapsRequest();[m
+[32m+[m[32m      request.setAssessmentRequest(new CreateSkillGapAssessmentRequest());[m
+[32m+[m
+[32m+[m[32m      CreateSkillGapRequest gapReq1 = new CreateSkillGapRequest();[m
+[32m+[m[32m      gapReq1.setSkillId(101L);[m
+[32m+[m[32m      request.setGapRequests(List.of(gapReq1));[m
+[32m+[m
+[32m+[m[32m      CreateSkillGapRecommendationRequest recReq = new CreateSkillGapRecommendationRequest();[m
+[32m+[m[32m      recReq.setSkillGapId(201L);[m
+[32m+[m[32m      recReq.setRecommendedCourseId(501L);[m
+[32m+[m[32m      request.setRecommendationRequests(List.of(recReq));[m
+[32m+[m
+[32m+[m[32m      when(skillGapAssessmentService.createAssessment(any())).thenReturn(buildAssessment(ASSESSMENT_ID, TRAINEE_ID));[m
+[32m+[m[32m      when(skillGapService.createSkillGap(any())).thenReturn(buildSkillGap(201L, ASSESSMENT_ID, TRAINEE_ID, 101L));[m
+[32m+[m[32m      when(courseSkillRepository.existsByCourseIdAndSkillId(501L, 101L)).thenReturn(false);[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.recordAssessmentWithGapsAndRecommendations(request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .hasMessageContaining("Recommended course does not teach the identified gap skill")[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("COURSE_SKILL_MISMATCH");[m
+[32m+[m
+[32m+[m[32m      verify(skillGapRecommendationService, never()).createRecommendation(any());[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Rejects single-new-gap default recommendation when course does not teach gap skill")[m
+[32m+[m[32m    void shouldRejectSingleGapDefaultRecommendationWhenCourseDoesNotTeachGapSkill() {[m
+[32m+[m[32m      RecordSkillGapAssessmentWithGapsRequest request = new RecordSkillGapAssessmentWithGapsRequest();[m
+[32m+[m[32m      request.setAssessmentRequest(new CreateSkillGapAssessmentRequest());[m
+[32m+[m
+[32m+[m[32m      CreateSkillGapRequest gapReq = new CreateSkillGapRequest();[m
+[32m+[m[32m      gapReq.setSkillId(101L);[m
+[32m+[m[32m      request.setGapRequests(List.of(gapReq));[m
+[32m+[m
+[32m+[m[32m      CreateSkillGapRecommendationRequest recReq = new CreateSkillGapRecommendationRequest();[m
+[32m+[m[32m      recReq.setSkillGapId(null); // default to single created gap[m
+[32m+[m[32m      recReq.setRecommendedCourseId(501L);[m
+[32m+[m[32m      request.setRecommendationRequests(List.of(recReq));[m
+[32m+[m
+[32m+[m[32m      when(skillGapAssessmentService.createAssessment(any())).thenReturn(buildAssessment(ASSESSMENT_ID, TRAINEE_ID));[m
+[32m+[m[32m      when(skillGapService.createSkillGap(any())).thenReturn(buildSkillGap(201L, ASSESSMENT_ID, TRAINEE_ID, 101L));[m
+[32m+[m[32m      when(courseSkillRepository.existsByCourseIdAndSkillId(501L, 101L)).thenReturn(false);[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.recordAssessmentWithGapsAndRecommendations(request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .hasMessageContaining("Recommended course does not teach the identified gap skill")[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("COURSE_SKILL_MISMATCH");[m
+[32m+[m
+[32m+[m[32m      verify(skillGapRecommendationService, never()).createRecommendation(any());[m
+[32m+[m[32m    }[m
+   }[m
+ [m
+   @Nested[m
+[36m@@ -453,7 +615,7 @@[m [mclass SkillGapRemediationWorkflowAssociationTest {[m
+     }[m
+ [m
+     @Test[m
+[31m-    @DisplayName("Preserves valid remediation course enrollment workflow")[m
+[32m+[m[32m    @DisplayName("Preserves valid remediation course enrollment workflow and transitions gap to IN_REMEDIATION")[m
+     void shouldPreserveRemediationCourseEnrollmentWorkflow() {[m
+       SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();[m
+       request.setRecommendationId(1001L);[m
+[36m@@ -462,9 +624,18 @@[m [mclass SkillGapRemediationWorkflowAssociationTest {[m
+       enrolReq.setCourseId(501L);[m
+       request.setEnrollmentRequest(enrolReq);[m
+ [m
+[31m-      SkillGapRecommendationResponse mockRec = buildRecommendationResponse(1001L, 201L, 501L);[m
+[32m+[m[32m      SkillGapRecommendationResponse mockRec = buildRecommendationResponse(1001L, 201L, 501L, true);[m
+       when(skillGapRecommendationService.getRecommendationById(1001L)).thenReturn(mockRec);[m
+ [m
+[32m+[m[32m      SkillGap mockGapEntity = buildRecommendationEntity(1001L, 201L, 501L, 101L, true, "OPEN", true).getSkillGap();[m
+[32m+[m[32m      when(skillGapRepository.findById(201L)).thenReturn(Optional.of(mockGapEntity));[m
+[32m+[m
+[32m+[m[32m      RefSkillGapStatus inRemediationStatus = new RefSkillGapStatus();[m
+[32m+[m[32m      inRemediationStatus.setId(2L);[m
+[32m+[m[32m      inRemediationStatus.setStatusCode("IN_REMEDIATION");[m
+[32m+[m[32m      inRemediationStatus.setStatusName("In Remediation");[m
+[32m+[m[32m      when(refSkillGapStatusRepository.findByStatusCode("IN_REMEDIATION")).thenReturn(Optional.of(inRemediationStatus));[m
+[32m+[m
+       TrainingEnrollmentResponse mockEnrollment = new TrainingEnrollmentResponse();[m
+       mockEnrollment.setId(3001L);[m
+       when(trainingEnrollmentService.createEnrollment(any())).thenReturn(mockEnrollment);[m
+[36m@@ -475,6 +646,8 @@[m [mclass SkillGapRemediationWorkflowAssociationTest {[m
+       assertThat(response).isNotNull();[m
+       assertThat(response.createdEnrollment().getId()).isEqualTo(3001L);[m
+       verify(trainingEnrollmentService).createEnrollment(any());[m
+[32m+[m[32m      verify(skillGapRepository).save(mockGapEntity);[m
+[32m+[m[32m      assertThat(mockGapEntity.getSkillGapStatus().getStatusCode()).isEqualTo("IN_REMEDIATION");[m
+     }[m
+ [m
+     @Test[m
+[36m@@ -495,5 +668,1006 @@[m [mclass SkillGapRemediationWorkflowAssociationTest {[m
+       assertThat(profile.currentSkillGaps()).hasSize(1);[m
+       assertThat(profile.recommendations()).hasSize(1);[m
+     }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Rejects profile retrieval when trainee ID is null")[m
+[32m+[m[32m    void shouldRejectProfileRetrievalWhenTraineeIdIsNull() {[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.getTraineeSkillGapProfile(null))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("TRAINEE_ID_REQUIRED");[m
+[32m+[m[32m    }[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  @Nested[m
+[32m+[m[32m  @DisplayName("4. Recommendation Decision Lifecycle Tests (Accept / Reject)")[m
+[32m+[m[32m  class RecommendationLifecycleTests {[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Accept recommendation succeeds and updates isAcceptedFlag, acceptedOn, and remarks")[m
+[32m+[m[32m    void shouldAcceptRecommendationSuccessfully() {[m
+[32m+[m[32m      SkillGapRecommendation recEntity = buildRecommendationEntity([m
+[32m+[m[32m          1001L, 201L, 501L, 101L, false, "OPEN", true);[m
+[32m+[m[32m      when(skillGapRecommendationRepository.findById(1001L)).thenReturn(Optional.of(recEntity));[m
+[32m+[m[32m      when(skillGapRecommendationRepository.save(any(SkillGapRecommendation.class)))[m
+[32m+[m[32m          .thenAnswer(invocation -> invocation.getArgument(0));[m
+[32m+[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest([m
+[32m+[m[32m          TRAINEE_ID, "Ready to start upskilling", 42L);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse response = workflowService.acceptRecommendation(1001L, request);[m
+[32m+[m
+[32m+[m[32m      assertThat(response).isNotNull();[m
+[32m+[m[32m      assertThat(response.isAcceptedFlag()).isTrue();[m
+[32m+[m[32m      assertThat(response.acceptedOn()).isEqualTo(LocalDate.now());[m
+[32m+[m[32m      assertThat(response.remarks()).isEqualTo("Ready to start upskilling");[m
+[32m+[m[32m      assertThat(response.createdByUserId()).isEqualTo(1L);[m
+[32m+[m
+[32m+[m[32m      ArgumentCaptor<SkillGapRecommendation> captor = ArgumentCaptor.forClass(SkillGapRecommendation.class);[m
+[32m+[m[32m      verify(skillGapRecommendationRepository).save(captor.capture());[m
+[32m+[m[32m      assertThat(captor.getValue().getIsAcceptedFlag()).isTrue();[m
+[32m+[m[32m      assertThat(captor.getValue().getAcceptedOn()).isEqualTo(LocalDate.now());[m
+[32m+[m[32m      assertThat(captor.getValue().getCreatedByUserId()).isEqualTo(1L);[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Accept recommendation fails when recommendation ID is null")[m
+[32m+[m[32m    void shouldRejectAcceptanceWhenRecommendationIdIsNull() {[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest();[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.acceptRecommendation(null, request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("RECOMMENDATION_ID_REQUIRED");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Accept recommendation fails when recommendation not found")[m
+[32m+[m[32m    void shouldRejectAcceptanceWhenRecommendationNotFound() {[m
+[32m+[m[32m      when(skillGapRecommendationRepository.findById(9999L)).thenReturn(Optional.empty());[m
+[32m+[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest();[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.acceptRecommendation(9999L, request))[m
+[32m+[m[32m          .isInstanceOf(ResourceNotFoundException.class);[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Accept recommendation fails when trainee ID does not match recommendation trainee")[m
+[32m+[m[32m    void shouldRejectAcceptanceWhenTraineeMismatch() {[m
+[32m+[m[32m      SkillGapRecommendation recEntity = buildRecommendationEntity([m
+[32m+[m[32m          1001L, 201L, 501L, 101L, false, "OPEN", true);[m
+[32m+[m[32m      when(skillGapRecommendationRepository.findById(1001L)).thenReturn(Optional.of(recEntity));[m
+[32m+[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest([m
+[32m+[m[32m          999L, "Not my recommendation", null);[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.acceptRecommendation(1001L, request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("TRAINEE_MISMATCH");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Accept recommendation fails when already accepted")[m
+[32m+[m[32m    void shouldRejectAcceptanceWhenAlreadyAccepted() {[m
+[32m+[m[32m      SkillGapRecommendation recEntity = buildRecommendationEntity([m
+[32m+[m[32m          1001L, 201L, 501L, 101L, true, "OPEN", true);[m
+[32m+[m[32m      when(skillGapRecommendationRepository.findById(1001L)).thenReturn(Optional.of(recEntity));[m
+[32m+[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest();[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.acceptRecommendation(1001L, request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("ALREADY_ACCEPTED");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Accept recommendation fails when linked skill gap is already resolved or closed")[m
+[32m+[m[32m    void shouldRejectAcceptanceWhenSkillGapAlreadyResolvedOrClosed() {[m
+[32m+[m[32m      SkillGapRecommendation recEntity = buildRecommendationEntity([m
+[32m+[m[32m          1001L, 201L, 501L, 101L, false, "RESOLVED", false);[m
+[32m+[m[32m      when(skillGapRecommendationRepository.findById(1001L)).thenReturn(Optional.of(recEntity));[m
+[32m+[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest();[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.acceptRecommendation(1001L, request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("INVALID_GAP_STATUS");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Reject recommendation succeeds with mandatory remarks")[m
+[32m+[m[32m    void shouldRejectRecommendationSuccessfullyWithMandatoryRemarks() {[m
+[32m+[m[32m      SkillGapRecommendation recEntity = buildRecommendationEntity([m
+[32m+[m[32m          1001L, 201L, 501L, 101L, false, "OPEN", true);[m
+[32m+[m[32m      when(skillGapRecommendationRepository.findById(1001L)).thenReturn(Optional.of(recEntity));[m
+[32m+[m[32m      when(skillGapRecommendationRepository.save(any(SkillGapRecommendation.class)))[m
+[32m+[m[32m          .thenAnswer(invocation -> invocation.getArgument(0));[m
+[32m+[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest([m
+[32m+[m[32m          TRAINEE_ID, "Prefer alternative certification", 42L);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse response = workflowService.rejectRecommendation(1001L, request);[m
+[32m+[m
+[32m+[m[32m      assertThat(response).isNotNull();[m
+[32m+[m[32m      assertThat(response.isAcceptedFlag()).isFalse();[m
+[32m+[m[32m      assertThat(response.acceptedOn()).isNull();[m
+[32m+[m[32m      assertThat(response.remarks()).isEqualTo("Prefer alternative certification");[m
+[32m+[m
+[32m+[m[32m      ArgumentCaptor<SkillGapRecommendation> captor = ArgumentCaptor.forClass(SkillGapRecommendation.class);[m
+[32m+[m[32m      verify(skillGapRecommendationRepository).save(captor.capture());[m
+[32m+[m[32m      assertThat(captor.getValue().getIsAcceptedFlag()).isFalse();[m
+[32m+[m[32m      assertThat(captor.getValue().getAcceptedOn()).isNull();[m
+[32m+[m[32m      assertThat(captor.getValue().getRemarks()).isEqualTo("Prefer alternative certification");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Reject recommendation fails when recommendation is already accepted")[m
+[32m+[m[32m    void shouldRejectRecommendationRejectionWhenAlreadyAccepted() {[m
+[32m+[m[32m      SkillGapRecommendation recEntity = buildRecommendationEntity([m
+[32m+[m[32m          1001L, 201L, 501L, 101L, true, "OPEN", true);[m
+[32m+[m[32m      when(skillGapRecommendationRepository.findById(1001L)).thenReturn(Optional.of(recEntity));[m
+[32m+[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest([m
+[32m+[m[32m          TRAINEE_ID, "Cannot reject after accepting", null);[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.rejectRecommendation(1001L, request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("INVALID_STATE_TRANSITION");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Reject recommendation fails when remarks are missing or blank")[m
+[32m+[m[32m    void shouldRejectRecommendationRejectionWhenRemarksMissingOrBlank() {[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest nullRemarks = new TraineeRecommendationDecisionRequest([m
+[32m+[m[32m          TRAINEE_ID, null, null);[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.rejectRecommendation(1001L, nullRemarks))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("REJECTION_REMARKS_REQUIRED");[m
+[32m+[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest blankRemarks = new TraineeRecommendationDecisionRequest([m
+[32m+[m[32m          TRAINEE_ID, "   ", null);[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.rejectRecommendation(1001L, blankRemarks))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("REJECTION_REMARKS_REQUIRED");[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.rejectRecommendation(1001L, null))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("REJECTION_REMARKS_REQUIRED");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Reject recommendation fails when recommendation ID is null")[m
+[32m+[m[32m    void shouldRejectRecommendationRejectionWhenIdIsNull() {[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest([m
+[32m+[m[32m          TRAINEE_ID, "Some reason", null);[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.rejectRecommendation(null, request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("RECOMMENDATION_ID_REQUIRED");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Reject recommendation fails when recommendation not found")[m
+[32m+[m[32m    void shouldRejectRecommendationRejectionWhenNotFound() {[m
+[32m+[m[32m      when(skillGapRecommendationRepository.findById(9999L)).thenReturn(Optional.empty());[m
+[32m+[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest([m
+[32m+[m[32m          TRAINEE_ID, "Valid reason", null);[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.rejectRecommendation(9999L, request))[m
+[32m+[m[32m          .isInstanceOf(ResourceNotFoundException.class);[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Reject recommendation fails when trainee ID does not match recommendation trainee")[m
+[32m+[m[32m    void shouldRejectRecommendationRejectionWhenTraineeMismatch() {[m
+[32m+[m[32m      SkillGapRecommendation recEntity = buildRecommendationEntity([m
+[32m+[m[32m          1001L, 201L, 501L, 101L, false, "OPEN", true);[m
+[32m+[m[32m      when(skillGapRecommendationRepository.findById(1001L)).thenReturn(Optional.of(recEntity));[m
+[32m+[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest([m
+[32m+[m[32m          999L, "Wrong trainee rejecting", null);[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.rejectRecommendation(1001L, request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("TRAINEE_MISMATCH");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Reject recommendation fails when gap is already in active remediation")[m
+[32m+[m[32m    void shouldRejectRecommendationRejectionWhenGapAlreadyInRemediation() {[m
+[32m+[m[32m      SkillGapRecommendation recEntity = buildRecommendationEntity([m
+[32m+[m[32m          1001L, 201L, 501L, 101L, false, "IN_REMEDIATION", true);[m
+[32m+[m[32m      when(skillGapRecommendationRepository.findById(1001L)).thenReturn(Optional.of(recEntity));[m
+[32m+[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest([m
+[32m+[m[32m          TRAINEE_ID, "Want to drop out now", null);[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.rejectRecommendation(1001L, request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("INVALID_STATE_TRANSITION");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Accept recommendation fails when authenticated trainee does not match recommendation trainee")[m
+[32m+[m[32m    void shouldRejectAcceptanceWhenAuthenticatedTraineeMismatch() {[m
+[32m+[m[32m      SkillGapRecommendation recEntity = buildRecommendationEntity([m
+[32m+[m[32m          1001L, 201L, 501L, 101L, false, "OPEN", true);[m
+[32m+[m[32m      when(skillGapRecommendationRepository.findById(1001L)).thenReturn(Optional.of(recEntity));[m
+[32m+[m
+[32m+[m[32m      // Authenticate as a different trainee (userId = 99L, traineeId = 999L)[m
+[32m+[m[32m      UserPrincipal principal = new UserPrincipal(99L, "otherTrainee");[m
+[32m+[m[32m      SecurityContextHolder.getContext().setAuthentication([m
+[32m+[m[32m          new UsernamePasswordAuthenticationToken(principal, null, Collections.emptyList()));[m
+[32m+[m
+[32m+[m[32m      Trainee otherTrainee = new Trainee();[m
+[32m+[m[32m      otherTrainee.setId(999L);[m
+[32m+[m[32m      when(traineeRepository.findByUserId(99L)).thenReturn(Optional.of(otherTrainee));[m
+[32m+[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest();[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.acceptRecommendation(1001L, request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("TRAINEE_MISMATCH");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Accept recommendation uses server-side authenticated user for audit attribution instead of client actorUserId when creator is null")[m
+[32m+[m[32m    void shouldPreferAuthenticatedUserForAuditAttribution() {[m
+[32m+[m[32m      SkillGapRecommendation recEntity = buildRecommendationEntity([m
+[32m+[m[32m          1001L, 201L, 501L, 101L, false, "OPEN", true);[m
+[32m+[m[32m      recEntity.setCreatedByUserId(null);[m
+[32m+[m[32m      when(skillGapRecommendationRepository.findById(1001L)).thenReturn(Optional.of(recEntity));[m
+[32m+[m[32m      when(skillGapRecommendationRepository.save(any(SkillGapRecommendation.class)))[m
+[32m+[m[32m          .thenAnswer(invocation -> invocation.getArgument(0));[m
+[32m+[m
+[32m+[m[32m      UserPrincipal principal = new UserPrincipal(888L, "trustedCounselor");[m
+[32m+[m[32m      SecurityContextHolder.getContext().setAuthentication([m
+[32m+[m[32m          new UsernamePasswordAuthenticationToken([m
+[32m+[m[32m              principal,[m
+[32m+[m[32m              null,[m
+[32m+[m[32m              List.of(new SimpleGrantedAuthority("assessment.manage"))));[m
+[32m+[m
+[32m+[m[32m      // Client attempts to claim actorUserId = 42L, but trusted principal is 888L[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest([m
+[32m+[m[32m          TRAINEE_ID, "Accepted by counselor", 42L);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse response = workflowService.acceptRecommendation(1001L, request);[m
+[32m+[m
+[32m+[m[32m      assertThat(response).isNotNull();[m
+[32m+[m[32m      assertThat(response.createdByUserId()).isEqualTo(888L);[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Accept recommendation preserves original creator when createdByUserId already exists")[m
+[32m+[m[32m    void shouldPreserveOriginalCreatorOnAcceptance() {[m
+[32m+[m[32m      SkillGapRecommendation recEntity = buildRecommendationEntity([m
+[32m+[m[32m          1001L, 201L, 501L, 101L, false, "OPEN", true);[m
+[32m+[m[32m      recEntity.setCreatedByUserId(50L); // original creator is user 50[m
+[32m+[m[32m      when(skillGapRecommendationRepository.findById(1001L)).thenReturn(Optional.of(recEntity));[m
+[32m+[m[32m      when(skillGapRecommendationRepository.save(any(SkillGapRecommendation.class)))[m
+[32m+[m[32m          .thenAnswer(invocation -> invocation.getArgument(0));[m
+[32m+[m
+[32m+[m[32m      UserPrincipal principal = new UserPrincipal(888L, "trustedCounselor");[m
+[32m+[m[32m      SecurityContextHolder.getContext().setAuthentication([m
+[32m+[m[32m          new UsernamePasswordAuthenticationToken([m
+[32m+[m[32m              principal,[m
+[32m+[m[32m              null,[m
+[32m+[m[32m              List.of(new SimpleGrantedAuthority("assessment.manage"))));[m
+[32m+[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest([m
+[32m+[m[32m          TRAINEE_ID, "Accepted by counselor", 42L);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse response = workflowService.acceptRecommendation(1001L, request);[m
+[32m+[m
+[32m+[m[32m      assertThat(response).isNotNull();[m
+[32m+[m[32m      assertThat(response.createdByUserId()).isEqualTo(50L); // original creator preserved![m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Reject recommendation preserves original creator when createdByUserId already exists")[m
+[32m+[m[32m    void shouldPreserveOriginalCreatorOnRejection() {[m
+[32m+[m[32m      SkillGapRecommendation recEntity = buildRecommendationEntity([m
+[32m+[m[32m          1001L, 201L, 501L, 101L, false, "OPEN", true);[m
+[32m+[m[32m      recEntity.setCreatedByUserId(50L); // original creator is user 50[m
+[32m+[m[32m      when(skillGapRecommendationRepository.findById(1001L)).thenReturn(Optional.of(recEntity));[m
+[32m+[m[32m      when(skillGapRecommendationRepository.save(any(SkillGapRecommendation.class)))[m
+[32m+[m[32m          .thenAnswer(invocation -> invocation.getArgument(0));[m
+[32m+[m
+[32m+[m[32m      UserPrincipal counselor = new UserPrincipal(777L, "counselor");[m
+[32m+[m[32m      SecurityContextHolder.getContext().setAuthentication([m
+[32m+[m[32m          new UsernamePasswordAuthenticationToken([m
+[32m+[m[32m              counselor, null, List.of(new SimpleGrantedAuthority("assessment.manage"))));[m
+[32m+[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest([m
+[32m+[m[32m          TRAINEE_ID, "Rejection justified", 12345L);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse response = workflowService.rejectRecommendation(1001L, request);[m
+[32m+[m
+[32m+[m[32m      assertThat(response).isNotNull();[m
+[32m+[m[32m      assertThat(response.isAcceptedFlag()).isFalse();[m
+[32m+[m[32m      assertThat(response.createdByUserId()).isEqualTo(50L); // original creator preserved![m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Accept recommendation fails closed when TraineeRepository is unavailable")[m
+[32m+[m[32m    void shouldFailClosedWhenTraineeRepositoryIsNullOnAccept() {[m
+[32m+[m[32m      SkillGapRemediationWorkflowServiceImpl serviceWithoutTraineeRepo =[m
+[32m+[m[32m          new SkillGapRemediationWorkflowServiceImpl([m
+[32m+[m[32m              skillGapAssessmentService,[m
+[32m+[m[32m              skillGapService,[m
+[32m+[m[32m              skillGapRecommendationService,[m
+[32m+[m[32m              trainingEnrollmentService,[m
+[32m+[m[32m              courseSkillRepository,[m
+[32m+[m[32m              skillGapRepository,[m
+[32m+[m[32m              skillGapRecommendationRepository,[m
+[32m+[m[32m              refSkillGapStatusRepository,[m
+[32m+[m[32m              null, // traineeRepository is null[m
+[32m+[m[32m              new SkillGapRecommendationMapper()[m
+[32m+[m[32m          );[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendation recEntity = buildRecommendationEntity([m
+[32m+[m[32m          1001L, 201L, 501L, 101L, false, "OPEN", true);[m
+[32m+[m[32m      when(skillGapRecommendationRepository.findById(1001L)).thenReturn(Optional.of(recEntity));[m
+[32m+[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest();[m
+[32m+[m[32m      assertThatThrownBy(() -> serviceWithoutTraineeRepo.acceptRecommendation(1001L, request))[m
+[32m+[m[32m          .isInstanceOf(IllegalStateException.class)[m
+[32m+[m[32m          .hasMessageContaining("TraineeRepository is required for trainee ownership verification");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Reject recommendation fails closed when TraineeRepository is unavailable")[m
+[32m+[m[32m    void shouldFailClosedWhenTraineeRepositoryIsNullOnReject() {[m
+[32m+[m[32m      SkillGapRemediationWorkflowServiceImpl serviceWithoutTraineeRepo =[m
+[32m+[m[32m          new SkillGapRemediationWorkflowServiceImpl([m
+[32m+[m[32m              skillGapAssessmentService,[m
+[32m+[m[32m              skillGapService,[m
+[32m+[m[32m              skillGapRecommendationService,[m
+[32m+[m[32m              trainingEnrollmentService,[m
+[32m+[m[32m              courseSkillRepository,[m
+[32m+[m[32m              skillGapRepository,[m
+[32m+[m[32m              skillGapRecommendationRepository,[m
+[32m+[m[32m              refSkillGapStatusRepository,[m
+[32m+[m[32m              null, // traineeRepository is null[m
+[32m+[m[32m              new SkillGapRecommendationMapper()[m
+[32m+[m[32m          );[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendation recEntity = buildRecommendationEntity([m
+[32m+[m[32m          1001L, 201L, 501L, 101L, false, "OPEN", true);[m
+[32m+[m[32m      when(skillGapRecommendationRepository.findById(1001L)).thenReturn(Optional.of(recEntity));[m
+[32m+[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest([m
+[32m+[m[32m          TRAINEE_ID, "Rejection remarks", null);[m
+[32m+[m[32m      assertThatThrownBy(() -> serviceWithoutTraineeRepo.rejectRecommendation(1001L, request))[m
+[32m+[m[32m          .isInstanceOf(IllegalStateException.class)[m
+[32m+[m[32m          .hasMessageContaining("TraineeRepository is required for trainee ownership verification");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Accept recommendation fails when security context has no authentication")[m
+[32m+[m[32m    void shouldRejectAcceptanceWhenUnauthenticated() {[m
+[32m+[m[32m      SecurityContextHolder.clearContext();[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest();[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.acceptRecommendation(1001L, request))[m
+[32m+[m[32m          .isInstanceOf(InvalidCredentialsException.class)[m
+[32m+[m[32m          .hasMessageContaining("User is not authenticated");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Accept recommendation fails when principal is anonymousUser")[m
+[32m+[m[32m    void shouldRejectAcceptanceWhenAnonymousUser() {[m
+[32m+[m[32m      SecurityContextHolder.getContext().setAuthentication([m
+[32m+[m[32m          new UsernamePasswordAuthenticationToken("anonymousUser", null, Collections.emptyList()));[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest();[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.acceptRecommendation(1001L, request))[m
+[32m+[m[32m          .isInstanceOf(InvalidCredentialsException.class)[m
+[32m+[m[32m          .hasMessageContaining("User is not authenticated");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Accept recommendation fails when authenticated user has neither trainee profile nor admin role")[m
+[32m+[m[32m    void shouldRejectAcceptanceWhenNonAdminNonTraineeUser() {[m
+[32m+[m[32m      SkillGapRecommendation recEntity = buildRecommendationEntity([m
+[32m+[m[32m          1001L, 201L, 501L, 101L, false, "OPEN", true);[m
+[32m+[m[32m      when(skillGapRecommendationRepository.findById(1001L)).thenReturn(Optional.of(recEntity));[m
+[32m+[m
+[32m+[m[32m      UserPrincipal principal = new UserPrincipal(99L, "regularUser");[m
+[32m+[m[32m      SecurityContextHolder.getContext().setAuthentication([m
+[32m+[m[32m          new UsernamePasswordAuthenticationToken(principal, null, Collections.emptyList()));[m
+[32m+[m
+[32m+[m[32m      when(traineeRepository.findByUserId(99L)).thenReturn(Optional.empty());[m
+[32m+[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest();[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.acceptRecommendation(1001L, request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("TRAINEE_MISMATCH");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Accept recommendation succeeds for administrative caller on behalf of trainee, preserving original creator")[m
+[32m+[m[32m    void shouldAllowAuthorizedAdministrativeAccessForTraineeRecommendation() {[m
+[32m+[m[32m      SkillGapRecommendation recEntity = buildRecommendationEntity([m
+[32m+[m[32m          1001L, 201L, 501L, 101L, false, "OPEN", true);[m
+[32m+[m[32m      when(skillGapRecommendationRepository.findById(1001L)).thenReturn(Optional.of(recEntity));[m
+[32m+[m[32m      when(skillGapRecommendationRepository.save(any(SkillGapRecommendation.class)))[m
+[32m+[m[32m          .thenAnswer(invocation -> invocation.getArgument(0));[m
+[32m+[m
+[32m+[m[32m      UserPrincipal admin = new UserPrincipal(999L, "adminOfficer");[m
+[32m+[m[32m      SecurityContextHolder.getContext().setAuthentication([m
+[32m+[m[32m          new UsernamePasswordAuthenticationToken([m
+[32m+[m[32m              admin, null, List.of(new SimpleGrantedAuthority("assessment.manage"))));[m
+[32m+[m
+[32m+[m[32m      when(traineeRepository.findByUserId(999L)).thenReturn(Optional.empty());[m
+[32m+[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest([m
+[32m+[m[32m          TRAINEE_ID, "Admin accepted on behalf of trainee", null);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse response = workflowService.acceptRecommendation(1001L, request);[m
+[32m+[m[32m      assertThat(response).isNotNull();[m
+[32m+[m[32m      assertThat(response.isAcceptedFlag()).isTrue();[m
+[32m+[m[32m      assertThat(response.createdByUserId()).isEqualTo(1L); // Original creator preserved[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Reject recommendation ignores client-supplied actorUserId and sets authenticated userId when creator is null")[m
+[32m+[m[32m    void shouldPreventClientSuppliedActorSpoofingOnReject() {[m
+[32m+[m[32m      SkillGapRecommendation recEntity = buildRecommendationEntity([m
+[32m+[m[32m          1001L, 201L, 501L, 101L, false, "OPEN", true);[m
+[32m+[m[32m      recEntity.setCreatedByUserId(null);[m
+[32m+[m[32m      when(skillGapRecommendationRepository.findById(1001L)).thenReturn(Optional.of(recEntity));[m
+[32m+[m[32m      when(skillGapRecommendationRepository.save(any(SkillGapRecommendation.class)))[m
+[32m+[m[32m          .thenAnswer(invocation -> invocation.getArgument(0));[m
+[32m+[m
+[32m+[m[32m      UserPrincipal counselor = new UserPrincipal(777L, "counselor");[m
+[32m+[m[32m      SecurityContextHolder.getContext().setAuthentication([m
+[32m+[m[32m          new UsernamePasswordAuthenticationToken([m
+[32m+[m[32m              counselor, null, List.of(new SimpleGrantedAuthority("assessment.manage"))));[m
+[32m+[m
+[32m+[m[32m      TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest([m
+[32m+[m[32m          TRAINEE_ID, "Rejection justified", 12345L);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse response = workflowService.rejectRecommendation(1001L, request);[m
+[32m+[m[32m      assertThat(response).isNotNull();[m
+[32m+[m[32m      assertThat(response.isAcceptedFlag()).isFalse();[m
+[32m+[m[32m      assertThat(response.createdByUserId()).isEqualTo(777L); // Authenticated counselor used instead of spoofed 12345L[m
+[32m+[m[32m    }[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  @Nested[m
+[32m+[m[32m  @DisplayName("5. Remediation Enrollment Invariant Tests")[m
+[32m+[m[32m  class RemediationEnrollmentInvariantsTests {[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Remediation enrollment fails if recommendation is not accepted")[m
+[32m+[m[32m    void shouldRejectRemediationEnrollmentWhenRecommendationNotAccepted() {[m
+[32m+[m[32m      SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();[m
+[32m+[m[32m      request.setRecommendationId(1001L);[m
+[32m+[m
+[32m+[m[32m      CreateTrainingEnrollmentRequest enrolReq = new CreateTrainingEnrollmentRequest();[m
+[32m+[m[32m      enrolReq.setCourseId(501L);[m
+[32m+[m[32m      request.setEnrollmentRequest(enrolReq);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse unacceptedRec = buildRecommendationResponse(1001L, 201L, 501L, false);[m
+[32m+[m[32m      when(skillGapRecommendationService.getRecommendationById(1001L)).thenReturn(unacceptedRec);[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.enrollTraineeInRemediationCourse(request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("RECOMMENDATION_NOT_ACCEPTED");[m
+[32m+[m
+[32m+[m[32m      verify(trainingEnrollmentService, never()).createEnrollment(any());[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Remediation enrollment fails if recommendation is unaccepted even when recommendationStatusUpdate requests acceptance")[m
+[32m+[m[32m    void shouldRejectRemediationEnrollmentWhenRecommendationNotAcceptedEvenIfStatusUpdateRequestsAcceptance() {[m
+[32m+[m[32m      SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();[m
+[32m+[m[32m      request.setRecommendationId(1001L);[m
+[32m+[m
+[32m+[m[32m      CreateTrainingEnrollmentRequest enrolReq = new CreateTrainingEnrollmentRequest();[m
+[32m+[m[32m      enrolReq.setCourseId(501L);[m
+[32m+[m[32m      request.setEnrollmentRequest(enrolReq);[m
+[32m+[m
+[32m+[m[32m      UpdateSkillGapRecommendationRequest updateReq = new UpdateSkillGapRecommendationRequest();[m
+[32m+[m[32m      updateReq.setIsAcceptedFlag(true);[m
+[32m+[m[32m      request.setRecommendationStatusUpdate(updateReq);[m
+[32m+[m
+[32m+[m[32m      // Persisted record in database is unaccepted (isAcceptedFlag = false)[m
+[32m+[m[32m      SkillGapRecommendationResponse unacceptedRec = buildRecommendationResponse(1001L, 201L, 501L, false);[m
+[32m+[m[32m      when(skillGapRecommendationService.getRecommendationById(1001L)).thenReturn(unacceptedRec);[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.enrollTraineeInRemediationCourse(request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("RECOMMENDATION_NOT_ACCEPTED");[m
+[32m+[m
+[32m+[m[32m      verify(trainingEnrollmentService, never()).createEnrollment(any());[m
+[32m+[m[32m      verify(skillGapRecommendationService, never()).updateRecommendation(any(), any());[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Remediation enrollment fails when recommendation was rejected (isAcceptedFlag=false, acceptedOn=null)")[m
+[32m+[m[32m    void shouldRejectRemediationEnrollmentWhenRecommendationIsRejected() {[m
+[32m+[m[32m      SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();[m
+[32m+[m[32m      request.setRecommendationId(1001L);[m
+[32m+[m
+[32m+[m[32m      CreateTrainingEnrollmentRequest enrolReq = new CreateTrainingEnrollmentRequest();[m
+[32m+[m[32m      enrolReq.setCourseId(501L);[m
+[32m+[m[32m      request.setEnrollmentRequest(enrolReq);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse rejectedRec = new SkillGapRecommendationResponse([m
+[32m+[m[32m          1001L, 201L, "SG-2026-201", 1, 1L, "UPSKILL", "Upskill",[m
+[32m+[m[32m          501L, "CRS-501", "Course 501", null, null, null, false, null, "Declined by trainee",[m
+[32m+[m[32m          1L, LocalDateTime.now().minusDays(2), LocalDateTime.now());[m
+[32m+[m[32m      when(skillGapRecommendationService.getRecommendationById(1001L)).thenReturn(rejectedRec);[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.enrollTraineeInRemediationCourse(request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("RECOMMENDATION_NOT_ACCEPTED");[m
+[32m+[m
+[32m+[m[32m      verify(trainingEnrollmentService, never()).createEnrollment(any());[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Remediation enrollment succeeds when recommendation is already accepted and all validations pass")[m
+[32m+[m[32m    void shouldEnrollWhenRecommendationAlreadyAcceptedAndAllValidationsPass() {[m
+[32m+[m[32m      SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();[m
+[32m+[m[32m      request.setRecommendationId(1001L);[m
+[32m+[m
+[32m+[m[32m      CreateTrainingEnrollmentRequest enrolReq = new CreateTrainingEnrollmentRequest();[m
+[32m+[m[32m      enrolReq.setCourseId(501L);[m
+[32m+[m[32m      request.setEnrollmentRequest(enrolReq);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse acceptedRec = buildRecommendationResponse(1001L, 201L, 501L, true);[m
+[32m+[m[32m      when(skillGapRecommendationService.getRecommendationById(1001L)).thenReturn(acceptedRec);[m
+[32m+[m
+[32m+[m[32m      SkillGap mockGapEntity = buildRecommendationEntity(1001L, 201L, 501L, 101L, true, "OPEN", true).getSkillGap();[m
+[32m+[m[32m      when(skillGapRepository.findById(201L)).thenReturn(Optional.of(mockGapEntity));[m
+[32m+[m
+[32m+[m[32m      RefSkillGapStatus inRemediationStatus = new RefSkillGapStatus();[m
+[32m+[m[32m      inRemediationStatus.setStatusCode("IN_REMEDIATION");[m
+[32m+[m[32m      when(refSkillGapStatusRepository.findByStatusCode("IN_REMEDIATION")).thenReturn(Optional.of(inRemediationStatus));[m
+[32m+[m
+[32m+[m[32m      TrainingEnrollmentResponse mockEnrollment = new TrainingEnrollmentResponse();[m
+[32m+[m[32m      mockEnrollment.setId(3001L);[m
+[32m+[m[32m      when(trainingEnrollmentService.createEnrollment(any())).thenReturn(mockEnrollment);[m
+[32m+[m
+[32m+[m[32m      SkillGapRemediationEnrollmentResponse response = workflowService.enrollTraineeInRemediationCourse(request);[m
+[32m+[m
+[32m+[m[32m      assertThat(response).isNotNull();[m
+[32m+[m[32m      assertThat(response.createdEnrollment().getId()).isEqualTo(3001L);[m
+[32m+[m[32m      assertThat(response.recommendation().isAcceptedFlag()).isTrue();[m
+[32m+[m[32m      verify(skillGapRepository).save(mockGapEntity);[m
+[32m+[m[32m      assertThat(mockGapEntity.getSkillGapStatus().getStatusCode()).isEqualTo("IN_REMEDIATION");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Remediation enrollment fails closed when linked gap entity not found")[m
+[32m+[m[32m    void shouldFailClosedWhenLinkedGapEntityNotFound() {[m
+[32m+[m[32m      SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();[m
+[32m+[m[32m      request.setRecommendationId(1001L);[m
+[32m+[m[32m      CreateTrainingEnrollmentRequest enrolReq = new CreateTrainingEnrollmentRequest();[m
+[32m+[m[32m      enrolReq.setCourseId(501L);[m
+[32m+[m[32m      request.setEnrollmentRequest(enrolReq);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse acceptedRec = buildRecommendationResponse(1001L, 201L, 501L, true);[m
+[32m+[m[32m      when(skillGapRecommendationService.getRecommendationById(1001L)).thenReturn(acceptedRec);[m
+[32m+[m[32m      when(skillGapRepository.findById(201L)).thenReturn(Optional.empty());[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.enrollTraineeInRemediationCourse(request))[m
+[32m+[m[32m          .isInstanceOf(ResourceNotFoundException.class);[m
+[32m+[m
+[32m+[m[32m      verify(trainingEnrollmentService, never()).createEnrollment(any());[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Remediation enrollment fails closed when IN_REMEDIATION reference status record missing")[m
+[32m+[m[32m    void shouldFailClosedWhenInRemediationStatusMissing() {[m
+[32m+[m[32m      SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();[m
+[32m+[m[32m      request.setRecommendationId(1001L);[m
+[32m+[m[32m      CreateTrainingEnrollmentRequest enrolReq = new CreateTrainingEnrollmentRequest();[m
+[32m+[m[32m      enrolReq.setCourseId(501L);[m
+[32m+[m[32m      request.setEnrollmentRequest(enrolReq);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse acceptedRec = buildRecommendationResponse(1001L, 201L, 501L, true);[m
+[32m+[m[32m      when(skillGapRecommendationService.getRecommendationById(1001L)).thenReturn(acceptedRec);[m
+[32m+[m
+[32m+[m[32m      SkillGap mockGapEntity = buildRecommendationEntity(1001L, 201L, 501L, 101L, true, "OPEN", true).getSkillGap();[m
+[32m+[m[32m      when(skillGapRepository.findById(201L)).thenReturn(Optional.of(mockGapEntity));[m
+[32m+[m[32m      when(refSkillGapStatusRepository.findByStatusCode("IN_REMEDIATION")).thenReturn(Optional.empty());[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.enrollTraineeInRemediationCourse(request))[m
+[32m+[m[32m          .isInstanceOf(ResourceNotFoundException.class);[m
+[32m+[m
+[32m+[m[32m      verify(trainingEnrollmentService, never()).createEnrollment(any());[m
+[32m+[m[32m      verify(skillGapRepository, never()).save(any());[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Remediation enrollment fails when authenticated trainee does not match recommendation trainee")[m
+[32m+[m[32m    void shouldRejectEnrollmentWhenAuthenticatedTraineeMismatch() {[m
+[32m+[m[32m      SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();[m
+[32m+[m[32m      request.setRecommendationId(1001L);[m
+[32m+[m[32m      CreateTrainingEnrollmentRequest enrolReq = new CreateTrainingEnrollmentRequest();[m
+[32m+[m[32m      enrolReq.setCourseId(501L);[m
+[32m+[m[32m      request.setEnrollmentRequest(enrolReq);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse acceptedRec = buildRecommendationResponse(1001L, 201L, 501L, true);[m
+[32m+[m[32m      when(skillGapRecommendationService.getRecommendationById(1001L)).thenReturn(acceptedRec);[m
+[32m+[m
+[32m+[m[32m      SkillGap mockGapEntity = buildRecommendationEntity(1001L, 201L, 501L, 101L, true, "OPEN", true).getSkillGap();[m
+[32m+[m[32m      when(skillGapRepository.findById(201L)).thenReturn(Optional.of(mockGapEntity));[m
+[32m+[m
+[32m+[m[32m      // Authenticate as a different trainee[m
+[32m+[m[32m      UserPrincipal principal = new UserPrincipal(99L, "otherTrainee");[m
+[32m+[m[32m      SecurityContextHolder.getContext().setAuthentication([m
+[32m+[m[32m          new UsernamePasswordAuthenticationToken(principal, null, Collections.emptyList()));[m
+[32m+[m
+[32m+[m[32m      Trainee otherTrainee = new Trainee();[m
+[32m+[m[32m      otherTrainee.setId(999L);[m
+[32m+[m[32m      when(traineeRepository.findByUserId(99L)).thenReturn(Optional.of(otherTrainee));[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.enrollTraineeInRemediationCourse(request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("TRAINEE_MISMATCH");[m
+[32m+[m
+[32m+[m[32m      verify(trainingEnrollmentService, never()).createEnrollment(any());[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Remediation enrollment fails when course does not teach the gap skill")[m
+[32m+[m[32m    void shouldRejectRemediationEnrollmentWhenCourseDoesNotTeachSkill() {[m
+[32m+[m[32m      SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();[m
+[32m+[m[32m      request.setRecommendationId(1001L);[m
+[32m+[m
+[32m+[m[32m      CreateTrainingEnrollmentRequest enrolReq = new CreateTrainingEnrollmentRequest();[m
+[32m+[m[32m      enrolReq.setCourseId(501L);[m
+[32m+[m[32m      request.setEnrollmentRequest(enrolReq);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse acceptedRec = buildRecommendationResponse(1001L, 201L, 501L, true);[m
+[32m+[m[32m      when(skillGapRecommendationService.getRecommendationById(1001L)).thenReturn(acceptedRec);[m
+[32m+[m
+[32m+[m[32m      SkillGap mockGapEntity = buildRecommendationEntity(1001L, 201L, 501L, 101L, true, "OPEN", true).getSkillGap();[m
+[32m+[m[32m      when(skillGapRepository.findById(201L)).thenReturn(Optional.of(mockGapEntity));[m
+[32m+[m
+[32m+[m[32m      when(courseSkillRepository.existsByCourseIdAndSkillId(501L, 101L)).thenReturn(false);[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.enrollTraineeInRemediationCourse(request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("COURSE_SKILL_MISMATCH");[m
+[32m+[m
+[32m+[m[32m      verify(trainingEnrollmentService, never()).createEnrollment(any());[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Remediation enrollment fails when gap is already in active remediation (prevent duplicates)")[m
+[32m+[m[32m    void shouldRejectRemediationEnrollmentWhenDuplicateActiveRemediation() {[m
+[32m+[m[32m      SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();[m
+[32m+[m[32m      request.setRecommendationId(1001L);[m
+[32m+[m
+[32m+[m[32m      CreateTrainingEnrollmentRequest enrolReq = new CreateTrainingEnrollmentRequest();[m
+[32m+[m[32m      enrolReq.setCourseId(501L);[m
+[32m+[m[32m      request.setEnrollmentRequest(enrolReq);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse acceptedRec = buildRecommendationResponse(1001L, 201L, 501L, true);[m
+[32m+[m[32m      when(skillGapRecommendationService.getRecommendationById(1001L)).thenReturn(acceptedRec);[m
+[32m+[m
+[32m+[m[32m      SkillGap mockGapEntity = buildRecommendationEntity(1001L, 201L, 501L, 101L, true, "IN_REMEDIATION", true).getSkillGap();[m
+[32m+[m[32m      when(skillGapRepository.findById(201L)).thenReturn(Optional.of(mockGapEntity));[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.enrollTraineeInRemediationCourse(request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("DUPLICATE_REMEDIATION_ENROLLMENT");[m
+[32m+[m
+[32m+[m[32m      verify(trainingEnrollmentService, never()).createEnrollment(any());[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Remediation enrollment fails when enrollment trainee does not match gap trainee")[m
+[32m+[m[32m    void shouldRejectRemediationEnrollmentWhenTraineeMismatch() {[m
+[32m+[m[32m      SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();[m
+[32m+[m[32m      request.setRecommendationId(1001L);[m
+[32m+[m
+[32m+[m[32m      CreateTrainingEnrollmentRequest enrolReq = new CreateTrainingEnrollmentRequest();[m
+[32m+[m[32m      enrolReq.setCourseId(501L);[m
+[32m+[m[32m      enrolReq.setTraineeId(999L); // mismatch with TRAINEE_ID (100L)[m
+[32m+[m[32m      request.setEnrollmentRequest(enrolReq);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse acceptedRec = buildRecommendationResponse(1001L, 201L, 501L, true);[m
+[32m+[m[32m      when(skillGapRecommendationService.getRecommendationById(1001L)).thenReturn(acceptedRec);[m
+[32m+[m
+[32m+[m[32m      SkillGap mockGapEntity = buildRecommendationEntity(1001L, 201L, 501L, 101L, true, "OPEN", true).getSkillGap();[m
+[32m+[m[32m      when(skillGapRepository.findById(201L)).thenReturn(Optional.of(mockGapEntity));[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.enrollTraineeInRemediationCourse(request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("TRAINEE_MISMATCH");[m
+[32m+[m
+[32m+[m[32m      verify(trainingEnrollmentService, never()).createEnrollment(any());[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Remediation enrollment fails when gap is inactive or already resolved")[m
+[32m+[m[32m    void shouldRejectRemediationEnrollmentWhenGapNotActiveOrResolved() {[m
+[32m+[m[32m      SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();[m
+[32m+[m[32m      request.setRecommendationId(1001L);[m
+[32m+[m
+[32m+[m[32m      CreateTrainingEnrollmentRequest enrolReq = new CreateTrainingEnrollmentRequest();[m
+[32m+[m[32m      enrolReq.setCourseId(501L);[m
+[32m+[m[32m      request.setEnrollmentRequest(enrolReq);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse acceptedRec = buildRecommendationResponse(1001L, 201L, 501L, true);[m
+[32m+[m[32m      when(skillGapRecommendationService.getRecommendationById(1001L)).thenReturn(acceptedRec);[m
+[32m+[m
+[32m+[m[32m      SkillGap mockGapEntity = buildRecommendationEntity(1001L, 201L, 501L, 101L, true, "RESOLVED", false).getSkillGap();[m
+[32m+[m[32m      when(skillGapRepository.findById(201L)).thenReturn(Optional.of(mockGapEntity));[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.enrollTraineeInRemediationCourse(request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("SKILL_GAP_NOT_ACTIVE");[m
+[32m+[m
+[32m+[m[32m      verify(trainingEnrollmentService, never()).createEnrollment(any());[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Remediation enrollment fails when recommendation does not specify a course")[m
+[32m+[m[32m    void shouldRejectRemediationEnrollmentWhenRecommendationMissingCourse() {[m
+[32m+[m[32m      SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();[m
+[32m+[m[32m      request.setRecommendationId(1001L);[m
+[32m+[m
+[32m+[m[32m      CreateTrainingEnrollmentRequest enrolReq = new CreateTrainingEnrollmentRequest();[m
+[32m+[m[32m      request.setEnrollmentRequest(enrolReq);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse recWithoutCourse = new SkillGapRecommendationResponse([m
+[32m+[m[32m          1001L, 201L, "SG-2026-201", 1, 1L, "UPSKILL", "Upskill",[m
+[32m+[m[32m          null, null, null, null, null, null, true, LocalDate.now(), "Notes",[m
+[32m+[m[32m          1L, LocalDateTime.now().minusDays(1), LocalDateTime.now());[m
+[32m+[m[32m      when(skillGapRecommendationService.getRecommendationById(1001L)).thenReturn(recWithoutCourse);[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.enrollTraineeInRemediationCourse(request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("RECOMMENDED_COURSE_MISSING");[m
+[32m+[m
+[32m+[m[32m      verify(trainingEnrollmentService, never()).createEnrollment(any());[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Remediation enrollment fails when caller is unauthenticated")[m
+[32m+[m[32m    void shouldRejectEnrollmentWhenUnauthenticated() {[m
+[32m+[m[32m      SecurityContextHolder.clearContext();[m
+[32m+[m[32m      SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();[m
+[32m+[m[32m      request.setRecommendationId(1001L);[m
+[32m+[m[32m      CreateTrainingEnrollmentRequest enrolReq = new CreateTrainingEnrollmentRequest();[m
+[32m+[m[32m      enrolReq.setCourseId(501L);[m
+[32m+[m[32m      request.setEnrollmentRequest(enrolReq);[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.enrollTraineeInRemediationCourse(request))[m
+[32m+[m[32m          .isInstanceOf(InvalidCredentialsException.class)[m
+[32m+[m[32m          .hasMessageContaining("User is not authenticated");[m
+[32m+[m
+[32m+[m[32m      verify(trainingEnrollmentService, never()).createEnrollment(any());[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Remediation enrollment fails when gap status is RESOLVED")[m
+[32m+[m[32m    void shouldRejectEnrollmentWhenGapStatusIsResolved() {[m
+[32m+[m[32m      SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();[m
+[32m+[m[32m      request.setRecommendationId(1001L);[m
+[32m+[m[32m      CreateTrainingEnrollmentRequest enrolReq = new CreateTrainingEnrollmentRequest();[m
+[32m+[m[32m      enrolReq.setCourseId(501L);[m
+[32m+[m[32m      request.setEnrollmentRequest(enrolReq);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse acceptedRec = buildRecommendationResponse(1001L, 201L, 501L, true);[m
+[32m+[m[32m      when(skillGapRecommendationService.getRecommendationById(1001L)).thenReturn(acceptedRec);[m
+[32m+[m
+[32m+[m[32m      SkillGap mockGapEntity = buildRecommendationEntity(1001L, 201L, 501L, 101L, true, "RESOLVED", true).getSkillGap();[m
+[32m+[m[32m      when(skillGapRepository.findById(201L)).thenReturn(Optional.of(mockGapEntity));[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.enrollTraineeInRemediationCourse(request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("SKILL_GAP_NOT_ACTIVE");[m
+[32m+[m
+[32m+[m[32m      verify(trainingEnrollmentService, never()).createEnrollment(any());[m
+[32m+[m[32m      verify(skillGapRepository, never()).save(any());[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Remediation enrollment fails when gap status is CLOSED_UNRESOLVED")[m
+[32m+[m[32m    void shouldRejectEnrollmentWhenGapStatusIsClosedUnresolved() {[m
+[32m+[m[32m      SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();[m
+[32m+[m[32m      request.setRecommendationId(1001L);[m
+[32m+[m[32m      CreateTrainingEnrollmentRequest enrolReq = new CreateTrainingEnrollmentRequest();[m
+[32m+[m[32m      enrolReq.setCourseId(501L);[m
+[32m+[m[32m      request.setEnrollmentRequest(enrolReq);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse acceptedRec = buildRecommendationResponse(1001L, 201L, 501L, true);[m
+[32m+[m[32m      when(skillGapRecommendationService.getRecommendationById(1001L)).thenReturn(acceptedRec);[m
+[32m+[m
+[32m+[m[32m      SkillGap mockGapEntity = buildRecommendationEntity(1001L, 201L, 501L, 101L, true, "CLOSED_UNRESOLVED", true).getSkillGap();[m
+[32m+[m[32m      when(skillGapRepository.findById(201L)).thenReturn(Optional.of(mockGapEntity));[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.enrollTraineeInRemediationCourse(request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("SKILL_GAP_NOT_ACTIVE");[m
+[32m+[m
+[32m+[m[32m      verify(trainingEnrollmentService, never()).createEnrollment(any());[m
+[32m+[m[32m      verify(skillGapRepository, never()).save(any());[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Remediation enrollment fails when gap status is SUPERSEDED")[m
+[32m+[m[32m    void shouldRejectEnrollmentWhenGapStatusIsSuperseded() {[m
+[32m+[m[32m      SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();[m
+[32m+[m[32m      request.setRecommendationId(1001L);[m
+[32m+[m[32m      CreateTrainingEnrollmentRequest enrolReq = new CreateTrainingEnrollmentRequest();[m
+[32m+[m[32m      enrolReq.setCourseId(501L);[m
+[32m+[m[32m      request.setEnrollmentRequest(enrolReq);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse acceptedRec = buildRecommendationResponse(1001L, 201L, 501L, true);[m
+[32m+[m[32m      when(skillGapRecommendationService.getRecommendationById(1001L)).thenReturn(acceptedRec);[m
+[32m+[m
+[32m+[m[32m      SkillGap mockGapEntity = buildRecommendationEntity(1001L, 201L, 501L, 101L, true, "SUPERSEDED", true).getSkillGap();[m
+[32m+[m[32m      when(skillGapRepository.findById(201L)).thenReturn(Optional.of(mockGapEntity));[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.enrollTraineeInRemediationCourse(request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("SKILL_GAP_NOT_ACTIVE");[m
+[32m+[m
+[32m+[m[32m      verify(trainingEnrollmentService, never()).createEnrollment(any());[m
+[32m+[m[32m      verify(skillGapRepository, never()).save(any());[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Remediation enrollment fails when gap is inactive (isCurrent = false)")[m
+[32m+[m[32m    void shouldRejectEnrollmentWhenGapIsInactive() {[m
+[32m+[m[32m      SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();[m
+[32m+[m[32m      request.setRecommendationId(1001L);[m
+[32m+[m[32m      CreateTrainingEnrollmentRequest enrolReq = new CreateTrainingEnrollmentRequest();[m
+[32m+[m[32m      enrolReq.setCourseId(501L);[m
+[32m+[m[32m      request.setEnrollmentRequest(enrolReq);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse acceptedRec = buildRecommendationResponse(1001L, 201L, 501L, true);[m
+[32m+[m[32m      when(skillGapRecommendationService.getRecommendationById(1001L)).thenReturn(acceptedRec);[m
+[32m+[m
+[32m+[m[32m      SkillGap mockGapEntity = buildRecommendationEntity(1001L, 201L, 501L, 101L, true, "OPEN", false).getSkillGap();[m
+[32m+[m[32m      when(skillGapRepository.findById(201L)).thenReturn(Optional.of(mockGapEntity));[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.enrollTraineeInRemediationCourse(request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("SKILL_GAP_NOT_ACTIVE");[m
+[32m+[m
+[32m+[m[32m      verify(trainingEnrollmentService, never()).createEnrollment(any());[m
+[32m+[m[32m      verify(skillGapRepository, never()).save(any());[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Remediation enrollment fails when gap status is not OPEN")[m
+[32m+[m[32m    void shouldRejectEnrollmentWhenGapStatusIsNotOpen() {[m
+[32m+[m[32m      SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();[m
+[32m+[m[32m      request.setRecommendationId(1001L);[m
+[32m+[m[32m      CreateTrainingEnrollmentRequest enrolReq = new CreateTrainingEnrollmentRequest();[m
+[32m+[m[32m      enrolReq.setCourseId(501L);[m
+[32m+[m[32m      request.setEnrollmentRequest(enrolReq);[m
+[32m+[m
+[32m+[m[32m      SkillGapRecommendationResponse acceptedRec = buildRecommendationResponse(1001L, 201L, 501L, true);[m
+[32m+[m[32m      when(skillGapRecommendationService.getRecommendationById(1001L)).thenReturn(acceptedRec);[m
+[32m+[m
+[32m+[m[32m      SkillGap mockGapEntity = buildRecommendationEntity(1001L, 201L, 501L, 101L, true, "PENDING", true).getSkillGap();[m
+[32m+[m[32m      when(skillGapRepository.findById(201L)).thenReturn(Optional.of(mockGapEntity));[m
+[32m+[m
+[32m+[m[32m      assertThatThrownBy(() -> workflowService.enrollTraineeInRemediationCourse(request))[m
+[32m+[m[32m          .isInstanceOf(BadRequestException.class)[m
+[32m+[m[32m          .extracting("errorCode").isEqualTo("INVALID_GAP_STATUS");[m
+[32m+[m
+[32m+[m[32m      verify(trainingEnrollmentService, never()).createEnrollment(any());[m
+[32m+[m[32m      verify(skillGapRepository, never()).save(any());[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    @Test[m
+[32m+[m[32m    @DisplayName("Remediation enrollment fails if recommendationStatusUpdate attempts to mutate acceptance status, preserving enrollment and gap status")[m
+[32m+[m[32m    void shouldRejectEnrollmentWhenStatusUpdateAttemptsToMutateAcceptance() {[m
+[32m+[m[32m      SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();[m
+[32m+[m[32m      request.setRecommendationId(1001L);[m
+[32m+[m[32m      CreateTrainingEnrollmentRequest enrolReq = new CreateTrainingEnrollmentRequest();[m
+[32m+[m[32m      enrolReq.setCourseId(501L);[m
+[32m+[m[32m      request.setEnrollmentRequest(enrolReq);[m
+[32m+[m
+[32m+[m[32m      UpdateSkillGapRecommendationRequest updateReq = new UpdateSkillGapRecommendationRequest();[m
+[32m+[m[32m      updateReq.setIsAcceptedFlag(false)
