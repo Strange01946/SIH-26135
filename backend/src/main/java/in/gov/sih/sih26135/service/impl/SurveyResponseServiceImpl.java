@@ -79,7 +79,7 @@ public class SurveyResponseServiceImpl implements SurveyResponseService {
     }
 
     if (surveyResponseRepository.existsBySurveyIdAndTraineeIdAndAttemptNumber(request.getSurveyId(), request.getTraineeId(), attempt)) {
-      throw new ConflictException("Survey response already exists for this survey, trainee, and attempt number", "DUPLICATE_SURVEY_RESPONSE_ATTEMPT");
+      throw new ConflictException("Survey response already exists for this survey, trainee, and attempt", "DUPLICATE_SURVEY_RESPONSE");
     }
 
     Trainee trainee = traineeRepository.findById(request.getTraineeId())

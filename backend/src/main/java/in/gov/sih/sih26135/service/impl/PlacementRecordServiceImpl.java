@@ -232,13 +232,13 @@ public class PlacementRecordServiceImpl implements PlacementRecordService {
 
     if (request.getJobApplicationId() != null) {
       if (placementRecordRepository.findByJobApplicationId(request.getJobApplicationId()).isPresent()) {
-        throw new ConflictException("Job application is already associated with another placement record", "DUPLICATE_JOB_APPLICATION_PLACEMENT");
+        throw new ConflictException("Placement record already exists for this job application", "DUPLICATE_PLACEMENT_APPLICATION");
       }
     }
 
     if (request.getJobPostingId() != null) {
       if (placementRecordRepository.findByEnrollmentIdAndJobPostingId(request.getEnrollmentId(), request.getJobPostingId()).isPresent()) {
-        throw new ConflictException("Placement record already exists for this enrollment and job posting", "DUPLICATE_ENROLLMENT_JOB_POSTING_PLACEMENT");
+        throw new ConflictException("Placement record already exists for this enrollment and job posting", "DUPLICATE_PLACEMENT_ENROLLMENT_POSTING");
       }
     }
 

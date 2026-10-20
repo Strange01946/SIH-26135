@@ -175,7 +175,7 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
 
     String enrollmentNumber = request.getEnrollmentNumber().trim();
     if (trainingEnrollmentRepository.existsByEnrollmentNumber(enrollmentNumber)) {
-      throw new ConflictException("Enrollment number already exists", "ENROLLMENT_NUMBER_ALREADY_EXISTS");
+      throw new ConflictException("Training enrollment number already exists", "DUPLICATE_ENROLLMENT_NUMBER");
     }
 
     if (trainingEnrollmentRepository.existsByTraineeIdAndTrainingBatchId(request.getTraineeId(), request.getBatchId())) {

@@ -94,7 +94,7 @@ public class TraineeServiceImpl implements TraineeService {
 
     String regNumber = request.getRegistrationNumber().trim();
     if (traineeRepository.existsByRegistrationNumber(regNumber)) {
-      throw new ConflictException("Registration number already exists", "REGISTRATION_NUMBER_ALREADY_EXISTS");
+      throw new ConflictException("Trainee registration number already exists", "DUPLICATE_TRAINEE_REGISTRATION");
     }
 
     User user = null;

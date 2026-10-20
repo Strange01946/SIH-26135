@@ -92,7 +92,7 @@ public class FollowupTaskServiceImpl implements FollowupTaskService {
     }
 
     if (followupTaskRepository.existsByFollowupCampaignIdAndTraineeId(request.getFollowupCampaignId(), request.getTraineeId())) {
-      throw new ConflictException("Followup task already exists for this campaign and trainee", "DUPLICATE_CAMPAIGN_TRAINEE_TASK");
+      throw new ConflictException("Follow-up task already exists for this campaign and trainee", "DUPLICATE_FOLLOWUP_TASK");
     }
 
     if (request.getNextFollowupDate() != null && request.getNextFollowupDate().isBefore(request.getScheduledDate())) {
