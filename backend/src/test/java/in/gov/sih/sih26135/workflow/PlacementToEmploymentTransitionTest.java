@@ -26,6 +26,7 @@ import in.gov.sih.sih26135.service.EmploymentRecordService;
 import in.gov.sih.sih26135.service.PlacementRecordService;
 import in.gov.sih.sih26135.service.SalaryHistoryService;
 import in.gov.sih.sih26135.service.impl.PlacementEmploymentWorkflowServiceImpl;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -46,6 +47,7 @@ class PlacementToEmploymentTransitionTest {
   @Mock private EmploymentRecordRepository employmentRecordRepository;
   @Mock private RefPlacementStatusRepository refPlacementStatusRepository;
   @Mock private RefJoiningStatusRepository refJoiningStatusRepository;
+  @Mock private WorkflowSecurityScopeValidator scopeValidator;
 
   private PlacementEmploymentWorkflowServiceImpl workflowService;
 
@@ -53,7 +55,8 @@ class PlacementToEmploymentTransitionTest {
   void setUp() {
     workflowService = new PlacementEmploymentWorkflowServiceImpl(
         placementRecordService, employmentRecordService, salaryHistoryService,
-        employmentRecordRepository, refPlacementStatusRepository, refJoiningStatusRepository
+        employmentRecordRepository, refPlacementStatusRepository, refJoiningStatusRepository,
+        scopeValidator
     );
   }
 
@@ -409,5 +412,40 @@ class PlacementToEmploymentTransitionTest {
 
     verify(employmentRecordService).createEmploymentRecord(any());
     verify(salaryHistoryService).createSalaryHistory(any());
+  }
+
+  @Test
+  @DisplayName("Rejects placement transition when caller is out of employer scope")
+  void testTransitionPlacement_outOfScopeEmployer_rejected() {
+    PlacementRecordResponse placement = buildPlacementResponse("OFFERED", "PENDING", null);
+    when(placementRecordService.getPlacementRecordById(10L)).thenReturn(placement);
+
+    org.mockito.Mockito.doThrow(new BadRequestException(
+        "Authenticated employer is not authorized to act on records of another employer",
+        "EMPLOYER_MISMATCH"))
+        .when(scopeValidator).validateEmployerScope(600L);
+
+    PlacementToEmploymentTransitionRequest request = new PlacementToEmploymentTransitionRequest();
+    request.setPlacementId(10L);
+    request.setEmploymentRecordRequest(new CreateEmploymentRecordRequest());
+
+    assertThatThrownBy(() -> workflowService.transitionPlacementToEmployment(request))
+        .isInstanceOf(BadRequestException.class)
+        .extracting("errorCode").isEqualTo("EMPLOYER_MISMATCH");
+
+    verify(employmentRecordService, never()).createEmploymentRecord(any());
+  }
+
+  @Test
+  @DisplayName("Rejects placement summary when caller is out of trainee scope")
+  void testGetSummary_outOfScopeTrainee_rejected() {
+    org.mockito.Mockito.doThrow(new BadRequestException(
+        "Authenticated trainee is not authorized to act on records of another trainee",
+        "TRAINEE_MISMATCH"))
+        .when(scopeValidator).validateTraineeScope(100L);
+
+    assertThatThrownBy(() -> workflowService.getTraineePlacementEmploymentSummary(100L))
+        .isInstanceOf(BadRequestException.class)
+        .extracting("errorCode").isEqualTo("TRAINEE_MISMATCH");
   }
 }

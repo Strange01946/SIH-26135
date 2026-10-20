@@ -12,13 +12,16 @@ import in.gov.sih.sih26135.dto.response.RecordFollowupSurveyResponseResponse;
 import in.gov.sih.sih26135.dto.response.SurveyResponseResponse;
 import in.gov.sih.sih26135.dto.response.TraineeEngagementHistoryResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
+import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.service.CommunicationLogService;
 import in.gov.sih.sih26135.service.FollowupEngagementWorkflowService;
 import in.gov.sih.sih26135.service.FollowupTaskService;
 import in.gov.sih.sih26135.service.SurveyResponseService;
 import in.gov.sih.sih26135.service.TraineeConsentService;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,16 +33,34 @@ public class FollowupEngagementWorkflowServiceImpl implements FollowupEngagement
   private final SurveyResponseService surveyResponseService;
   private final CommunicationLogService communicationLogService;
   private final TraineeConsentService traineeConsentService;
+  private final WorkflowSecurityScopeValidator scopeValidator;
+
+  @Autowired
+  public FollowupEngagementWorkflowServiceImpl(
+      FollowupTaskService followupTaskService,
+      SurveyResponseService surveyResponseService,
+      CommunicationLogService communicationLogService,
+      TraineeConsentService traineeConsentService,
+      WorkflowSecurityScopeValidator scopeValidator) {
+    this.followupTaskService = followupTaskService;
+    this.surveyResponseService = surveyResponseService;
+    this.communicationLogService = communicationLogService;
+    this.traineeConsentService = traineeConsentService;
+    this.scopeValidator = scopeValidator;
+  }
 
   public FollowupEngagementWorkflowServiceImpl(
       FollowupTaskService followupTaskService,
       SurveyResponseService surveyResponseService,
       CommunicationLogService communicationLogService,
       TraineeConsentService traineeConsentService) {
-    this.followupTaskService = followupTaskService;
-    this.surveyResponseService = surveyResponseService;
-    this.communicationLogService = communicationLogService;
-    this.traineeConsentService = traineeConsentService;
+    this(
+        followupTaskService,
+        surveyResponseService,
+        communicationLogService,
+        traineeConsentService,
+        null
+    );
   }
 
   @Override
@@ -56,7 +77,16 @@ public class FollowupEngagementWorkflowServiceImpl implements FollowupEngagement
       throw new BadRequestException("Survey response request is required", "SURVEY_RESPONSE_REQUEST_REQUIRED");
     }
 
+    ensureScopeValidator();
     FollowupTaskResponse task = followupTaskService.getFollowupTaskById(request.getFollowupTaskId());
+    if (task == null) {
+      throw new ResourceNotFoundException("FollowupTask", "followupTaskId");
+    }
+    if (task.getTraineeId() == null) {
+      throw new BadRequestException("Followup task does not have an associated trainee", "TRAINEE_REQUIRED");
+    }
+    scopeValidator.validateTraineeScope(task.getTraineeId());
+
     CreateSurveyResponseRequest surveyReq = request.getSurveyResponseRequest();
 
     if (surveyReq.getTraineeId() == null) {
@@ -115,7 +145,16 @@ public class FollowupEngagementWorkflowServiceImpl implements FollowupEngagement
       throw new BadRequestException("Communication log request is required", "COMMUNICATION_LOG_REQUEST_REQUIRED");
     }
 
+    ensureScopeValidator();
     FollowupTaskResponse task = followupTaskService.getFollowupTaskById(request.getFollowupTaskId());
+    if (task == null) {
+      throw new ResourceNotFoundException("FollowupTask", "followupTaskId");
+    }
+    if (task.getTraineeId() == null) {
+      throw new BadRequestException("Followup task does not have an associated trainee", "TRAINEE_REQUIRED");
+    }
+    scopeValidator.validateTraineeScope(task.getTraineeId());
+
     CreateCommunicationLogRequest commReq = request.getCommunicationLogRequest();
 
     if (commReq.getTraineeId() == null) {
@@ -160,9 +199,18 @@ public class FollowupEngagementWorkflowServiceImpl implements FollowupEngagement
       throw new BadRequestException("Trainee ID is required", "TRAINEE_ID_REQUIRED");
     }
 
+    ensureScopeValidator();
+    scopeValidator.validateTraineeScope(traineeId);
+
     List<FollowupTaskResponse> tasks = followupTaskService.getFollowupTasksByTrainee(traineeId);
     List<SurveyResponseResponse> responses = surveyResponseService.getResponsesByTrainee(traineeId);
 
     return new TraineeEngagementHistoryResponse(traineeId, tasks, responses);
+  }
+
+  private void ensureScopeValidator() {
+    if (this.scopeValidator == null) {
+      throw new IllegalStateException("WorkflowSecurityScopeValidator is required for scope validation");
+    }
   }
 }

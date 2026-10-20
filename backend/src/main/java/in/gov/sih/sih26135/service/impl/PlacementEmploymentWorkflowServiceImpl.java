@@ -21,9 +21,11 @@ import in.gov.sih.sih26135.service.EmploymentRecordService;
 import in.gov.sih.sih26135.service.PlacementEmploymentWorkflowService;
 import in.gov.sih.sih26135.service.PlacementRecordService;
 import in.gov.sih.sih26135.service.SalaryHistoryService;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,6 +41,25 @@ public class PlacementEmploymentWorkflowServiceImpl implements PlacementEmployme
   private final EmploymentRecordRepository employmentRecordRepository;
   private final RefPlacementStatusRepository refPlacementStatusRepository;
   private final RefJoiningStatusRepository refJoiningStatusRepository;
+  private final WorkflowSecurityScopeValidator scopeValidator;
+
+  @Autowired
+  public PlacementEmploymentWorkflowServiceImpl(
+      PlacementRecordService placementRecordService,
+      EmploymentRecordService employmentRecordService,
+      SalaryHistoryService salaryHistoryService,
+      EmploymentRecordRepository employmentRecordRepository,
+      RefPlacementStatusRepository refPlacementStatusRepository,
+      RefJoiningStatusRepository refJoiningStatusRepository,
+      WorkflowSecurityScopeValidator scopeValidator) {
+    this.placementRecordService = placementRecordService;
+    this.employmentRecordService = employmentRecordService;
+    this.salaryHistoryService = salaryHistoryService;
+    this.employmentRecordRepository = employmentRecordRepository;
+    this.refPlacementStatusRepository = refPlacementStatusRepository;
+    this.refJoiningStatusRepository = refJoiningStatusRepository;
+    this.scopeValidator = scopeValidator;
+  }
 
   public PlacementEmploymentWorkflowServiceImpl(
       PlacementRecordService placementRecordService,
@@ -47,12 +68,15 @@ public class PlacementEmploymentWorkflowServiceImpl implements PlacementEmployme
       EmploymentRecordRepository employmentRecordRepository,
       RefPlacementStatusRepository refPlacementStatusRepository,
       RefJoiningStatusRepository refJoiningStatusRepository) {
-    this.placementRecordService = placementRecordService;
-    this.employmentRecordService = employmentRecordService;
-    this.salaryHistoryService = salaryHistoryService;
-    this.employmentRecordRepository = employmentRecordRepository;
-    this.refPlacementStatusRepository = refPlacementStatusRepository;
-    this.refJoiningStatusRepository = refJoiningStatusRepository;
+    this(
+        placementRecordService,
+        employmentRecordService,
+        salaryHistoryService,
+        employmentRecordRepository,
+        refPlacementStatusRepository,
+        refJoiningStatusRepository,
+        null
+    );
   }
 
   @Override
@@ -70,6 +94,24 @@ public class PlacementEmploymentWorkflowServiceImpl implements PlacementEmployme
     }
 
     PlacementRecordResponse placement = placementRecordService.getPlacementRecordById(request.getPlacementId());
+    if (placement == null) {
+      throw new ResourceNotFoundException("PlacementRecord", "placementId");
+    }
+
+    ensureScopeValidator();
+    if (placement.employerId() == null) {
+      throw new BadRequestException("Placement record has no associated employer", "EMPLOYER_REQUIRED");
+    }
+    scopeValidator.validateEmployerScope(placement.employerId());
+    if (request.getEmploymentRecordRequest().getEmployerId() == null) {
+      request.getEmploymentRecordRequest().setEmployerId(placement.employerId());
+    } else {
+      scopeValidator.validateEmployerScope(request.getEmploymentRecordRequest().getEmployerId());
+    }
+    if (placement.traineeId() == null) {
+      throw new BadRequestException("Placement record has no associated trainee", "TRAINEE_REQUIRED");
+    }
+    scopeValidator.validateTraineeScope(placement.traineeId());
 
     if (placement.deletedAt() != null) {
       throw new BadRequestException("Placement record is deleted and cannot be transitioned to employment", "PLACEMENT_RECORD_DELETED");
@@ -229,11 +271,20 @@ public class PlacementEmploymentWorkflowServiceImpl implements PlacementEmployme
     return new PlacementToEmploymentTransitionResponse(placement, employmentRecord, initialSalary);
   }
 
+  private void ensureScopeValidator() {
+    if (this.scopeValidator == null) {
+      throw new IllegalStateException("WorkflowSecurityScopeValidator is required for scope validation");
+    }
+  }
+
   @Override
   public TraineePlacementEmploymentSummaryResponse getTraineePlacementEmploymentSummary(Long traineeId) {
     if (traineeId == null) {
       throw new BadRequestException("Trainee ID is required", "TRAINEE_ID_REQUIRED");
     }
+
+    ensureScopeValidator();
+    scopeValidator.validateTraineeScope(traineeId);
 
     List<PlacementRecordResponse> placements = placementRecordService.getPlacementRecordsByTrainee(traineeId);
     List<EmploymentRecordResponse> employments = employmentRecordService.getEmploymentRecordsByTrainee(traineeId);

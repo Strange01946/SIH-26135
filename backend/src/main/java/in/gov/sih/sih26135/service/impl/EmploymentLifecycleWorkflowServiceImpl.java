@@ -23,7 +23,9 @@ import in.gov.sih.sih26135.service.EmploymentLifecycleWorkflowService;
 import in.gov.sih.sih26135.service.EmploymentRecordService;
 import in.gov.sih.sih26135.service.SalaryHistoryService;
 import in.gov.sih.sih26135.service.TraineeUnemploymentEventService;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,6 +38,23 @@ public class EmploymentLifecycleWorkflowServiceImpl implements EmploymentLifecyc
   private final TraineeUnemploymentEventService traineeUnemploymentEventService;
   private final SalaryHistoryService salaryHistoryService;
   private final TraineeUnemploymentEventRepository traineeUnemploymentEventRepository;
+  private final WorkflowSecurityScopeValidator scopeValidator;
+
+  @Autowired
+  public EmploymentLifecycleWorkflowServiceImpl(
+      EmploymentRecordService employmentRecordService,
+      EmploymentExitEventService employmentExitEventService,
+      TraineeUnemploymentEventService traineeUnemploymentEventService,
+      SalaryHistoryService salaryHistoryService,
+      TraineeUnemploymentEventRepository traineeUnemploymentEventRepository,
+      WorkflowSecurityScopeValidator scopeValidator) {
+    this.employmentRecordService = employmentRecordService;
+    this.employmentExitEventService = employmentExitEventService;
+    this.traineeUnemploymentEventService = traineeUnemploymentEventService;
+    this.salaryHistoryService = salaryHistoryService;
+    this.traineeUnemploymentEventRepository = traineeUnemploymentEventRepository;
+    this.scopeValidator = scopeValidator;
+  }
 
   public EmploymentLifecycleWorkflowServiceImpl(
       EmploymentRecordService employmentRecordService,
@@ -43,11 +62,14 @@ public class EmploymentLifecycleWorkflowServiceImpl implements EmploymentLifecyc
       TraineeUnemploymentEventService traineeUnemploymentEventService,
       SalaryHistoryService salaryHistoryService,
       TraineeUnemploymentEventRepository traineeUnemploymentEventRepository) {
-    this.employmentRecordService = employmentRecordService;
-    this.employmentExitEventService = employmentExitEventService;
-    this.traineeUnemploymentEventService = traineeUnemploymentEventService;
-    this.salaryHistoryService = salaryHistoryService;
-    this.traineeUnemploymentEventRepository = traineeUnemploymentEventRepository;
+    this(
+        employmentRecordService,
+        employmentExitEventService,
+        traineeUnemploymentEventService,
+        salaryHistoryService,
+        traineeUnemploymentEventRepository,
+        null
+    );
   }
 
   @Override
@@ -80,6 +102,33 @@ public class EmploymentLifecycleWorkflowServiceImpl implements EmploymentLifecyc
         );
       }
     }
+
+    ensureScopeValidator();
+    if (request.getExitEventRequest().getEmploymentId() == null) {
+      throw new BadRequestException("Employment ID is required for exit event", "EMPLOYMENT_ID_REQUIRED");
+    }
+    EmploymentRecordResponse emp = employmentRecordService.getEmploymentRecordById(
+        request.getExitEventRequest().getEmploymentId());
+    if (emp == null) {
+      throw new ResourceNotFoundException("EmploymentRecord", "employmentId");
+    }
+    if (emp.employerId() == null) {
+      throw new BadRequestException("Employment record has no associated employer", "EMPLOYER_REQUIRED");
+    }
+    scopeValidator.validateEmployerScope(emp.employerId());
+
+    if (request.getExitEventRequest().getTraineeId() == null) {
+      request.getExitEventRequest().setTraineeId(emp.traineeId());
+    } else if (!request.getExitEventRequest().getTraineeId().equals(emp.traineeId())) {
+      throw new BadRequestException(
+          "Exit event trainee does not match employment record trainee",
+          "TRAINEE_EMPLOYMENT_MISMATCH"
+      );
+    }
+    if (emp.traineeId() == null) {
+      throw new BadRequestException("Employment record has no associated trainee", "TRAINEE_REQUIRED");
+    }
+    scopeValidator.validateTraineeScope(emp.traineeId());
 
     EmploymentExitEventResponse exitEvent = employmentExitEventService.createExitEvent(request.getExitEventRequest());
 
@@ -132,6 +181,8 @@ public class EmploymentLifecycleWorkflowServiceImpl implements EmploymentLifecyc
       throw new BadRequestException("New employment request is required", "NEW_EMPLOYMENT_REQUEST_REQUIRED");
     }
 
+    ensureScopeValidator();
+
     TraineeUnemploymentEvent unempEvent = traineeUnemploymentEventRepository.findByIdForUpdate(
         request.getUnemploymentEventId())
         .orElseThrow(() -> new ResourceNotFoundException("TraineeUnemploymentEvent", "unemploymentEventId"));
@@ -154,6 +205,17 @@ public class EmploymentLifecycleWorkflowServiceImpl implements EmploymentLifecyc
           "TRAINEE_UNEMPLOYMENT_MISMATCH"
       );
     }
+
+    ensureScopeValidator();
+    if (unempEvent.getTrainee() == null || unempEvent.getTrainee().getId() == null) {
+      throw new BadRequestException("Unemployment event has no associated trainee", "TRAINEE_REQUIRED");
+    }
+    scopeValidator.validateTraineeScope(unempEvent.getTrainee().getId());
+
+    if (newEmpReq.getEmployerId() == null) {
+      throw new BadRequestException("Employer ID is required for new employment record", "EMPLOYER_ID_REQUIRED");
+    }
+    scopeValidator.validateEmployerScope(newEmpReq.getEmployerId());
 
     if (newEmpReq.getStartDate() != null && newEmpReq.getStartDate().isBefore(unempEvent.getStartDate())) {
       throw new BadRequestException(
@@ -226,10 +288,19 @@ public class EmploymentLifecycleWorkflowServiceImpl implements EmploymentLifecyc
       throw new BadRequestException("Trainee ID is required", "TRAINEE_ID_REQUIRED");
     }
 
+    ensureScopeValidator();
+    scopeValidator.validateTraineeScope(traineeId);
+
     List<EmploymentRecordResponse> empRecords = employmentRecordService.getEmploymentRecordsByTrainee(traineeId);
     List<EmploymentExitEventResponse> exitEvents = employmentExitEventService.getExitEventsByTraineeId(traineeId);
     List<TraineeUnemploymentEventResponse> unempEvents = traineeUnemploymentEventService.getUnemploymentEventsByTraineeId(traineeId);
 
     return new TraineeCareerTimelineResponse(traineeId, empRecords, exitEvents, unempEvents);
+  }
+
+  private void ensureScopeValidator() {
+    if (this.scopeValidator == null) {
+      throw new IllegalStateException("WorkflowSecurityScopeValidator is required for scope validation");
+    }
   }
 }

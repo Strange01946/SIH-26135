@@ -103,6 +103,7 @@ public class SkillGapRemediationWorkflowController {
    * @return 200 OK with updated SkillGapRecommendationResponse enveloped in ApiResponse
    */
   @PostMapping("/recommendations/{id}/accept")
+  @PreAuthorize("hasAnyAuthority('assessment.manage', 'enrollment.manage') or hasRole('trainee')")
   public ResponseEntity<ApiResponse<SkillGapRecommendationResponse>> acceptRecommendation(
       @PathVariable("id") Long id,
       @RequestBody(required = false) TraineeRecommendationDecisionRequest request,
@@ -130,6 +131,7 @@ public class SkillGapRemediationWorkflowController {
    * @return 200 OK with updated SkillGapRecommendationResponse enveloped in ApiResponse
    */
   @PostMapping("/recommendations/{id}/reject")
+  @PreAuthorize("hasAnyAuthority('assessment.manage', 'enrollment.manage') or hasRole('trainee')")
   public ResponseEntity<ApiResponse<SkillGapRecommendationResponse>> rejectRecommendation(
       @PathVariable("id") Long id,
       @RequestBody(required = false) TraineeRecommendationDecisionRequest request,

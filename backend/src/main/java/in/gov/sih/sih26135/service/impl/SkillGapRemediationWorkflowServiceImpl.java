@@ -32,6 +32,7 @@ import in.gov.sih.sih26135.service.SkillGapRecommendationService;
 import in.gov.sih.sih26135.service.SkillGapRemediationWorkflowService;
 import in.gov.sih.sih26135.service.SkillGapService;
 import in.gov.sih.sih26135.service.TrainingEnrollmentService;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -39,6 +40,7 @@ import java.util.List;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -61,6 +63,33 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
   private final RefSkillGapStatusRepository refSkillGapStatusRepository;
   private final TraineeRepository traineeRepository;
   private final SkillGapRecommendationMapper skillGapRecommendationMapper;
+  private final WorkflowSecurityScopeValidator scopeValidator;
+
+  @Autowired
+  public SkillGapRemediationWorkflowServiceImpl(
+      SkillGapAssessmentService skillGapAssessmentService,
+      SkillGapService skillGapService,
+      SkillGapRecommendationService skillGapRecommendationService,
+      TrainingEnrollmentService trainingEnrollmentService,
+      CourseSkillRepository courseSkillRepository,
+      SkillGapRepository skillGapRepository,
+      SkillGapRecommendationRepository skillGapRecommendationRepository,
+      RefSkillGapStatusRepository refSkillGapStatusRepository,
+      TraineeRepository traineeRepository,
+      SkillGapRecommendationMapper skillGapRecommendationMapper,
+      WorkflowSecurityScopeValidator scopeValidator) {
+    this.skillGapAssessmentService = skillGapAssessmentService;
+    this.skillGapService = skillGapService;
+    this.skillGapRecommendationService = skillGapRecommendationService;
+    this.trainingEnrollmentService = trainingEnrollmentService;
+    this.courseSkillRepository = courseSkillRepository;
+    this.skillGapRepository = skillGapRepository;
+    this.skillGapRecommendationRepository = skillGapRecommendationRepository;
+    this.refSkillGapStatusRepository = refSkillGapStatusRepository;
+    this.traineeRepository = traineeRepository;
+    this.skillGapRecommendationMapper = skillGapRecommendationMapper;
+    this.scopeValidator = scopeValidator;
+  }
 
   public SkillGapRemediationWorkflowServiceImpl(
       SkillGapAssessmentService skillGapAssessmentService,
@@ -73,16 +102,19 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
       RefSkillGapStatusRepository refSkillGapStatusRepository,
       TraineeRepository traineeRepository,
       SkillGapRecommendationMapper skillGapRecommendationMapper) {
-    this.skillGapAssessmentService = skillGapAssessmentService;
-    this.skillGapService = skillGapService;
-    this.skillGapRecommendationService = skillGapRecommendationService;
-    this.trainingEnrollmentService = trainingEnrollmentService;
-    this.courseSkillRepository = courseSkillRepository;
-    this.skillGapRepository = skillGapRepository;
-    this.skillGapRecommendationRepository = skillGapRecommendationRepository;
-    this.refSkillGapStatusRepository = refSkillGapStatusRepository;
-    this.traineeRepository = traineeRepository;
-    this.skillGapRecommendationMapper = skillGapRecommendationMapper;
+    this(
+        skillGapAssessmentService,
+        skillGapService,
+        skillGapRecommendationService,
+        trainingEnrollmentService,
+        courseSkillRepository,
+        skillGapRepository,
+        skillGapRecommendationRepository,
+        refSkillGapStatusRepository,
+        traineeRepository,
+        skillGapRecommendationMapper,
+        null
+    );
   }
 
   @Override
@@ -92,9 +124,24 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
     if (request == null) {
       throw new BadRequestException("Request body cannot be null", "REQUEST_BODY_NULL");
     }
+    ensureScopeValidator();
     if (request.getAssessmentRequest() == null) {
       throw new BadRequestException("Assessment request is required", "ASSESSMENT_REQUEST_REQUIRED");
     }
+    Long targetTraineeId = request.getAssessmentRequest().getTraineeId();
+    if (targetTraineeId == null && request.getGapRequests() != null) {
+      for (CreateSkillGapRequest gapReq : request.getGapRequests()) {
+        if (gapReq != null && gapReq.getTraineeId() != null) {
+          targetTraineeId = gapReq.getTraineeId();
+          break;
+        }
+      }
+    }
+    if (targetTraineeId == null) {
+      throw new BadRequestException("Trainee ID is required for skill gap assessment", "TRAINEE_ID_REQUIRED");
+    }
+    scopeValidator.validateTraineeScope(targetTraineeId);
+    request.getAssessmentRequest().setTraineeId(targetTraineeId);
     if (request.getGapRequests() == null || request.getGapRequests().isEmpty()) {
       throw new BadRequestException("At least one skill gap is required", "SKILL_GAPS_REQUIRED");
     }
@@ -198,6 +245,7 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
     if (recommendationId == null) {
       throw new BadRequestException("Recommendation ID is required", "RECOMMENDATION_ID_REQUIRED");
     }
+    ensureScopeValidator();
     if (skillGapRecommendationRepository == null) {
       throw new IllegalStateException("SkillGapRecommendationRepository is required");
     }
@@ -205,7 +253,7 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
     // 1. Resolve trusted authenticated identity - FAIL CLOSED (never fallback to request body)
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
     Long authUserId = resolveAuthenticatedUserId(authentication);
-    boolean isAdmin = isAdministrativeCaller(authentication);
+    boolean isAdmin = scopeValidator.isAdministrativeCaller();
 
     SkillGapRecommendation rec = skillGapRecommendationRepository.findById(recommendationId)
         .orElseThrow(() -> new ResourceNotFoundException("SkillGapRecommendation", "recommendationId"));
@@ -218,6 +266,7 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
     }
 
     Long recTraineeId = rec.getSkillGap().getTrainee().getId();
+    scopeValidator.validateTraineeScope(recTraineeId);
 
     // 2. Trainee ownership verification - FAIL CLOSED
     if (traineeRepository == null) {
@@ -297,7 +346,7 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
     if (recommendationId == null) {
       throw new BadRequestException("Recommendation ID is required", "RECOMMENDATION_ID_REQUIRED");
     }
-
+    ensureScopeValidator();
     // Non-blank remarks explaining rejection are mandatory
     if (request == null || request.getRemarks() == null || request.getRemarks().trim().isEmpty()) {
       throw new BadRequestException(
@@ -313,7 +362,7 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
     // 1. Resolve trusted authenticated identity - FAIL CLOSED (never fallback to request body)
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
     Long authUserId = resolveAuthenticatedUserId(authentication);
-    boolean isAdmin = isAdministrativeCaller(authentication);
+    boolean isAdmin = scopeValidator.isAdministrativeCaller();
 
     SkillGapRecommendation rec = skillGapRecommendationRepository.findById(recommendationId)
         .orElseThrow(() -> new ResourceNotFoundException("SkillGapRecommendation", "recommendationId"));
@@ -326,6 +375,7 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
     }
 
     Long recTraineeId = rec.getSkillGap().getTrainee().getId();
+    scopeValidator.validateTraineeScope(recTraineeId);
 
     // 2. Trainee ownership verification - FAIL CLOSED
     if (traineeRepository == null) {
@@ -402,6 +452,7 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
     if (request == null) {
       throw new BadRequestException("Request body cannot be null", "REQUEST_BODY_NULL");
     }
+    ensureScopeValidator();
     if (request.getRecommendationId() == null) {
       throw new BadRequestException("Recommendation ID is required", "RECOMMENDATION_ID_REQUIRED");
     }
@@ -412,7 +463,7 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
     // 1. Resolve trusted authenticated identity - FAIL CLOSED
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
     Long authUserId = resolveAuthenticatedUserId(authentication);
-    boolean isAdmin = isAdministrativeCaller(authentication);
+    boolean isAdmin = scopeValidator.isAdministrativeCaller();
 
     SkillGapRecommendationResponse rec = skillGapRecommendationService.getRecommendationById(
         request.getRecommendationId());
@@ -495,6 +546,9 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
           "TRAINEE_MISMATCH"
       );
     }
+
+    ensureScopeValidator();
+    scopeValidator.validateTraineeScope(gapTraineeId);
 
     // 5. Course-to-Skill relevance check - FAIL CLOSED
     if (gapEntity.getSkill() == null || gapEntity.getSkill().getId() == null) {
@@ -594,6 +648,8 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
     if (traineeId == null) {
       throw new BadRequestException("Trainee ID is required", "TRAINEE_ID_REQUIRED");
     }
+    ensureScopeValidator();
+    scopeValidator.validateTraineeScope(traineeId);
 
     List<SkillGapAssessmentResponse> assessments = skillGapAssessmentService.getAssessmentsByTrainee(traineeId);
     List<SkillGapResponse> currentGaps = skillGapService.getCurrentSkillGapsByTrainee(traineeId);
@@ -606,6 +662,12 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
     return new TraineeSkillGapProfileResponse(traineeId, assessments, currentGaps, recs);
   }
 
+  private void ensureScopeValidator() {
+    if (this.scopeValidator == null) {
+      throw new IllegalStateException("WorkflowSecurityScopeValidator is required for scope validation");
+    }
+  }
+
   private Long resolveAuthenticatedUserId(Authentication authentication) {
     if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
       throw new InvalidCredentialsException("User is not authenticated");
@@ -615,17 +677,5 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
       return up.getId();
     }
     throw new InvalidCredentialsException("Unable to resolve authenticated user identity");
-  }
-
-  private boolean isAdministrativeCaller(Authentication authentication) {
-    if (authentication == null || authentication.getAuthorities() == null) {
-      return false;
-    }
-    return authentication.getAuthorities().stream()
-        .map(GrantedAuthority::getAuthority)
-        .anyMatch(auth -> "assessment.manage".equals(auth)
-            || "enrollment.manage".equals(auth)
-            || "admin".equalsIgnoreCase(auth)
-            || "ROLE_ADMIN".equalsIgnoreCase(auth));
   }
 }

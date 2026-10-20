@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -33,6 +34,7 @@ import in.gov.sih.sih26135.service.FollowupTaskService;
 import in.gov.sih.sih26135.service.SurveyResponseService;
 import in.gov.sih.sih26135.service.VerificationWorkflowService;
 import in.gov.sih.sih26135.service.impl.VerificationWorkflowServiceImpl;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import java.lang.reflect.Constructor;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -88,6 +90,7 @@ class VerificationVerdictIdentityEnforcementTest {
         userRepository,
         refUserStatusRepository
     );
+    workflowService.setScopeValidator(mock(WorkflowSecurityScopeValidator.class));
   }
 
   @AfterEach
@@ -180,6 +183,7 @@ class VerificationVerdictIdentityEnforcementTest {
           buildMockVerificationResponse(1001L, 10L, AUTHENTICATED_USER_ID);
       when(employmentVerificationService.createEmploymentVerification(any())).thenReturn(mockVerification);
       when(employmentRecordService.getEmploymentRecordById(10L)).thenReturn(buildMockEmploymentRecord(10L, 100L));
+      when(employmentRecordService.getEmploymentRecordById(10L)).thenReturn(buildMockEmploymentRecord(10L, 100L));
       when(employmentRecordService.updateEmploymentRecord(anyLong(), any())).thenReturn(buildMockEmploymentRecord(10L, 100L));
 
       RecordVerificationVerdictResponse response = workflowService.recordVerificationVerdictAndSynchronize(request);
@@ -218,6 +222,7 @@ class VerificationVerdictIdentityEnforcementTest {
       EmploymentVerificationResponse mockVerification =
           buildMockVerificationResponse(1001L, 10L, AUTHENTICATED_USER_ID);
       when(employmentVerificationService.createEmploymentVerification(any())).thenReturn(mockVerification);
+      when(employmentRecordService.getEmploymentRecordById(10L)).thenReturn(buildMockEmploymentRecord(10L, 100L));
 
       RecordVerificationVerdictResponse response = workflowService.recordVerificationVerdictAndSynchronize(request);
 
@@ -255,6 +260,7 @@ class VerificationVerdictIdentityEnforcementTest {
 
       EmploymentVerificationResponse mockVerification = buildMockVerificationResponse(1002L, 10L, 77L);
       when(employmentVerificationService.createEmploymentVerification(any())).thenReturn(mockVerification);
+      when(employmentRecordService.getEmploymentRecordById(10L)).thenReturn(buildMockEmploymentRecord(10L, 100L));
 
       workflowService.recordVerificationVerdictAndSynchronize(request);
 
@@ -489,6 +495,7 @@ class VerificationVerdictIdentityEnforcementTest {
 
       EmploymentVerificationResponse mockVerification = buildMockVerificationResponse(500L, 10L, AUTHENTICATED_USER_ID);
       when(employmentVerificationService.createEmploymentVerification(any())).thenReturn(mockVerification);
+      when(employmentRecordService.getEmploymentRecordById(10L)).thenReturn(buildMockEmploymentRecord(10L, 100L));
       when(employmentVerificationEvidenceService.createVerificationEvidence(any()))
           .thenReturn(new EmploymentVerificationEvidenceResponse(
               1L, 500L, "EV-2026-003", null, 1L, "DOC", "Doc",
@@ -523,6 +530,7 @@ class VerificationVerdictIdentityEnforcementTest {
           null,
           refUserStatusRepository
       );
+      serviceWithNullUserRepo.setScopeValidator(mock(WorkflowSecurityScopeValidator.class));
 
       authenticateAsUserPrincipal(AUTHENTICATED_USER_ID, AUTHENTICATED_USERNAME);
       RecordVerificationVerdictRequest request = new RecordVerificationVerdictRequest();
@@ -550,6 +558,7 @@ class VerificationVerdictIdentityEnforcementTest {
           userRepository,
           null
       );
+      serviceWithNullStatusRepo.setScopeValidator(mock(WorkflowSecurityScopeValidator.class));
 
       authenticateAsUserPrincipal(AUTHENTICATED_USER_ID, AUTHENTICATED_USERNAME);
       RecordVerificationVerdictRequest request = new RecordVerificationVerdictRequest();
@@ -616,6 +625,7 @@ class VerificationVerdictIdentityEnforcementTest {
         context.registerBean(EmploymentVerificationEvidenceService.class, () -> employmentVerificationEvidenceService);
         context.registerBean(UserRepository.class, () -> userRepository);
         context.registerBean(RefUserStatusRepository.class, () -> refUserStatusRepository);
+        context.registerBean(WorkflowSecurityScopeValidator.class, () -> mock(WorkflowSecurityScopeValidator.class));
         context.register(VerificationWorkflowServiceImpl.class);
         context.refresh();
 

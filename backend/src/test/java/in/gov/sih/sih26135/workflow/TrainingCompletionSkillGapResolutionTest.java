@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -29,6 +30,7 @@ import in.gov.sih.sih26135.service.AssessmentResultService;
 import in.gov.sih.sih26135.service.CertificationService;
 import in.gov.sih.sih26135.service.TraineeAssessmentService;
 import in.gov.sih.sih26135.service.TrainingEnrollmentService;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.impl.TrainingOutcomeWorkflowServiceImpl;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -83,7 +85,8 @@ class TrainingCompletionSkillGapResolutionTest {
         certificationService,
         courseSkillRepository,
         skillGapRepository,
-        refSkillGapStatusRepository
+        refSkillGapStatusRepository,
+        mock(WorkflowSecurityScopeValidator.class)
     );
   }
 
@@ -102,6 +105,7 @@ class TrainingCompletionSkillGapResolutionTest {
     e.setId(ENROLLMENT_ID);
     e.setTraineeId(TRAINEE_ID);
     e.setCourseId(COURSE_ID);
+    e.setProviderId(10L);
     e.setIsCompletedFlag(completed);
     e.setActualCompletionDate(COMPLETION_DATE);
     e.setEnrollmentStatusId(completed ? 3L : 4L);
@@ -143,8 +147,8 @@ class TrainingCompletionSkillGapResolutionTest {
     RecordAssessmentAndIssueCertificateRequest req =
         new RecordAssessmentAndIssueCertificateRequest();
     req.setAssessmentResultRequest(new CreateAssessmentResultRequest());
+    req.setEnrollmentId(ENROLLMENT_ID);
     if (withEnrollmentStatus) {
-      req.setEnrollmentId(ENROLLMENT_ID);
       req.setCompletionEnrollmentStatusId(3L); // COMPLETED
     }
     return req;
@@ -323,6 +327,8 @@ class TrainingCompletionSkillGapResolutionTest {
     void shouldNotResolveGapsWhenNoEnrollmentStatusUpdateRequested() {
       when(assessmentResultService.createAssessmentResult(any()))
           .thenReturn(buildResult(true));
+      when(trainingEnrollmentService.getById(ENROLLMENT_ID))
+          .thenReturn(buildEnrollment(false));
 
       // Request has no completionEnrollmentStatusId
       service.recordAssessmentResultAndIssueCertificate(buildRequest(false));

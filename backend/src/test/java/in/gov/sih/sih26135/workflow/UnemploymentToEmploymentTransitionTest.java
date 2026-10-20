@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -34,6 +35,7 @@ import in.gov.sih.sih26135.service.EmploymentRecordService;
 import in.gov.sih.sih26135.service.SalaryHistoryService;
 import in.gov.sih.sih26135.service.TraineeUnemploymentEventService;
 import in.gov.sih.sih26135.service.impl.EmploymentLifecycleWorkflowServiceImpl;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -62,7 +64,8 @@ class UnemploymentToEmploymentTransitionTest {
     workflowService = new EmploymentLifecycleWorkflowServiceImpl(
         employmentRecordService, employmentExitEventService,
         traineeUnemploymentEventService, salaryHistoryService,
-        traineeUnemploymentEventRepository
+        traineeUnemploymentEventRepository,
+        mock(WorkflowSecurityScopeValidator.class)
     );
   }
 
@@ -126,6 +129,7 @@ class UnemploymentToEmploymentTransitionTest {
 
     CreateEmploymentRecordRequest empReq = new CreateEmploymentRecordRequest();
     empReq.setEmploymentNumber("EMP-NEW");
+    empReq.setEmployerId(5L);
     empReq.setStartDate(LocalDate.of(2026, 1, 15));
     empReq.setEmploymentSpellStatusId(1L);
     empReq.setEmploymentInfoSourceId(1L);
@@ -235,6 +239,21 @@ class UnemploymentToEmploymentTransitionTest {
     verify(salaryHistoryService, never()).createSalaryHistory(any());
   }
 
+  private EmploymentRecordResponse buildEmploymentResponse(Long id, Long traineeId, Long employerId) {
+    return new EmploymentRecordResponse(
+        id, "EMP-" + id, traineeId, "REG-" + traineeId, "Aditya", "Kumar",
+        200L, "ENR-200", 10L, "PLC-001", employerId, "Tech Corp",
+        700L, "Branch A", 800L, "Software Engineer", 1L, "REGULAR_WAGE",
+        1L, "ACTIVE", "Active spell", true,
+        LocalDate.of(2025, 1, 1), null, true,
+        null, 1L, "MONTHLY", "INR",
+        null, 1L, 1L, 1L, "DIRECT", "Direct",
+        1L, "VERIFIED", LocalDateTime.now(), 1L,
+        null, null, null, null,
+        LocalDateTime.now(), LocalDateTime.now(), null
+    );
+  }
+
   private EmploymentExitEventResponse buildExitResponse(Long id, Long employmentId, Long traineeId, LocalDate separationDate) {
     return new EmploymentExitEventResponse(
         id, employmentId, "EMP-100", traineeId, "REG-100", "Aditya", "Kumar",
@@ -255,6 +274,7 @@ class UnemploymentToEmploymentTransitionTest {
     when(traineeUnemploymentEventRepository.findByIdForUpdate(50L)).thenReturn(Optional.of(activeEntity));
 
     CreateEmploymentRecordRequest empReq = new CreateEmploymentRecordRequest();
+    empReq.setEmployerId(5L);
     empReq.setTraineeId(100L);
     empReq.setStartDate(LocalDate.of(2026, 1, 15));
 
@@ -313,6 +333,7 @@ class UnemploymentToEmploymentTransitionTest {
     request.setUnemploymentEventRequest(null);
 
     EmploymentExitEventResponse exitResp = buildExitResponse(1L, 10L, 100L, LocalDate.of(2026, 3, 1));
+    when(employmentRecordService.getEmploymentRecordById(10L)).thenReturn(buildEmploymentResponse(10L, 100L, 5L));
     when(employmentExitEventService.createExitEvent(exitReq)).thenReturn(exitResp);
 
     EmploymentExitAndUnemploymentResponse response = workflowService.recordExitAndInitiateUnemployment(request);
@@ -342,6 +363,7 @@ class UnemploymentToEmploymentTransitionTest {
     request.setUnemploymentEventRequest(unempReq);
 
     EmploymentExitEventResponse exitResp = buildExitResponse(1L, 10L, 100L, LocalDate.of(2026, 3, 1));
+    when(employmentRecordService.getEmploymentRecordById(10L)).thenReturn(buildEmploymentResponse(10L, 100L, 5L));
     when(employmentExitEventService.createExitEvent(exitReq)).thenReturn(exitResp);
 
     TraineeUnemploymentEventResponse unempResp = buildUnemploymentResponse(true, null, null);
@@ -361,6 +383,7 @@ class UnemploymentToEmploymentTransitionTest {
   @DisplayName("recordExitAndInitiateUnemployment: trainee mismatch between exit and unemployment is rejected upfront before any persist")
   void testRecordExitAndInitiateUnemployment_traineeMismatch_rejectedUpfront() {
     CreateEmploymentExitEventRequest exitReq = new CreateEmploymentExitEventRequest();
+    exitReq.setEmploymentId(10L);
     exitReq.setTraineeId(100L);
     exitReq.setSeparationDate(LocalDate.of(2026, 3, 1));
 
@@ -383,6 +406,7 @@ class UnemploymentToEmploymentTransitionTest {
   @DisplayName("recordExitAndInitiateUnemployment: unemployment start date before separation date is rejected upfront before any persist")
   void testRecordExitAndInitiateUnemployment_startDateBeforeSeparation_rejectedUpfront() {
     CreateEmploymentExitEventRequest exitReq = new CreateEmploymentExitEventRequest();
+    exitReq.setEmploymentId(10L);
     exitReq.setTraineeId(100L);
     exitReq.setSeparationDate(LocalDate.of(2026, 3, 1));
 
@@ -406,6 +430,7 @@ class UnemploymentToEmploymentTransitionTest {
   @DisplayName("recordExitAndInitiateUnemployment: failure in createUnemploymentEvent propagates exception cleanly for transaction rollback")
   void testRecordExitAndInitiateUnemployment_unemploymentFailure_propagatesException() {
     CreateEmploymentExitEventRequest exitReq = new CreateEmploymentExitEventRequest();
+    exitReq.setEmploymentId(10L);
     exitReq.setTraineeId(100L);
     exitReq.setSeparationDate(LocalDate.of(2026, 3, 1));
 
@@ -417,6 +442,7 @@ class UnemploymentToEmploymentTransitionTest {
     request.setUnemploymentEventRequest(unempReq);
 
     EmploymentExitEventResponse exitResp = buildExitResponse(1L, 10L, 100L, LocalDate.of(2026, 3, 1));
+    when(employmentRecordService.getEmploymentRecordById(10L)).thenReturn(buildEmploymentResponse(10L, 100L, 5L));
     when(employmentExitEventService.createExitEvent(exitReq)).thenReturn(exitResp);
     when(traineeUnemploymentEventService.createUnemploymentEvent(any()))
         .thenThrow(new IllegalStateException("Simulated database failure during unemployment creation"));

@@ -31,6 +31,7 @@ import in.gov.sih.sih26135.repository.SurveyResponseRepository;
 import in.gov.sih.sih26135.repository.TrainingEnrollmentRepository;
 import in.gov.sih.sih26135.service.EmploymentRecordService;
 import in.gov.sih.sih26135.service.PlacementRecordService;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.impl.AssessmentResultServiceImpl;
 import in.gov.sih.sih26135.service.impl.CertificationServiceImpl;
 import in.gov.sih.sih26135.service.impl.FollowupTaskServiceImpl;
@@ -342,7 +343,7 @@ class DuplicateRequestsAndConcurrencySafetyTest {
       when(empRepo.findByPlacementRecordId(10L)).thenReturn(Optional.of(new in.gov.sih.sih26135.entity.EmploymentRecord()));
 
       PlacementEmploymentWorkflowServiceImpl workflowService = new PlacementEmploymentWorkflowServiceImpl(
-          placementService, null, null, empRepo, null, null
+          placementService, null, null, empRepo, null, null, mock(WorkflowSecurityScopeValidator.class)
       );
 
       PlacementToEmploymentTransitionRequest req = new PlacementToEmploymentTransitionRequest();
@@ -424,7 +425,8 @@ class DuplicateRequestsAndConcurrencySafetyTest {
       });
 
       PlacementEmploymentWorkflowServiceImpl workflow = new PlacementEmploymentWorkflowServiceImpl(
-          placementService, employmentRecordService, null, employmentRecordRepository, null, null
+          placementService, employmentRecordService, null, employmentRecordRepository, null, null,
+          mock(WorkflowSecurityScopeValidator.class)
       );
 
       int threadCount = 2;

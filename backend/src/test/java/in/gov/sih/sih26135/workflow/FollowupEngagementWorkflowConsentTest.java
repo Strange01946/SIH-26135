@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -25,6 +26,7 @@ import in.gov.sih.sih26135.service.FollowupTaskService;
 import in.gov.sih.sih26135.service.SurveyResponseService;
 import in.gov.sih.sih26135.service.TraineeConsentService;
 import in.gov.sih.sih26135.service.impl.FollowupEngagementWorkflowServiceImpl;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -53,7 +55,8 @@ class FollowupEngagementWorkflowConsentTest {
         followupTaskService,
         surveyResponseService,
         communicationLogService,
-        traineeConsentService
+        traineeConsentService,
+        mock(WorkflowSecurityScopeValidator.class)
     );
   }
 

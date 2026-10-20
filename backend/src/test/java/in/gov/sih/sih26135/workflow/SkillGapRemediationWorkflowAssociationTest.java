@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -36,6 +37,7 @@ import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.InvalidCredentialsException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.mapper.SkillGapRecommendationMapper;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.repository.CourseSkillRepository;
 import in.gov.sih.sih26135.repository.RefSkillGapStatusRepository;
 import in.gov.sih.sih26135.repository.SkillGapRecommendationRepository;
@@ -77,6 +79,7 @@ class SkillGapRemediationWorkflowAssociationTest {
   @Mock private SkillGapRecommendationRepository skillGapRecommendationRepository;
   @Mock private RefSkillGapStatusRepository refSkillGapStatusRepository;
   @Mock private TraineeRepository traineeRepository;
+  @Mock private WorkflowSecurityScopeValidator scopeValidator;
 
   private SkillGapRemediationWorkflowServiceImpl workflowService;
 
@@ -95,9 +98,19 @@ class SkillGapRemediationWorkflowAssociationTest {
         skillGapRecommendationRepository,
         refSkillGapStatusRepository,
         traineeRepository,
-        new SkillGapRecommendationMapper()
+        new SkillGapRecommendationMapper(),
+        scopeValidator
     );
     lenient().when(courseSkillRepository.existsByCourseIdAndSkillId(any(), any())).thenReturn(true);
+    lenient().when(scopeValidator.isAdministrativeCaller()).thenAnswer(inv -> {
+      org.springframework.security.core.Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+      if (auth == null || !auth.isAuthenticated()) {
+        return false;
+      }
+      return auth.getAuthorities().stream()
+          .map(org.springframework.security.core.GrantedAuthority::getAuthority)
+          .anyMatch(a -> "ROLE_super_admin".equals(a) || "ROLE_government_admin".equals(a));
+    });
 
     UserPrincipal adminPrincipal = new UserPrincipal(1L, "adminUser");
     SecurityContextHolder.getContext().setAuthentication(
@@ -105,6 +118,7 @@ class SkillGapRemediationWorkflowAssociationTest {
             adminPrincipal,
             null,
             List.of(
+                new SimpleGrantedAuthority("ROLE_super_admin"),
                 new SimpleGrantedAuthority("assessment.manage"),
                 new SimpleGrantedAuthority("enrollment.manage")
             )
@@ -115,6 +129,12 @@ class SkillGapRemediationWorkflowAssociationTest {
   @AfterEach
   void tearDown() {
     SecurityContextHolder.clearContext();
+  }
+
+  private CreateSkillGapAssessmentRequest buildCreateAssessmentRequest(Long traineeId) {
+    CreateSkillGapAssessmentRequest req = new CreateSkillGapAssessmentRequest();
+    req.setTraineeId(traineeId);
+    return req;
   }
 
   private SkillGapAssessmentResponse buildAssessment(Long id, Long traineeId) {
@@ -214,7 +234,7 @@ class SkillGapRemediationWorkflowAssociationTest {
     @DisplayName("Recommendation with explicit valid gap ID links accurately to that exact gap")
     void shouldAssociateRecommendationWithExplicitValidGapId() {
       RecordSkillGapAssessmentWithGapsRequest request = new RecordSkillGapAssessmentWithGapsRequest();
-      request.setAssessmentRequest(new CreateSkillGapAssessmentRequest());
+      request.setAssessmentRequest(buildCreateAssessmentRequest(TRAINEE_ID));
 
       CreateSkillGapRequest gapReq1 = new CreateSkillGapRequest();
       gapReq1.setSkillId(101L);
@@ -247,7 +267,7 @@ class SkillGapRemediationWorkflowAssociationTest {
     @DisplayName("Multiple recommendations with distinct authoritative gap IDs are linked correctly")
     void shouldAssociateMultipleRecommendationsWithDistinctAuthoritativeGapIds() {
       RecordSkillGapAssessmentWithGapsRequest request = new RecordSkillGapAssessmentWithGapsRequest();
-      request.setAssessmentRequest(new CreateSkillGapAssessmentRequest());
+      request.setAssessmentRequest(buildCreateAssessmentRequest(TRAINEE_ID));
 
       CreateSkillGapRequest gapReq1 = new CreateSkillGapRequest();
       gapReq1.setSkillId(101L);
@@ -290,7 +310,7 @@ class SkillGapRemediationWorkflowAssociationTest {
     @DisplayName("Multiple recommendations targeting the same gap are associated with that gap")
     void shouldAllowMultipleRecommendationsTargetingSameGap() {
       RecordSkillGapAssessmentWithGapsRequest request = new RecordSkillGapAssessmentWithGapsRequest();
-      request.setAssessmentRequest(new CreateSkillGapAssessmentRequest());
+      request.setAssessmentRequest(buildCreateAssessmentRequest(TRAINEE_ID));
 
       CreateSkillGapRequest gapReq1 = new CreateSkillGapRequest();
       gapReq1.setSkillId(101L);
@@ -329,7 +349,7 @@ class SkillGapRemediationWorkflowAssociationTest {
     @DisplayName("When exactly one gap is created, recommendation without gap ID is unambiguously associated with it")
     void shouldAssociateRecommendationUnambiguouslyWhenSingleGapCreated() {
       RecordSkillGapAssessmentWithGapsRequest request = new RecordSkillGapAssessmentWithGapsRequest();
-      request.setAssessmentRequest(new CreateSkillGapAssessmentRequest());
+      request.setAssessmentRequest(buildCreateAssessmentRequest(TRAINEE_ID));
 
       CreateSkillGapRequest gapReq = new CreateSkillGapRequest();
       gapReq.setSkillId(101L);
@@ -359,7 +379,7 @@ class SkillGapRemediationWorkflowAssociationTest {
     @DisplayName("Reordering recommendation list does not alter semantic associations when explicit IDs are present")
     void shouldPreserveAssociationIntegrityRegardlessOfRecommendationInputListOrder() {
       RecordSkillGapAssessmentWithGapsRequest request = new RecordSkillGapAssessmentWithGapsRequest();
-      request.setAssessmentRequest(new CreateSkillGapAssessmentRequest());
+      request.setAssessmentRequest(buildCreateAssessmentRequest(TRAINEE_ID));
 
       CreateSkillGapRequest gapReq1 = new CreateSkillGapRequest();
       gapReq1.setSkillId(101L);
@@ -406,7 +426,7 @@ class SkillGapRemediationWorkflowAssociationTest {
     @DisplayName("Fails closed when multiple skill gaps exist and recommendation omits skillGapId (WF-002 fix)")
     void shouldRejectUnresolvedRecommendationWhenMultipleGapsCreated() {
       RecordSkillGapAssessmentWithGapsRequest request = new RecordSkillGapAssessmentWithGapsRequest();
-      request.setAssessmentRequest(new CreateSkillGapAssessmentRequest());
+      request.setAssessmentRequest(buildCreateAssessmentRequest(TRAINEE_ID));
 
       CreateSkillGapRequest gapReq1 = new CreateSkillGapRequest();
       gapReq1.setSkillId(101L);
@@ -436,7 +456,7 @@ class SkillGapRemediationWorkflowAssociationTest {
     @DisplayName("Rejects recommendation referencing nonexistent skill gap ID")
     void shouldRejectNonexistentExplicitSkillGapId() {
       RecordSkillGapAssessmentWithGapsRequest request = new RecordSkillGapAssessmentWithGapsRequest();
-      request.setAssessmentRequest(new CreateSkillGapAssessmentRequest());
+      request.setAssessmentRequest(buildCreateAssessmentRequest(TRAINEE_ID));
 
       CreateSkillGapRequest gapReq1 = new CreateSkillGapRequest();
       gapReq1.setSkillId(101L);
@@ -460,7 +480,7 @@ class SkillGapRemediationWorkflowAssociationTest {
     @DisplayName("Rejects recommendation referencing skill gap belonging to another trainee")
     void shouldRejectExplicitSkillGapBelongingToDifferentTrainee() {
       RecordSkillGapAssessmentWithGapsRequest request = new RecordSkillGapAssessmentWithGapsRequest();
-      request.setAssessmentRequest(new CreateSkillGapAssessmentRequest());
+      request.setAssessmentRequest(buildCreateAssessmentRequest(TRAINEE_ID));
 
       CreateSkillGapRequest gapReq1 = new CreateSkillGapRequest();
       gapReq1.setSkillId(101L);
@@ -489,7 +509,7 @@ class SkillGapRemediationWorkflowAssociationTest {
     @DisplayName("Rejects recommendation referencing skill gap from an incompatible assessment")
     void shouldRejectExplicitSkillGapBelongingToDifferentAssessment() {
       RecordSkillGapAssessmentWithGapsRequest request = new RecordSkillGapAssessmentWithGapsRequest();
-      request.setAssessmentRequest(new CreateSkillGapAssessmentRequest());
+      request.setAssessmentRequest(buildCreateAssessmentRequest(TRAINEE_ID));
 
       CreateSkillGapRequest gapReq1 = new CreateSkillGapRequest();
       gapReq1.setSkillId(101L);
@@ -518,7 +538,7 @@ class SkillGapRemediationWorkflowAssociationTest {
     @DisplayName("Rejects gap creation when gap trainee ID does not match assessment trainee ID")
     void shouldRejectAssessmentCreationWhenGapTraineeDoesNotMatchAssessmentTrainee() {
       RecordSkillGapAssessmentWithGapsRequest request = new RecordSkillGapAssessmentWithGapsRequest();
-      request.setAssessmentRequest(new CreateSkillGapAssessmentRequest());
+      request.setAssessmentRequest(buildCreateAssessmentRequest(TRAINEE_ID));
 
       CreateSkillGapRequest gapReq = new CreateSkillGapRequest();
       gapReq.setSkillId(101L);
@@ -539,7 +559,7 @@ class SkillGapRemediationWorkflowAssociationTest {
     @DisplayName("Rejects recommendation when recommended course does not teach the identified gap skill")
     void shouldRejectRecommendationWhenCourseDoesNotTeachGapSkill() {
       RecordSkillGapAssessmentWithGapsRequest request = new RecordSkillGapAssessmentWithGapsRequest();
-      request.setAssessmentRequest(new CreateSkillGapAssessmentRequest());
+      request.setAssessmentRequest(buildCreateAssessmentRequest(TRAINEE_ID));
 
       CreateSkillGapRequest gapReq1 = new CreateSkillGapRequest();
       gapReq1.setSkillId(101L);
@@ -566,7 +586,7 @@ class SkillGapRemediationWorkflowAssociationTest {
     @DisplayName("Rejects single-new-gap default recommendation when course does not teach gap skill")
     void shouldRejectSingleGapDefaultRecommendationWhenCourseDoesNotTeachGapSkill() {
       RecordSkillGapAssessmentWithGapsRequest request = new RecordSkillGapAssessmentWithGapsRequest();
-      request.setAssessmentRequest(new CreateSkillGapAssessmentRequest());
+      request.setAssessmentRequest(buildCreateAssessmentRequest(TRAINEE_ID));
 
       CreateSkillGapRequest gapReq = new CreateSkillGapRequest();
       gapReq.setSkillId(101L);
@@ -607,7 +627,7 @@ class SkillGapRemediationWorkflowAssociationTest {
           .extracting("errorCode").isEqualTo("ASSESSMENT_REQUEST_REQUIRED");
 
       RecordSkillGapAssessmentWithGapsRequest noGaps = new RecordSkillGapAssessmentWithGapsRequest();
-      noGaps.setAssessmentRequest(new CreateSkillGapAssessmentRequest());
+      noGaps.setAssessmentRequest(buildCreateAssessmentRequest(TRAINEE_ID));
       noGaps.setGapRequests(Collections.emptyList());
       assertThatThrownBy(() -> workflowService.recordAssessmentWithGapsAndRecommendations(noGaps))
           .isInstanceOf(BadRequestException.class)
@@ -921,7 +941,7 @@ class SkillGapRemediationWorkflowAssociationTest {
           new UsernamePasswordAuthenticationToken(
               principal,
               null,
-              List.of(new SimpleGrantedAuthority("assessment.manage"))));
+              List.of(new SimpleGrantedAuthority("ROLE_super_admin"))));
 
       // Client attempts to claim actorUserId = 42L, but trusted principal is 888L
       TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest(
@@ -948,7 +968,7 @@ class SkillGapRemediationWorkflowAssociationTest {
           new UsernamePasswordAuthenticationToken(
               principal,
               null,
-              List.of(new SimpleGrantedAuthority("assessment.manage"))));
+              List.of(new SimpleGrantedAuthority("ROLE_super_admin"))));
 
       TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest(
           TRAINEE_ID, "Accepted by counselor", 42L);
@@ -972,7 +992,7 @@ class SkillGapRemediationWorkflowAssociationTest {
       UserPrincipal counselor = new UserPrincipal(777L, "counselor");
       SecurityContextHolder.getContext().setAuthentication(
           new UsernamePasswordAuthenticationToken(
-              counselor, null, List.of(new SimpleGrantedAuthority("assessment.manage"))));
+              counselor, null, List.of(new SimpleGrantedAuthority("ROLE_super_admin"))));
 
       TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest(
           TRAINEE_ID, "Rejection justified", 12345L);
@@ -998,7 +1018,8 @@ class SkillGapRemediationWorkflowAssociationTest {
               skillGapRecommendationRepository,
               refSkillGapStatusRepository,
               null, // traineeRepository is null
-              new SkillGapRecommendationMapper()
+              new SkillGapRecommendationMapper(),
+              mock(WorkflowSecurityScopeValidator.class)
           );
 
       SkillGapRecommendation recEntity = buildRecommendationEntity(
@@ -1025,7 +1046,8 @@ class SkillGapRemediationWorkflowAssociationTest {
               skillGapRecommendationRepository,
               refSkillGapStatusRepository,
               null, // traineeRepository is null
-              new SkillGapRecommendationMapper()
+              new SkillGapRecommendationMapper(),
+              mock(WorkflowSecurityScopeValidator.class)
           );
 
       SkillGapRecommendation recEntity = buildRecommendationEntity(
@@ -1091,7 +1113,7 @@ class SkillGapRemediationWorkflowAssociationTest {
       UserPrincipal admin = new UserPrincipal(999L, "adminOfficer");
       SecurityContextHolder.getContext().setAuthentication(
           new UsernamePasswordAuthenticationToken(
-              admin, null, List.of(new SimpleGrantedAuthority("assessment.manage"))));
+              admin, null, List.of(new SimpleGrantedAuthority("ROLE_super_admin"))));
 
       when(traineeRepository.findByUserId(999L)).thenReturn(Optional.empty());
 
@@ -1117,7 +1139,7 @@ class SkillGapRemediationWorkflowAssociationTest {
       UserPrincipal counselor = new UserPrincipal(777L, "counselor");
       SecurityContextHolder.getContext().setAuthentication(
           new UsernamePasswordAuthenticationToken(
-              counselor, null, List.of(new SimpleGrantedAuthority("assessment.manage"))));
+              counselor, null, List.of(new SimpleGrantedAuthority("ROLE_super_admin"))));
 
       TraineeRecommendationDecisionRequest request = new TraineeRecommendationDecisionRequest(
           TRAINEE_ID, "Rejection justified", 12345L);
@@ -1605,7 +1627,8 @@ class SkillGapRemediationWorkflowAssociationTest {
               skillGapRecommendationRepository,
               refSkillGapStatusRepository,
               null,
-              new SkillGapRecommendationMapper()
+              new SkillGapRecommendationMapper(),
+              mock(WorkflowSecurityScopeValidator.class)
           );
 
       SkillGapRemediationEnrollmentRequest request = new SkillGapRemediationEnrollmentRequest();

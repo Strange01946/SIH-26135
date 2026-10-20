@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -33,6 +34,7 @@ import in.gov.sih.sih26135.repository.UserRepository;
 import in.gov.sih.sih26135.service.EmploymentRecordService;
 import in.gov.sih.sih26135.service.EmploymentVerificationAttemptService;
 import in.gov.sih.sih26135.service.EmploymentVerificationEvidenceService;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.EmploymentVerificationRequestService;
 import in.gov.sih.sih26135.service.EmploymentVerificationService;
 import in.gov.sih.sih26135.service.FollowupTaskService;
@@ -87,6 +89,7 @@ class VerificationInitiationConcurrencyTest {
         employmentVerificationRequestService, employmentVerificationAttemptService,
         employmentVerificationService, employmentVerificationEvidenceService
     );
+    workflowService.setScopeValidator(mock(WorkflowSecurityScopeValidator.class));
 
     requestService = new EmploymentVerificationRequestServiceImpl(
         requestRepository, employmentRecordRepository, placementRecordRepository,

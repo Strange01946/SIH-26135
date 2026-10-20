@@ -32,9 +32,11 @@ import in.gov.sih.sih26135.service.EmploymentVerificationService;
 import in.gov.sih.sih26135.service.FollowupTaskService;
 import in.gov.sih.sih26135.service.SurveyResponseService;
 import in.gov.sih.sih26135.service.VerificationWorkflowService;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -54,6 +56,7 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
   private final EmploymentVerificationEvidenceService employmentVerificationEvidenceService;
   private final UserRepository userRepository;
   private final RefUserStatusRepository refUserStatusRepository;
+  private WorkflowSecurityScopeValidator scopeValidator;
 
   @Autowired
   public VerificationWorkflowServiceImpl(
@@ -66,6 +69,31 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
       EmploymentVerificationEvidenceService employmentVerificationEvidenceService,
       UserRepository userRepository,
       RefUserStatusRepository refUserStatusRepository) {
+    this(
+        employmentRecordService,
+        followupTaskService,
+        surveyResponseService,
+        employmentVerificationRequestService,
+        employmentVerificationAttemptService,
+        employmentVerificationService,
+        employmentVerificationEvidenceService,
+        userRepository,
+        refUserStatusRepository,
+        null
+    );
+  }
+
+  public VerificationWorkflowServiceImpl(
+      EmploymentRecordService employmentRecordService,
+      FollowupTaskService followupTaskService,
+      SurveyResponseService surveyResponseService,
+      EmploymentVerificationRequestService employmentVerificationRequestService,
+      EmploymentVerificationAttemptService employmentVerificationAttemptService,
+      EmploymentVerificationService employmentVerificationService,
+      EmploymentVerificationEvidenceService employmentVerificationEvidenceService,
+      UserRepository userRepository,
+      RefUserStatusRepository refUserStatusRepository,
+      WorkflowSecurityScopeValidator scopeValidator) {
     this.employmentRecordService = employmentRecordService;
     this.followupTaskService = followupTaskService;
     this.surveyResponseService = surveyResponseService;
@@ -75,6 +103,12 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
     this.employmentVerificationEvidenceService = employmentVerificationEvidenceService;
     this.userRepository = userRepository;
     this.refUserStatusRepository = refUserStatusRepository;
+    this.scopeValidator = scopeValidator;
+  }
+
+  @Autowired
+  public void setScopeValidator(WorkflowSecurityScopeValidator scopeValidator) {
+    this.scopeValidator = scopeValidator;
   }
 
   @Deprecated
@@ -113,7 +147,16 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
       throw new BadRequestException("Verification request details are required", "VERIFICATION_DETAILS_REQUIRED");
     }
 
+    ensureScopeValidator();
     SurveyResponseResponse surveyResponse = surveyResponseService.getSurveyResponseById(request.getSurveyResponseId());
+    if (surveyResponse == null) {
+      throw new ResourceNotFoundException("SurveyResponse", "surveyResponseId");
+    }
+    if (surveyResponse.getTraineeId() == null) {
+      throw new BadRequestException("Survey response has no associated trainee", "TRAINEE_REQUIRED");
+    }
+    scopeValidator.validateTraineeScope(surveyResponse.getTraineeId());
+
     CreateEmploymentVerificationRequestRequest details = request.getVerificationRequestDetails();
 
     if (details.getTraineeId() == null) {
@@ -130,6 +173,13 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
     }
 
     EmploymentRecordResponse emp = employmentRecordService.getEmploymentRecordById(details.getEmploymentRecordId());
+    if (emp == null) {
+      throw new ResourceNotFoundException("EmploymentRecord", "employmentRecordId");
+    }
+    if (emp.employerId() == null) {
+      throw new BadRequestException("Employment record has no associated employer", "EMPLOYER_REQUIRED");
+    }
+    scopeValidator.validateEmployerScope(emp.employerId());
     if (!emp.traineeId().equals(surveyResponse.getTraineeId())) {
       throw new BadRequestException(
           "Employment record does not belong to survey respondent trainee",
@@ -223,6 +273,28 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
       throw new InvalidCredentialsException("User account is locked");
     }
 
+    ensureScopeValidator();
+    Long targetEmploymentId = verReq.getEmploymentRecordId();
+    if (targetEmploymentId == null && verReq.getEmploymentVerificationRequestId() != null) {
+      EmploymentVerificationRequestResponse vReq = employmentVerificationRequestService
+          .getVerificationRequestById(verReq.getEmploymentVerificationRequestId());
+      if (vReq != null) {
+        targetEmploymentId = vReq.employmentRecordId();
+        verReq.setEmploymentRecordId(targetEmploymentId);
+      }
+    }
+    if (targetEmploymentId == null) {
+      throw new BadRequestException("Employment record ID is required to record verification verdict", "EMPLOYMENT_ID_REQUIRED");
+    }
+    EmploymentRecordResponse emp = employmentRecordService.getEmploymentRecordById(targetEmploymentId);
+    if (emp == null) {
+      throw new ResourceNotFoundException("EmploymentRecord", "employmentRecordId");
+    }
+    if (emp.employerId() == null) {
+      throw new BadRequestException("Employment record has no associated employer", "EMPLOYER_REQUIRED");
+    }
+    scopeValidator.validateEmployerScope(emp.employerId());
+
     // Authoritative verifier identity derived from authenticated security context
     verReq.setVerifiedByUserId(authenticatedUserId);
 
@@ -247,30 +319,30 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
 
     EmploymentRecordResponse updatedEmployment = null;
     if (request.getEmploymentRecordStatusId() != null) {
-      EmploymentRecordResponse emp = employmentRecordService.getEmploymentRecordById(verification.employmentRecordId());
+      EmploymentRecordResponse currentEmp = employmentRecordService.getEmploymentRecordById(verification.employmentRecordId());
 
       UpdateEmploymentRecordRequest updateEmp = new UpdateEmploymentRecordRequest();
-      updateEmp.setEmployerBranchId(emp.employerBranchId());
-      updateEmp.setJobRoleId(emp.jobRoleId());
-      updateEmp.setEngagementTypeId(emp.engagementTypeId());
-      updateEmp.setEmploymentSpellStatusId(emp.employmentSpellStatusId());
-      updateEmp.setStartDate(emp.startDate());
-      updateEmp.setEndDate(emp.endDate());
-      updateEmp.setIsCurrent(emp.isCurrent());
-      updateEmp.setStartingSalary(emp.startingSalary());
-      updateEmp.setSalaryFrequencyId(emp.salaryFrequencyId());
-      updateEmp.setCurrencyCode(emp.currencyCode());
-      updateEmp.setWorkLocationId(emp.workLocationId());
-      updateEmp.setWorkStateId(emp.workStateId());
-      updateEmp.setWorkDistrictId(emp.workDistrictId());
-      updateEmp.setEmploymentInfoSourceId(emp.employmentInfoSourceId());
+      updateEmp.setEmployerBranchId(currentEmp.employerBranchId());
+      updateEmp.setJobRoleId(currentEmp.jobRoleId());
+      updateEmp.setEngagementTypeId(currentEmp.engagementTypeId());
+      updateEmp.setEmploymentSpellStatusId(currentEmp.employmentSpellStatusId());
+      updateEmp.setStartDate(currentEmp.startDate());
+      updateEmp.setEndDate(currentEmp.endDate());
+      updateEmp.setIsCurrent(currentEmp.isCurrent());
+      updateEmp.setStartingSalary(currentEmp.startingSalary());
+      updateEmp.setSalaryFrequencyId(currentEmp.salaryFrequencyId());
+      updateEmp.setCurrencyCode(currentEmp.currencyCode());
+      updateEmp.setWorkLocationId(currentEmp.workLocationId());
+      updateEmp.setWorkStateId(currentEmp.workStateId());
+      updateEmp.setWorkDistrictId(currentEmp.workDistrictId());
+      updateEmp.setEmploymentInfoSourceId(currentEmp.employmentInfoSourceId());
       updateEmp.setRecordVerificationStatusId(request.getEmploymentRecordStatusId());
       updateEmp.setVerifiedAt(LocalDateTime.now());
       updateEmp.setVerifiedByUserId(verification.verifiedByUserId());
-      updateEmp.setEmploymentExitReasonId(emp.employmentExitReasonId());
-      updateEmp.setExitRemarks(emp.exitRemarks());
+      updateEmp.setEmploymentExitReasonId(currentEmp.employmentExitReasonId());
+      updateEmp.setExitRemarks(currentEmp.exitRemarks());
 
-      updatedEmployment = employmentRecordService.updateEmploymentRecord(emp.id(), updateEmp);
+      updatedEmployment = employmentRecordService.updateEmploymentRecord(currentEmp.id(), updateEmp);
     }
 
     return new RecordVerificationVerdictResponse(verification, evidenceList, updatedRequest, updatedEmployment);
@@ -282,7 +354,15 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
       throw new BadRequestException("Employment ID is required", "EMPLOYMENT_ID_REQUIRED");
     }
 
+    ensureScopeValidator();
     EmploymentRecordResponse emp = employmentRecordService.getEmploymentRecordById(employmentId);
+    if (emp == null) {
+      throw new ResourceNotFoundException("EmploymentRecord", "employmentId");
+    }
+    if (emp.employerId() == null) {
+      throw new BadRequestException("Employment record has no associated employer", "EMPLOYER_REQUIRED");
+    }
+    scopeValidator.validateEmployerScope(emp.employerId());
     List<EmploymentVerificationRequestResponse> requests = employmentVerificationRequestService.getRequestsByEmploymentId(employmentId);
     List<EmploymentVerificationResponse> verifications = employmentVerificationService.getVerificationsByEmploymentId(employmentId);
 
@@ -292,6 +372,12 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
     }
 
     return new EmploymentVerificationSummaryResponse(emp, requests, attempts, verifications);
+  }
+
+  private void ensureScopeValidator() {
+    if (this.scopeValidator == null) {
+      throw new IllegalStateException("WorkflowSecurityScopeValidator is required for scope validation");
+    }
   }
 
   private Long resolveAuthenticatedUserId(Authentication authentication) {

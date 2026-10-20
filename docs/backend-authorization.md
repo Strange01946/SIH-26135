@@ -178,7 +178,8 @@ All 17 permissions are evaluated via `hasAuthority('<permission_code>')`.
 | 49 | `EmploymentLifecycleWorkflowController` | `/api/v1/workflows/employment-lifecycle` | `hasAuthority('employment.manage')` |
 | 50 | `FollowupEngagementWorkflowController` | `/api/v1/workflows/followup-engagement` | `hasAuthority('survey.manage')` |
 | 51 | `PlacementEmploymentWorkflowController` | `/api/v1/workflows/placement-employment` | `hasAnyAuthority('placement.manage', 'employment.manage')` |
-| 52 | `SkillGapRemediationWorkflowController` | `/api/v1/workflows/skill-gap-remediation` | `hasAnyAuthority('assessment.manage', 'enrollment.manage')` |
+| 52 | `SkillGapRemediationWorkflowController` (Admin) | `/api/v1/workflows/skill-gap-remediation` | `hasAnyAuthority('assessment.manage', 'enrollment.manage')` |
+|    | `SkillGapRemediationWorkflowController` (Decisions) | `/api/v1/workflows/skill-gap-remediation/recommendations/{id}/(accept\|reject)` | `hasAnyAuthority('assessment.manage', 'enrollment.manage') or hasRole('trainee')` |
 | 53 | `TrainingOutcomeWorkflowController` | `/api/v1/workflows/training-outcome` | `hasAnyAuthority('enrollment.manage', 'assessment.manage')` |
 | 54 | `VerificationWorkflowController` | `/api/v1/workflows/verification` | `hasAuthority('verification.manage')` |
 
@@ -234,7 +235,7 @@ Cross-domain orchestration workflows coordinate multi-entity operations spanning
 - **`VerificationWorkflowController`**: Governed by `verification.manage`. Handles third-party verification triggers and audit verdicts.
 - **Multi-Domain Workflow Disjunction (`hasAnyAuthority`)**:
   - **`PlacementEmploymentWorkflowController`**: Authorized for operators with either `placement.manage` OR `employment.manage`.
-  - **`SkillGapRemediationWorkflowController`**: Authorized for operators with either `assessment.manage` OR `enrollment.manage`.
+  - **`SkillGapRemediationWorkflowController`**: Authorized for operators with either `assessment.manage` OR `enrollment.manage`, with method-level authorization allowing `ROLE_trainee` to accept or reject their own upskilling recommendations.
   - **`TrainingOutcomeWorkflowController`**: Authorized for operators with either `enrollment.manage` OR `assessment.manage`.
 
 This disjunctive authorization allows specialized domain officers (e.g. training managers vs. placement coordinators) to invoke collaborative cross-domain lifecycles without requiring excessive super-user privileges.
@@ -253,15 +254,27 @@ Throughout the application and REST controller layer, specific mutation endpoint
 
 ---
 
-## 11. Object-Level / Record-Level Authorization Status
+## 11. Object-Level / Record-Level Authorization Status (Phase 25.11 Implementation)
 
-- **Status**: Explicitly **Deferred** to future functional enhancements.
-- **Scope of Phase 24.7**: Phase 24.7 strictly implements **Endpoint / Method-Level Role & Permission Authorization**.
-- **Deferred Considerations**:
-  - Row-level access control (e.g. training center administrators restricted strictly to trainees registered in their specific center).
-  - Employer-specific isolation (e.g. recruiters restricted strictly to job postings owned by their employer organization).
-  - Self-service restrictions (e.g. trainees restricted to modifying solely their own profile or viewing their own assessment results).
-- These multi-tenant and ownership-based predicates will be evaluated at the service and data repository layer in subsequent operational milestones.
+- **Status**: **Implemented** in Phase 25.11 via `WorkflowSecurityScopeValidator` across all 6 core workflow service boundaries.
+- **Enforcement Architecture**:
+  - Authoritative scoping is enforced at the domain service layer prior to record persistence, mutation, or sensitive data disclosure.
+  - Multi-tenant and ownership boundaries are resolved against the authenticated caller principal in `SecurityContextHolder` and mapped to domain entities in `User`, `Trainee`, `Employer`, and `TrainingProvider`.
+  - Violations fail-closed with HTTP 400 Bad Request and zero disclosure of sensitive payload, stack trace, or internal identity metadata.
+- **Implemented Scoping Rules**:
+  1. **Employer Isolation (`EMPLOYER_MISMATCH`)**: Authenticated employers are strictly confined to their own placement and employment records (`user.employerId == targetEmployerId`). Cross-employer mutations and transitions are rejected.
+  2. **Training Provider Isolation (`PROVIDER_MISMATCH`)**: Authenticated training providers are strictly confined to their own batches, enrollments, and outcome operations (`user.trainingProviderId == targetProviderId`). Cross-provider outcome submissions and remedial enrollments are rejected.
+  3. **Trainee Self-Service Isolation (`TRAINEE_MISMATCH`)**: Authenticated trainees are strictly confined to their own records (`authTrainee.id == targetTraineeId`). Cross-trainee profile, career timeline, placement summary, engagement history, and survey response mutations are rejected.
+  4. **Organization Multi-Tenant Isolation (`ORGANIZATION_MISMATCH`)**: Authenticated organization users are strictly confined to employers and training providers belonging to their assigned organization (`user.organizationId == employer.organizationId` / `provider.organizationId`). Cross-organization mutations are rejected.
+  5. **Administrative Oversight Scope**: System administrators (`ROLE_super_admin`, `ROLE_government_admin`) operate with cross-tenant administrative oversight authority and bypass single-tenant scoping checks while remaining strictly bound to required target ID checks, target record existence, and mandatory target organization affiliation.
+  6. **Reconciliation of Non-Catalog Role Variants (`ROLE_government_officer`)**: Under the authoritative Phase 24 role catalog defined in `database/phase-02-users-security.sql`, only `ROLE_super_admin` and `ROLE_government_admin` are recognized system administrator roles. Non-catalog or departmental role variants such as `ROLE_government_officer`, `ROLE_ADMIN`, or plain `admin` are strictly rejected from administrative bypass and cannot perform cross-tenant operations or bypass domain security scopes.
+- **Protected Workflow Boundaries**:
+  - `PlacementEmploymentWorkflowService`: Placement-to-employment transitions and trainee summary reads.
+  - `TrainingOutcomeWorkflowService`: Assessment recording, certification issuance, and outcome summaries.
+  - `SkillGapRemediationWorkflowService`: Remedial course enrollments, recommendation decisions, and skill-gap profiles.
+  - `EmploymentLifecycleWorkflowService`: Employment exit recording, unemployment-to-employment transitions, and career timelines.
+  - `VerificationWorkflowService`: Survey verification initiation, verdict recording, and verification summaries.
+  - `FollowupEngagementWorkflowService`: Followup survey responses, communication attempt logging, and engagement histories.
 
 ---
 

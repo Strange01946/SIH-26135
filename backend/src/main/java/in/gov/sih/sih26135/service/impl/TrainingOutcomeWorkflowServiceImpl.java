@@ -22,11 +22,13 @@ import in.gov.sih.sih26135.service.CertificationService;
 import in.gov.sih.sih26135.service.TraineeAssessmentService;
 import in.gov.sih.sih26135.service.TrainingEnrollmentService;
 import in.gov.sih.sih26135.service.TrainingOutcomeWorkflowService;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,6 +46,27 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
   private final CourseSkillRepository courseSkillRepository;
   private final SkillGapRepository skillGapRepository;
   private final RefSkillGapStatusRepository refSkillGapStatusRepository;
+  private final WorkflowSecurityScopeValidator scopeValidator;
+
+  @Autowired
+  public TrainingOutcomeWorkflowServiceImpl(
+      TrainingEnrollmentService trainingEnrollmentService,
+      TraineeAssessmentService traineeAssessmentService,
+      AssessmentResultService assessmentResultService,
+      CertificationService certificationService,
+      CourseSkillRepository courseSkillRepository,
+      SkillGapRepository skillGapRepository,
+      RefSkillGapStatusRepository refSkillGapStatusRepository,
+      WorkflowSecurityScopeValidator scopeValidator) {
+    this.trainingEnrollmentService = trainingEnrollmentService;
+    this.traineeAssessmentService = traineeAssessmentService;
+    this.assessmentResultService = assessmentResultService;
+    this.certificationService = certificationService;
+    this.courseSkillRepository = courseSkillRepository;
+    this.skillGapRepository = skillGapRepository;
+    this.refSkillGapStatusRepository = refSkillGapStatusRepository;
+    this.scopeValidator = scopeValidator;
+  }
 
   public TrainingOutcomeWorkflowServiceImpl(
       TrainingEnrollmentService trainingEnrollmentService,
@@ -53,13 +76,16 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
       CourseSkillRepository courseSkillRepository,
       SkillGapRepository skillGapRepository,
       RefSkillGapStatusRepository refSkillGapStatusRepository) {
-    this.trainingEnrollmentService = trainingEnrollmentService;
-    this.traineeAssessmentService = traineeAssessmentService;
-    this.assessmentResultService = assessmentResultService;
-    this.certificationService = certificationService;
-    this.courseSkillRepository = courseSkillRepository;
-    this.skillGapRepository = skillGapRepository;
-    this.refSkillGapStatusRepository = refSkillGapStatusRepository;
+    this(
+        trainingEnrollmentService,
+        traineeAssessmentService,
+        assessmentResultService,
+        certificationService,
+        courseSkillRepository,
+        skillGapRepository,
+        refSkillGapStatusRepository,
+        null
+    );
   }
 
   @Override
@@ -83,33 +109,56 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
       );
     }
 
-    Long targetEnrollmentId = null;
-    TrainingEnrollmentResponse targetEnrollment = null;
-    if (request.getCompletionEnrollmentStatusId() != null) {
-      targetEnrollmentId = request.getEnrollmentId();
-      if (targetEnrollmentId == null && certRequest != null) {
-        targetEnrollmentId = certRequest.getEnrollmentId();
+    ensureScopeValidator();
+
+    Long targetEnrollmentId = request.getEnrollmentId();
+    if (targetEnrollmentId == null && certRequest != null) {
+      targetEnrollmentId = certRequest.getEnrollmentId();
+    }
+    if (targetEnrollmentId == null && request.getAssessmentResultRequest().getTraineeAssessmentId() != null) {
+      TraineeAssessmentResponse ta = traineeAssessmentService.getById(
+          request.getAssessmentResultRequest().getTraineeAssessmentId());
+      if (ta == null) {
+        throw new ResourceNotFoundException("TraineeAssessment", "traineeAssessmentId");
       }
-      if (targetEnrollmentId == null) {
-        throw new BadRequestException(
-            "Enrollment ID is required to update enrollment status",
-            "ENROLLMENT_ID_REQUIRED"
-        );
-      }
-      targetEnrollment = trainingEnrollmentService.getById(targetEnrollmentId);
-      if (request.getAssessmentResultRequest().getTraineeId() != null
-          && !targetEnrollment.getTraineeId().equals(request.getAssessmentResultRequest().getTraineeId())) {
+      targetEnrollmentId = ta.getEnrollmentId();
+    }
+    if (targetEnrollmentId == null) {
+      throw new BadRequestException(
+          "Enrollment ID is required to resolve training provider ownership",
+          "ENROLLMENT_ID_REQUIRED"
+      );
+    }
+
+    TrainingEnrollmentResponse targetEnrollment = trainingEnrollmentService.getById(targetEnrollmentId);
+    if (targetEnrollment == null) {
+      throw new ResourceNotFoundException("TrainingEnrollment", "enrollmentId");
+    }
+    if (targetEnrollment.getProviderId() == null) {
+      throw new BadRequestException("Training enrollment has no associated provider", "PROVIDER_REQUIRED");
+    }
+    scopeValidator.validateProviderScope(targetEnrollment.getProviderId());
+
+    if (request.getAssessmentResultRequest().getTraineeId() == null) {
+      request.getAssessmentResultRequest().setTraineeId(targetEnrollment.getTraineeId());
+    } else if (!request.getAssessmentResultRequest().getTraineeId().equals(targetEnrollment.getTraineeId())) {
+      throw new BadRequestException(
+          "Enrollment trainee does not match assessment result trainee",
+          "ENROLLMENT_TRAINEE_MISMATCH"
+      );
+    }
+
+    if (certRequest != null) {
+      if (certRequest.getTraineeId() == null) {
+        certRequest.setTraineeId(targetEnrollment.getTraineeId());
+      } else if (!certRequest.getTraineeId().equals(targetEnrollment.getTraineeId())) {
         throw new BadRequestException(
             "Enrollment trainee does not match assessment result trainee",
             "ENROLLMENT_TRAINEE_MISMATCH"
         );
       }
-      if (certRequest != null && certRequest.getTraineeId() != null
-          && !targetEnrollment.getTraineeId().equals(certRequest.getTraineeId())) {
-        throw new BadRequestException(
-            "Enrollment trainee does not match assessment result trainee",
-            "ENROLLMENT_TRAINEE_MISMATCH"
-        );
+      if (certRequest.getEnrollmentId() == null) {
+        certRequest.setEnrollmentId(targetEnrollment.getId());
       }
     }
 
@@ -143,7 +192,7 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
     }
 
     TrainingEnrollmentResponse updatedEnrollment = null;
-    if (targetEnrollment != null) {
+    if (targetEnrollment != null && request.getCompletionEnrollmentStatusId() != null) {
       UpdateTrainingEnrollmentRequest updateReq = new UpdateTrainingEnrollmentRequest();
       updateReq.setStartDate(targetEnrollment.getStartDate());
       updateReq.setExpectedCompletionDate(targetEnrollment.getExpectedCompletionDate());
@@ -243,6 +292,12 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
     }
   }
 
+  private void ensureScopeValidator() {
+    if (this.scopeValidator == null) {
+      throw new IllegalStateException("WorkflowSecurityScopeValidator is required for scope validation");
+    }
+  }
+
   @Override
   public TraineeTrainingOutcomeSummaryResponse getTraineeTrainingOutcomeSummary(
       Long traineeId, Long enrollmentId) {
@@ -253,7 +308,13 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
       throw new BadRequestException("Enrollment ID is required", "ENROLLMENT_ID_REQUIRED");
     }
 
+    ensureScopeValidator();
+    scopeValidator.validateTraineeScope(traineeId);
+
     TrainingEnrollmentResponse enrollment = trainingEnrollmentService.getById(enrollmentId);
+    if (enrollment == null) {
+      throw new ResourceNotFoundException("TrainingEnrollment", "enrollmentId");
+    }
     if (!enrollment.getTraineeId().equals(traineeId)) {
       throw new BadRequestException(
           "Enrollment does not belong to the specified trainee",
