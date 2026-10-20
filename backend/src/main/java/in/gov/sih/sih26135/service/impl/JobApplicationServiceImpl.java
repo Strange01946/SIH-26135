@@ -136,6 +136,10 @@ public class JobApplicationServiceImpl implements JobApplicationService {
     Trainee trainee = traineeRepository.findById(request.getTraineeId())
         .orElseThrow(() -> new ResourceNotFoundException("Trainee", "traineeId"));
 
+    if (trainee.getDeletedAt() != null) {
+      throw new BadRequestException("Cannot create job application for soft-deleted trainee", "TRAINEE_DELETED");
+    }
+
     JobPosting jobPosting = jobPostingRepository.findById(request.getJobPostingId())
         .orElseThrow(() -> new ResourceNotFoundException("JobPosting", "jobPostingId"));
 

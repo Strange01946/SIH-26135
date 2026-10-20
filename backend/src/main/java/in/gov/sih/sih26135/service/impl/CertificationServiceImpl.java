@@ -240,6 +240,9 @@ public class CertificationServiceImpl implements CertificationService {
       if (trainee == null) {
         throw new BadRequestException("Assessment attempt has no linked trainee", "TRAINEE_REQUIRED");
       }
+      if (trainee.getDeletedAt() != null) {
+        throw new BadRequestException("Cannot issue certification for soft-deleted trainee", "TRAINEE_DELETED");
+      }
 
       Assessment assessment = attempt.getAssessment();
       if (assessment == null) {
@@ -302,6 +305,10 @@ public class CertificationServiceImpl implements CertificationService {
       trainee = traineeRepository.findById(request.getTraineeId())
           .orElseThrow(() -> new ResourceNotFoundException("Trainee", "traineeId"));
 
+      if (trainee.getDeletedAt() != null) {
+        throw new BadRequestException("Cannot issue certification for soft-deleted trainee", "TRAINEE_DELETED");
+      }
+
       enrollment = trainingEnrollmentRepository.findById(request.getEnrollmentId())
           .orElseThrow(() -> new ResourceNotFoundException("TrainingEnrollment", "enrollmentId"));
 
@@ -332,6 +339,11 @@ public class CertificationServiceImpl implements CertificationService {
     RefCertificateVerificationStatus verificationStatus = refCertificateVerificationStatusRepository
         .findById(request.getCertificateVerificationStatusId())
         .orElseThrow(() -> new ResourceNotFoundException("RefCertificateVerificationStatus", "certificateVerificationStatusId"));
+
+    if (("REVOKED".equalsIgnoreCase(status.getStatusCode()) || "EXPIRED".equalsIgnoreCase(status.getStatusCode()))
+        && "VERIFIED".equalsIgnoreCase(verificationStatus.getStatusCode())) {
+      throw new BadRequestException("Cannot verify a revoked or expired certification", "INVALID_CERTIFICATE_STATUS");
+    }
 
     if (request.getVerifiedByUserId() != null) {
       if (!userRepository.existsById(request.getVerifiedByUserId())) {
@@ -367,11 +379,41 @@ public class CertificationServiceImpl implements CertificationService {
     Certification cert = certificationRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("Certification", "id"));
 
+    if (cert.getDeletedAt() != null) {
+      throw new BadRequestException("Cannot update a deleted certification", "CERTIFICATION_DELETED");
+    }
+
     LocalDate effectiveExpiry = request.getExpiryDate() != null ? request.getExpiryDate() : cert.getExpiryDate();
     LocalDate issueDate = cert.getIssueDate();
 
     if (effectiveExpiry != null && issueDate != null && effectiveExpiry.isBefore(issueDate)) {
       throw new BadRequestException("Expiry date cannot precede issue date", "INVALID_EXPIRY_DATE");
+    }
+
+    RefCertificateStatus effectiveStatus = cert.getCertificateStatus();
+    if (request.getCertificateStatusId() != null) {
+      effectiveStatus = refCertificateStatusRepository.findById(request.getCertificateStatusId())
+          .orElseThrow(() -> new ResourceNotFoundException("RefCertificateStatus", "certificateStatusId"));
+    }
+
+    RefCertificateVerificationStatus effectiveVerificationStatus = cert.getCertificateVerificationStatus();
+    if (request.getCertificateVerificationStatusId() != null) {
+      effectiveVerificationStatus = refCertificateVerificationStatusRepository
+          .findById(request.getCertificateVerificationStatusId())
+          .orElseThrow(() -> new ResourceNotFoundException("RefCertificateVerificationStatus", "certificateVerificationStatusId"));
+    }
+
+    if (effectiveStatus != null && effectiveVerificationStatus != null
+        && ("REVOKED".equalsIgnoreCase(effectiveStatus.getStatusCode()) || "EXPIRED".equalsIgnoreCase(effectiveStatus.getStatusCode()))
+        && "VERIFIED".equalsIgnoreCase(effectiveVerificationStatus.getStatusCode())) {
+      throw new BadRequestException("Cannot verify a revoked or expired certification", "INVALID_CERTIFICATE_STATUS");
+    }
+
+    if (request.getVerifiedByUserId() != null) {
+      if (!userRepository.existsById(request.getVerifiedByUserId())) {
+        throw new ResourceNotFoundException("User", "verifiedByUserId");
+      }
+      cert.setVerifiedByUserId(request.getVerifiedByUserId());
     }
 
     if (request.getExpiryDate() != null) {
@@ -383,27 +425,15 @@ public class CertificationServiceImpl implements CertificationService {
     }
 
     if (request.getCertificateStatusId() != null) {
-      RefCertificateStatus status = refCertificateStatusRepository.findById(request.getCertificateStatusId())
-          .orElseThrow(() -> new ResourceNotFoundException("RefCertificateStatus", "certificateStatusId"));
-      cert.setCertificateStatus(status);
+      cert.setCertificateStatus(effectiveStatus);
     }
 
     if (request.getCertificateVerificationStatusId() != null) {
-      RefCertificateVerificationStatus verificationStatus = refCertificateVerificationStatusRepository
-          .findById(request.getCertificateVerificationStatusId())
-          .orElseThrow(() -> new ResourceNotFoundException("RefCertificateVerificationStatus", "certificateVerificationStatusId"));
-      cert.setCertificateVerificationStatus(verificationStatus);
+      cert.setCertificateVerificationStatus(effectiveVerificationStatus);
     }
 
     if (request.getVerifiedAt() != null) {
       cert.setVerifiedAt(request.getVerifiedAt());
-    }
-
-    if (request.getVerifiedByUserId() != null) {
-      if (!userRepository.existsById(request.getVerifiedByUserId())) {
-        throw new ResourceNotFoundException("User", "verifiedByUserId");
-      }
-      cert.setVerifiedByUserId(request.getVerifiedByUserId());
     }
 
     LocalDateTime now = LocalDateTime.now();
@@ -422,9 +452,11 @@ public class CertificationServiceImpl implements CertificationService {
     Certification cert = certificationRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("Certification", "id"));
 
-    LocalDateTime now = LocalDateTime.now();
-    cert.setDeletedAt(now);
-    cert.setUpdatedAt(now);
-    certificationRepository.save(cert);
+    if (cert.getDeletedAt() == null) {
+      LocalDateTime now = LocalDateTime.now();
+      cert.setDeletedAt(now);
+      cert.setUpdatedAt(now);
+      certificationRepository.save(cert);
+    }
   }
 }

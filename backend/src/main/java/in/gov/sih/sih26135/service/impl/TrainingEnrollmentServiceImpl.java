@@ -185,8 +185,16 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
     Trainee trainee = traineeRepository.findById(request.getTraineeId())
         .orElseThrow(() -> new ResourceNotFoundException("Trainee", "traineeId"));
 
+    if (trainee.getDeletedAt() != null) {
+      throw new BadRequestException("Cannot create training enrollment for soft-deleted trainee", "TRAINEE_DELETED");
+    }
+
     TrainingBatch batch = trainingBatchRepository.findById(request.getBatchId())
         .orElseThrow(() -> new ResourceNotFoundException("TrainingBatch", "batchId"));
+
+    if (batch.getDeletedAt() != null) {
+      throw new BadRequestException("Cannot create training enrollment for soft-deleted training batch", "BATCH_DELETED");
+    }
 
     Program program = batch.getProgram();
     if (request.getProgramId() != null && !request.getProgramId().equals(program.getId())) {
@@ -260,6 +268,10 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
     TrainingEnrollment enrollment = trainingEnrollmentRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("TrainingEnrollment", "id"));
 
+    if (enrollment.getDeletedAt() != null) {
+      throw new BadRequestException("Cannot update a deleted training enrollment", "ENROLLMENT_DELETED");
+    }
+
     LocalDate effectiveStartDate = request.getStartDate() != null ? request.getStartDate() : enrollment.getStartDate();
     LocalDate enrollmentDate = enrollment.getEnrollmentDate();
 
@@ -326,9 +338,11 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
     TrainingEnrollment enrollment = trainingEnrollmentRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("TrainingEnrollment", "id"));
 
-    LocalDateTime now = LocalDateTime.now();
-    enrollment.setDeletedAt(now);
-    enrollment.setUpdatedAt(now);
-    trainingEnrollmentRepository.save(enrollment);
+    if (enrollment.getDeletedAt() == null) {
+      LocalDateTime now = LocalDateTime.now();
+      enrollment.setDeletedAt(now);
+      enrollment.setUpdatedAt(now);
+      trainingEnrollmentRepository.save(enrollment);
+    }
   }
 }

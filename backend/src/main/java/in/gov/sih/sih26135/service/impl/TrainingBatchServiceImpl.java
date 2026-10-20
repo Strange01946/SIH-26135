@@ -210,6 +210,10 @@ public class TrainingBatchServiceImpl implements TrainingBatchService {
     TrainingBatch batch = trainingBatchRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("TrainingBatch", "id"));
 
+    if (batch.getDeletedAt() != null) {
+      throw new BadRequestException("Cannot update a deleted training batch", "BATCH_DELETED");
+    }
+
     LocalDate prospectiveStartDate = request.getStartDate() != null ? request.getStartDate() : batch.getStartDate();
     LocalDate prospectiveEndDate = request.getEndDate() != null ? request.getEndDate() : batch.getEndDate();
     if (prospectiveStartDate != null && prospectiveEndDate != null && prospectiveEndDate.isBefore(prospectiveStartDate)) {
@@ -251,6 +255,10 @@ public class TrainingBatchServiceImpl implements TrainingBatchService {
     TrainingBatch batch = trainingBatchRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("TrainingBatch", "id"));
 
+    if (batch.getDeletedAt() != null) {
+      throw new BadRequestException("Cannot update status of a deleted training batch", "BATCH_DELETED");
+    }
+
     RefBatchStatus status = refBatchStatusRepository.findById(request.getBatchStatusId())
         .orElseThrow(() -> new ResourceNotFoundException("RefBatchStatus", "batchStatusId"));
 
@@ -264,12 +272,17 @@ public class TrainingBatchServiceImpl implements TrainingBatchService {
   @Override
   @Transactional
   public void deleteBatch(Long id) {
+    if (id == null) {
+      throw new BadRequestException("Batch ID is required");
+    }
     TrainingBatch batch = trainingBatchRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("TrainingBatch", "id"));
 
-    LocalDateTime now = LocalDateTime.now();
-    batch.setDeletedAt(now);
-    batch.setUpdatedAt(now);
-    trainingBatchRepository.save(batch);
+    if (batch.getDeletedAt() == null) {
+      LocalDateTime now = LocalDateTime.now();
+      batch.setDeletedAt(now);
+      batch.setUpdatedAt(now);
+      trainingBatchRepository.save(batch);
+    }
   }
 }

@@ -247,6 +247,10 @@ public class AssessmentServiceImpl implements AssessmentService {
     Assessment assessment = assessmentRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("Assessment", "id"));
 
+    if (assessment.getDeletedAt() != null) {
+      throw new BadRequestException("Cannot update a deleted assessment", "ASSESSMENT_DELETED");
+    }
+
     if (request.getAssessmentTypeId() != null) {
       RefAssessmentType type = refAssessmentTypeRepository.findById(request.getAssessmentTypeId())
           .orElseThrow(() -> new ResourceNotFoundException("RefAssessmentType", "assessmentTypeId"));
@@ -313,9 +317,11 @@ public class AssessmentServiceImpl implements AssessmentService {
     Assessment assessment = assessmentRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("Assessment", "id"));
 
-    LocalDateTime now = LocalDateTime.now();
-    assessment.setDeletedAt(now);
-    assessment.setUpdatedAt(now);
-    assessmentRepository.save(assessment);
+    if (assessment.getDeletedAt() == null) {
+      LocalDateTime now = LocalDateTime.now();
+      assessment.setDeletedAt(now);
+      assessment.setUpdatedAt(now);
+      assessmentRepository.save(assessment);
+    }
   }
 }
