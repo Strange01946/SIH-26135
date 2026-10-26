@@ -98,6 +98,33 @@ public class FollowupEngagementWorkflowServiceImpl implements FollowupEngagement
       );
     }
 
+    if (surveyReq.getFollowupTaskId() != null && !surveyReq.getFollowupTaskId().equals(task.getId())) {
+      throw new BadRequestException(
+          "Survey response followup task does not match target task",
+          "FOLLOWUP_TASK_MISMATCH"
+      );
+    }
+
+    if (surveyReq.getEnrollmentId() != null) {
+      if (task.getEnrollmentId() == null || !surveyReq.getEnrollmentId().equals(task.getEnrollmentId())) {
+        throw new BadRequestException(
+            "Survey response enrollment does not match followup task enrollment",
+            "ENROLLMENT_TASK_MISMATCH"
+        );
+      }
+    }
+
+    if (task.getSurveyId() != null) {
+      if (surveyReq.getSurveyId() == null) {
+        surveyReq.setSurveyId(task.getSurveyId());
+      } else if (!surveyReq.getSurveyId().equals(task.getSurveyId())) {
+        throw new BadRequestException(
+            "Survey response survey does not match followup task survey",
+            "SURVEY_TASK_MISMATCH"
+        );
+      }
+    }
+
     traineeConsentService.validateConsent(task.getTraineeId(), "EMPLOYMENT_FOLLOW_UP");
 
     surveyReq.setFollowupTaskId(task.getId());
@@ -163,6 +190,13 @@ public class FollowupEngagementWorkflowServiceImpl implements FollowupEngagement
       throw new BadRequestException(
           "Communication log trainee does not match followup task trainee",
           "TRAINEE_TASK_MISMATCH"
+      );
+    }
+
+    if (commReq.getFollowupTaskId() != null && !commReq.getFollowupTaskId().equals(task.getId())) {
+      throw new BadRequestException(
+          "Communication log followup task does not match target task",
+          "FOLLOWUP_TASK_MISMATCH"
       );
     }
 

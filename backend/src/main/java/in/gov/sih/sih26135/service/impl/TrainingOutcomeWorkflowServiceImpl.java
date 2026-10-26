@@ -139,6 +139,26 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
     }
     scopeValidator.validateProviderScope(targetEnrollment.getProviderId());
 
+    if (request.getAssessmentResultRequest().getTraineeAssessmentId() != null) {
+      TraineeAssessmentResponse ta = traineeAssessmentService.getById(
+          request.getAssessmentResultRequest().getTraineeAssessmentId());
+      if (ta == null) {
+        throw new ResourceNotFoundException("TraineeAssessment", "traineeAssessmentId");
+      }
+      if (ta.getEnrollmentId() == null || !ta.getEnrollmentId().equals(targetEnrollment.getId())) {
+        throw new BadRequestException(
+            "Trainee assessment enrollment does not match target enrollment",
+            "ENROLLMENT_ASSESSMENT_MISMATCH"
+        );
+      }
+      if (ta.getTraineeId() == null || !ta.getTraineeId().equals(targetEnrollment.getTraineeId())) {
+        throw new BadRequestException(
+            "Trainee assessment trainee does not match target enrollment trainee",
+            "ENROLLMENT_TRAINEE_MISMATCH"
+        );
+      }
+    }
+
     if (request.getAssessmentResultRequest().getTraineeId() == null) {
       request.getAssessmentResultRequest().setTraineeId(targetEnrollment.getTraineeId());
     } else if (!request.getAssessmentResultRequest().getTraineeId().equals(targetEnrollment.getTraineeId())) {
@@ -149,11 +169,17 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
     }
 
     if (certRequest != null) {
+      if (certRequest.getEnrollmentId() != null && !certRequest.getEnrollmentId().equals(targetEnrollment.getId())) {
+        throw new BadRequestException(
+            "Certification enrollment does not match target enrollment",
+            "ENROLLMENT_CERTIFICATION_MISMATCH"
+        );
+      }
       if (certRequest.getTraineeId() == null) {
         certRequest.setTraineeId(targetEnrollment.getTraineeId());
       } else if (!certRequest.getTraineeId().equals(targetEnrollment.getTraineeId())) {
         throw new BadRequestException(
-            "Enrollment trainee does not match assessment result trainee",
+            "Enrollment trainee does not match certification trainee",
             "ENROLLMENT_TRAINEE_MISMATCH"
         );
       }

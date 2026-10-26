@@ -88,6 +88,12 @@ class TrainingOutcomeWorkflowScopeTest {
       TrainingEnrollmentResponse enrol = buildEnrollment(1L, 100L, 10L);
       when(trainingEnrollmentService.getById(1L)).thenReturn(enrol);
 
+      TraineeAssessmentResponse ta = new TraineeAssessmentResponse();
+      ta.setId(5L);
+      ta.setEnrollmentId(1L);
+      ta.setTraineeId(100L);
+      when(traineeAssessmentService.getById(5L)).thenReturn(ta);
+
       CreateAssessmentResultRequest arReq = new CreateAssessmentResultRequest();
       arReq.setTraineeId(100L);
       arReq.setTraineeAssessmentId(5L);

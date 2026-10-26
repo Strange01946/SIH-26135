@@ -130,6 +130,52 @@ public class EmploymentLifecycleWorkflowServiceImpl implements EmploymentLifecyc
     }
     scopeValidator.validateTraineeScope(emp.traineeId());
 
+    if (request.getUnemploymentEventRequest() != null) {
+      CreateTraineeUnemploymentEventRequest unempReq = request.getUnemploymentEventRequest();
+      if (unempReq.getTraineeId() != null && !unempReq.getTraineeId().equals(emp.traineeId())) {
+        throw new BadRequestException(
+            "Unemployment event trainee does not match exit event trainee",
+            "TRAINEE_EXIT_UNEMPLOYMENT_MISMATCH"
+        );
+      }
+      if (unempReq.getPrecedingEmploymentId() != null && !unempReq.getPrecedingEmploymentId().equals(emp.id())) {
+        throw new BadRequestException(
+            "Unemployment event preceding employment does not match exit employment",
+            "EMPLOYMENT_UNEMPLOYMENT_MISMATCH"
+        );
+      }
+      if (unempReq.getEmploymentExitEventId() != null) {
+        throw new BadRequestException(
+            "Unemployment event exit event ID must not be pre-set",
+            "EXIT_EVENT_ID_PRESET"
+        );
+      }
+      if (unempReq.getEnrollmentId() != null) {
+        if (emp.enrollmentId() == null || !unempReq.getEnrollmentId().equals(emp.enrollmentId())) {
+          throw new BadRequestException(
+              "Unemployment event enrollment does not match employment record enrollment",
+              "ENROLLMENT_EMPLOYMENT_MISMATCH"
+          );
+        }
+      }
+      if (unempReq.getPlacementId() != null) {
+        if (emp.placementId() == null || !unempReq.getPlacementId().equals(emp.placementId())) {
+          throw new BadRequestException(
+              "Unemployment event placement does not match employment record placement",
+              "PLACEMENT_EMPLOYMENT_MISMATCH"
+          );
+        }
+      }
+      if (unempReq.getStartDate() != null
+          && request.getExitEventRequest().getSeparationDate() != null
+          && unempReq.getStartDate().isBefore(request.getExitEventRequest().getSeparationDate())) {
+        throw new BadRequestException(
+            "Unemployment start date cannot be before separation date",
+            "UNEMPLOYMENT_START_BEFORE_SEPARATION"
+        );
+      }
+    }
+
     EmploymentExitEventResponse exitEvent = employmentExitEventService.createExitEvent(request.getExitEventRequest());
 
     TraineeUnemploymentEventResponse unemploymentEvent = null;
@@ -150,6 +196,9 @@ public class EmploymentLifecycleWorkflowServiceImpl implements EmploymentLifecyc
 
       if (unempReq.getEnrollmentId() == null) {
         unempReq.setEnrollmentId(exitEvent.enrollmentId());
+      }
+      if (unempReq.getPlacementId() == null) {
+        unempReq.setPlacementId(emp.placementId());
       }
 
       if (unempReq.getStartDate() == null) {
@@ -226,6 +275,12 @@ public class EmploymentLifecycleWorkflowServiceImpl implements EmploymentLifecyc
 
     if (request.getInitialSalaryRequest() != null) {
       CreateSalaryHistoryRequest salaryReq = request.getInitialSalaryRequest();
+      if (salaryReq.getEmploymentId() != null) {
+        throw new BadRequestException(
+            "Initial salary employment ID must not be pre-set",
+            "EMPLOYMENT_ID_PRESET"
+        );
+      }
       if (salaryReq.getTraineeId() != null && !salaryReq.getTraineeId().equals(unempEvent.getTrainee().getId())) {
         throw new BadRequestException(
             "Initial salary trainee does not match unemployment event trainee",

@@ -13,6 +13,7 @@ import in.gov.sih.sih26135.dto.response.EmploymentVerificationEvidenceResponse;
 import in.gov.sih.sih26135.dto.response.EmploymentVerificationRequestResponse;
 import in.gov.sih.sih26135.dto.response.EmploymentVerificationResponse;
 import in.gov.sih.sih26135.dto.response.EmploymentVerificationSummaryResponse;
+import in.gov.sih.sih26135.dto.response.FollowupTaskResponse;
 import in.gov.sih.sih26135.dto.response.RecordVerificationVerdictResponse;
 import in.gov.sih.sih26135.dto.response.SurveyResponseResponse;
 import in.gov.sih.sih26135.entity.RefUserStatus;
@@ -179,6 +180,9 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
     if (emp.employerId() == null) {
       throw new BadRequestException("Employment record has no associated employer", "EMPLOYER_REQUIRED");
     }
+    if (emp.traineeId() == null) {
+      throw new BadRequestException("Employment record has no associated trainee", "TRAINEE_REQUIRED");
+    }
     scopeValidator.validateEmployerScope(emp.employerId());
     if (!emp.traineeId().equals(surveyResponse.getTraineeId())) {
       throw new BadRequestException(
@@ -208,6 +212,62 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
           "A verification request has already been initiated for this survey response",
           "OPEN_REQUEST_EXISTS"
       );
+    }
+
+    if (details.getFollowupTaskId() != null) {
+      if (surveyResponse.getFollowupTaskId() == null || !details.getFollowupTaskId().equals(surveyResponse.getFollowupTaskId())) {
+        throw new BadRequestException(
+            "Followup task ID does not match survey response followup task",
+            "FOLLOWUP_TASK_MISMATCH"
+        );
+      }
+    }
+    if (details.getPlacementRecordId() != null) {
+      if (emp.placementId() == null || !details.getPlacementRecordId().equals(emp.placementId())) {
+        throw new BadRequestException(
+            "Placement record ID does not match employment record placement",
+            "PLACEMENT_EMPLOYMENT_MISMATCH"
+        );
+      }
+    }
+    if (details.getEmployerId() != null && !details.getEmployerId().equals(emp.employerId())) {
+      throw new BadRequestException(
+          "Employer ID does not match employment record employer",
+          "EMPLOYER_EMPLOYMENT_MISMATCH"
+      );
+    }
+
+    if (surveyResponse.getFollowupTaskId() != null) {
+      FollowupTaskResponse followupTask = followupTaskService.getFollowupTaskById(surveyResponse.getFollowupTaskId());
+      if (followupTask == null) {
+        throw new ResourceNotFoundException("FollowupTask", "followupTaskId");
+      }
+      if (followupTask.getTraineeId() == null) {
+        throw new BadRequestException(
+            "Followup task does not have an associated trainee",
+            "TRAINEE_REQUIRED"
+        );
+      }
+      if (!followupTask.getTraineeId().equals(emp.traineeId())) {
+        throw new BadRequestException(
+            "Followup task trainee does not match employment record trainee",
+            "TRAINEE_TASK_MISMATCH"
+        );
+      }
+      if (followupTask.getEmploymentId() != null && !followupTask.getEmploymentId().equals(emp.id())) {
+        throw new BadRequestException(
+            "Followup task employment does not match employment record",
+            "EMPLOYMENT_TASK_MISMATCH"
+        );
+      }
+      if (followupTask.getPlacementId() != null) {
+        if (emp.placementId() == null || !followupTask.getPlacementId().equals(emp.placementId())) {
+          throw new BadRequestException(
+              "Followup task placement does not match employment record placement",
+              "PLACEMENT_TASK_MISMATCH"
+          );
+        }
+      }
     }
 
     details.setSurveyResponseId(surveyResponse.getId());
@@ -275,10 +335,20 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
 
     ensureScopeValidator();
     Long targetEmploymentId = verReq.getEmploymentRecordId();
-    if (targetEmploymentId == null && verReq.getEmploymentVerificationRequestId() != null) {
-      EmploymentVerificationRequestResponse vReq = employmentVerificationRequestService
+    EmploymentVerificationRequestResponse vReq = null;
+    if (verReq.getEmploymentVerificationRequestId() != null) {
+      vReq = employmentVerificationRequestService
           .getVerificationRequestById(verReq.getEmploymentVerificationRequestId());
-      if (vReq != null) {
+      if (vReq == null) {
+        throw new ResourceNotFoundException("EmploymentVerificationRequest", "employmentVerificationRequestId");
+      }
+      if (targetEmploymentId != null && !targetEmploymentId.equals(vReq.employmentRecordId())) {
+        throw new BadRequestException(
+            "Employment verification request does not belong to target employment record",
+            "EMPLOYMENT_VERIFICATION_REQUEST_MISMATCH"
+        );
+      }
+      if (targetEmploymentId == null) {
         targetEmploymentId = vReq.employmentRecordId();
         verReq.setEmploymentRecordId(targetEmploymentId);
       }
@@ -293,7 +363,81 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
     if (emp.employerId() == null) {
       throw new BadRequestException("Employment record has no associated employer", "EMPLOYER_REQUIRED");
     }
+    if (emp.traineeId() == null) {
+      throw new BadRequestException("Employment record has no associated trainee", "TRAINEE_REQUIRED");
+    }
     scopeValidator.validateEmployerScope(emp.employerId());
+
+    if (vReq != null) {
+      if (vReq.traineeId() == null) {
+        throw new BadRequestException(
+            "Employment verification request has no associated trainee",
+            "TRAINEE_REQUIRED"
+        );
+      }
+      if (!vReq.traineeId().equals(emp.traineeId())) {
+        throw new BadRequestException(
+            "Verification request trainee does not match employment record trainee",
+            "TRAINEE_EMPLOYMENT_MISMATCH"
+        );
+      }
+      if (vReq.employerId() == null) {
+        throw new BadRequestException(
+            "Employment verification request has no associated employer",
+            "EMPLOYER_REQUIRED"
+        );
+      }
+      if (!vReq.employerId().equals(emp.employerId())) {
+        throw new BadRequestException(
+            "Verification request employer does not match employment record employer",
+            "EMPLOYER_EMPLOYMENT_MISMATCH"
+        );
+      }
+      if (emp.placementId() != null) {
+        if (vReq.placementRecordId() == null || !vReq.placementRecordId().equals(emp.placementId())) {
+          throw new BadRequestException(
+              "Verification request placement does not match employment record placement",
+              "PLACEMENT_EMPLOYMENT_MISMATCH"
+          );
+        }
+      } else if (vReq.placementRecordId() != null) {
+        throw new BadRequestException(
+            "Verification request placement does not match employment record placement",
+            "PLACEMENT_EMPLOYMENT_MISMATCH"
+        );
+      }
+    }
+    if (verReq.getTraineeId() == null) {
+      verReq.setTraineeId(emp.traineeId());
+    } else if (!verReq.getTraineeId().equals(emp.traineeId())) {
+      throw new BadRequestException(
+          "Verification trainee does not match employment record trainee",
+          "TRAINEE_EMPLOYMENT_MISMATCH"
+      );
+    }
+    if (verReq.getEmployerId() == null) {
+      verReq.setEmployerId(emp.employerId());
+    } else if (!verReq.getEmployerId().equals(emp.employerId())) {
+      throw new BadRequestException(
+          "Verification employer does not match employment record employer",
+          "EMPLOYER_EMPLOYMENT_MISMATCH"
+      );
+    }
+    if (verReq.getPlacementRecordId() == null) {
+      verReq.setPlacementRecordId(emp.placementId());
+    } else if (emp.placementId() == null || !verReq.getPlacementRecordId().equals(emp.placementId())) {
+      throw new BadRequestException(
+          "Verification placement does not match employment record placement",
+          "PLACEMENT_EMPLOYMENT_MISMATCH"
+      );
+    }
+    if (request.getEmploymentRecordStatusId() != null && verReq.getRecordVerificationStatusId() != null
+        && !request.getEmploymentRecordStatusId().equals(verReq.getRecordVerificationStatusId())) {
+      throw new BadRequestException(
+          "Employment record verification status cannot contradict verification verdict status",
+          "VERIFICATION_STATUS_CONFLICT"
+      );
+    }
 
     // Authoritative verifier identity derived from authenticated security context
     verReq.setVerifiedByUserId(authenticatedUserId);

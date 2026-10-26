@@ -167,8 +167,39 @@ public class PlacementEmploymentWorkflowServiceImpl implements PlacementEmployme
       );
     }
 
+    if (empReq.getEmployerId() == null) {
+      empReq.setEmployerId(placement.employerId());
+    } else if (!empReq.getEmployerId().equals(placement.employerId())) {
+      throw new BadRequestException(
+          "Employment record employer does not match placement record employer",
+          "EMPLOYER_PLACEMENT_MISMATCH"
+      );
+    }
+
+    if (empReq.getPlacementId() != null && !empReq.getPlacementId().equals(placement.id())) {
+      throw new BadRequestException(
+          "Employment record placement does not match placement record",
+          "PLACEMENT_RECORD_MISMATCH"
+      );
+    }
+
+    if (empReq.getEnrollmentId() != null) {
+      if (placement.enrollmentId() == null || !empReq.getEnrollmentId().equals(placement.enrollmentId())) {
+        throw new BadRequestException(
+            "Employment record enrollment does not match placement record enrollment",
+            "ENROLLMENT_PLACEMENT_MISMATCH"
+        );
+      }
+    }
+
     if (request.getInitialSalaryRequest() != null) {
       CreateSalaryHistoryRequest salaryReq = request.getInitialSalaryRequest();
+      if (salaryReq.getEmploymentId() != null) {
+        throw new BadRequestException(
+            "Initial salary employment ID must not be pre-set",
+            "EMPLOYMENT_ID_PRESET"
+        );
+      }
       if (salaryReq.getTraineeId() != null && !salaryReq.getTraineeId().equals(placement.traineeId())) {
         throw new BadRequestException(
             "Initial salary trainee does not match placement record trainee",
