@@ -104,6 +104,7 @@ public class CertificationServiceImpl implements CertificationService {
       throw new BadRequestException("Trainee ID is required");
     }
     return certificationRepository.findByTraineeId(traineeId).stream()
+        .filter(c -> c.getDeletedAt() == null)
         .map(certificationMapper::toResponse)
         .toList();
   }
@@ -114,6 +115,7 @@ public class CertificationServiceImpl implements CertificationService {
       throw new BadRequestException("Enrollment ID is required");
     }
     return certificationRepository.findByTrainingEnrollmentId(enrollmentId).stream()
+        .filter(c -> c.getDeletedAt() == null)
         .map(certificationMapper::toResponse)
         .toList();
   }

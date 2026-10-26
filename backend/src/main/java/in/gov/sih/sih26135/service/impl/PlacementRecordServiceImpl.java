@@ -146,6 +146,7 @@ public class PlacementRecordServiceImpl implements PlacementRecordService {
       throw new BadRequestException("Trainee ID is required");
     }
     return placementRecordRepository.findByTraineeId(traineeId).stream()
+        .filter(r -> r.getDeletedAt() == null)
         .map(placementRecordMapper::toResponse)
         .toList();
   }
@@ -156,6 +157,7 @@ public class PlacementRecordServiceImpl implements PlacementRecordService {
       throw new BadRequestException("Enrollment ID is required");
     }
     return placementRecordRepository.findByEnrollmentId(enrollmentId).stream()
+        .filter(r -> r.getDeletedAt() == null)
         .map(placementRecordMapper::toResponse)
         .toList();
   }
@@ -166,6 +168,7 @@ public class PlacementRecordServiceImpl implements PlacementRecordService {
       throw new BadRequestException("Employer ID is required");
     }
     return placementRecordRepository.findByEmployerId(employerId).stream()
+        .filter(r -> r.getDeletedAt() == null)
         .map(placementRecordMapper::toResponse)
         .toList();
   }
@@ -176,6 +179,7 @@ public class PlacementRecordServiceImpl implements PlacementRecordService {
       throw new BadRequestException("Job posting ID is required");
     }
     return placementRecordRepository.findByJobPostingId(jobPostingId).stream()
+        .filter(r -> r.getDeletedAt() == null)
         .map(placementRecordMapper::toResponse)
         .toList();
   }

@@ -26,6 +26,7 @@ import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -338,7 +339,7 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
     scopeValidator.validateTraineeScope(traineeId);
 
     TrainingEnrollmentResponse enrollment = trainingEnrollmentService.getById(enrollmentId);
-    if (enrollment == null) {
+    if (enrollment == null || enrollment.getDeletedAt() != null) {
       throw new ResourceNotFoundException("TrainingEnrollment", "enrollmentId");
     }
     if (!enrollment.getTraineeId().equals(traineeId)) {
@@ -350,8 +351,15 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
 
     List<TraineeAssessmentResponse> assessments = traineeAssessmentService.getByEnrollmentId(enrollmentId);
     List<AssessmentResultResponse> results = assessmentResultService.getByTraineeId(traineeId);
+    Set<Long> assessmentIds = assessments.stream()
+        .map(TraineeAssessmentResponse::getId)
+        .filter(Objects::nonNull)
+        .collect(Collectors.toSet());
+    List<AssessmentResultResponse> enrollmentResults = results.stream()
+        .filter(r -> r.getTraineeAssessmentId() != null && assessmentIds.contains(r.getTraineeAssessmentId()))
+        .toList();
     List<CertificationResponse> certs = certificationService.getByEnrollmentId(enrollmentId);
 
-    return new TraineeTrainingOutcomeSummaryResponse(enrollment, assessments, results, certs);
+    return new TraineeTrainingOutcomeSummaryResponse(enrollment, assessments, enrollmentResults, certs);
   }
 }

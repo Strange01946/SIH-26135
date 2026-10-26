@@ -138,6 +138,7 @@ public class EmploymentRecordServiceImpl implements EmploymentRecordService {
       throw new BadRequestException("Trainee ID is required");
     }
     return employmentRecordRepository.findByTraineeId(traineeId).stream()
+        .filter(r -> r.getDeletedAt() == null)
         .map(employmentRecordMapper::toResponse)
         .toList();
   }
@@ -148,6 +149,7 @@ public class EmploymentRecordServiceImpl implements EmploymentRecordService {
       throw new BadRequestException("Employer ID is required");
     }
     return employmentRecordRepository.findByEmployerId(employerId).stream()
+        .filter(r -> r.getDeletedAt() == null)
         .map(employmentRecordMapper::toResponse)
         .toList();
   }
@@ -158,6 +160,7 @@ public class EmploymentRecordServiceImpl implements EmploymentRecordService {
       throw new BadRequestException("Employment spell status ID is required");
     }
     return employmentRecordRepository.findByEmploymentSpellStatusId(statusId).stream()
+        .filter(r -> r.getDeletedAt() == null)
         .map(employmentRecordMapper::toResponse)
         .toList();
   }

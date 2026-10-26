@@ -500,7 +500,7 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
 
     ensureScopeValidator();
     EmploymentRecordResponse emp = employmentRecordService.getEmploymentRecordById(employmentId);
-    if (emp == null) {
+    if (emp == null || emp.deletedAt() != null) {
       throw new ResourceNotFoundException("EmploymentRecord", "employmentId");
     }
     if (emp.employerId() == null) {
