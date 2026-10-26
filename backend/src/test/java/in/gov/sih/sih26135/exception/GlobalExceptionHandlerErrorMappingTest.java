@@ -13,6 +13,7 @@ import jakarta.validation.Path;
 import java.sql.SQLIntegrityConstraintViolationException;
 import java.util.Collections;
 import java.util.Set;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -20,11 +21,17 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.springframework.core.MethodParameter;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpInputMessage;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.BindingResult;
@@ -56,6 +63,11 @@ class GlobalExceptionHandlerErrorMappingTest {
 
   @Mock
   private HttpServletRequest request;
+
+  static DataIntegrityViolationException buildDbException(String message) {
+    SQLIntegrityConstraintViolationException sqlEx = new SQLIntegrityConstraintViolationException(message);
+    return new DataIntegrityViolationException("could not execute statement", sqlEx);
+  }
 
   /**
    * Dummy project class outside verified DTO packages (in in.gov.sih.sih26135.exception)
@@ -146,6 +158,24 @@ class GlobalExceptionHandlerErrorMappingTest {
       assertThat(response.getBody().getPath()).isEqualTo("/api/v1/test-endpoint");
       // Strictly zero disclosure of internal controller variable name
       assertThat(response.getBody().getMessage()).doesNotContain("enrollmentId");
+    }
+
+    @Test
+    @DisplayName("HttpMessageNotReadableException maps to HTTP 400 MALFORMED_JSON and sanitizes raw payload")
+    void testHttpMessageNotReadable_mapsTo400MalformedJson_sanitizesPayload() {
+      org.springframework.http.converter.HttpMessageNotReadableException ex =
+          new org.springframework.http.converter.HttpMessageNotReadableException(
+              "JSON parse error: Unexpected character in {\"password\": \"SecretPassword123!\", \"salary\": 90000}");
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleMessageNotReadable(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getStatus()).isEqualTo(400);
+      assertThat(response.getBody().getCode()).isEqualTo("MALFORMED_JSON");
+      assertThat(response.getBody().getMessage()).isEqualTo("Malformed or unreadable request body");
+      assertThat(response.getBody().getMessage()).doesNotContain("SecretPassword123!");
+      assertThat(response.getBody().getMessage()).doesNotContain("90000");
     }
 
     @Test
@@ -698,7 +728,6 @@ class GlobalExceptionHandlerErrorMappingTest {
     @DisplayName("NoResourceFoundException maps to HTTP 404 ENDPOINT_NOT_FOUND")
     void testNoResourceFound_mapsTo404() {
       NoResourceFoundException ex = mock(NoResourceFoundException.class);
-      when(ex.getResourcePath()).thenReturn("/unknown/route");
 
       ResponseEntity<ErrorResponse> response = exceptionHandler.handleNoResourceFound(ex, request);
 
@@ -766,6 +795,21 @@ class GlobalExceptionHandlerErrorMappingTest {
       assertThat(response.getBody()).isNotNull();
       assertThat(response.getBody().getCode()).isEqualTo("INVALID_CREDENTIALS");
     }
+
+    @Test
+    @DisplayName("BaseException with HttpStatus.INTERNAL_SERVER_ERROR sanitizes client-facing message")
+    void testBaseException_withInternalServerError_sanitizesMessage() {
+      BaseException ex = new BaseException("Internal database schema error: select * from secret_keys",
+          HttpStatus.INTERNAL_SERVER_ERROR, "DATABASE_ERROR") {};
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("DATABASE_ERROR");
+      assertThat(response.getBody().getMessage()).isEqualTo("An unexpected error occurred. Please try again later.");
+      assertThat(response.getBody().getMessage()).doesNotContain("secret_keys");
+    }
   }
 
   // =========================================================================
@@ -802,11 +846,6 @@ class GlobalExceptionHandlerErrorMappingTest {
   @Nested
   @DisplayName("4. Database Constraint Violation Mappings")
   class DatabaseConstraintMappingTests {
-
-    private DataIntegrityViolationException buildDbException(String message) {
-      SQLIntegrityConstraintViolationException sqlEx = new SQLIntegrityConstraintViolationException(message);
-      return new DataIntegrityViolationException("could not execute statement", sqlEx);
-    }
 
     @Test
     @DisplayName("Translates uk_emp_verifications_current into 409 ACTIVE_VERIFICATION_ALREADY_EXISTS")
@@ -981,6 +1020,90 @@ class GlobalExceptionHandlerErrorMappingTest {
     }
 
     @Test
+    @DisplayName("Translates uk_emp_verif_attempts_number into 409 DUPLICATE_VERIFICATION_ATTEMPT_NUMBER")
+    void testVerificationAttemptNumberConstraint_mapsTo409() {
+      DataIntegrityViolationException ex = buildDbException(
+          "Duplicate entry 'ATT-001' for key 'uk_emp_verif_attempts_number'");
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleDataIntegrityViolation(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+      assertThat(response.getBody().getCode()).isEqualTo("DUPLICATE_VERIFICATION_ATTEMPT_NUMBER");
+    }
+
+    @Test
+    @DisplayName("Translates uk_emp_verif_evidence_reference into 409 DUPLICATE_EVIDENCE_REFERENCE")
+    void testVerificationEvidenceReferenceConstraint_mapsTo409() {
+      DataIntegrityViolationException ex = buildDbException(
+          "Duplicate entry 'REF-DOC-101' for key 'uk_emp_verif_evidence_reference'");
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleDataIntegrityViolation(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+      assertThat(response.getBody().getCode()).isEqualTo("DUPLICATE_EVIDENCE_REFERENCE");
+    }
+
+    @Test
+    @DisplayName("Translates uk_employer_branches_code into 409 BRANCH_CODE_ALREADY_EXISTS")
+    void testEmployerBranchesCodeConstraint_mapsTo409() {
+      DataIntegrityViolationException ex = buildDbException(
+          "Duplicate entry 'BR-01' for key 'uk_employer_branches_code'");
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleDataIntegrityViolation(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+      assertThat(response.getBody().getCode()).isEqualTo("BRANCH_CODE_ALREADY_EXISTS");
+    }
+
+    @Test
+    @DisplayName("Translates uk_import_records_batch_row into 409 DUPLICATE_IMPORT_ROW")
+    void testImportRecordsBatchRowConstraint_mapsTo409() {
+      DataIntegrityViolationException ex = buildDbException(
+          "Duplicate entry '1-5' for key 'uk_import_records_batch_row'");
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleDataIntegrityViolation(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+      assertThat(response.getBody().getCode()).isEqualTo("DUPLICATE_IMPORT_ROW");
+    }
+
+    @Test
+    @DisplayName("Translates uk_skill_gap_observations_number into 409 DUPLICATE_OBSERVATION_NUMBER")
+    void testSkillGapObservationNumberConstraint_mapsTo409() {
+      DataIntegrityViolationException ex = buildDbException(
+          "Duplicate entry 'OBS-001' for key 'uk_skill_gap_observations_number'");
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleDataIntegrityViolation(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+      assertThat(response.getBody().getCode()).isEqualTo("DUPLICATE_OBSERVATION_NUMBER");
+    }
+
+    @Test
+    @DisplayName("Translates uk_survey_questions_version_code into 409 DUPLICATE_QUESTION_CODE")
+    void testSurveyQuestionsVersionCodeConstraint_mapsTo409() {
+      DataIntegrityViolationException ex = buildDbException(
+          "Duplicate entry '1-1-Q01' for key 'uk_survey_questions_version_code'");
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleDataIntegrityViolation(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+      assertThat(response.getBody().getCode()).isEqualTo("DUPLICATE_QUESTION_CODE");
+    }
+
+    @Test
+    @DisplayName("Translates uk_survey_questions_version_order into 409 DUPLICATE_QUESTION_ORDER")
+    void testSurveyQuestionsVersionOrderConstraint_mapsTo409() {
+      DataIntegrityViolationException ex = buildDbException(
+          "Duplicate entry '1-1-1' for key 'uk_survey_questions_version_order'");
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleDataIntegrityViolation(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+      assertThat(response.getBody().getCode()).isEqualTo("DUPLICATE_QUESTION_ORDER");
+    }
+
+    @Test
     @DisplayName("Translates generic duplicate entry error into 409 RESOURCE_CONFLICT")
     void testGenericDuplicateEntry_mapsTo409ResourceConflict() {
       DataIntegrityViolationException ex = buildDbException(
@@ -1052,6 +1175,493 @@ class GlobalExceptionHandlerErrorMappingTest {
       assertThat(response.getBody().getCode()).isEqualTo("INTERNAL_SERVER_ERROR");
       assertThat(response.getBody().getMessage()).isEqualTo("An unexpected error occurred. Please try again later.");
       assertThat(response.getBody().getMessage()).doesNotContain("DatabaseService");
+    }
+  }
+
+  // =========================================================================
+  // 6. Log and Response Body Sanitization Regression Tests
+  // =========================================================================
+
+  @Nested
+  @DisplayName("6. Log and Response Body Sanitization Regression Tests")
+  class LogSanitizationRegressionTests {
+
+    private ListAppender<ILoggingEvent> logAppender;
+    private Logger handlerLogger;
+
+    @BeforeEach
+    void setupLogger() {
+      handlerLogger = (Logger) LoggerFactory.getLogger(GlobalExceptionHandler.class);
+      logAppender = new ListAppender<>();
+      logAppender.start();
+      handlerLogger.addAppender(logAppender);
+    }
+
+    @AfterEach
+    void tearDownLogger() {
+      if (handlerLogger != null && logAppender != null) {
+        handlerLogger.detachAppender(logAppender);
+      }
+    }
+
+    private String getAllCapturedLogs() {
+      StringBuilder sb = new StringBuilder();
+      for (ILoggingEvent event : logAppender.list) {
+        sb.append(event.getFormattedMessage()).append("\n");
+        if (event.getThrowableProxy() != null) {
+          sb.append(event.getThrowableProxy().getClassName()).append(": ")
+              .append(event.getThrowableProxy().getMessage()).append("\n");
+        }
+      }
+      return sb.toString();
+    }
+
+    @Test
+    @DisplayName("Malformed JSON: Raw password and token sentinels do not leak in logs or response body")
+    void testMalformedJson_sentinelsDoNotLeakInLogsOrResponse() {
+      String sentinelPassword = "SENTINEL_PASSWORD_SECRET_RAW_987654";
+      String sentinelToken = "SENTINEL_TOKEN_SECRET_RAW_ABCDEF";
+      when(request.getRequestURI()).thenReturn("/api/auth/login");
+
+      HttpInputMessage inputMessage = mock(HttpInputMessage.class);
+      HttpMessageNotReadableException ex = new HttpMessageNotReadableException(
+          "JSON parse error: Unexpected character in password '" + sentinelPassword + "' and token '" + sentinelToken + "'",
+          new RuntimeException("Raw payload token=" + sentinelToken),
+          inputMessage);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleMessageNotReadable(ex, request);
+
+      // Assert client response
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("MALFORMED_JSON");
+      assertThat(response.getBody().getMessage()).doesNotContain(sentinelPassword);
+      assertThat(response.getBody().getMessage()).doesNotContain(sentinelToken);
+
+      // Assert captured logs
+      String logs = getAllCapturedLogs();
+      assertThat(logs).doesNotContain(sentinelPassword);
+      assertThat(logs).doesNotContain(sentinelToken);
+      assertThat(logs).contains("/api/auth/login");
+      assertThat(logs).contains("MALFORMED_JSON");
+      assertThat(logs).contains("status=400");
+    }
+
+    @Test
+    @DisplayName("Type Mismatch: Sensitive salary sentinel does not leak in logs or response body")
+    void testTypeMismatch_salarySentinelDoesNotLeakInLogsOrResponse() {
+      String sentinelSalary = "SENTINEL_SALARY_VALUE_999999.50";
+      when(request.getRequestURI()).thenReturn("/api/v1/salary-histories");
+
+      MethodArgumentTypeMismatchException ex = mock(MethodArgumentTypeMismatchException.class);
+      when(ex.getName()).thenReturn("salary");
+      doReturn(Long.class).when(ex).getRequiredType();
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleMethodArgumentTypeMismatch(ex, request);
+
+      // Assert client response
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("TYPE_MISMATCH");
+      assertThat(response.getBody().getMessage()).doesNotContain(sentinelSalary);
+
+      // Assert captured logs
+      String logs = getAllCapturedLogs();
+      assertThat(logs).doesNotContain(sentinelSalary);
+      assertThat(logs).contains("/api/v1/salary-histories");
+      assertThat(logs).contains("TYPE_MISMATCH");
+      assertThat(logs).contains("parameter 'salary'");
+      assertThat(logs).contains("expectedType=Long");
+      assertThat(logs).contains("status=400");
+    }
+
+    @Test
+    @DisplayName("Domain Exception: Sensitive identity sentinel does not leak in logs or response body")
+    void testDomainException_identitySentinelDoesNotLeakInLogsOrResponse() {
+      String sentinelAadhaar = "SENTINEL_AADHAAR_9999_8888_7777";
+      when(request.getRequestURI()).thenReturn("/api/v1/trainees/verify");
+
+      BadRequestException ex = new BadRequestException(
+          "Identity verification failed for Aadhaar " + sentinelAadhaar, "INVALID_IDENTITY");
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("INVALID_IDENTITY");
+      // Must not leak the sensitive identity sentinel in client response body
+      assertThat(response.getBody().getMessage()).doesNotContain(sentinelAadhaar);
+      assertThat(response.getBody().getMessage()).isEqualTo("Identity verification failed. Please verify the provided identity details.");
+
+      String logs = getAllCapturedLogs();
+      assertThat(logs).doesNotContain(sentinelAadhaar);
+      assertThat(logs).contains("/api/v1/trainees/verify");
+      assertThat(logs).contains("code=INVALID_IDENTITY");
+      assertThat(logs).contains("status=400");
+      assertThat(logs).contains("exception=BadRequestException");
+    }
+
+    @Test
+    @DisplayName("500-level BaseException: Internal secret sentinel is masked in both client response and server logs")
+    void testBaseException500_secretSentinelDoesNotLeakInLogsOrResponse() {
+      String sentinelSecret = "SENTINEL_INTERNAL_ENCRYPTION_KEY_SECRET_789";
+      when(request.getRequestURI()).thenReturn("/api/v1/secure-vault");
+
+      BaseException ex = new BaseException("Failed with secret: " + sentinelSecret,
+          HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR") {};
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      // Client response must be completely masked
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("INTERNAL_ERROR");
+      assertThat(response.getBody().getMessage()).isEqualTo("An unexpected error occurred. Please try again later.");
+      assertThat(response.getBody().getMessage()).doesNotContain(sentinelSecret);
+
+      // Server logs must not contain the secret sentinel
+      String logs = getAllCapturedLogs();
+      assertThat(logs).doesNotContain(sentinelSecret);
+      assertThat(logs).contains("/api/v1/secure-vault");
+      assertThat(logs).contains("code=INTERNAL_ERROR");
+      assertThat(logs).contains("status=500");
+    }
+
+    @Test
+    @DisplayName("Database Integrity: Recognized duplicate unique constraint does not leak SQL or bound parameters in logs or response")
+    void testDataIntegrityViolation_recognizedDuplicate_sentinelsDoNotLeak() {
+      String sentinelSql = "SENTINEL_SQL_INSERT_INTO_EMPLOYMENTS_PLACEMENTS_999";
+      String sentinelParam = "SENTINEL_BOUND_PARAM_PLC_12345";
+      when(request.getRequestURI()).thenReturn("/api/v1/placements/12345/transition-to-employment");
+
+      DataIntegrityViolationException ex = buildDbException(
+          "could not execute statement; SQL [" + sentinelSql + " with param " + sentinelParam
+              + "]; constraint [uk_employment_records_placement]");
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleDataIntegrityViolation(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("DUPLICATE_PLACEMENT_EMPLOYMENT");
+      assertThat(response.getBody().getMessage()).doesNotContain(sentinelSql);
+      assertThat(response.getBody().getMessage()).doesNotContain(sentinelParam);
+
+      String logs = getAllCapturedLogs();
+      assertThat(logs).doesNotContain(sentinelSql);
+      assertThat(logs).doesNotContain(sentinelParam);
+      assertThat(logs).contains("status=409");
+      assertThat(logs).contains("code=DUPLICATE_PLACEMENT_EMPLOYMENT");
+    }
+
+    @Test
+    @DisplayName("Database Integrity: Unrecognized non-duplicate integrity violation returns HTTP 500 without leaking SQL or bound parameters")
+    void testDataIntegrityViolation_unrecognizedNonDuplicate_sentinelsDoNotLeak() {
+      String sentinelSql = "SENTINEL_SQL_INSERT_INTO_USERS_CREDENTIALS_888";
+      String sentinelParam = "SENTINEL_BOUND_PASSWORD_HASH_ABC";
+      when(request.getRequestURI()).thenReturn("/api/v1/users");
+
+      DataIntegrityViolationException ex = buildDbException(
+          "could not execute statement; SQL [" + sentinelSql + " with param " + sentinelParam
+              + "]; Cannot add or update a child row: a foreign key constraint fails (`SIH26135`.`users`, CONSTRAINT `fk_nonexistent_table`)");
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleDataIntegrityViolation(ex, request);
+
+      // Must return HTTP 500 Internal Server Error (not 409 Conflict)
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("INTERNAL_SERVER_ERROR");
+      assertThat(response.getBody().getMessage()).isEqualTo("An unexpected database error occurred. Please try again later.");
+      assertThat(response.getBody().getMessage()).doesNotContain(sentinelSql);
+      assertThat(response.getBody().getMessage()).doesNotContain(sentinelParam);
+      assertThat(response.getBody().getMessage()).doesNotContain("SIH26135");
+
+      String logs = getAllCapturedLogs();
+      assertThat(logs).doesNotContain(sentinelSql);
+      assertThat(logs).doesNotContain(sentinelParam);
+      assertThat(logs).contains("status=500");
+      assertThat(logs).contains("code=INTERNAL_SERVER_ERROR");
+    }
+
+    @Test
+    @DisplayName("Unexpected Exception: Raw database credentials and stack trace sentinels do not leak in logs or response body")
+    void testUnexpectedException_credentialSentinelsDoNotLeakInLogsOrResponse() {
+      String sentinelDbPassword = "SENTINEL_RAW_DB_PASSWORD_SUPER_SECRET_999";
+      String sentinelQuery = "SENTINEL_RAW_SQL_SELECT_ALL_FROM_CONFIDENTIAL_VAULT";
+      when(request.getRequestURI()).thenReturn("/api/v1/admin/operations");
+
+      RuntimeException nestedCause = new RuntimeException("Nested SQL error for query: " + sentinelQuery);
+      RuntimeException ex = new RuntimeException("DB Connection failed with password: " + sentinelDbPassword, nestedCause);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleGenericException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("INTERNAL_SERVER_ERROR");
+      assertThat(response.getBody().getMessage()).isEqualTo("An unexpected error occurred. Please try again later.");
+      assertThat(response.getBody().getMessage()).doesNotContain(sentinelDbPassword);
+      assertThat(response.getBody().getMessage()).doesNotContain(sentinelQuery);
+
+      String logs = getAllCapturedLogs();
+      assertThat(logs).doesNotContain(sentinelDbPassword);
+      assertThat(logs).doesNotContain(sentinelQuery);
+      assertThat(logs).contains("/api/v1/admin/operations");
+      assertThat(logs).contains("status=500");
+      assertThat(logs).contains("code=INTERNAL_SERVER_ERROR");
+      assertThat(logs).contains("exception=java.lang.RuntimeException");
+    }
+
+    @Test
+    @DisplayName("Validation Error: Sensitive sentinel in custom message does not leak in logs or response details")
+    void testValidationException_sanitizesFieldErrorsInLogs() {
+      String sentinelSalary = "SENTINEL_REJECTED_SALARY_999999";
+      when(request.getRequestURI()).thenReturn("/api/v1/salary-histories");
+
+      MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
+      BindingResult bindingResult = mock(BindingResult.class);
+      FieldError fieldError = new FieldError("salaryHistoryRequest", "amount", sentinelSalary, false, null, null, "invalid amount: " + sentinelSalary);
+      when(bindingResult.getFieldErrors()).thenReturn(Collections.singletonList(fieldError));
+      when(ex.getBindingResult()).thenReturn(bindingResult);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleValidationException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).isNotNull();
+      // Must not leak the sensitive sentinel in response details, while preserving safe field-level feedback
+      assertThat(response.getBody().getDetails()).containsExactly("amount: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain(sentinelSalary);
+
+      // Server logs must NOT log the rejected value or the raw error message containing sentinel
+      String logs = getAllCapturedLogs();
+      assertThat(logs).doesNotContain(sentinelSalary);
+      assertThat(logs).contains("/api/v1/salary-histories");
+      assertThat(logs).contains("status=400");
+      assertThat(logs).contains("code=VALIDATION_ERROR");
+      assertThat(logs).contains("invalidFields=[amount]");
+    }
+
+    @Test
+    @DisplayName("Constraint Violation: Sensitive sentinel in custom violation message does not leak in logs or response details")
+    void testConstraintViolation_sentinelInMessageDoesNotLeakInLogsOrResponse() {
+      String sentinelAadhaar = "SENTINEL_CONSTRAINT_AADHAAR_9999_8888_7777";
+      when(request.getRequestURI()).thenReturn("/api/v1/trainees/verify");
+
+      ConstraintViolation<?> violation = mock(ConstraintViolation.class);
+      Path path = mock(Path.class);
+      when(path.toString()).thenReturn("aadhaarNumber");
+      when(violation.getPropertyPath()).thenReturn(path);
+      when(violation.getMessage()).thenReturn("Invalid Aadhaar number: " + sentinelAadhaar);
+      doReturn(in.gov.sih.sih26135.dto.request.CreateTraineeRequest.class).when(violation).getRootBeanClass();
+
+      ConstraintViolationException ex = new ConstraintViolationException("Validation failed", Collections.singleton(violation));
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleConstraintViolation(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).isNotNull();
+      // Must not leak sensitive sentinel in response details, while preserving safe field-level feedback
+      assertThat(response.getBody().getDetails()).containsExactly("aadhaarNumber: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain(sentinelAadhaar);
+
+      String logs = getAllCapturedLogs();
+      assertThat(logs).doesNotContain(sentinelAadhaar);
+      assertThat(logs).contains("/api/v1/trainees/verify");
+      assertThat(logs).contains("status=400");
+      assertThat(logs).contains("code=VALIDATION_ERROR");
+      assertThat(logs).contains("invalidProperties=[aadhaarNumber]");
+    }
+
+    @Test
+    @DisplayName("Validation Error: Custom FieldError echoing arbitrary rejected value is sanitized in response details and logs")
+    void testValidationException_arbitraryRejectedValueEcho_isSanitizedInResponseDetailsAndLogs() {
+      String arbitraryRejectedValue = "CUSTOM_USER_VALUE_123";
+      when(request.getRequestURI()).thenReturn("/api/v1/users");
+
+      MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
+      BindingResult bindingResult = mock(BindingResult.class);
+      FieldError fieldError = new FieldError(
+          "userRequest",
+          "username",
+          arbitraryRejectedValue,
+          false,
+          null,
+          null,
+          "Username " + arbitraryRejectedValue + " is invalid or already taken"
+      );
+      when(bindingResult.getFieldErrors()).thenReturn(Collections.singletonList(fieldError));
+      when(ex.getBindingResult()).thenReturn(bindingResult);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleValidationException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getStatus()).isEqualTo(400);
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).isNotNull();
+      // Must not echo the arbitrary rejected value in response details; preserves safe field-level feedback
+      assertThat(response.getBody().getDetails()).containsExactly("username: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain(arbitraryRejectedValue);
+
+      // Server logs must NOT log the rejected value or the echoed custom message
+      String logs = getAllCapturedLogs();
+      assertThat(logs).doesNotContain(arbitraryRejectedValue);
+      assertThat(logs).contains("/api/v1/users");
+      assertThat(logs).contains("status=400");
+      assertThat(logs).contains("code=VALIDATION_ERROR");
+      assertThat(logs).contains("invalidFields=[username]");
+    }
+
+    @Test
+    @DisplayName("Constraint Violation: Custom message echoing arbitrary submitted value is sanitized in response details and logs")
+    void testConstraintViolation_arbitrarySubmittedValueEcho_isSanitizedInResponseDetailsAndLogs() {
+      String arbitrarySubmittedValue = "CUSTOM_SUBMITTED_INPUT_456";
+      when(request.getRequestURI()).thenReturn("/api/v1/training-batches");
+
+      ConstraintViolation<?> violation = mock(ConstraintViolation.class);
+      Path path = mock(Path.class);
+      when(path.toString()).thenReturn("batchCode");
+      when(violation.getPropertyPath()).thenReturn(path);
+      when(violation.getMessage()).thenReturn("Invalid batch code: " + arbitrarySubmittedValue);
+      when(violation.getInvalidValue()).thenReturn(arbitrarySubmittedValue);
+      doReturn(in.gov.sih.sih26135.dto.request.CreateTrainingBatchRequest.class).when(violation).getRootBeanClass();
+
+      ConstraintViolationException ex = new ConstraintViolationException("Validation failed", Collections.singleton(violation));
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleConstraintViolation(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getStatus()).isEqualTo(400);
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).isNotNull();
+      // Must not echo the arbitrary submitted value in response details; preserves safe property feedback
+      assertThat(response.getBody().getDetails()).containsExactly("batchCode: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain(arbitrarySubmittedValue);
+
+      // Server logs must NOT log the submitted value or the raw error message
+      String logs = getAllCapturedLogs();
+      assertThat(logs).doesNotContain(arbitrarySubmittedValue);
+      assertThat(logs).contains("/api/v1/training-batches");
+      assertThat(logs).contains("status=400");
+      assertThat(logs).contains("code=VALIDATION_ERROR");
+      assertThat(logs).contains("invalidProperties=[batchCode]");
+    }
+
+    @Test
+    @DisplayName("Constraint Violation: Message starting with numeric value out of bounds followed by arbitrary text with null invalidValue is sanitized")
+    void testConstraintViolation_numericValueOutOfBoundsWithArbitraryText_nullInvalidValue_isSanitized() {
+      String arbitraryCustomText = "CUSTOM_OUT_OF_BOUNDS_PAYLOAD_789";
+      when(request.getRequestURI()).thenReturn("/api/v1/training-batches");
+
+      ConstraintViolation<?> violation = mock(ConstraintViolation.class);
+      Path path = mock(Path.class);
+      when(path.toString()).thenReturn("capacity");
+      when(violation.getPropertyPath()).thenReturn(path);
+      when(violation.getMessage()).thenReturn("numeric value out of bounds: " + arbitraryCustomText);
+      when(violation.getInvalidValue()).thenReturn(null);
+      doReturn(in.gov.sih.sih26135.dto.request.CreateTrainingBatchRequest.class).when(violation).getRootBeanClass();
+
+      ConstraintViolationException ex = new ConstraintViolationException("Validation failed", Collections.singleton(violation));
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleConstraintViolation(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getStatus()).isEqualTo(400);
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).isNotNull();
+      // Must not leak the arbitrary custom text in response details; preserves safe fallback feedback
+      assertThat(response.getBody().getDetails()).containsExactly("capacity: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain(arbitraryCustomText);
+
+      // Server logs must NOT log the arbitrary custom text
+      String logs = getAllCapturedLogs();
+      assertThat(logs).doesNotContain(arbitraryCustomText);
+      assertThat(logs).contains("/api/v1/training-batches");
+      assertThat(logs).contains("status=400");
+      assertThat(logs).contains("code=VALIDATION_ERROR");
+      assertThat(logs).contains("invalidProperties=[capacity]");
+    }
+
+    @Test
+    @DisplayName("Validation Error: Single-digit rejected value with arbitrary appended text in message is sanitized in response details and logs")
+    void testValidationException_singleDigitRejectedValueWithArbitraryAppendedText_isSanitized() {
+      Integer singleDigitValue = 5;
+      String arbitraryAppendedText = "CUSTOM_APPENDED_NOTE_456";
+      when(request.getRequestURI()).thenReturn("/api/v1/users");
+
+      MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
+      BindingResult bindingResult = mock(BindingResult.class);
+      FieldError fieldError = new FieldError(
+          "userRequest",
+          "retryCount",
+          singleDigitValue,
+          false,
+          null,
+          null,
+          "must be greater than 0 - " + arbitraryAppendedText
+      );
+      when(bindingResult.getFieldErrors()).thenReturn(Collections.singletonList(fieldError));
+      when(ex.getBindingResult()).thenReturn(bindingResult);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleValidationException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getStatus()).isEqualTo(400);
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).isNotNull();
+      // Must not leak the arbitrary appended text in response details; preserves safe fallback feedback
+      assertThat(response.getBody().getDetails()).containsExactly("retryCount: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain(arbitraryAppendedText);
+
+      // Server logs must NOT log the arbitrary appended text
+      String logs = getAllCapturedLogs();
+      assertThat(logs).doesNotContain(arbitraryAppendedText);
+      assertThat(logs).contains("/api/v1/users");
+      assertThat(logs).contains("status=400");
+      assertThat(logs).contains("code=VALIDATION_ERROR");
+      assertThat(logs).contains("invalidFields=[retryCount]");
+    }
+
+    @Test
+    @DisplayName("Constraint Violation: Single-digit invalidValue with arbitrary appended text in message is sanitized in response details and logs")
+    void testConstraintViolation_singleDigitInvalidValueWithArbitraryAppendedText_isSanitized() {
+      Integer singleDigitValue = 0;
+      String arbitraryAppendedText = "CUSTOM_LEAKED_DETAIL_123";
+      when(request.getRequestURI()).thenReturn("/api/v1/training-batches");
+
+      ConstraintViolation<?> violation = mock(ConstraintViolation.class);
+      Path path = mock(Path.class);
+      when(path.toString()).thenReturn("durationWeeks");
+      when(violation.getPropertyPath()).thenReturn(path);
+      when(violation.getMessage()).thenReturn("must be greater than 0 with leaked param " + arbitraryAppendedText);
+      when(violation.getInvalidValue()).thenReturn(singleDigitValue);
+      doReturn(in.gov.sih.sih26135.dto.request.CreateTrainingBatchRequest.class).when(violation).getRootBeanClass();
+
+      ConstraintViolationException ex = new ConstraintViolationException("Validation failed", Collections.singleton(violation));
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleConstraintViolation(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getStatus()).isEqualTo(400);
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).isNotNull();
+      // Must not leak the arbitrary appended text in response details; preserves safe fallback feedback
+      assertThat(response.getBody().getDetails()).containsExactly("durationWeeks: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain(arbitraryAppendedText);
+
+      // Server logs must NOT log the arbitrary appended text
+      String logs = getAllCapturedLogs();
+      assertThat(logs).doesNotContain(arbitraryAppendedText);
+      assertThat(logs).contains("/api/v1/training-batches");
+      assertThat(logs).contains("status=400");
+      assertThat(logs).contains("code=VALIDATION_ERROR");
+      assertThat(logs).contains("invalidProperties=[durationWeeks]");
     }
   }
 }
