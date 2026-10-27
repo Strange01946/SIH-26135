@@ -1,5 +1,9 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateCourseRequest;
 import in.gov.sih.sih26135.dto.request.UpdateCourseRequest;
@@ -32,6 +36,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateCourseRequest, UpdateCourseRequest
  * Produces: CourseResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/courses")
 @PreAuthorize("hasAuthority('course.manage')")
@@ -50,7 +55,7 @@ public class CourseController {
    * @return 200 OK with CourseResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<CourseResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<CourseResponse>> getById(@PathVariable @Positive Long id) {
     CourseResponse response = courseService.getById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -67,11 +72,11 @@ public class CourseController {
   @GetMapping
   public ResponseEntity<ApiResponse<?>> getCourses(
       @RequestParam(value = "code", required = false) String code,
-      @RequestParam(value = "sectorId", required = false) Long sectorId,
-      @RequestParam(value = "industryId", required = false) Long industryId,
-      @RequestParam(value = "deliveryModeId", required = false) Long deliveryModeId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sectorId", required = false) @Positive Long sectorId,
+      @RequestParam(value = "industryId", required = false) @Positive Long industryId,
+      @RequestParam(value = "deliveryModeId", required = false) @Positive Long deliveryModeId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
     if (code != null && !code.isBlank()) {
@@ -122,7 +127,7 @@ public class CourseController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<CourseResponse>> updateCourse(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateCourseRequest request) {
     CourseResponse response = courseService.updateCourse(id, request);
     return ResponseEntity.ok(ApiResponse.success("Course updated successfully", response));
@@ -135,7 +140,7 @@ public class CourseController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteCourse(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteCourse(@PathVariable @Positive Long id) {
     courseService.deleteCourse(id);
     return ResponseEntity.ok(ApiResponse.success("Course deleted successfully"));
   }

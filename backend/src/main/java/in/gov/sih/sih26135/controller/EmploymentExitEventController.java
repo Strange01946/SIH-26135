@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateEmploymentExitEventRequest;
 import in.gov.sih.sih26135.dto.request.UpdateEmploymentExitEventRequest;
@@ -31,6 +33,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateEmploymentExitEventRequest, UpdateEmploymentExitEventRequest
  * Produces: EmploymentExitEventResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/employment-exit-events")
 @PreAuthorize("hasAuthority('employment.manage')")
@@ -49,7 +52,7 @@ public class EmploymentExitEventController {
    * @return 200 OK with EmploymentExitEventResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<EmploymentExitEventResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<EmploymentExitEventResponse>> getById(@PathVariable @Positive Long id) {
     EmploymentExitEventResponse response = employmentExitEventService.getExitEventById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -66,7 +69,7 @@ public class EmploymentExitEventController {
       "!exitReasonId", "!separationNatureId", "!statusId"
   })
   public ResponseEntity<ApiResponse<EmploymentExitEventResponse>> getByEmploymentId(
-      @RequestParam("employmentId") Long employmentId,
+      @RequestParam("employmentId") @Positive Long employmentId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "employmentId");
     EmploymentExitEventResponse response = employmentExitEventService.getExitEventByEmploymentId(employmentId);
@@ -85,7 +88,7 @@ public class EmploymentExitEventController {
       "!exitReasonId", "!separationNatureId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<EmploymentExitEventResponse>>> getByTraineeId(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeId");
     List<EmploymentExitEventResponse> events = employmentExitEventService.getExitEventsByTraineeId(traineeId);
@@ -104,7 +107,7 @@ public class EmploymentExitEventController {
       "!exitReasonId", "!separationNatureId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<EmploymentExitEventResponse>>> getByEnrollmentId(
-      @RequestParam("enrollmentId") Long enrollmentId,
+      @RequestParam("enrollmentId") @Positive Long enrollmentId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "enrollmentId");
     List<EmploymentExitEventResponse> events = employmentExitEventService.getExitEventsByEnrollmentId(enrollmentId);
@@ -142,7 +145,7 @@ public class EmploymentExitEventController {
       "!separationDate", "!separationNatureId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<EmploymentExitEventResponse>>> getByExitReasonId(
-      @RequestParam("exitReasonId") Long exitReasonId,
+      @RequestParam("exitReasonId") @Positive Long exitReasonId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "exitReasonId");
     List<EmploymentExitEventResponse> events = employmentExitEventService.getExitEventsByExitReasonId(exitReasonId);
@@ -161,7 +164,7 @@ public class EmploymentExitEventController {
       "!separationDate", "!exitReasonId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<EmploymentExitEventResponse>>> getBySeparationNatureId(
-      @RequestParam("separationNatureId") Long separationNatureId,
+      @RequestParam("separationNatureId") @Positive Long separationNatureId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "separationNatureId");
     List<EmploymentExitEventResponse> events = employmentExitEventService.getExitEventsBySeparationNatureId(separationNatureId);
@@ -180,7 +183,7 @@ public class EmploymentExitEventController {
       "!separationDate", "!exitReasonId", "!separationNatureId"
   })
   public ResponseEntity<ApiResponse<List<EmploymentExitEventResponse>>> getByVerificationStatusId(
-      @RequestParam("statusId") Long statusId,
+      @RequestParam("statusId") @Positive Long statusId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "statusId");
     List<EmploymentExitEventResponse> events = employmentExitEventService.getExitEventsByVerificationStatusId(statusId);
@@ -215,7 +218,7 @@ public class EmploymentExitEventController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<EmploymentExitEventResponse>> updateExitEvent(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateEmploymentExitEventRequest request) {
     EmploymentExitEventResponse response = employmentExitEventService.updateExitEvent(id, request);
     return ResponseEntity.ok(ApiResponse.success(
@@ -230,7 +233,7 @@ public class EmploymentExitEventController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteExitEvent(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteExitEvent(@PathVariable @Positive Long id) {
     employmentExitEventService.deleteExitEvent(id);
     return ResponseEntity.ok(ApiResponse.success("Employment exit event deleted successfully"));
   }

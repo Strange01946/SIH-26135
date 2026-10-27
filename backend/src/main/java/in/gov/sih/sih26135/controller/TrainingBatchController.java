@@ -1,5 +1,9 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.ChangeBatchStatusRequest;
 import in.gov.sih.sih26135.dto.request.CreateTrainingBatchRequest;
@@ -33,6 +37,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateTrainingBatchRequest, UpdateTrainingBatchRequest, ChangeBatchStatusRequest
  * Produces: TrainingBatchResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/training-batches")
 @PreAuthorize("hasAuthority('course.manage')")
@@ -51,7 +56,7 @@ public class TrainingBatchController {
    * @return 200 OK with TrainingBatchResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<TrainingBatchResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<TrainingBatchResponse>> getById(@PathVariable @Positive Long id) {
     TrainingBatchResponse response = trainingBatchService.getById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -70,13 +75,13 @@ public class TrainingBatchController {
   @GetMapping
   public ResponseEntity<ApiResponse<?>> getTrainingBatches(
       @RequestParam(value = "code", required = false) String code,
-      @RequestParam(value = "courseId", required = false) Long courseId,
-      @RequestParam(value = "providerId", required = false) Long providerId,
-      @RequestParam(value = "centerId", required = false) Long centerId,
-      @RequestParam(value = "programId", required = false) Long programId,
-      @RequestParam(value = "statusId", required = false) Long statusId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "courseId", required = false) @Positive Long courseId,
+      @RequestParam(value = "providerId", required = false) @Positive Long providerId,
+      @RequestParam(value = "centerId", required = false) @Positive Long centerId,
+      @RequestParam(value = "programId", required = false) @Positive Long programId,
+      @RequestParam(value = "statusId", required = false) @Positive Long statusId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
     if (code != null && !code.isBlank()) {
@@ -135,7 +140,7 @@ public class TrainingBatchController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<TrainingBatchResponse>> updateBatch(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateTrainingBatchRequest request) {
     TrainingBatchResponse response = trainingBatchService.updateBatch(id, request);
     return ResponseEntity.ok(ApiResponse.success("Training batch updated successfully", response));
@@ -150,7 +155,7 @@ public class TrainingBatchController {
    */
   @PutMapping("/{id}/status")
   public ResponseEntity<ApiResponse<TrainingBatchResponse>> updateBatchStatus(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody ChangeBatchStatusRequest request) {
     TrainingBatchResponse response = trainingBatchService.updateBatchStatus(id, request);
     return ResponseEntity.ok(ApiResponse.success("Training batch status updated successfully", response));
@@ -163,7 +168,7 @@ public class TrainingBatchController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteBatch(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteBatch(@PathVariable @Positive Long id) {
     trainingBatchService.deleteBatch(id);
     return ResponseEntity.ok(ApiResponse.success("Training batch deleted successfully"));
   }

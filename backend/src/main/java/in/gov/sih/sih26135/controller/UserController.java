@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.AssignUserRoleRequest;
 import in.gov.sih.sih26135.dto.request.CreateUserRequest;
@@ -31,6 +33,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateUserRequest, UpdateUserRequest, AssignUserRoleRequest
  * Produces: UserResponse, UserRoleResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/users")
 @PreAuthorize("hasAuthority('user.manage')")
@@ -49,7 +52,7 @@ public class UserController {
    * @return 200 OK with UserResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<UserResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<UserResponse>> getById(@PathVariable @Positive Long id) {
     UserResponse response = userService.getById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -88,7 +91,7 @@ public class UserController {
   @PostMapping
   public ResponseEntity<ApiResponse<UserResponse>> createUser(
       @Valid @RequestBody CreateUserRequest request,
-      @RequestHeader(value = "X-Actor-User-Id", required = false) Long actorUserId,
+      @RequestHeader(value = "X-Actor-User-Id", required = false) @Positive Long actorUserId,
       HttpServletRequest httpRequest) {
     UserResponse response = userService.createUser(request, actorUserId);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -105,9 +108,9 @@ public class UserController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<UserResponse>> updateUser(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateUserRequest request,
-      @RequestHeader(value = "X-Actor-User-Id", required = false) Long actorUserId) {
+      @RequestHeader(value = "X-Actor-User-Id", required = false) @Positive Long actorUserId) {
     UserResponse response = userService.updateUser(id, request, actorUserId);
     return ResponseEntity.ok(ApiResponse.success("User updated successfully", response));
   }
@@ -121,8 +124,8 @@ public class UserController {
    */
   @DeleteMapping("/{id}")
   public ResponseEntity<ApiResponse<Void>> deleteUser(
-      @PathVariable Long id,
-      @RequestHeader(value = "X-Actor-User-Id", required = false) Long actorUserId) {
+      @PathVariable @Positive Long id,
+      @RequestHeader(value = "X-Actor-User-Id", required = false) @Positive Long actorUserId) {
     userService.deleteUser(id, actorUserId);
     return ResponseEntity.ok(ApiResponse.success("User deleted successfully"));
   }
@@ -134,7 +137,7 @@ public class UserController {
    * @return 200 OK with list of UserRoleResponse enveloped in ApiResponse
    */
   @GetMapping("/{userId}/roles")
-  public ResponseEntity<ApiResponse<List<UserRoleResponse>>> getUserRoles(@PathVariable Long userId) {
+  public ResponseEntity<ApiResponse<List<UserRoleResponse>>> getUserRoles(@PathVariable @Positive Long userId) {
     List<UserRoleResponse> roles = userService.getUserRoles(userId);
     return ResponseEntity.ok(ApiResponse.ok(roles));
   }
@@ -150,9 +153,9 @@ public class UserController {
    */
   @PostMapping("/{userId}/roles")
   public ResponseEntity<ApiResponse<UserRoleResponse>> assignRole(
-      @PathVariable Long userId,
+      @PathVariable @Positive Long userId,
       @Valid @RequestBody AssignUserRoleRequest request,
-      @RequestHeader(value = "X-Actor-User-Id", required = false) Long actorUserId,
+      @RequestHeader(value = "X-Actor-User-Id", required = false) @Positive Long actorUserId,
       HttpServletRequest httpRequest) {
     UserRoleResponse response = userService.assignRole(userId, request, actorUserId);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -169,9 +172,9 @@ public class UserController {
    */
   @DeleteMapping("/{userId}/roles/{roleId}")
   public ResponseEntity<ApiResponse<Void>> removeRole(
-      @PathVariable Long userId,
-      @PathVariable Long roleId,
-      @RequestHeader(value = "X-Actor-User-Id", required = false) Long actorUserId) {
+      @PathVariable @Positive Long userId,
+      @PathVariable @Positive Long roleId,
+      @RequestHeader(value = "X-Actor-User-Id", required = false) @Positive Long actorUserId) {
     userService.removeRole(userId, roleId, actorUserId);
     return ResponseEntity.ok(ApiResponse.success("Role removed successfully"));
   }

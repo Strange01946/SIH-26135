@@ -1,5 +1,9 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateEmploymentVerificationAttemptRequest;
 import in.gov.sih.sih26135.dto.request.UpdateEmploymentVerificationAttemptRequest;
@@ -35,6 +39,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateEmploymentVerificationAttemptRequest, UpdateEmploymentVerificationAttemptRequest
  * Produces: EmploymentVerificationAttemptResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/employment-verification-attempts")
 @PreAuthorize("hasAuthority('verification.manage')")
@@ -54,7 +59,7 @@ public class EmploymentVerificationAttemptController {
    * @return 200 OK with EmploymentVerificationAttemptResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<EmploymentVerificationAttemptResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<EmploymentVerificationAttemptResponse>> getById(@PathVariable @Positive Long id) {
     EmploymentVerificationAttemptResponse response =
         employmentVerificationAttemptService.getVerificationAttemptById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
@@ -73,9 +78,9 @@ public class EmploymentVerificationAttemptController {
    */
   @GetMapping(params = {"requestId", "!methodId", "!statusId"})
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationAttemptResponse>>> getByRequestId(
-      @RequestParam("requestId") Long requestId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("requestId") @Positive Long requestId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -101,9 +106,9 @@ public class EmploymentVerificationAttemptController {
    */
   @GetMapping(params = {"methodId", "!requestId", "!statusId"})
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationAttemptResponse>>> getByMethodId(
-      @RequestParam("methodId") Long methodId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("methodId") @Positive Long methodId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -129,9 +134,9 @@ public class EmploymentVerificationAttemptController {
    */
   @GetMapping(params = {"statusId", "!requestId", "!methodId"})
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationAttemptResponse>>> getByStatusId(
-      @RequestParam("statusId") Long statusId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("statusId") @Positive Long statusId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -173,7 +178,7 @@ public class EmploymentVerificationAttemptController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<EmploymentVerificationAttemptResponse>> updateVerificationAttempt(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateEmploymentVerificationAttemptRequest request) {
     EmploymentVerificationAttemptResponse response =
         employmentVerificationAttemptService.updateVerificationAttempt(id, request);
@@ -189,7 +194,7 @@ public class EmploymentVerificationAttemptController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteVerificationAttempt(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteVerificationAttempt(@PathVariable @Positive Long id) {
     employmentVerificationAttemptService.deleteVerificationAttempt(id);
     return ResponseEntity.ok(ApiResponse.success("Employment verification attempt deleted successfully"));
   }

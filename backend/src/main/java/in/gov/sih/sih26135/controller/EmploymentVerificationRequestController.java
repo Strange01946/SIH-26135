@@ -1,5 +1,10 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateEmploymentVerificationRequestRequest;
 import in.gov.sih.sih26135.dto.request.UpdateEmploymentVerificationRequestRequest;
@@ -35,6 +40,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateEmploymentVerificationRequestRequest, UpdateEmploymentVerificationRequestRequest
  * Produces: EmploymentVerificationRequestResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/employment-verification-requests")
 @PreAuthorize("hasAuthority('verification.manage')")
@@ -54,7 +60,7 @@ public class EmploymentVerificationRequestController {
    * @return 200 OK with EmploymentVerificationRequestResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<EmploymentVerificationRequestResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<EmploymentVerificationRequestResponse>> getById(@PathVariable @Positive Long id) {
     EmploymentVerificationRequestResponse response =
         employmentVerificationRequestService.getVerificationRequestById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
@@ -69,7 +75,7 @@ public class EmploymentVerificationRequestController {
    */
   @GetMapping(params = {"requestNumber", "!employmentId", "!traineeId", "!statusId", "!assignedVerifierUserId"})
   public ResponseEntity<ApiResponse<EmploymentVerificationRequestResponse>> getByRequestNumber(
-      @RequestParam("requestNumber") String requestNumber,
+      @RequestParam("requestNumber") @NotBlank String requestNumber,
       HttpServletRequest httpRequest) {
     validateAllowedQueryParameters(httpRequest, Set.of("requestNumber"));
     EmploymentVerificationRequestResponse response =
@@ -90,9 +96,9 @@ public class EmploymentVerificationRequestController {
    */
   @GetMapping(params = {"employmentId", "!requestNumber", "!traineeId", "!statusId", "!assignedVerifierUserId"})
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationRequestResponse>>> getByEmploymentId(
-      @RequestParam("employmentId") Long employmentId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("employmentId") @Positive Long employmentId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -118,9 +124,9 @@ public class EmploymentVerificationRequestController {
    */
   @GetMapping(params = {"traineeId", "!requestNumber", "!employmentId", "!statusId", "!assignedVerifierUserId"})
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationRequestResponse>>> getByTraineeId(
-      @RequestParam("traineeId") Long traineeId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -146,9 +152,9 @@ public class EmploymentVerificationRequestController {
    */
   @GetMapping(params = {"statusId", "!requestNumber", "!employmentId", "!traineeId", "!assignedVerifierUserId"})
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationRequestResponse>>> getByStatusId(
-      @RequestParam("statusId") Long statusId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("statusId") @Positive Long statusId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -174,9 +180,9 @@ public class EmploymentVerificationRequestController {
    */
   @GetMapping(params = {"assignedVerifierUserId", "!requestNumber", "!employmentId", "!traineeId", "!statusId"})
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationRequestResponse>>> getByAssignedVerifierId(
-      @RequestParam("assignedVerifierUserId") Long assignedVerifierUserId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("assignedVerifierUserId") @Positive Long assignedVerifierUserId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -218,7 +224,7 @@ public class EmploymentVerificationRequestController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<EmploymentVerificationRequestResponse>> updateVerificationRequest(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateEmploymentVerificationRequestRequest request) {
     EmploymentVerificationRequestResponse response =
         employmentVerificationRequestService.updateVerificationRequest(id, request);
@@ -234,7 +240,7 @@ public class EmploymentVerificationRequestController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteVerificationRequest(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteVerificationRequest(@PathVariable @Positive Long id) {
     employmentVerificationRequestService.deleteVerificationRequest(id);
     return ResponseEntity.ok(ApiResponse.success("Employment verification request deleted successfully"));
   }

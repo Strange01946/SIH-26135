@@ -1,5 +1,9 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateTraineeRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTraineeRequest;
@@ -33,6 +37,7 @@ import org.springframework.web.bind.annotation.RestController;
  * Consumes: CreateTraineeRequest, UpdateTraineeRequest
  * Produces: TraineeResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/trainees")
 public class TraineeController {
@@ -51,7 +56,7 @@ public class TraineeController {
    */
   @GetMapping("/{id}")
   @PreAuthorize("hasAuthority('trainee.read')")
-  public ResponseEntity<ApiResponse<TraineeResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<TraineeResponse>> getById(@PathVariable @Positive Long id) {
     TraineeResponse response = traineeService.getById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -72,9 +77,9 @@ public class TraineeController {
   @PreAuthorize("hasAuthority('trainee.read')")
   public ResponseEntity<ApiResponse<?>> getTrainees(
       @RequestParam(value = "registrationNumber", required = false) String registrationNumber,
-      @RequestParam(value = "userId", required = false) Long userId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "userId", required = false) @Positive Long userId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
     if (registrationNumber != null && !registrationNumber.isBlank()) {
@@ -104,7 +109,7 @@ public class TraineeController {
   @PreAuthorize("hasAuthority('trainee.write')")
   public ResponseEntity<ApiResponse<TraineeResponse>> createTrainee(
       @Valid @RequestBody CreateTraineeRequest request,
-      @RequestHeader(value = "X-Actor-User-Id", required = false) Long actorUserId,
+      @RequestHeader(value = "X-Actor-User-Id", required = false) @Positive Long actorUserId,
       HttpServletRequest httpRequest) {
     TraineeResponse response = traineeService.createTrainee(request, actorUserId);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -122,9 +127,9 @@ public class TraineeController {
   @PutMapping("/{id}")
   @PreAuthorize("hasAuthority('trainee.write')")
   public ResponseEntity<ApiResponse<TraineeResponse>> updateTrainee(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateTraineeRequest request,
-      @RequestHeader(value = "X-Actor-User-Id", required = false) Long actorUserId) {
+      @RequestHeader(value = "X-Actor-User-Id", required = false) @Positive Long actorUserId) {
     TraineeResponse response = traineeService.updateTrainee(id, request, actorUserId);
     return ResponseEntity.ok(ApiResponse.success("Trainee updated successfully", response));
   }
@@ -139,8 +144,8 @@ public class TraineeController {
   @DeleteMapping("/{id}")
   @PreAuthorize("hasAuthority('trainee.write')")
   public ResponseEntity<ApiResponse<Void>> deleteTrainee(
-      @PathVariable Long id,
-      @RequestHeader(value = "X-Actor-User-Id", required = false) Long actorUserId) {
+      @PathVariable @Positive Long id,
+      @RequestHeader(value = "X-Actor-User-Id", required = false) @Positive Long actorUserId) {
     traineeService.deleteTrainee(id, actorUserId);
     return ResponseEntity.ok(ApiResponse.success("Trainee deleted successfully"));
   }

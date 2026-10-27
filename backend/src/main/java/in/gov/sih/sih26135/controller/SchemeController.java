@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateSchemeRequest;
 import in.gov.sih.sih26135.dto.request.UpdateSchemeRequest;
@@ -28,6 +30,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateSchemeRequest, UpdateSchemeRequest
  * Produces: SchemeResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/schemes")
 @PreAuthorize("hasAuthority('program.manage')")
@@ -46,7 +49,7 @@ public class SchemeController {
    * @return 200 OK with SchemeResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<SchemeResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<SchemeResponse>> getById(@PathVariable @Positive Long id) {
     SchemeResponse response = schemeService.getById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -61,7 +64,7 @@ public class SchemeController {
   @GetMapping
   public ResponseEntity<ApiResponse<?>> getSchemes(
       @RequestParam(value = "code", required = false) String code,
-      @RequestParam(value = "departmentId", required = false) Long departmentId) {
+      @RequestParam(value = "departmentId", required = false) @Positive Long departmentId) {
     if (code != null && !code.isBlank()) {
       SchemeResponse response = schemeService.getByCode(code.trim());
       return ResponseEntity.ok(ApiResponse.ok(response));
@@ -99,7 +102,7 @@ public class SchemeController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<SchemeResponse>> updateScheme(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateSchemeRequest request) {
     SchemeResponse response = schemeService.updateScheme(id, request);
     return ResponseEntity.ok(ApiResponse.success("Scheme updated successfully", response));
@@ -112,7 +115,7 @@ public class SchemeController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteScheme(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteScheme(@PathVariable @Positive Long id) {
     schemeService.deleteScheme(id);
     return ResponseEntity.ok(ApiResponse.success("Scheme deleted successfully"));
   }

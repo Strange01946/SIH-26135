@@ -1,5 +1,9 @@
 package in.gov.sih.sih26135.controller.analytics;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.NotBlank;
 import in.gov.sih.sih26135.dto.response.AttritionReasonSummaryResponse;
 import in.gov.sih.sih26135.dto.response.CourseOutcomeSummaryResponse;
 import in.gov.sih.sih26135.dto.response.DistrictOutcomeSummaryResponse;
@@ -43,6 +47,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * All endpoints are strictly GET. Analytics views are immutable SQL aggregates.
  * No modifications, recalculations, or mutations are permitted.
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/analytics/summaries")
 @PreAuthorize("hasAuthority('analytics.read')")
@@ -104,8 +109,8 @@ public class AnalyticsSummaryController {
 
   @GetMapping("/attrition-reasons/{exitReasonId}/{separationNatureId}")
   public ResponseEntity<ApiResponse<AttritionReasonSummaryResponse>> getAttritionReasonSummaryById(
-      @PathVariable Long exitReasonId,
-      @PathVariable Long separationNatureId) {
+      @PathVariable @Positive Long exitReasonId,
+      @PathVariable @Positive Long separationNatureId) {
     return ResponseEntity.ok(ApiResponse.ok(
         attritionReasonSummaryService.getAttritionReasonSummaryById(exitReasonId, separationNatureId)));
   }
@@ -115,7 +120,7 @@ public class AnalyticsSummaryController {
       "!isInvoluntaryFlag", "!employmentExitReasonId"
   })
   public ResponseEntity<ApiResponse<List<AttritionReasonSummaryResponse>>> getAttritionReasonSummariesByExitReasonId(
-      @RequestParam("exitReasonId") Long exitReasonId,
+      @RequestParam("exitReasonId") @Positive Long exitReasonId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "exitReasonId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -127,7 +132,7 @@ public class AnalyticsSummaryController {
       "!isInvoluntaryFlag", "!exitReasonId"
   })
   public ResponseEntity<ApiResponse<List<AttritionReasonSummaryResponse>>> getAttritionReasonSummariesByEmploymentExitReasonId(
-      @RequestParam("employmentExitReasonId") Long employmentExitReasonId,
+      @RequestParam("employmentExitReasonId") @Positive Long employmentExitReasonId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "employmentExitReasonId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -139,7 +144,7 @@ public class AnalyticsSummaryController {
       "!isVoluntaryFlag", "!isInvoluntaryFlag"
   })
   public ResponseEntity<ApiResponse<List<AttritionReasonSummaryResponse>>> getAttritionReasonSummariesBySeparationNatureId(
-      @RequestParam("separationNatureId") Long separationNatureId,
+      @RequestParam("separationNatureId") @Positive Long separationNatureId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "separationNatureId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -175,8 +180,8 @@ public class AnalyticsSummaryController {
       "!isInvoluntaryFlag", "!employmentExitReasonId"
   })
   public ResponseEntity<ApiResponse<AttritionReasonSummaryResponse>> getAttritionReasonSummaryByQueryParams(
-      @RequestParam("exitReasonId") Long exitReasonId,
-      @RequestParam("separationNatureId") Long separationNatureId,
+      @RequestParam("exitReasonId") @Positive Long exitReasonId,
+      @RequestParam("separationNatureId") @Positive Long separationNatureId,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("exitReasonId", "separationNatureId"));
     return ResponseEntity.ok(ApiResponse.ok(
@@ -188,8 +193,8 @@ public class AnalyticsSummaryController {
       "!isInvoluntaryFlag", "!exitReasonId"
   })
   public ResponseEntity<ApiResponse<AttritionReasonSummaryResponse>> getAttritionReasonSummaryByEmploymentExitReasonQueryParams(
-      @RequestParam("employmentExitReasonId") Long employmentExitReasonId,
-      @RequestParam("separationNatureId") Long separationNatureId,
+      @RequestParam("employmentExitReasonId") @Positive Long employmentExitReasonId,
+      @RequestParam("separationNatureId") @Positive Long separationNatureId,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("employmentExitReasonId", "separationNatureId"));
     return ResponseEntity.ok(ApiResponse.ok(
@@ -215,13 +220,13 @@ public class AnalyticsSummaryController {
 
   @GetMapping("/course-outcomes/{courseId}")
   public ResponseEntity<ApiResponse<CourseOutcomeSummaryResponse>> getCourseOutcomeById(
-      @PathVariable Long courseId) {
+      @PathVariable @Positive Long courseId) {
     return ResponseEntity.ok(ApiResponse.ok(courseOutcomeSummaryService.getCourseOutcomeByCourseId(courseId)));
   }
 
   @GetMapping(value = "/course-outcomes", params = "courseId")
   public ResponseEntity<ApiResponse<CourseOutcomeSummaryResponse>> getCourseOutcomeByCourseId(
-      @RequestParam("courseId") Long courseId,
+      @RequestParam("courseId") @Positive Long courseId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "courseId");
     return ResponseEntity.ok(ApiResponse.ok(courseOutcomeSummaryService.getCourseOutcomeByCourseId(courseId)));
@@ -246,13 +251,13 @@ public class AnalyticsSummaryController {
 
   @GetMapping("/district-outcomes/{districtId}")
   public ResponseEntity<ApiResponse<DistrictOutcomeSummaryResponse>> getDistrictOutcomeById(
-      @PathVariable Long districtId) {
+      @PathVariable @Positive Long districtId) {
     return ResponseEntity.ok(ApiResponse.ok(districtOutcomeSummaryService.getDistrictOutcomeByDistrictId(districtId)));
   }
 
   @GetMapping(value = "/district-outcomes", params = "districtId")
   public ResponseEntity<ApiResponse<DistrictOutcomeSummaryResponse>> getDistrictOutcomeByDistrictId(
-      @RequestParam("districtId") Long districtId,
+      @RequestParam("districtId") @Positive Long districtId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "districtId");
     return ResponseEntity.ok(ApiResponse.ok(districtOutcomeSummaryService.getDistrictOutcomeByDistrictId(districtId)));
@@ -277,14 +282,14 @@ public class AnalyticsSummaryController {
 
   @GetMapping("/employer-hirings/{employerId}")
   public ResponseEntity<ApiResponse<EmployerHiringSummaryResponse>> getEmployerHiringSummaryById(
-      @PathVariable Long employerId) {
+      @PathVariable @Positive Long employerId) {
     return ResponseEntity.ok(ApiResponse.ok(
         employerHiringSummaryService.getEmployerHiringSummaryByEmployerId(employerId)));
   }
 
   @GetMapping(value = "/employer-hirings", params = "employerId")
   public ResponseEntity<ApiResponse<EmployerHiringSummaryResponse>> getEmployerHiringSummaryByEmployerId(
-      @RequestParam("employerId") Long employerId,
+      @RequestParam("employerId") @Positive Long employerId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "employerId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -312,8 +317,8 @@ public class AnalyticsSummaryController {
 
   @GetMapping("/followup-outcomes/{typeCode}/{offsetMonths}")
   public ResponseEntity<ApiResponse<FollowupOutcomeSummaryResponse>> getFollowupOutcomeSummaryById(
-      @PathVariable String typeCode,
-      @PathVariable Integer offsetMonths) {
+      @PathVariable @NotBlank String typeCode,
+      @PathVariable @PositiveOrZero Integer offsetMonths) {
     return ResponseEntity.ok(ApiResponse.ok(
         followupOutcomeSummaryService.getFollowupOutcomeSummaryById(typeCode, offsetMonths)));
   }
@@ -322,7 +327,7 @@ public class AnalyticsSummaryController {
       "typeCode", "!offsetMonths", "!followupOffsetMonths", "!followupTypeCode"
   })
   public ResponseEntity<ApiResponse<List<FollowupOutcomeSummaryResponse>>> getFollowupOutcomeSummariesByTypeCode(
-      @RequestParam("typeCode") String typeCode,
+      @RequestParam("typeCode") @NotBlank String typeCode,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "typeCode");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -333,7 +338,7 @@ public class AnalyticsSummaryController {
       "followupTypeCode", "!offsetMonths", "!followupOffsetMonths", "!typeCode"
   })
   public ResponseEntity<ApiResponse<List<FollowupOutcomeSummaryResponse>>> getFollowupOutcomeSummariesByFollowupTypeCode(
-      @RequestParam("followupTypeCode") String followupTypeCode,
+      @RequestParam("followupTypeCode") @NotBlank String followupTypeCode,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "followupTypeCode");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -344,7 +349,7 @@ public class AnalyticsSummaryController {
       "offsetMonths", "!typeCode", "!followupTypeCode", "!followupOffsetMonths"
   })
   public ResponseEntity<ApiResponse<List<FollowupOutcomeSummaryResponse>>> getFollowupOutcomeSummariesByOffsetMonths(
-      @RequestParam("offsetMonths") Integer offsetMonths,
+      @RequestParam("offsetMonths") @PositiveOrZero Integer offsetMonths,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "offsetMonths");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -355,7 +360,7 @@ public class AnalyticsSummaryController {
       "followupOffsetMonths", "!typeCode", "!followupTypeCode", "!offsetMonths"
   })
   public ResponseEntity<ApiResponse<List<FollowupOutcomeSummaryResponse>>> getFollowupOutcomeSummariesByFollowupOffsetMonths(
-      @RequestParam("followupOffsetMonths") Integer followupOffsetMonths,
+      @RequestParam("followupOffsetMonths") @PositiveOrZero Integer followupOffsetMonths,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "followupOffsetMonths");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -366,8 +371,8 @@ public class AnalyticsSummaryController {
       "typeCode", "offsetMonths", "!followupTypeCode", "!followupOffsetMonths"
   })
   public ResponseEntity<ApiResponse<FollowupOutcomeSummaryResponse>> getFollowupOutcomeSummaryByQueryParams(
-      @RequestParam("typeCode") String typeCode,
-      @RequestParam("offsetMonths") Integer offsetMonths,
+      @RequestParam("typeCode") @NotBlank String typeCode,
+      @RequestParam("offsetMonths") @PositiveOrZero Integer offsetMonths,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("typeCode", "offsetMonths"));
     return ResponseEntity.ok(ApiResponse.ok(
@@ -378,8 +383,8 @@ public class AnalyticsSummaryController {
       "followupTypeCode", "followupOffsetMonths", "!typeCode", "!offsetMonths"
   })
   public ResponseEntity<ApiResponse<FollowupOutcomeSummaryResponse>> getFollowupOutcomeSummaryByFollowupQueryParams(
-      @RequestParam("followupTypeCode") String followupTypeCode,
-      @RequestParam("followupOffsetMonths") Integer followupOffsetMonths,
+      @RequestParam("followupTypeCode") @NotBlank String followupTypeCode,
+      @RequestParam("followupOffsetMonths") @PositiveOrZero Integer followupOffsetMonths,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("followupTypeCode", "followupOffsetMonths"));
     return ResponseEntity.ok(ApiResponse.ok(
@@ -405,13 +410,13 @@ public class AnalyticsSummaryController {
 
   @GetMapping("/program-outcomes/{programId}")
   public ResponseEntity<ApiResponse<ProgramOutcomeSummaryResponse>> getProgramOutcomeById(
-      @PathVariable Long programId) {
+      @PathVariable @Positive Long programId) {
     return ResponseEntity.ok(ApiResponse.ok(programOutcomeSummaryService.getProgramOutcomeByProgramId(programId)));
   }
 
   @GetMapping(value = "/program-outcomes", params = {"programId", "!schemeId"})
   public ResponseEntity<ApiResponse<ProgramOutcomeSummaryResponse>> getProgramOutcomeByProgramId(
-      @RequestParam("programId") Long programId,
+      @RequestParam("programId") @Positive Long programId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "programId");
     return ResponseEntity.ok(ApiResponse.ok(programOutcomeSummaryService.getProgramOutcomeByProgramId(programId)));
@@ -419,7 +424,7 @@ public class AnalyticsSummaryController {
 
   @GetMapping(value = "/program-outcomes", params = {"schemeId", "!programId"})
   public ResponseEntity<ApiResponse<List<ProgramOutcomeSummaryResponse>>> getProgramOutcomesBySchemeId(
-      @RequestParam("schemeId") Long schemeId,
+      @RequestParam("schemeId") @Positive Long schemeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "schemeId");
     return ResponseEntity.ok(ApiResponse.ok(programOutcomeSummaryService.getProgramOutcomesBySchemeId(schemeId)));
@@ -444,13 +449,13 @@ public class AnalyticsSummaryController {
 
   @GetMapping("/provider-outcomes/{providerId}")
   public ResponseEntity<ApiResponse<ProviderOutcomeSummaryResponse>> getProviderOutcomeById(
-      @PathVariable Long providerId) {
+      @PathVariable @Positive Long providerId) {
     return ResponseEntity.ok(ApiResponse.ok(providerOutcomeSummaryService.getProviderOutcomeByProviderId(providerId)));
   }
 
   @GetMapping(value = "/provider-outcomes", params = "providerId")
   public ResponseEntity<ApiResponse<ProviderOutcomeSummaryResponse>> getProviderOutcomeByProviderId(
-      @RequestParam("providerId") Long providerId,
+      @RequestParam("providerId") @Positive Long providerId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "providerId");
     return ResponseEntity.ok(ApiResponse.ok(providerOutcomeSummaryService.getProviderOutcomeByProviderId(providerId)));
@@ -477,8 +482,8 @@ public class AnalyticsSummaryController {
 
   @GetMapping("/skill-gaps/{skillId}/{severityId}")
   public ResponseEntity<ApiResponse<SkillGapSummaryResponse>> getSkillGapSummaryById(
-      @PathVariable Long skillId,
-      @PathVariable Long severityId) {
+      @PathVariable @Positive Long skillId,
+      @PathVariable @Positive Long severityId) {
     return ResponseEntity.ok(ApiResponse.ok(skillGapSummaryService.getSkillGapSummaryById(skillId, severityId)));
   }
 
@@ -486,7 +491,7 @@ public class AnalyticsSummaryController {
       "skillId", "!severityId", "!skillGapSeverityId", "!severityCode"
   })
   public ResponseEntity<ApiResponse<List<SkillGapSummaryResponse>>> getSkillGapSummariesBySkillId(
-      @RequestParam("skillId") Long skillId,
+      @RequestParam("skillId") @Positive Long skillId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "skillId");
     return ResponseEntity.ok(ApiResponse.ok(skillGapSummaryService.getSkillGapSummariesBySkillId(skillId)));
@@ -496,7 +501,7 @@ public class AnalyticsSummaryController {
       "severityId", "!skillId", "!skillGapSeverityId", "!severityCode"
   })
   public ResponseEntity<ApiResponse<List<SkillGapSummaryResponse>>> getSkillGapSummariesBySeverityId(
-      @RequestParam("severityId") Long severityId,
+      @RequestParam("severityId") @Positive Long severityId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "severityId");
     return ResponseEntity.ok(ApiResponse.ok(skillGapSummaryService.getSkillGapSummariesBySeverityId(severityId)));
@@ -506,7 +511,7 @@ public class AnalyticsSummaryController {
       "skillGapSeverityId", "!skillId", "!severityId", "!severityCode"
   })
   public ResponseEntity<ApiResponse<List<SkillGapSummaryResponse>>> getSkillGapSummariesBySkillGapSeverityId(
-      @RequestParam("skillGapSeverityId") Long skillGapSeverityId,
+      @RequestParam("skillGapSeverityId") @Positive Long skillGapSeverityId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "skillGapSeverityId");
     return ResponseEntity.ok(ApiResponse.ok(skillGapSummaryService.getSkillGapSummariesBySeverityId(skillGapSeverityId)));
@@ -516,7 +521,7 @@ public class AnalyticsSummaryController {
       "severityCode", "!skillId", "!severityId", "!skillGapSeverityId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapSummaryResponse>>> getSkillGapSummariesBySeverityCode(
-      @RequestParam("severityCode") String severityCode,
+      @RequestParam("severityCode") @NotBlank String severityCode,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "severityCode");
     return ResponseEntity.ok(ApiResponse.ok(skillGapSummaryService.getSkillGapSummariesBySeverityCode(severityCode)));
@@ -526,8 +531,8 @@ public class AnalyticsSummaryController {
       "skillId", "severityId", "!severityCode", "!skillGapSeverityId"
   })
   public ResponseEntity<ApiResponse<SkillGapSummaryResponse>> getSkillGapSummaryByQueryParams(
-      @RequestParam("skillId") Long skillId,
-      @RequestParam("severityId") Long severityId,
+      @RequestParam("skillId") @Positive Long skillId,
+      @RequestParam("severityId") @Positive Long severityId,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("skillId", "severityId"));
     return ResponseEntity.ok(ApiResponse.ok(skillGapSummaryService.getSkillGapSummaryById(skillId, severityId)));
@@ -537,8 +542,8 @@ public class AnalyticsSummaryController {
       "skillId", "skillGapSeverityId", "!severityCode", "!severityId"
   })
   public ResponseEntity<ApiResponse<SkillGapSummaryResponse>> getSkillGapSummaryBySkillGapSeverityQueryParams(
-      @RequestParam("skillId") Long skillId,
-      @RequestParam("skillGapSeverityId") Long skillGapSeverityId,
+      @RequestParam("skillId") @Positive Long skillId,
+      @RequestParam("skillGapSeverityId") @Positive Long skillGapSeverityId,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("skillId", "skillGapSeverityId"));
     return ResponseEntity.ok(ApiResponse.ok(skillGapSummaryService.getSkillGapSummaryById(skillId, skillGapSeverityId)));
@@ -559,7 +564,7 @@ public class AnalyticsSummaryController {
 
   @GetMapping("/trainee-outcomes/{traineeId}")
   public ResponseEntity<ApiResponse<TraineeOutcomeSummaryResponse>> getTraineeOutcomeById(
-      @PathVariable Long traineeId) {
+      @PathVariable @Positive Long traineeId) {
     return ResponseEntity.ok(ApiResponse.ok(traineeOutcomeSummaryService.getTraineeOutcomeByTraineeId(traineeId)));
   }
 
@@ -567,7 +572,7 @@ public class AnalyticsSummaryController {
       "traineeId", "!stateId", "!districtId", "!currentEmploymentStatusId", "!snapshotIsEmployedFlag"
   })
   public ResponseEntity<ApiResponse<TraineeOutcomeSummaryResponse>> getTraineeOutcomeByTraineeId(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeId");
     return ResponseEntity.ok(ApiResponse.ok(traineeOutcomeSummaryService.getTraineeOutcomeByTraineeId(traineeId)));
@@ -577,7 +582,7 @@ public class AnalyticsSummaryController {
       "stateId", "!traineeId", "!districtId", "!currentEmploymentStatusId", "!snapshotIsEmployedFlag"
   })
   public ResponseEntity<ApiResponse<List<TraineeOutcomeSummaryResponse>>> getTraineeOutcomesByStateId(
-      @RequestParam("stateId") Long stateId,
+      @RequestParam("stateId") @Positive Long stateId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "stateId");
     return ResponseEntity.ok(ApiResponse.ok(traineeOutcomeSummaryService.getTraineeOutcomesByStateId(stateId)));
@@ -587,7 +592,7 @@ public class AnalyticsSummaryController {
       "districtId", "!traineeId", "!stateId", "!currentEmploymentStatusId", "!snapshotIsEmployedFlag"
   })
   public ResponseEntity<ApiResponse<List<TraineeOutcomeSummaryResponse>>> getTraineeOutcomesByDistrictId(
-      @RequestParam("districtId") Long districtId,
+      @RequestParam("districtId") @Positive Long districtId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "districtId");
     return ResponseEntity.ok(ApiResponse.ok(traineeOutcomeSummaryService.getTraineeOutcomesByDistrictId(districtId)));
@@ -597,7 +602,7 @@ public class AnalyticsSummaryController {
       "currentEmploymentStatusId", "!traineeId", "!stateId", "!districtId", "!snapshotIsEmployedFlag"
   })
   public ResponseEntity<ApiResponse<List<TraineeOutcomeSummaryResponse>>> getTraineeOutcomesByCurrentEmploymentStatusId(
-      @RequestParam("currentEmploymentStatusId") Long currentEmploymentStatusId,
+      @RequestParam("currentEmploymentStatusId") @Positive Long currentEmploymentStatusId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "currentEmploymentStatusId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -636,7 +641,7 @@ public class AnalyticsSummaryController {
 
   @GetMapping("/unemployment-reasons/{id}")
   public ResponseEntity<ApiResponse<UnemploymentReasonSummaryResponse>> getUnemploymentReasonSummaryById(
-      @PathVariable Long id) {
+      @PathVariable @Positive Long id) {
     return ResponseEntity.ok(ApiResponse.ok(unemploymentReasonSummaryService.getUnemploymentReasonSummaryById(id)));
   }
 
@@ -644,7 +649,7 @@ public class AnalyticsSummaryController {
       "unemploymentReasonId", "!code", "!unemploymentReasonCode"
   })
   public ResponseEntity<ApiResponse<UnemploymentReasonSummaryResponse>> getUnemploymentReasonSummaryByReasonId(
-      @RequestParam("unemploymentReasonId") Long unemploymentReasonId,
+      @RequestParam("unemploymentReasonId") @Positive Long unemploymentReasonId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "unemploymentReasonId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -655,7 +660,7 @@ public class AnalyticsSummaryController {
       "code", "!unemploymentReasonId", "!unemploymentReasonCode"
   })
   public ResponseEntity<ApiResponse<UnemploymentReasonSummaryResponse>> getUnemploymentReasonSummaryByCode(
-      @RequestParam("code") String code,
+      @RequestParam("code") @NotBlank String code,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "code");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -666,7 +671,7 @@ public class AnalyticsSummaryController {
       "unemploymentReasonCode", "!unemploymentReasonId", "!code"
   })
   public ResponseEntity<ApiResponse<UnemploymentReasonSummaryResponse>> getUnemploymentReasonSummaryByReasonCode(
-      @RequestParam("unemploymentReasonCode") String unemploymentReasonCode,
+      @RequestParam("unemploymentReasonCode") @NotBlank String unemploymentReasonCode,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "unemploymentReasonCode");
     return ResponseEntity.ok(ApiResponse.ok(

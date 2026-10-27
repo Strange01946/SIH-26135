@@ -1,5 +1,8 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateSalaryHistoryRequest;
 import in.gov.sih.sih26135.dto.request.UpdateSalaryHistoryRequest;
@@ -31,6 +34,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateSalaryHistoryRequest, UpdateSalaryHistoryRequest
  * Produces: SalaryHistoryResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/salary-history")
 @PreAuthorize("hasAuthority('employment.manage')")
@@ -49,7 +53,7 @@ public class SalaryHistoryController {
    * @return 200 OK with SalaryHistoryResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<SalaryHistoryResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<SalaryHistoryResponse>> getById(@PathVariable @Positive Long id) {
     SalaryHistoryResponse response = salaryHistoryService.getSalaryHistoryById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -63,7 +67,7 @@ public class SalaryHistoryController {
    */
   @GetMapping(params = {"employmentRecordId", "!traineeId", "!effectiveFrom", "!observationMonthOffset"})
   public ResponseEntity<ApiResponse<List<SalaryHistoryResponse>>> getByEmploymentRecord(
-      @RequestParam("employmentRecordId") Long employmentRecordId,
+      @RequestParam("employmentRecordId") @Positive Long employmentRecordId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "employmentRecordId");
     List<SalaryHistoryResponse> records = salaryHistoryService.getSalaryHistoryByEmploymentRecord(employmentRecordId);
@@ -79,7 +83,7 @@ public class SalaryHistoryController {
    */
   @GetMapping(params = {"traineeId", "!employmentRecordId", "!effectiveFrom", "!observationMonthOffset"})
   public ResponseEntity<ApiResponse<List<SalaryHistoryResponse>>> getByTrainee(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeId");
     List<SalaryHistoryResponse> records = salaryHistoryService.getSalaryHistoryByTrainee(traineeId);
@@ -111,7 +115,7 @@ public class SalaryHistoryController {
    */
   @GetMapping(params = {"observationMonthOffset", "!employmentRecordId", "!traineeId", "!effectiveFrom"})
   public ResponseEntity<ApiResponse<List<SalaryHistoryResponse>>> getByObservationMilestone(
-      @RequestParam("observationMonthOffset") Integer observationMonthOffset,
+      @RequestParam("observationMonthOffset") @PositiveOrZero Integer observationMonthOffset,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "observationMonthOffset");
     List<SalaryHistoryResponse> records = salaryHistoryService.getSalaryHistoryByObservationMilestone(observationMonthOffset);
@@ -143,7 +147,7 @@ public class SalaryHistoryController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<SalaryHistoryResponse>> updateSalaryHistory(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateSalaryHistoryRequest request) {
     SalaryHistoryResponse response = salaryHistoryService.updateSalaryHistory(id, request);
     return ResponseEntity.ok(ApiResponse.success("Salary history updated successfully", response));
@@ -156,7 +160,7 @@ public class SalaryHistoryController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteSalaryHistory(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteSalaryHistory(@PathVariable @Positive Long id) {
     salaryHistoryService.deleteSalaryHistory(id);
     return ResponseEntity.ok(ApiResponse.success("Salary history deleted successfully"));
   }

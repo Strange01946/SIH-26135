@@ -142,6 +142,24 @@ class GlobalExceptionHandlerErrorMappingTest {
     }
 
     @Test
+    @DisplayName("MissingRequestHeaderException maps to HTTP 400 MISSING_HEADER")
+    void testMissingRequestHeader_mapsTo400() {
+      org.springframework.web.bind.MissingRequestHeaderException ex =
+          mock(org.springframework.web.bind.MissingRequestHeaderException.class);
+      when(ex.getHeaderName()).thenReturn("X-Actor-User-Id");
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleMissingRequestHeader(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getStatus()).isEqualTo(400);
+      assertThat(response.getBody().getError()).isEqualTo("Bad Request");
+      assertThat(response.getBody().getCode()).isEqualTo("MISSING_HEADER");
+      assertThat(response.getBody().getMessage()).contains("X-Actor-User-Id");
+      assertThat(response.getBody().getPath()).isEqualTo("/api/v1/test-endpoint");
+    }
+
+    @Test
     @DisplayName("MissingPathVariableException maps to HTTP 500 INTERNAL_SERVER_ERROR without leaking internal variable name")
     void testMissingPathVariable_mapsTo500InternalServerError() {
       MissingPathVariableException ex = mock(MissingPathVariableException.class);
@@ -479,6 +497,29 @@ class GlobalExceptionHandlerErrorMappingTest {
       assertThat(response.getBody()).isNotNull();
       assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
       assertThat(response.getBody().getDetails()).containsExactly("requestId: must be greater than 0");
+    }
+
+    @Test
+    @DisplayName("ConstraintViolationException from verified CommunicationLogController maps to HTTP 400 VALIDATION_ERROR")
+    void testConstraintViolation_fromCommunicationLogController_mapsTo400() {
+      ConstraintViolation<?> violation = mock(ConstraintViolation.class);
+      Path path = mock(Path.class);
+      Path.Node paramNode = mock(Path.Node.class);
+      when(paramNode.getKind()).thenReturn(jakarta.validation.ElementKind.PARAMETER);
+      when(path.iterator()).thenReturn(Collections.singletonList(paramNode).iterator());
+      when(path.toString()).thenReturn("page");
+      when(violation.getPropertyPath()).thenReturn(path);
+      when(violation.getMessage()).thenReturn("must be greater than or equal to minimum value");
+      doReturn(in.gov.sih.sih26135.controller.CommunicationLogController.class).when(violation).getRootBeanClass();
+
+      ConstraintViolationException ex = new ConstraintViolationException("Validation failed", Set.of(violation));
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleConstraintViolation(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).containsExactly("page: must be greater than or equal to minimum value");
     }
 
     @Test

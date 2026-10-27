@@ -1,5 +1,8 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateDataQualityRuleRequest;
 import in.gov.sih.sih26135.dto.request.UpdateDataQualityRuleRequest;
@@ -29,6 +32,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateDataQualityRuleRequest, UpdateDataQualityRuleRequest
  * Produces: DataQualityRuleResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/data-quality-rules")
 @PreAuthorize("hasAnyAuthority('audit.read', 'system.manage')")
@@ -47,7 +51,7 @@ public class DataQualityRuleController {
    * @return 200 OK with DataQualityRuleResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<DataQualityRuleResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<DataQualityRuleResponse>> getById(@PathVariable @Positive Long id) {
     DataQualityRuleResponse response = dataQualityRuleService.getRuleById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -63,7 +67,7 @@ public class DataQualityRuleController {
       "ruleCode", "!targetEntityType", "!categoryId", "!severityId", "!lifecycleStatusId"
   })
   public ResponseEntity<ApiResponse<DataQualityRuleResponse>> getByRuleCode(
-      @RequestParam("ruleCode") String ruleCode,
+      @RequestParam("ruleCode") @NotBlank String ruleCode,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "ruleCode");
     DataQualityRuleResponse response = dataQualityRuleService.getRuleByCode(ruleCode);
@@ -81,7 +85,7 @@ public class DataQualityRuleController {
       "targetEntityType", "!ruleCode", "!categoryId", "!severityId", "!lifecycleStatusId"
   })
   public ResponseEntity<ApiResponse<List<DataQualityRuleResponse>>> getByTargetEntityType(
-      @RequestParam("targetEntityType") String targetEntityType,
+      @RequestParam("targetEntityType") @NotBlank String targetEntityType,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "targetEntityType");
     List<DataQualityRuleResponse> rules = dataQualityRuleService.getRulesByTargetEntityType(targetEntityType);
@@ -99,7 +103,7 @@ public class DataQualityRuleController {
       "categoryId", "!ruleCode", "!targetEntityType", "!severityId", "!lifecycleStatusId"
   })
   public ResponseEntity<ApiResponse<List<DataQualityRuleResponse>>> getByCategoryId(
-      @RequestParam("categoryId") Long categoryId,
+      @RequestParam("categoryId") @Positive Long categoryId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "categoryId");
     List<DataQualityRuleResponse> rules = dataQualityRuleService.getRulesByCategoryId(categoryId);
@@ -117,7 +121,7 @@ public class DataQualityRuleController {
       "severityId", "!ruleCode", "!targetEntityType", "!categoryId", "!lifecycleStatusId"
   })
   public ResponseEntity<ApiResponse<List<DataQualityRuleResponse>>> getBySeverityId(
-      @RequestParam("severityId") Long severityId,
+      @RequestParam("severityId") @Positive Long severityId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "severityId");
     List<DataQualityRuleResponse> rules = dataQualityRuleService.getRulesBySeverityId(severityId);
@@ -135,7 +139,7 @@ public class DataQualityRuleController {
       "lifecycleStatusId", "!ruleCode", "!targetEntityType", "!categoryId", "!severityId"
   })
   public ResponseEntity<ApiResponse<List<DataQualityRuleResponse>>> getByLifecycleStatusId(
-      @RequestParam("lifecycleStatusId") Long lifecycleStatusId,
+      @RequestParam("lifecycleStatusId") @Positive Long lifecycleStatusId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "lifecycleStatusId");
     List<DataQualityRuleResponse> rules = dataQualityRuleService.getRulesByLifecycleStatusId(lifecycleStatusId);
@@ -170,7 +174,7 @@ public class DataQualityRuleController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<DataQualityRuleResponse>> updateRule(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateDataQualityRuleRequest request) {
     DataQualityRuleResponse response = dataQualityRuleService.updateRule(id, request);
     return ResponseEntity.ok(ApiResponse.success(
@@ -185,7 +189,7 @@ public class DataQualityRuleController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteRule(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteRule(@PathVariable @Positive Long id) {
     dataQualityRuleService.deleteRule(id);
     return ResponseEntity.ok(ApiResponse.success("Data quality rule deleted successfully"));
   }

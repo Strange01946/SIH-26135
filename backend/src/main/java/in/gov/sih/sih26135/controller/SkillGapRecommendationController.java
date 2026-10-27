@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateSkillGapRecommendationRequest;
 import in.gov.sih.sih26135.dto.request.UpdateSkillGapRecommendationRequest;
@@ -30,6 +32,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateSkillGapRecommendationRequest, UpdateSkillGapRecommendationRequest
  * Produces: SkillGapRecommendationResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/skill-gap-recommendations")
 @PreAuthorize("hasAuthority('assessment.manage')")
@@ -48,7 +51,7 @@ public class SkillGapRecommendationController {
    * @return 200 OK with SkillGapRecommendationResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<SkillGapRecommendationResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<SkillGapRecommendationResponse>> getById(@PathVariable @Positive Long id) {
     SkillGapRecommendationResponse response = skillGapRecommendationService.getRecommendationById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -66,8 +69,8 @@ public class SkillGapRecommendationController {
       "!courseId", "!skillId"
   })
   public ResponseEntity<ApiResponse<SkillGapRecommendationResponse>> getBySkillGapAndRecommendationNumber(
-      @RequestParam("skillGapId") Long skillGapId,
-      @RequestParam("recommendationNumber") Integer recommendationNumber,
+      @RequestParam("skillGapId") @Positive Long skillGapId,
+      @RequestParam("recommendationNumber") @Positive Integer recommendationNumber,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("skillGapId", "recommendationNumber"));
     SkillGapRecommendationResponse response =
@@ -88,7 +91,7 @@ public class SkillGapRecommendationController {
       "!courseId", "!skillId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapRecommendationResponse>>> getAcceptedBySkillGap(
-      @RequestParam("skillGapId") Long skillGapId,
+      @RequestParam("skillGapId") @Positive Long skillGapId,
       @RequestParam("isAccepted") boolean isAccepted,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("skillGapId", "isAccepted"));
@@ -114,7 +117,7 @@ public class SkillGapRecommendationController {
       "!courseId", "!skillId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapRecommendationResponse>>> getBySkillGap(
-      @RequestParam("skillGapId") Long skillGapId,
+      @RequestParam("skillGapId") @Positive Long skillGapId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "skillGapId");
     List<SkillGapRecommendationResponse> recommendations =
@@ -134,7 +137,7 @@ public class SkillGapRecommendationController {
       "!courseId", "!skillId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapRecommendationResponse>>> getByActionType(
-      @RequestParam("actionTypeId") Long actionTypeId,
+      @RequestParam("actionTypeId") @Positive Long actionTypeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "actionTypeId");
     List<SkillGapRecommendationResponse> recommendations =
@@ -154,7 +157,7 @@ public class SkillGapRecommendationController {
       "!actionTypeId", "!skillId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapRecommendationResponse>>> getByCourse(
-      @RequestParam("courseId") Long courseId,
+      @RequestParam("courseId") @Positive Long courseId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "courseId");
     List<SkillGapRecommendationResponse> recommendations =
@@ -174,7 +177,7 @@ public class SkillGapRecommendationController {
       "!actionTypeId", "!courseId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapRecommendationResponse>>> getBySkill(
-      @RequestParam("skillId") Long skillId,
+      @RequestParam("skillId") @Positive Long skillId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "skillId");
     List<SkillGapRecommendationResponse> recommendations =
@@ -210,7 +213,7 @@ public class SkillGapRecommendationController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<SkillGapRecommendationResponse>> updateRecommendation(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateSkillGapRecommendationRequest request) {
     SkillGapRecommendationResponse response = skillGapRecommendationService.updateRecommendation(id, request);
     return ResponseEntity.ok(ApiResponse.success(
@@ -225,7 +228,7 @@ public class SkillGapRecommendationController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteRecommendation(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteRecommendation(@PathVariable @Positive Long id) {
     skillGapRecommendationService.deleteRecommendation(id);
     return ResponseEntity.ok(ApiResponse.success("Skill gap recommendation deleted successfully"));
   }

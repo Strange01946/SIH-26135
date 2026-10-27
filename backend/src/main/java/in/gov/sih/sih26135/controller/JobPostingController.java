@@ -1,5 +1,8 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateJobPostingRequest;
 import in.gov.sih.sih26135.dto.request.UpdateJobPostingRequest;
@@ -29,6 +32,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateJobPostingRequest, UpdateJobPostingRequest
  * Produces: JobPostingResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/job-postings")
 @PreAuthorize("hasAuthority('placement.manage')")
@@ -47,7 +51,7 @@ public class JobPostingController {
    * @return 200 OK with JobPostingResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<JobPostingResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<JobPostingResponse>> getById(@PathVariable @Positive Long id) {
     JobPostingResponse response = jobPostingService.getJobPostingById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -60,7 +64,7 @@ public class JobPostingController {
    */
   @GetMapping(params = {"code", "!employerId", "!jobRoleId", "!districtId", "!includeDeleted"})
   public ResponseEntity<ApiResponse<JobPostingResponse>> getByCode(
-      @RequestParam("code") String code,
+      @RequestParam("code") @NotBlank String code,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "code");
     JobPostingResponse response = jobPostingService.getJobPostingByCode(code);
@@ -76,7 +80,7 @@ public class JobPostingController {
    */
   @GetMapping(params = {"employerId", "!code", "!jobRoleId", "!districtId", "!includeDeleted"})
   public ResponseEntity<ApiResponse<List<JobPostingResponse>>> getByEmployer(
-      @RequestParam("employerId") Long employerId,
+      @RequestParam("employerId") @Positive Long employerId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "employerId");
     List<JobPostingResponse> postings = jobPostingService.getJobPostingsByEmployer(employerId);
@@ -92,7 +96,7 @@ public class JobPostingController {
    */
   @GetMapping(params = {"jobRoleId", "!code", "!employerId", "!districtId", "!includeDeleted"})
   public ResponseEntity<ApiResponse<List<JobPostingResponse>>> getByJobRole(
-      @RequestParam("jobRoleId") Long jobRoleId,
+      @RequestParam("jobRoleId") @Positive Long jobRoleId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "jobRoleId");
     List<JobPostingResponse> postings = jobPostingService.getJobPostingsByJobRole(jobRoleId);
@@ -108,7 +112,7 @@ public class JobPostingController {
    */
   @GetMapping(params = {"districtId", "!code", "!employerId", "!jobRoleId", "!includeDeleted"})
   public ResponseEntity<ApiResponse<List<JobPostingResponse>>> getByDistrict(
-      @RequestParam("districtId") Long districtId,
+      @RequestParam("districtId") @Positive Long districtId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "districtId");
     List<JobPostingResponse> postings = jobPostingService.getJobPostingsByDistrict(districtId);
@@ -180,7 +184,7 @@ public class JobPostingController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<JobPostingResponse>> updateJobPosting(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateJobPostingRequest request) {
     JobPostingResponse response = jobPostingService.updateJobPosting(id, request);
     return ResponseEntity.ok(ApiResponse.success("Job posting updated successfully", response));
@@ -193,7 +197,7 @@ public class JobPostingController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteJobPosting(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteJobPosting(@PathVariable @Positive Long id) {
     jobPostingService.deleteJobPosting(id);
     return ResponseEntity.ok(ApiResponse.success("Job posting deleted successfully"));
   }

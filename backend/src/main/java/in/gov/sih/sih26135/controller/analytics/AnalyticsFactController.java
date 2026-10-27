@@ -1,5 +1,8 @@
 package in.gov.sih.sih26135.controller.analytics;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.NotBlank;
 import in.gov.sih.sih26135.dto.response.EmploymentExitFactResponse;
 import in.gov.sih.sih26135.dto.response.EmploymentFactResponse;
 import in.gov.sih.sih26135.dto.response.EmploymentRetentionFactResponse;
@@ -44,6 +47,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * All endpoints are strictly GET. Analytics views are immutable SQL projections.
  * No modifications, recalculations, or mutations are permitted.
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/analytics/facts")
 @PreAuthorize("hasAuthority('analytics.read')")
@@ -102,7 +106,7 @@ public class AnalyticsFactController {
 
   @GetMapping("/employment-exits/{id}")
   public ResponseEntity<ApiResponse<EmploymentExitFactResponse>> getEmploymentExitById(
-      @PathVariable Long id) {
+      @PathVariable @Positive Long id) {
     return ResponseEntity.ok(ApiResponse.ok(employmentExitFactService.getEmploymentExitById(id)));
   }
 
@@ -111,7 +115,7 @@ public class AnalyticsFactController {
       "!isVoluntaryFlag", "!isInvoluntaryFlag"
   })
   public ResponseEntity<ApiResponse<List<EmploymentExitFactResponse>>> getEmploymentExitsByTraineeId(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeId");
     return ResponseEntity.ok(ApiResponse.ok(employmentExitFactService.getEmploymentExitsByTraineeId(traineeId)));
@@ -122,7 +126,7 @@ public class AnalyticsFactController {
       "!isVoluntaryFlag", "!isInvoluntaryFlag"
   })
   public ResponseEntity<ApiResponse<List<EmploymentExitFactResponse>>> getEmploymentExitsByEmploymentId(
-      @RequestParam("employmentId") Long employmentId,
+      @RequestParam("employmentId") @Positive Long employmentId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "employmentId");
     return ResponseEntity.ok(ApiResponse.ok(employmentExitFactService.getEmploymentExitsByEmploymentId(employmentId)));
@@ -133,7 +137,7 @@ public class AnalyticsFactController {
       "!isVoluntaryFlag", "!isInvoluntaryFlag"
   })
   public ResponseEntity<ApiResponse<List<EmploymentExitFactResponse>>> getEmploymentExitsByExitReasonId(
-      @RequestParam("employmentExitReasonId") Long employmentExitReasonId,
+      @RequestParam("employmentExitReasonId") @Positive Long employmentExitReasonId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "employmentExitReasonId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -145,7 +149,7 @@ public class AnalyticsFactController {
       "!isVoluntaryFlag", "!isInvoluntaryFlag"
   })
   public ResponseEntity<ApiResponse<List<EmploymentExitFactResponse>>> getEmploymentExitsBySeparationNatureId(
-      @RequestParam("separationNatureId") Long separationNatureId,
+      @RequestParam("separationNatureId") @Positive Long separationNatureId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "separationNatureId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -192,7 +196,7 @@ public class AnalyticsFactController {
 
   @GetMapping("/employments/{id}")
   public ResponseEntity<ApiResponse<EmploymentFactResponse>> getEmploymentById(
-      @PathVariable Long id) {
+      @PathVariable @Positive Long id) {
     return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentById(id)));
   }
 
@@ -201,7 +205,7 @@ public class AnalyticsFactController {
       "!placementId", "!jobRoleId", "!isCurrent", "!engagementTypeId", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<EmploymentFactResponse>> getEmploymentByEmploymentNumber(
-      @RequestParam("employmentNumber") String employmentNumber,
+      @RequestParam("employmentNumber") @NotBlank String employmentNumber,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "employmentNumber");
     return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentByEmploymentNumber(employmentNumber)));
@@ -212,7 +216,7 @@ public class AnalyticsFactController {
       "!placementId", "!jobRoleId", "!isCurrent", "!engagementTypeId", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<EmploymentFactResponse>>> getEmploymentsByTraineeId(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeId");
     return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByTraineeId(traineeId)));
@@ -223,7 +227,7 @@ public class AnalyticsFactController {
       "!placementId", "!jobRoleId", "!isCurrent", "!engagementTypeId", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<EmploymentFactResponse>>> getEmploymentsByEmployerId(
-      @RequestParam("employerId") Long employerId,
+      @RequestParam("employerId") @Positive Long employerId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "employerId");
     return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByEmployerId(employerId)));
@@ -234,7 +238,7 @@ public class AnalyticsFactController {
       "!placementId", "!jobRoleId", "!isCurrent", "!engagementTypeId", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<EmploymentFactResponse>>> getEmploymentsByEnrollmentId(
-      @RequestParam("enrollmentId") Long enrollmentId,
+      @RequestParam("enrollmentId") @Positive Long enrollmentId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "enrollmentId");
     return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByEnrollmentId(enrollmentId)));
@@ -245,7 +249,7 @@ public class AnalyticsFactController {
       "!enrollmentId", "!jobRoleId", "!isCurrent", "!engagementTypeId", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<EmploymentFactResponse>>> getEmploymentsByPlacementId(
-      @RequestParam("placementId") Long placementId,
+      @RequestParam("placementId") @Positive Long placementId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "placementId");
     return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByPlacementId(placementId)));
@@ -256,7 +260,7 @@ public class AnalyticsFactController {
       "!enrollmentId", "!placementId", "!isCurrent", "!engagementTypeId", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<EmploymentFactResponse>>> getEmploymentsByJobRoleId(
-      @RequestParam("jobRoleId") Long jobRoleId,
+      @RequestParam("jobRoleId") @Positive Long jobRoleId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "jobRoleId");
     return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByJobRoleId(jobRoleId)));
@@ -281,7 +285,7 @@ public class AnalyticsFactController {
       "!enrollmentId", "!placementId", "!jobRoleId", "!isCurrent", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<EmploymentFactResponse>>> getEmploymentsByEngagementTypeId(
-      @RequestParam("engagementTypeId") Long engagementTypeId,
+      @RequestParam("engagementTypeId") @Positive Long engagementTypeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "engagementTypeId");
     return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByEngagementTypeId(engagementTypeId)));
@@ -292,7 +296,7 @@ public class AnalyticsFactController {
       "!enrollmentId", "!placementId", "!jobRoleId", "!isCurrent", "!engagementTypeId"
   })
   public ResponseEntity<ApiResponse<List<EmploymentFactResponse>>> getEmploymentsByTraineeDistrictId(
-      @RequestParam("traineeDistrictId") Long traineeDistrictId,
+      @RequestParam("traineeDistrictId") @Positive Long traineeDistrictId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeDistrictId");
     return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByTraineeDistrictId(traineeDistrictId)));
@@ -313,7 +317,7 @@ public class AnalyticsFactController {
 
   @GetMapping("/employment-retentions/{id}")
   public ResponseEntity<ApiResponse<EmploymentRetentionFactResponse>> getEmploymentRetentionById(
-      @PathVariable Long id) {
+      @PathVariable @Positive Long id) {
     return ResponseEntity.ok(ApiResponse.ok(employmentRetentionFactService.getEmploymentRetentionById(id)));
   }
 
@@ -321,7 +325,7 @@ public class AnalyticsFactController {
       "traineeId", "!enrollmentId", "!engagementTypeId", "!isCurrent"
   })
   public ResponseEntity<ApiResponse<List<EmploymentRetentionFactResponse>>> getEmploymentRetentionsByTraineeId(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeId");
     return ResponseEntity.ok(ApiResponse.ok(employmentRetentionFactService.getEmploymentRetentionsByTraineeId(traineeId)));
@@ -331,7 +335,7 @@ public class AnalyticsFactController {
       "enrollmentId", "!traineeId", "!engagementTypeId", "!isCurrent"
   })
   public ResponseEntity<ApiResponse<List<EmploymentRetentionFactResponse>>> getEmploymentRetentionsByEnrollmentId(
-      @RequestParam("enrollmentId") Long enrollmentId,
+      @RequestParam("enrollmentId") @Positive Long enrollmentId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "enrollmentId");
     return ResponseEntity.ok(ApiResponse.ok(employmentRetentionFactService.getEmploymentRetentionsByEnrollmentId(enrollmentId)));
@@ -341,7 +345,7 @@ public class AnalyticsFactController {
       "engagementTypeId", "!traineeId", "!enrollmentId", "!isCurrent"
   })
   public ResponseEntity<ApiResponse<List<EmploymentRetentionFactResponse>>> getEmploymentRetentionsByEngagementTypeId(
-      @RequestParam("engagementTypeId") Long engagementTypeId,
+      @RequestParam("engagementTypeId") @Positive Long engagementTypeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "engagementTypeId");
     return ResponseEntity.ok(ApiResponse.ok(employmentRetentionFactService.getEmploymentRetentionsByEngagementTypeId(engagementTypeId)));
@@ -376,7 +380,7 @@ public class AnalyticsFactController {
 
   @GetMapping("/employment-verifications/{id}")
   public ResponseEntity<ApiResponse<EmploymentVerificationFactResponse>> getEmploymentVerificationById(
-      @PathVariable Long id) {
+      @PathVariable @Positive Long id) {
     return ResponseEntity.ok(ApiResponse.ok(employmentVerificationFactService.getEmploymentVerificationById(id)));
   }
 
@@ -385,7 +389,7 @@ public class AnalyticsFactController {
       "!employerId", "!statusId", "!methodId", "!isCurrent", "!isVerifiedFlag"
   })
   public ResponseEntity<ApiResponse<EmploymentVerificationFactResponse>> getEmploymentVerificationByNumber(
-      @RequestParam("verificationNumber") String verificationNumber,
+      @RequestParam("verificationNumber") @NotBlank String verificationNumber,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "verificationNumber");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -397,7 +401,7 @@ public class AnalyticsFactController {
       "!employerId", "!statusId", "!methodId", "!isCurrent", "!isVerifiedFlag"
   })
   public ResponseEntity<ApiResponse<List<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByTraineeId(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -409,7 +413,7 @@ public class AnalyticsFactController {
       "!employerId", "!statusId", "!methodId", "!isCurrent", "!isVerifiedFlag"
   })
   public ResponseEntity<ApiResponse<List<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByEmploymentId(
-      @RequestParam("employmentId") Long employmentId,
+      @RequestParam("employmentId") @Positive Long employmentId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "employmentId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -421,7 +425,7 @@ public class AnalyticsFactController {
       "!employerId", "!statusId", "!methodId", "!isCurrent", "!isVerifiedFlag"
   })
   public ResponseEntity<ApiResponse<List<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByPlacementId(
-      @RequestParam("placementId") Long placementId,
+      @RequestParam("placementId") @Positive Long placementId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "placementId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -433,7 +437,7 @@ public class AnalyticsFactController {
       "!placementId", "!statusId", "!methodId", "!isCurrent", "!isVerifiedFlag"
   })
   public ResponseEntity<ApiResponse<List<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByEmployerId(
-      @RequestParam("employerId") Long employerId,
+      @RequestParam("employerId") @Positive Long employerId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "employerId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -445,7 +449,7 @@ public class AnalyticsFactController {
       "!placementId", "!employerId", "!methodId", "!isCurrent", "!isVerifiedFlag"
   })
   public ResponseEntity<ApiResponse<List<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByStatusId(
-      @RequestParam("statusId") Long statusId,
+      @RequestParam("statusId") @Positive Long statusId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "statusId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -457,7 +461,7 @@ public class AnalyticsFactController {
       "!placementId", "!employerId", "!statusId", "!isCurrent", "!isVerifiedFlag"
   })
   public ResponseEntity<ApiResponse<List<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByMethodId(
-      @RequestParam("methodId") Long methodId,
+      @RequestParam("methodId") @Positive Long methodId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "methodId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -506,7 +510,7 @@ public class AnalyticsFactController {
 
   @GetMapping("/enrollment-outcomes/{id}")
   public ResponseEntity<ApiResponse<EnrollmentOutcomeFactResponse>> getEnrollmentOutcomeById(
-      @PathVariable Long id) {
+      @PathVariable @Positive Long id) {
     return ResponseEntity.ok(ApiResponse.ok(enrollmentOutcomeFactService.getEnrollmentOutcomeById(id)));
   }
 
@@ -515,7 +519,7 @@ public class AnalyticsFactController {
       "!providerId", "!batchId", "!traineeDistrictId", "!traineeStateId"
   })
   public ResponseEntity<ApiResponse<EnrollmentOutcomeFactResponse>> getEnrollmentOutcomeByEnrollmentNumber(
-      @RequestParam("enrollmentNumber") String enrollmentNumber,
+      @RequestParam("enrollmentNumber") @NotBlank String enrollmentNumber,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "enrollmentNumber");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -527,7 +531,7 @@ public class AnalyticsFactController {
       "!providerId", "!batchId", "!traineeDistrictId", "!traineeStateId"
   })
   public ResponseEntity<ApiResponse<List<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByTraineeId(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -539,7 +543,7 @@ public class AnalyticsFactController {
       "!providerId", "!batchId", "!traineeDistrictId", "!traineeStateId"
   })
   public ResponseEntity<ApiResponse<List<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByProgramId(
-      @RequestParam("programId") Long programId,
+      @RequestParam("programId") @Positive Long programId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "programId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -551,7 +555,7 @@ public class AnalyticsFactController {
       "!providerId", "!batchId", "!traineeDistrictId", "!traineeStateId"
   })
   public ResponseEntity<ApiResponse<List<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByCourseId(
-      @RequestParam("courseId") Long courseId,
+      @RequestParam("courseId") @Positive Long courseId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "courseId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -563,7 +567,7 @@ public class AnalyticsFactController {
       "!courseId", "!batchId", "!traineeDistrictId", "!traineeStateId"
   })
   public ResponseEntity<ApiResponse<List<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByProviderId(
-      @RequestParam("providerId") Long providerId,
+      @RequestParam("providerId") @Positive Long providerId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "providerId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -575,7 +579,7 @@ public class AnalyticsFactController {
       "!courseId", "!providerId", "!traineeDistrictId", "!traineeStateId"
   })
   public ResponseEntity<ApiResponse<List<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByBatchId(
-      @RequestParam("batchId") Long batchId,
+      @RequestParam("batchId") @Positive Long batchId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "batchId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -587,7 +591,7 @@ public class AnalyticsFactController {
       "!courseId", "!providerId", "!batchId", "!traineeStateId"
   })
   public ResponseEntity<ApiResponse<List<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByTraineeDistrictId(
-      @RequestParam("traineeDistrictId") Long traineeDistrictId,
+      @RequestParam("traineeDistrictId") @Positive Long traineeDistrictId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeDistrictId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -599,7 +603,7 @@ public class AnalyticsFactController {
       "!courseId", "!providerId", "!batchId", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByTraineeStateId(
-      @RequestParam("traineeStateId") Long traineeStateId,
+      @RequestParam("traineeStateId") @Positive Long traineeStateId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeStateId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -622,7 +626,7 @@ public class AnalyticsFactController {
 
   @GetMapping("/followups/{id}")
   public ResponseEntity<ApiResponse<FollowupFactResponse>> getFollowupFactById(
-      @PathVariable Long id) {
+      @PathVariable @Positive Long id) {
     return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactById(id)));
   }
 
@@ -631,7 +635,7 @@ public class AnalyticsFactController {
       "!statusId", "!outcomeId", "!isOpenFlag"
   })
   public ResponseEntity<ApiResponse<List<FollowupFactResponse>>> getFollowupFactsByTraineeId(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeId");
     return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactsByTraineeId(traineeId)));
@@ -642,7 +646,7 @@ public class AnalyticsFactController {
       "!statusId", "!outcomeId", "!isOpenFlag"
   })
   public ResponseEntity<ApiResponse<List<FollowupFactResponse>>> getFollowupFactsByCampaignId(
-      @RequestParam("campaignId") Long campaignId,
+      @RequestParam("campaignId") @Positive Long campaignId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "campaignId");
     return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactsByCampaignId(campaignId)));
@@ -653,7 +657,7 @@ public class AnalyticsFactController {
       "!statusId", "!outcomeId", "!isOpenFlag"
   })
   public ResponseEntity<ApiResponse<List<FollowupFactResponse>>> getFollowupFactsByTypeId(
-      @RequestParam("typeId") Long typeId,
+      @RequestParam("typeId") @Positive Long typeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "typeId");
     return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactsByTypeId(typeId)));
@@ -664,7 +668,7 @@ public class AnalyticsFactController {
       "!statusId", "!outcomeId", "!isOpenFlag"
   })
   public ResponseEntity<ApiResponse<List<FollowupFactResponse>>> getFollowupFactsByTypeCode(
-      @RequestParam("typeCode") String typeCode,
+      @RequestParam("typeCode") @NotBlank String typeCode,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "typeCode");
     return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactsByTypeCode(typeCode)));
@@ -675,7 +679,7 @@ public class AnalyticsFactController {
       "!typeCode", "!outcomeId", "!isOpenFlag"
   })
   public ResponseEntity<ApiResponse<List<FollowupFactResponse>>> getFollowupFactsByStatusId(
-      @RequestParam("statusId") Long statusId,
+      @RequestParam("statusId") @Positive Long statusId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "statusId");
     return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactsByStatusId(statusId)));
@@ -686,7 +690,7 @@ public class AnalyticsFactController {
       "!typeCode", "!statusId", "!isOpenFlag"
   })
   public ResponseEntity<ApiResponse<List<FollowupFactResponse>>> getFollowupFactsByOutcomeId(
-      @RequestParam("outcomeId") Long outcomeId,
+      @RequestParam("outcomeId") @Positive Long outcomeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "outcomeId");
     return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactsByOutcomeId(outcomeId)));
@@ -719,7 +723,7 @@ public class AnalyticsFactController {
 
   @GetMapping("/placements/{id}")
   public ResponseEntity<ApiResponse<PlacementFactResponse>> getPlacementById(
-      @PathVariable Long id) {
+      @PathVariable @Positive Long id) {
     return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementById(id)));
   }
 
@@ -728,7 +732,7 @@ public class AnalyticsFactController {
       "!courseId", "!programId", "!providerId", "!jobRoleId", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<PlacementFactResponse>> getPlacementByPlacementNumber(
-      @RequestParam("placementNumber") String placementNumber,
+      @RequestParam("placementNumber") @NotBlank String placementNumber,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "placementNumber");
     return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementByPlacementNumber(placementNumber)));
@@ -739,7 +743,7 @@ public class AnalyticsFactController {
       "!courseId", "!programId", "!providerId", "!jobRoleId", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<PlacementFactResponse>>> getPlacementsByTraineeId(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeId");
     return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByTraineeId(traineeId)));
@@ -750,7 +754,7 @@ public class AnalyticsFactController {
       "!courseId", "!programId", "!providerId", "!jobRoleId", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<PlacementFactResponse>>> getPlacementsByEnrollmentId(
-      @RequestParam("enrollmentId") Long enrollmentId,
+      @RequestParam("enrollmentId") @Positive Long enrollmentId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "enrollmentId");
     return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByEnrollmentId(enrollmentId)));
@@ -761,7 +765,7 @@ public class AnalyticsFactController {
       "!courseId", "!programId", "!providerId", "!jobRoleId", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<PlacementFactResponse>>> getPlacementsByEmployerId(
-      @RequestParam("employerId") Long employerId,
+      @RequestParam("employerId") @Positive Long employerId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "employerId");
     return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByEmployerId(employerId)));
@@ -772,7 +776,7 @@ public class AnalyticsFactController {
       "!employerId", "!programId", "!providerId", "!jobRoleId", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<PlacementFactResponse>>> getPlacementsByCourseId(
-      @RequestParam("courseId") Long courseId,
+      @RequestParam("courseId") @Positive Long courseId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "courseId");
     return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByCourseId(courseId)));
@@ -783,7 +787,7 @@ public class AnalyticsFactController {
       "!employerId", "!courseId", "!providerId", "!jobRoleId", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<PlacementFactResponse>>> getPlacementsByProgramId(
-      @RequestParam("programId") Long programId,
+      @RequestParam("programId") @Positive Long programId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "programId");
     return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByProgramId(programId)));
@@ -794,7 +798,7 @@ public class AnalyticsFactController {
       "!employerId", "!courseId", "!programId", "!jobRoleId", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<PlacementFactResponse>>> getPlacementsByProviderId(
-      @RequestParam("providerId") Long providerId,
+      @RequestParam("providerId") @Positive Long providerId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "providerId");
     return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByProviderId(providerId)));
@@ -805,7 +809,7 @@ public class AnalyticsFactController {
       "!employerId", "!courseId", "!programId", "!providerId", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<PlacementFactResponse>>> getPlacementsByJobRoleId(
-      @RequestParam("jobRoleId") Long jobRoleId,
+      @RequestParam("jobRoleId") @Positive Long jobRoleId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "jobRoleId");
     return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByJobRoleId(jobRoleId)));
@@ -816,7 +820,7 @@ public class AnalyticsFactController {
       "!employerId", "!courseId", "!programId", "!providerId", "!jobRoleId"
   })
   public ResponseEntity<ApiResponse<List<PlacementFactResponse>>> getPlacementsByTraineeDistrictId(
-      @RequestParam("traineeDistrictId") Long traineeDistrictId,
+      @RequestParam("traineeDistrictId") @Positive Long traineeDistrictId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeDistrictId");
     return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByTraineeDistrictId(traineeDistrictId)));
@@ -837,7 +841,7 @@ public class AnalyticsFactController {
 
   @GetMapping("/salary-progressions/{id}")
   public ResponseEntity<ApiResponse<SalaryProgressionFactResponse>> getSalaryProgressionById(
-      @PathVariable Long id) {
+      @PathVariable @Positive Long id) {
     return ResponseEntity.ok(ApiResponse.ok(salaryProgressionFactService.getSalaryProgressionById(id)));
   }
 
@@ -845,7 +849,7 @@ public class AnalyticsFactController {
       "traineeId", "!enrollmentId", "!courseId", "!providerId", "!engagementTypeId"
   })
   public ResponseEntity<ApiResponse<List<SalaryProgressionFactResponse>>> getSalaryProgressionsByTraineeId(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeId");
     return ResponseEntity.ok(ApiResponse.ok(salaryProgressionFactService.getSalaryProgressionsByTraineeId(traineeId)));
@@ -855,7 +859,7 @@ public class AnalyticsFactController {
       "enrollmentId", "!traineeId", "!courseId", "!providerId", "!engagementTypeId"
   })
   public ResponseEntity<ApiResponse<List<SalaryProgressionFactResponse>>> getSalaryProgressionsByEnrollmentId(
-      @RequestParam("enrollmentId") Long enrollmentId,
+      @RequestParam("enrollmentId") @Positive Long enrollmentId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "enrollmentId");
     return ResponseEntity.ok(ApiResponse.ok(salaryProgressionFactService.getSalaryProgressionsByEnrollmentId(enrollmentId)));
@@ -865,7 +869,7 @@ public class AnalyticsFactController {
       "courseId", "!traineeId", "!enrollmentId", "!providerId", "!engagementTypeId"
   })
   public ResponseEntity<ApiResponse<List<SalaryProgressionFactResponse>>> getSalaryProgressionsByCourseId(
-      @RequestParam("courseId") Long courseId,
+      @RequestParam("courseId") @Positive Long courseId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "courseId");
     return ResponseEntity.ok(ApiResponse.ok(salaryProgressionFactService.getSalaryProgressionsByCourseId(courseId)));
@@ -875,7 +879,7 @@ public class AnalyticsFactController {
       "providerId", "!traineeId", "!enrollmentId", "!courseId", "!engagementTypeId"
   })
   public ResponseEntity<ApiResponse<List<SalaryProgressionFactResponse>>> getSalaryProgressionsByProviderId(
-      @RequestParam("providerId") Long providerId,
+      @RequestParam("providerId") @Positive Long providerId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "providerId");
     return ResponseEntity.ok(ApiResponse.ok(salaryProgressionFactService.getSalaryProgressionsByProviderId(providerId)));
@@ -885,7 +889,7 @@ public class AnalyticsFactController {
       "engagementTypeId", "!traineeId", "!enrollmentId", "!courseId", "!providerId"
   })
   public ResponseEntity<ApiResponse<List<SalaryProgressionFactResponse>>> getSalaryProgressionsByEngagementTypeId(
-      @RequestParam("engagementTypeId") Long engagementTypeId,
+      @RequestParam("engagementTypeId") @Positive Long engagementTypeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "engagementTypeId");
     return ResponseEntity.ok(ApiResponse.ok(salaryProgressionFactService.getSalaryProgressionsByEngagementTypeId(engagementTypeId)));
@@ -907,7 +911,7 @@ public class AnalyticsFactController {
 
   @GetMapping("/skill-gaps/{id}")
   public ResponseEntity<ApiResponse<SkillGapFactResponse>> getSkillGapById(
-      @PathVariable Long id) {
+      @PathVariable @Positive Long id) {
     return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapById(id)));
   }
 
@@ -916,7 +920,7 @@ public class AnalyticsFactController {
       "!jobRoleId", "!severityId", "!statusId", "!isCurrent", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<SkillGapFactResponse>> getSkillGapByNumber(
-      @RequestParam("skillGapNumber") String skillGapNumber,
+      @RequestParam("skillGapNumber") @NotBlank String skillGapNumber,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "skillGapNumber");
     return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapByNumber(skillGapNumber)));
@@ -927,7 +931,7 @@ public class AnalyticsFactController {
       "!jobRoleId", "!severityId", "!statusId", "!isCurrent", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapFactResponse>>> getSkillGapsByTraineeId(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeId");
     return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsByTraineeId(traineeId)));
@@ -938,7 +942,7 @@ public class AnalyticsFactController {
       "!jobRoleId", "!severityId", "!statusId", "!isCurrent", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapFactResponse>>> getSkillGapsBySkillId(
-      @RequestParam("skillId") Long skillId,
+      @RequestParam("skillId") @Positive Long skillId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "skillId");
     return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsBySkillId(skillId)));
@@ -949,7 +953,7 @@ public class AnalyticsFactController {
       "!jobRoleId", "!severityId", "!statusId", "!isCurrent", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapFactResponse>>> getSkillGapsByCourseId(
-      @RequestParam("courseId") Long courseId,
+      @RequestParam("courseId") @Positive Long courseId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "courseId");
     return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsByCourseId(courseId)));
@@ -960,7 +964,7 @@ public class AnalyticsFactController {
       "!courseId", "!severityId", "!statusId", "!isCurrent", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapFactResponse>>> getSkillGapsByJobRoleId(
-      @RequestParam("jobRoleId") Long jobRoleId,
+      @RequestParam("jobRoleId") @Positive Long jobRoleId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "jobRoleId");
     return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsByJobRoleId(jobRoleId)));
@@ -971,7 +975,7 @@ public class AnalyticsFactController {
       "!courseId", "!jobRoleId", "!statusId", "!isCurrent", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapFactResponse>>> getSkillGapsBySeverityId(
-      @RequestParam("severityId") Long severityId,
+      @RequestParam("severityId") @Positive Long severityId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "severityId");
     return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsBySeverityId(severityId)));
@@ -982,7 +986,7 @@ public class AnalyticsFactController {
       "!courseId", "!jobRoleId", "!severityId", "!isCurrent", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapFactResponse>>> getSkillGapsByStatusId(
-      @RequestParam("statusId") Long statusId,
+      @RequestParam("statusId") @Positive Long statusId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "statusId");
     return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsByStatusId(statusId)));
@@ -1007,7 +1011,7 @@ public class AnalyticsFactController {
       "!courseId", "!jobRoleId", "!severityId", "!statusId", "!isCurrent"
   })
   public ResponseEntity<ApiResponse<List<SkillGapFactResponse>>> getSkillGapsByTraineeDistrictId(
-      @RequestParam("traineeDistrictId") Long traineeDistrictId,
+      @RequestParam("traineeDistrictId") @Positive Long traineeDistrictId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeDistrictId");
     return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsByTraineeDistrictId(traineeDistrictId)));
@@ -1029,7 +1033,7 @@ public class AnalyticsFactController {
 
   @GetMapping("/survey-responses/{id}")
   public ResponseEntity<ApiResponse<SurveyResponseFactResponse>> getSurveyResponseById(
-      @PathVariable Long id) {
+      @PathVariable @Positive Long id) {
     return ResponseEntity.ok(ApiResponse.ok(surveyResponseFactService.getSurveyResponseById(id)));
   }
 
@@ -1038,7 +1042,7 @@ public class AnalyticsFactController {
       "!programId", "!courseId", "!batchId", "!enrollmentId", "!followupTaskId", "!isSubmittedFlag"
   })
   public ResponseEntity<ApiResponse<List<SurveyResponseFactResponse>>> getSurveyResponsesByTraineeId(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeId");
     return ResponseEntity.ok(ApiResponse.ok(surveyResponseFactService.getSurveyResponsesByTraineeId(traineeId)));
@@ -1049,7 +1053,7 @@ public class AnalyticsFactController {
       "!programId", "!courseId", "!batchId", "!enrollmentId", "!followupTaskId", "!isSubmittedFlag"
   })
   public ResponseEntity<ApiResponse<List<SurveyResponseFactResponse>>> getSurveyResponsesBySurveyId(
-      @RequestParam("surveyId") Long surveyId,
+      @RequestParam("surveyId") @Positive Long surveyId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "surveyId");
     return ResponseEntity.ok(ApiResponse.ok(surveyResponseFactService.getSurveyResponsesBySurveyId(surveyId)));
@@ -1060,7 +1064,7 @@ public class AnalyticsFactController {
       "!programId", "!courseId", "!batchId", "!enrollmentId", "!followupTaskId", "!isSubmittedFlag"
   })
   public ResponseEntity<ApiResponse<List<SurveyResponseFactResponse>>> getSurveyResponsesBySurveyPurposeId(
-      @RequestParam("surveyPurposeId") Long surveyPurposeId,
+      @RequestParam("surveyPurposeId") @Positive Long surveyPurposeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "surveyPurposeId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -1072,7 +1076,7 @@ public class AnalyticsFactController {
       "!programId", "!courseId", "!batchId", "!enrollmentId", "!followupTaskId", "!isSubmittedFlag"
   })
   public ResponseEntity<ApiResponse<List<SurveyResponseFactResponse>>> getSurveyResponsesBySurveyPurposeCode(
-      @RequestParam("surveyPurposeCode") String surveyPurposeCode,
+      @RequestParam("surveyPurposeCode") @NotBlank String surveyPurposeCode,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "surveyPurposeCode");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -1084,7 +1088,7 @@ public class AnalyticsFactController {
       "!surveyPurposeCode", "!courseId", "!batchId", "!enrollmentId", "!followupTaskId", "!isSubmittedFlag"
   })
   public ResponseEntity<ApiResponse<List<SurveyResponseFactResponse>>> getSurveyResponsesByProgramId(
-      @RequestParam("programId") Long programId,
+      @RequestParam("programId") @Positive Long programId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "programId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -1096,7 +1100,7 @@ public class AnalyticsFactController {
       "!surveyPurposeCode", "!programId", "!batchId", "!enrollmentId", "!followupTaskId", "!isSubmittedFlag"
   })
   public ResponseEntity<ApiResponse<List<SurveyResponseFactResponse>>> getSurveyResponsesByCourseId(
-      @RequestParam("courseId") Long courseId,
+      @RequestParam("courseId") @Positive Long courseId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "courseId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -1108,7 +1112,7 @@ public class AnalyticsFactController {
       "!surveyPurposeCode", "!programId", "!courseId", "!enrollmentId", "!followupTaskId", "!isSubmittedFlag"
   })
   public ResponseEntity<ApiResponse<List<SurveyResponseFactResponse>>> getSurveyResponsesByBatchId(
-      @RequestParam("batchId") Long batchId,
+      @RequestParam("batchId") @Positive Long batchId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "batchId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -1120,7 +1124,7 @@ public class AnalyticsFactController {
       "!surveyPurposeCode", "!programId", "!courseId", "!batchId", "!followupTaskId", "!isSubmittedFlag"
   })
   public ResponseEntity<ApiResponse<List<SurveyResponseFactResponse>>> getSurveyResponsesByEnrollmentId(
-      @RequestParam("enrollmentId") Long enrollmentId,
+      @RequestParam("enrollmentId") @Positive Long enrollmentId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "enrollmentId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -1132,7 +1136,7 @@ public class AnalyticsFactController {
       "!surveyPurposeCode", "!programId", "!courseId", "!batchId", "!enrollmentId", "!isSubmittedFlag"
   })
   public ResponseEntity<ApiResponse<List<SurveyResponseFactResponse>>> getSurveyResponsesByFollowupTaskId(
-      @RequestParam("followupTaskId") Long followupTaskId,
+      @RequestParam("followupTaskId") @Positive Long followupTaskId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "followupTaskId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -1166,7 +1170,7 @@ public class AnalyticsFactController {
 
   @GetMapping("/unemployments/{id}")
   public ResponseEntity<ApiResponse<UnemploymentFactResponse>> getUnemploymentFactById(
-      @PathVariable Long id) {
+      @PathVariable @Positive Long id) {
     return ResponseEntity.ok(ApiResponse.ok(unemploymentFactService.getUnemploymentFactById(id)));
   }
 
@@ -1174,7 +1178,7 @@ public class AnalyticsFactController {
       "traineeId", "!unemploymentReasonId", "!labourStatusId", "!isCurrent", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<UnemploymentFactResponse>>> getUnemploymentFactsByTraineeId(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeId");
     return ResponseEntity.ok(ApiResponse.ok(unemploymentFactService.getUnemploymentFactsByTraineeId(traineeId)));
@@ -1184,7 +1188,7 @@ public class AnalyticsFactController {
       "unemploymentReasonId", "!traineeId", "!labourStatusId", "!isCurrent", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<UnemploymentFactResponse>>> getUnemploymentFactsByUnemploymentReasonId(
-      @RequestParam("unemploymentReasonId") Long unemploymentReasonId,
+      @RequestParam("unemploymentReasonId") @Positive Long unemploymentReasonId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "unemploymentReasonId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -1195,7 +1199,7 @@ public class AnalyticsFactController {
       "labourStatusId", "!traineeId", "!unemploymentReasonId", "!isCurrent", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<List<UnemploymentFactResponse>>> getUnemploymentFactsByLabourStatusId(
-      @RequestParam("labourStatusId") Long labourStatusId,
+      @RequestParam("labourStatusId") @Positive Long labourStatusId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "labourStatusId");
     return ResponseEntity.ok(ApiResponse.ok(
@@ -1219,7 +1223,7 @@ public class AnalyticsFactController {
       "traineeDistrictId", "!traineeId", "!unemploymentReasonId", "!labourStatusId", "!isCurrent"
   })
   public ResponseEntity<ApiResponse<List<UnemploymentFactResponse>>> getUnemploymentFactsByTraineeDistrictId(
-      @RequestParam("traineeDistrictId") Long traineeDistrictId,
+      @RequestParam("traineeDistrictId") @Positive Long traineeDistrictId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeDistrictId");
     return ResponseEntity.ok(ApiResponse.ok(

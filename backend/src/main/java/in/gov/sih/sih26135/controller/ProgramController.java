@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.AssignProgramTrainingProviderRequest;
 import in.gov.sih.sih26135.dto.request.CreateProgramRequest;
@@ -31,6 +33,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateProgramRequest, UpdateProgramRequest, AssignProgramTrainingProviderRequest, TerminateEmpanelmentRequest
  * Produces: ProgramResponse, ProgramTrainingProviderResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/programs")
 @PreAuthorize("hasAuthority('program.manage')")
@@ -49,7 +52,7 @@ public class ProgramController {
    * @return 200 OK with ProgramResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<ProgramResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<ProgramResponse>> getById(@PathVariable @Positive Long id) {
     ProgramResponse response = programService.getById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -65,8 +68,8 @@ public class ProgramController {
   @GetMapping
   public ResponseEntity<ApiResponse<?>> getPrograms(
       @RequestParam(value = "code", required = false) String code,
-      @RequestParam(value = "schemeId", required = false) Long schemeId,
-      @RequestParam(value = "departmentId", required = false) Long departmentId) {
+      @RequestParam(value = "schemeId", required = false) @Positive Long schemeId,
+      @RequestParam(value = "departmentId", required = false) @Positive Long departmentId) {
     if (code != null && !code.isBlank()) {
       ProgramResponse response = programService.getByCode(code.trim());
       return ResponseEntity.ok(ApiResponse.ok(response));
@@ -108,7 +111,7 @@ public class ProgramController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<ProgramResponse>> updateProgram(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateProgramRequest request) {
     ProgramResponse response = programService.updateProgram(id, request);
     return ResponseEntity.ok(ApiResponse.success("Program updated successfully", response));
@@ -121,7 +124,7 @@ public class ProgramController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteProgram(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteProgram(@PathVariable @Positive Long id) {
     programService.deleteProgram(id);
     return ResponseEntity.ok(ApiResponse.success("Program deleted successfully"));
   }
@@ -134,7 +137,7 @@ public class ProgramController {
    */
   @GetMapping("/{programId}/training-providers")
   public ResponseEntity<ApiResponse<List<ProgramTrainingProviderResponse>>> getTrainingProvidersForProgram(
-      @PathVariable Long programId) {
+      @PathVariable @Positive Long programId) {
     List<ProgramTrainingProviderResponse> providers = programService.getTrainingProvidersForProgram(programId);
     return ResponseEntity.ok(ApiResponse.ok(providers));
   }
@@ -149,7 +152,7 @@ public class ProgramController {
    */
   @PostMapping("/{programId}/training-providers")
   public ResponseEntity<ApiResponse<ProgramTrainingProviderResponse>> assignTrainingProvider(
-      @PathVariable Long programId,
+      @PathVariable @Positive Long programId,
       @Valid @RequestBody AssignProgramTrainingProviderRequest request,
       HttpServletRequest httpRequest) {
     request.setProgramId(programId);
@@ -168,8 +171,8 @@ public class ProgramController {
    */
   @PutMapping("/{programId}/training-providers/{assignmentId}/terminate")
   public ResponseEntity<ApiResponse<ProgramTrainingProviderResponse>> terminateEmpanelment(
-      @PathVariable Long programId,
-      @PathVariable Long assignmentId,
+      @PathVariable @Positive Long programId,
+      @PathVariable @Positive Long assignmentId,
       @Valid @RequestBody(required = false) TerminateEmpanelmentRequest request) {
     ProgramTrainingProviderResponse response = programService.terminateEmpanelment(assignmentId, request);
     return ResponseEntity.ok(ApiResponse.success("Empanelment terminated successfully", response));
@@ -183,7 +186,7 @@ public class ProgramController {
    */
   @GetMapping("/training-providers/{providerId}")
   public ResponseEntity<ApiResponse<List<ProgramTrainingProviderResponse>>> getProgramsForTrainingProvider(
-      @PathVariable Long providerId) {
+      @PathVariable @Positive Long providerId) {
     List<ProgramTrainingProviderResponse> programs = programService.getProgramsForTrainingProvider(providerId);
     return ResponseEntity.ok(ApiResponse.ok(programs));
   }

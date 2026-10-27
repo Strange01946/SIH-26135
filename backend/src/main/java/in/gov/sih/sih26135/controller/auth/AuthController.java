@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller.auth;
 
+import org.springframework.validation.annotation.Validated;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.auth.AuthResponse;
 import in.gov.sih.sih26135.dto.auth.AuthenticatedUserResponse;
@@ -28,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
  *   <li>GET /me — Authenticated self-profile information of the current principal</li>
  * </ul>
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {

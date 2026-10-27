@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller.workflow;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.RecordEngagementAttemptRequest;
 import in.gov.sih.sih26135.dto.request.RecordFollowupSurveyResponseRequest;
@@ -28,6 +30,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  *
  * <p>Base Route: /api/v1/workflows/followup-engagement (alias: /api/v1/workflows/followup-engagements)
  */
+@Validated
 @RestController
 @RequestMapping({"/api/v1/workflows/followup-engagement", "/api/v1/workflows/followup-engagements"})
 @PreAuthorize("hasAuthority('survey.manage')")
@@ -101,7 +104,7 @@ public class FollowupEngagementWorkflowController {
    */
   @GetMapping("/history")
   public ResponseEntity<ApiResponse<TraineeEngagementHistoryResponse>> getTraineeEngagementHistory(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeId");
     TraineeEngagementHistoryResponse response =

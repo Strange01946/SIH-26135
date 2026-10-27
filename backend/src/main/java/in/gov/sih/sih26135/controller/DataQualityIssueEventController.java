@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateDataQualityIssueEventRequest;
 import in.gov.sih.sih26135.dto.response.DataQualityIssueEventResponse;
@@ -28,6 +30,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  *
  * <p>Issue events are append-only audit records; updates and deletions are strictly prohibited.
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/data-quality-issue-events")
 @PreAuthorize("hasAnyAuthority('audit.read', 'system.manage')")
@@ -46,7 +49,7 @@ public class DataQualityIssueEventController {
    * @return 200 OK with DataQualityIssueEventResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<DataQualityIssueEventResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<DataQualityIssueEventResponse>> getById(@PathVariable @Positive Long id) {
     DataQualityIssueEventResponse response = dataQualityIssueEventService.getIssueEventById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -62,7 +65,7 @@ public class DataQualityIssueEventController {
       "issueId", "!statusId", "!changedByUserId"
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueEventResponse>>> getByIssueId(
-      @RequestParam("issueId") Long issueId,
+      @RequestParam("issueId") @Positive Long issueId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "issueId");
     List<DataQualityIssueEventResponse> events = dataQualityIssueEventService.getIssueEventsByIssueId(issueId);
@@ -80,7 +83,7 @@ public class DataQualityIssueEventController {
       "statusId", "!issueId", "!changedByUserId"
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueEventResponse>>> getByStatusId(
-      @RequestParam("statusId") Long statusId,
+      @RequestParam("statusId") @Positive Long statusId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "statusId");
     List<DataQualityIssueEventResponse> events = dataQualityIssueEventService.getIssueEventsByStatusId(statusId);
@@ -98,7 +101,7 @@ public class DataQualityIssueEventController {
       "changedByUserId", "!issueId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueEventResponse>>> getByChangedByUserId(
-      @RequestParam("changedByUserId") Long changedByUserId,
+      @RequestParam("changedByUserId") @Positive Long changedByUserId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "changedByUserId");
     List<DataQualityIssueEventResponse> events = dataQualityIssueEventService.getIssueEventsByChangedByUserId(changedByUserId);

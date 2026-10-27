@@ -1,5 +1,10 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreatePlacementRecordRequest;
 import in.gov.sih.sih26135.dto.request.UpdatePlacementRecordRequest;
@@ -35,6 +40,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreatePlacementRecordRequest, UpdatePlacementRecordRequest
  * Produces: PlacementRecordResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/placement-records")
 @PreAuthorize("hasAuthority('placement.manage')")
@@ -53,7 +59,7 @@ public class PlacementRecordController {
    * @return 200 OK with PlacementRecordResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<PlacementRecordResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<PlacementRecordResponse>> getById(@PathVariable @Positive Long id) {
     PlacementRecordResponse response = placementRecordService.getPlacementRecordById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -66,7 +72,7 @@ public class PlacementRecordController {
    */
   @GetMapping(params = {"placementNumber", "!jobApplicationId", "!traineeId", "!enrollmentId", "!employerId", "!jobPostingId", "!courseId", "!statusId", "!includeDeleted"})
   public ResponseEntity<ApiResponse<PlacementRecordResponse>> getByPlacementNumber(
-      @RequestParam("placementNumber") String placementNumber,
+      @RequestParam("placementNumber") @NotBlank String placementNumber,
       HttpServletRequest httpRequest) {
     validateAllowedQueryParameters(httpRequest, Set.of("placementNumber"));
     PlacementRecordResponse response = placementRecordService.getPlacementRecordByNumber(placementNumber);
@@ -82,7 +88,7 @@ public class PlacementRecordController {
    */
   @GetMapping(params = {"jobApplicationId", "!placementNumber", "!traineeId", "!enrollmentId", "!employerId", "!jobPostingId", "!courseId", "!statusId", "!includeDeleted"})
   public ResponseEntity<ApiResponse<PlacementRecordResponse>> getByJobApplicationId(
-      @RequestParam("jobApplicationId") Long jobApplicationId,
+      @RequestParam("jobApplicationId") @Positive Long jobApplicationId,
       HttpServletRequest httpRequest) {
     validateAllowedQueryParameters(httpRequest, Set.of("jobApplicationId"));
     PlacementRecordResponse response = placementRecordService.getPlacementRecordByJobApplicationId(jobApplicationId);
@@ -102,9 +108,9 @@ public class PlacementRecordController {
    */
   @GetMapping(params = {"traineeId", "!placementNumber", "!jobApplicationId", "!enrollmentId", "!employerId", "!jobPostingId", "!courseId", "!statusId", "!includeDeleted"})
   public ResponseEntity<ApiResponse<PagedResponse<PlacementRecordResponse>>> getByTrainee(
-      @RequestParam("traineeId") Long traineeId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -129,9 +135,9 @@ public class PlacementRecordController {
    */
   @GetMapping(params = {"enrollmentId", "!placementNumber", "!jobApplicationId", "!traineeId", "!employerId", "!jobPostingId", "!courseId", "!statusId", "!includeDeleted"})
   public ResponseEntity<ApiResponse<PagedResponse<PlacementRecordResponse>>> getByEnrollment(
-      @RequestParam("enrollmentId") Long enrollmentId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("enrollmentId") @Positive Long enrollmentId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -156,9 +162,9 @@ public class PlacementRecordController {
    */
   @GetMapping(params = {"employerId", "!placementNumber", "!jobApplicationId", "!traineeId", "!enrollmentId", "!jobPostingId", "!courseId", "!statusId", "!includeDeleted"})
   public ResponseEntity<ApiResponse<PagedResponse<PlacementRecordResponse>>> getByEmployer(
-      @RequestParam("employerId") Long employerId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("employerId") @Positive Long employerId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -183,9 +189,9 @@ public class PlacementRecordController {
    */
   @GetMapping(params = {"jobPostingId", "!placementNumber", "!jobApplicationId", "!traineeId", "!enrollmentId", "!employerId", "!courseId", "!statusId", "!includeDeleted"})
   public ResponseEntity<ApiResponse<PagedResponse<PlacementRecordResponse>>> getByJobPosting(
-      @RequestParam("jobPostingId") Long jobPostingId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("jobPostingId") @Positive Long jobPostingId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -210,9 +216,9 @@ public class PlacementRecordController {
    */
   @GetMapping(params = {"courseId", "!placementNumber", "!jobApplicationId", "!traineeId", "!enrollmentId", "!employerId", "!jobPostingId", "!statusId", "!includeDeleted"})
   public ResponseEntity<ApiResponse<PagedResponse<PlacementRecordResponse>>> getByCourse(
-      @RequestParam("courseId") Long courseId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("courseId") @Positive Long courseId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -237,9 +243,9 @@ public class PlacementRecordController {
    */
   @GetMapping(params = {"statusId", "!placementNumber", "!jobApplicationId", "!traineeId", "!enrollmentId", "!employerId", "!jobPostingId", "!courseId", "!includeDeleted"})
   public ResponseEntity<ApiResponse<PagedResponse<PlacementRecordResponse>>> getByStatus(
-      @RequestParam("statusId") Long statusId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("statusId") @Positive Long statusId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -265,8 +271,8 @@ public class PlacementRecordController {
   @GetMapping(params = {"includeDeleted", "!placementNumber", "!jobApplicationId", "!traineeId", "!enrollmentId", "!employerId", "!jobPostingId", "!courseId", "!statusId"})
   public ResponseEntity<ApiResponse<PagedResponse<PlacementRecordResponse>>> getByIncludeDeleted(
       @RequestParam("includeDeleted") boolean includeDeleted,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -290,8 +296,8 @@ public class PlacementRecordController {
    */
   @GetMapping(params = {"!placementNumber", "!jobApplicationId", "!traineeId", "!enrollmentId", "!employerId", "!jobPostingId", "!courseId", "!statusId", "!includeDeleted"})
   public ResponseEntity<ApiResponse<PagedResponse<PlacementRecordResponse>>> getAllPlacementRecords(
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -336,7 +342,7 @@ public class PlacementRecordController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<PlacementRecordResponse>> updatePlacementRecord(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdatePlacementRecordRequest request) {
     PlacementRecordResponse response = placementRecordService.updatePlacementRecord(id, request);
     return ResponseEntity.ok(ApiResponse.success("Placement record updated successfully", response));
@@ -349,7 +355,7 @@ public class PlacementRecordController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deletePlacementRecord(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deletePlacementRecord(@PathVariable @Positive Long id) {
     placementRecordService.deletePlacementRecord(id);
     return ResponseEntity.ok(ApiResponse.success("Placement record deleted successfully"));
   }

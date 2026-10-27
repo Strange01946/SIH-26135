@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreatePermissionRequest;
 import in.gov.sih.sih26135.dto.response.PermissionResponse;
@@ -25,6 +27,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreatePermissionRequest
  * Produces: PermissionResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/permissions")
 @PreAuthorize("hasAuthority('user.manage')")
@@ -43,7 +46,7 @@ public class PermissionController {
    * @return 200 OK with PermissionResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<PermissionResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<PermissionResponse>> getById(@PathVariable @Positive Long id) {
     PermissionResponse response = permissionService.getById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }

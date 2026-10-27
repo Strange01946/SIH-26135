@@ -1,5 +1,10 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateSystemEventLogRequest;
 import in.gov.sih.sih26135.dto.response.SystemEventLogResponse;
@@ -35,6 +40,7 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>System event logs are append-only operational records; updates and deletions are strictly prohibited.
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/system-event-logs")
 @PreAuthorize("hasAnyAuthority('audit.read', 'system.manage')")
@@ -53,7 +59,7 @@ public class SystemEventLogController {
    * @return 200 OK with SystemEventLogResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<SystemEventLogResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<SystemEventLogResponse>> getById(@PathVariable @Positive Long id) {
     SystemEventLogResponse response = systemEventLogService.getEventById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -73,8 +79,8 @@ public class SystemEventLogController {
       "!entityType", "!entityId", "!sourceComponent", "!start", "!end"
   })
   public ResponseEntity<ApiResponse<PagedResponse<SystemEventLogResponse>>> getAllEvents(
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "occurredAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -102,9 +108,9 @@ public class SystemEventLogController {
       "!entityType", "!entityId", "!sourceComponent", "!start", "!end"
   })
   public ResponseEntity<ApiResponse<PagedResponse<SystemEventLogResponse>>> getByCategoryId(
-      @RequestParam("categoryId") Long categoryId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("categoryId") @Positive Long categoryId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "occurredAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -132,9 +138,9 @@ public class SystemEventLogController {
       "!entityType", "!entityId", "!sourceComponent", "!start", "!end"
   })
   public ResponseEntity<ApiResponse<PagedResponse<SystemEventLogResponse>>> getBySeverityId(
-      @RequestParam("severityId") Long severityId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("severityId") @Positive Long severityId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "occurredAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -162,9 +168,9 @@ public class SystemEventLogController {
       "!entityType", "!entityId", "!sourceComponent", "!start", "!end"
   })
   public ResponseEntity<ApiResponse<PagedResponse<SystemEventLogResponse>>> getByEventCode(
-      @RequestParam("eventCode") String eventCode,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("eventCode") @NotBlank String eventCode,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "occurredAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -192,9 +198,9 @@ public class SystemEventLogController {
       "!entityType", "!entityId", "!sourceComponent", "!start", "!end"
   })
   public ResponseEntity<ApiResponse<PagedResponse<SystemEventLogResponse>>> getByActorUserId(
-      @RequestParam("actorUserId") Long actorUserId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("actorUserId") @Positive Long actorUserId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "occurredAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -224,9 +230,9 @@ public class SystemEventLogController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SystemEventLogResponse>>> getByEntity(
       @RequestParam("entityType") String entityType,
-      @RequestParam("entityId") Long entityId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("entityId") @Positive Long entityId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "occurredAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -255,8 +261,8 @@ public class SystemEventLogController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SystemEventLogResponse>>> getByEntityType(
       @RequestParam("entityType") String entityType,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "occurredAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -285,8 +291,8 @@ public class SystemEventLogController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SystemEventLogResponse>>> getBySourceComponent(
       @RequestParam("sourceComponent") String sourceComponent,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "occurredAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -317,8 +323,8 @@ public class SystemEventLogController {
   public ResponseEntity<ApiResponse<PagedResponse<SystemEventLogResponse>>> getByOccurredAtBetween(
       @RequestParam("start") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
       @RequestParam("end") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "occurredAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {

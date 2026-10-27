@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateSkillGapAssessmentRequest;
 import in.gov.sih.sih26135.dto.request.UpdateSkillGapAssessmentRequest;
@@ -32,6 +34,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateSkillGapAssessmentRequest, UpdateSkillGapAssessmentRequest
  * Produces: SkillGapAssessmentResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/skill-gap-assessments")
 @PreAuthorize("hasAuthority('assessment.manage')")
@@ -50,7 +53,7 @@ public class SkillGapAssessmentController {
    * @return 200 OK with SkillGapAssessmentResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<SkillGapAssessmentResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<SkillGapAssessmentResponse>> getById(@PathVariable @Positive Long id) {
     SkillGapAssessmentResponse response = skillGapAssessmentService.getAssessmentById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -91,7 +94,7 @@ public class SkillGapAssessmentController {
       "!followupTaskId", "!employmentVerificationId", "!sourceId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapAssessmentResponse>>> getByTraineeAndDate(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       @RequestParam("assessedOn") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate assessedOn,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("traineeId", "assessedOn"));
@@ -114,7 +117,7 @@ public class SkillGapAssessmentController {
       "!followupTaskId", "!employmentVerificationId", "!sourceId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapAssessmentResponse>>> getByTrainee(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeId");
     List<SkillGapAssessmentResponse> assessments = skillGapAssessmentService.getAssessmentsByTrainee(traineeId);
@@ -156,7 +159,7 @@ public class SkillGapAssessmentController {
       "!followupTaskId", "!employmentVerificationId", "!sourceId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapAssessmentResponse>>> getByEnrollment(
-      @RequestParam("enrollmentId") Long enrollmentId,
+      @RequestParam("enrollmentId") @Positive Long enrollmentId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "enrollmentId");
     List<SkillGapAssessmentResponse> assessments = skillGapAssessmentService.getAssessmentsByEnrollment(enrollmentId);
@@ -177,7 +180,7 @@ public class SkillGapAssessmentController {
       "!followupTaskId", "!employmentVerificationId", "!sourceId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapAssessmentResponse>>> getByCourse(
-      @RequestParam("courseId") Long courseId,
+      @RequestParam("courseId") @Positive Long courseId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "courseId");
     List<SkillGapAssessmentResponse> assessments = skillGapAssessmentService.getAssessmentsByCourse(courseId);
@@ -198,7 +201,7 @@ public class SkillGapAssessmentController {
       "!followupTaskId", "!employmentVerificationId", "!sourceId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapAssessmentResponse>>> getByBatch(
-      @RequestParam("batchId") Long batchId,
+      @RequestParam("batchId") @Positive Long batchId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "batchId");
     List<SkillGapAssessmentResponse> assessments = skillGapAssessmentService.getAssessmentsByBatch(batchId);
@@ -219,7 +222,7 @@ public class SkillGapAssessmentController {
       "!followupTaskId", "!employmentVerificationId", "!sourceId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapAssessmentResponse>>> getByJobRole(
-      @RequestParam("jobRoleId") Long jobRoleId,
+      @RequestParam("jobRoleId") @Positive Long jobRoleId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "jobRoleId");
     List<SkillGapAssessmentResponse> assessments = skillGapAssessmentService.getAssessmentsByJobRole(jobRoleId);
@@ -240,7 +243,7 @@ public class SkillGapAssessmentController {
       "!followupTaskId", "!employmentVerificationId", "!sourceId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapAssessmentResponse>>> getByJobPosting(
-      @RequestParam("jobPostingId") Long jobPostingId,
+      @RequestParam("jobPostingId") @Positive Long jobPostingId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "jobPostingId");
     List<SkillGapAssessmentResponse> assessments = skillGapAssessmentService.getAssessmentsByJobPosting(jobPostingId);
@@ -261,7 +264,7 @@ public class SkillGapAssessmentController {
       "!followupTaskId", "!employmentVerificationId", "!sourceId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapAssessmentResponse>>> getByEmploymentRecord(
-      @RequestParam("employmentId") Long employmentId,
+      @RequestParam("employmentId") @Positive Long employmentId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "employmentId");
     List<SkillGapAssessmentResponse> assessments =
@@ -283,7 +286,7 @@ public class SkillGapAssessmentController {
       "!followupTaskId", "!employmentVerificationId", "!sourceId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapAssessmentResponse>>> getByPlacementRecord(
-      @RequestParam("placementId") Long placementId,
+      @RequestParam("placementId") @Positive Long placementId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "placementId");
     List<SkillGapAssessmentResponse> assessments =
@@ -305,7 +308,7 @@ public class SkillGapAssessmentController {
       "!followupTaskId", "!employmentVerificationId", "!sourceId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapAssessmentResponse>>> getByTraineeAssessment(
-      @RequestParam("traineeAssessmentId") Long traineeAssessmentId,
+      @RequestParam("traineeAssessmentId") @Positive Long traineeAssessmentId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeAssessmentId");
     List<SkillGapAssessmentResponse> assessments =
@@ -327,7 +330,7 @@ public class SkillGapAssessmentController {
       "!followupTaskId", "!employmentVerificationId", "!sourceId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapAssessmentResponse>>> getByAssessmentResult(
-      @RequestParam("assessmentResultId") Long assessmentResultId,
+      @RequestParam("assessmentResultId") @Positive Long assessmentResultId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "assessmentResultId");
     List<SkillGapAssessmentResponse> assessments =
@@ -349,7 +352,7 @@ public class SkillGapAssessmentController {
       "!followupTaskId", "!employmentVerificationId", "!sourceId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapAssessmentResponse>>> getByCertification(
-      @RequestParam("certificationId") Long certificationId,
+      @RequestParam("certificationId") @Positive Long certificationId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "certificationId");
     List<SkillGapAssessmentResponse> assessments =
@@ -371,7 +374,7 @@ public class SkillGapAssessmentController {
       "!followupTaskId", "!employmentVerificationId", "!sourceId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapAssessmentResponse>>> getBySurveyResponse(
-      @RequestParam("surveyResponseId") Long surveyResponseId,
+      @RequestParam("surveyResponseId") @Positive Long surveyResponseId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "surveyResponseId");
     List<SkillGapAssessmentResponse> assessments =
@@ -393,7 +396,7 @@ public class SkillGapAssessmentController {
       "!surveyResponseId", "!employmentVerificationId", "!sourceId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapAssessmentResponse>>> getByFollowupTask(
-      @RequestParam("followupTaskId") Long followupTaskId,
+      @RequestParam("followupTaskId") @Positive Long followupTaskId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "followupTaskId");
     List<SkillGapAssessmentResponse> assessments =
@@ -415,7 +418,7 @@ public class SkillGapAssessmentController {
       "!surveyResponseId", "!followupTaskId", "!sourceId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapAssessmentResponse>>> getByEmploymentVerification(
-      @RequestParam("employmentVerificationId") Long employmentVerificationId,
+      @RequestParam("employmentVerificationId") @Positive Long employmentVerificationId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "employmentVerificationId");
     List<SkillGapAssessmentResponse> assessments =
@@ -437,7 +440,7 @@ public class SkillGapAssessmentController {
       "!surveyResponseId", "!followupTaskId", "!employmentVerificationId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapAssessmentResponse>>> getBySource(
-      @RequestParam("sourceId") Long sourceId,
+      @RequestParam("sourceId") @Positive Long sourceId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "sourceId");
     List<SkillGapAssessmentResponse> assessments = skillGapAssessmentService.getAssessmentsBySource(sourceId);
@@ -458,7 +461,7 @@ public class SkillGapAssessmentController {
       "!surveyResponseId", "!followupTaskId", "!employmentVerificationId", "!sourceId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapAssessmentResponse>>> getByStatus(
-      @RequestParam("statusId") Long statusId,
+      @RequestParam("statusId") @Positive Long statusId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "statusId");
     List<SkillGapAssessmentResponse> assessments = skillGapAssessmentService.getAssessmentsByStatus(statusId);
@@ -493,7 +496,7 @@ public class SkillGapAssessmentController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<SkillGapAssessmentResponse>> updateAssessment(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateSkillGapAssessmentRequest request) {
     SkillGapAssessmentResponse response = skillGapAssessmentService.updateAssessment(id, request);
     return ResponseEntity.ok(ApiResponse.success(
@@ -508,7 +511,7 @@ public class SkillGapAssessmentController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteAssessment(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteAssessment(@PathVariable @Positive Long id) {
     skillGapAssessmentService.deleteAssessment(id);
     return ResponseEntity.ok(ApiResponse.success("Skill gap assessment deleted successfully"));
   }

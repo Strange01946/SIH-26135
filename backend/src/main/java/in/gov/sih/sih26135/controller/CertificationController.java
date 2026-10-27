@@ -1,5 +1,8 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateCertificationRequest;
 import in.gov.sih.sih26135.dto.request.UpdateCertificationRequest;
@@ -30,6 +33,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateCertificationRequest, UpdateCertificationRequest
  * Produces: CertificationResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/certifications")
 @PreAuthorize("hasAuthority('assessment.manage')")
@@ -48,7 +52,7 @@ public class CertificationController {
    * @return 200 OK with CertificationResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<CertificationResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<CertificationResponse>> getById(@PathVariable @Positive Long id) {
     CertificationResponse response = certificationService.getById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -61,7 +65,7 @@ public class CertificationController {
    */
   @GetMapping(params = "certificateNumber")
   public ResponseEntity<ApiResponse<CertificationResponse>> getByCertificateNumber(
-      @RequestParam("certificateNumber") String certificateNumber) {
+      @RequestParam("certificateNumber") @NotBlank String certificateNumber) {
     CertificationResponse response = certificationService.getByCertificateNumber(certificateNumber);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -74,7 +78,7 @@ public class CertificationController {
    */
   @GetMapping(params = "traineeId")
   public ResponseEntity<ApiResponse<List<CertificationResponse>>> getByTraineeId(
-      @RequestParam("traineeId") Long traineeId) {
+      @RequestParam("traineeId") @Positive Long traineeId) {
     List<CertificationResponse> certifications = certificationService.getByTraineeId(traineeId);
     return ResponseEntity.ok(ApiResponse.ok(certifications));
   }
@@ -87,7 +91,7 @@ public class CertificationController {
    */
   @GetMapping(params = "enrollmentId")
   public ResponseEntity<ApiResponse<List<CertificationResponse>>> getByEnrollmentId(
-      @RequestParam("enrollmentId") Long enrollmentId) {
+      @RequestParam("enrollmentId") @Positive Long enrollmentId) {
     List<CertificationResponse> certifications = certificationService.getByEnrollmentId(enrollmentId);
     return ResponseEntity.ok(ApiResponse.ok(certifications));
   }
@@ -100,7 +104,7 @@ public class CertificationController {
    */
   @GetMapping(params = "courseId")
   public ResponseEntity<ApiResponse<List<CertificationResponse>>> getByCourseId(
-      @RequestParam("courseId") Long courseId) {
+      @RequestParam("courseId") @Positive Long courseId) {
     List<CertificationResponse> certifications = certificationService.getByCourseId(courseId);
     return ResponseEntity.ok(ApiResponse.ok(certifications));
   }
@@ -113,7 +117,7 @@ public class CertificationController {
    */
   @GetMapping(params = "programId")
   public ResponseEntity<ApiResponse<List<CertificationResponse>>> getByProgramId(
-      @RequestParam("programId") Long programId) {
+      @RequestParam("programId") @Positive Long programId) {
     List<CertificationResponse> certifications = certificationService.getByProgramId(programId);
     return ResponseEntity.ok(ApiResponse.ok(certifications));
   }
@@ -126,7 +130,7 @@ public class CertificationController {
    */
   @GetMapping(params = "assessmentResultId")
   public ResponseEntity<ApiResponse<List<CertificationResponse>>> getByAssessmentResultId(
-      @RequestParam("assessmentResultId") Long assessmentResultId) {
+      @RequestParam("assessmentResultId") @Positive Long assessmentResultId) {
     List<CertificationResponse> certifications = certificationService.getByAssessmentResultId(assessmentResultId);
     return ResponseEntity.ok(ApiResponse.ok(certifications));
   }
@@ -139,7 +143,7 @@ public class CertificationController {
    */
   @GetMapping(params = "statusId")
   public ResponseEntity<ApiResponse<List<CertificationResponse>>> getByCertificateStatusId(
-      @RequestParam("statusId") Long statusId) {
+      @RequestParam("statusId") @Positive Long statusId) {
     List<CertificationResponse> certifications = certificationService.getByCertificateStatusId(statusId);
     return ResponseEntity.ok(ApiResponse.ok(certifications));
   }
@@ -152,7 +156,7 @@ public class CertificationController {
    */
   @GetMapping(params = "verificationStatusId")
   public ResponseEntity<ApiResponse<List<CertificationResponse>>> getByCertificateVerificationStatusId(
-      @RequestParam("verificationStatusId") Long verificationStatusId) {
+      @RequestParam("verificationStatusId") @Positive Long verificationStatusId) {
     List<CertificationResponse> certifications = certificationService.getByCertificateVerificationStatusId(verificationStatusId);
     return ResponseEntity.ok(ApiResponse.ok(certifications));
   }
@@ -206,7 +210,7 @@ public class CertificationController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<CertificationResponse>> updateCertification(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateCertificationRequest request) {
     CertificationResponse response = certificationService.updateCertification(id, request);
     return ResponseEntity.ok(ApiResponse.success("Certification updated successfully", response));
@@ -219,7 +223,7 @@ public class CertificationController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteCertification(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteCertification(@PathVariable @Positive Long id) {
     certificationService.deleteCertification(id);
     return ResponseEntity.ok(ApiResponse.success("Certification deleted successfully"));
   }

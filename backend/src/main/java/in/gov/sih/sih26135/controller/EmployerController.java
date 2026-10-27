@@ -1,5 +1,10 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateEmployerRequest;
 import in.gov.sih.sih26135.dto.request.UpdateEmployerRequest;
@@ -34,6 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
  * Consumes: CreateEmployerRequest, UpdateEmployerRequest
  * Produces: EmployerResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/employers")
 @PreAuthorize("hasAuthority('placement.manage')")
@@ -52,7 +58,7 @@ public class EmployerController {
    * @return 200 OK with EmployerResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<EmployerResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<EmployerResponse>> getById(@PathVariable @Positive Long id) {
     EmployerResponse response = employerService.getEmployerById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -66,7 +72,7 @@ public class EmployerController {
    */
   @GetMapping(params = {"code", "!districtId", "!industryId", "!sectorId", "!includeDeleted"})
   public ResponseEntity<ApiResponse<EmployerResponse>> getByCode(
-      @RequestParam("code") String code,
+      @RequestParam("code") @NotBlank String code,
       HttpServletRequest httpRequest) {
     validateAllowedQueryParameters(httpRequest, Set.of("code"));
     EmployerResponse response = employerService.getEmployerByCode(code);
@@ -86,9 +92,9 @@ public class EmployerController {
    */
   @GetMapping(params = {"districtId", "!code", "!industryId", "!sectorId", "!includeDeleted"})
   public ResponseEntity<ApiResponse<PagedResponse<EmployerResponse>>> getByDistrict(
-      @RequestParam("districtId") Long districtId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("districtId") @Positive Long districtId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -113,9 +119,9 @@ public class EmployerController {
    */
   @GetMapping(params = {"industryId", "!code", "!districtId", "!sectorId", "!includeDeleted"})
   public ResponseEntity<ApiResponse<PagedResponse<EmployerResponse>>> getByIndustry(
-      @RequestParam("industryId") Long industryId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("industryId") @Positive Long industryId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -140,9 +146,9 @@ public class EmployerController {
    */
   @GetMapping(params = {"sectorId", "!code", "!districtId", "!industryId", "!includeDeleted"})
   public ResponseEntity<ApiResponse<PagedResponse<EmployerResponse>>> getBySector(
-      @RequestParam("sectorId") Long sectorId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("sectorId") @Positive Long sectorId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -168,8 +174,8 @@ public class EmployerController {
   @GetMapping(params = {"includeDeleted", "!code", "!districtId", "!industryId", "!sectorId"})
   public ResponseEntity<ApiResponse<PagedResponse<EmployerResponse>>> getByIncludeDeleted(
       @RequestParam("includeDeleted") boolean includeDeleted,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -193,8 +199,8 @@ public class EmployerController {
    */
   @GetMapping(params = {"!code", "!districtId", "!industryId", "!sectorId", "!includeDeleted"})
   public ResponseEntity<ApiResponse<PagedResponse<EmployerResponse>>> getAllEmployers(
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -239,7 +245,7 @@ public class EmployerController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<EmployerResponse>> updateEmployer(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateEmployerRequest request) {
     EmployerResponse response = employerService.updateEmployer(id, request);
     return ResponseEntity.ok(ApiResponse.success("Employer updated successfully", response));
@@ -252,7 +258,7 @@ public class EmployerController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteEmployer(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteEmployer(@PathVariable @Positive Long id) {
     employerService.deleteEmployer(id);
     return ResponseEntity.ok(ApiResponse.success("Employer deleted successfully"));
   }

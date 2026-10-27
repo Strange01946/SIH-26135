@@ -1,5 +1,9 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateAuditLogRequest;
 import in.gov.sih.sih26135.dto.response.AuditLogResponse;
@@ -35,6 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>AuditLog is an append-only audit trail; updates and deletions are strictly prohibited.
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/audit-logs")
 @PreAuthorize("hasAnyAuthority('audit.read', 'system.manage')")
@@ -53,7 +58,7 @@ public class AuditLogController {
    * @return 200 OK with AuditLogResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<AuditLogResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<AuditLogResponse>> getById(@PathVariable @Positive Long id) {
     AuditLogResponse response = auditLogService.getAuditLogById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -73,8 +78,8 @@ public class AuditLogController {
       "!correlationId", "!start", "!end"
   })
   public ResponseEntity<ApiResponse<PagedResponse<AuditLogResponse>>> getAllAuditLogs(
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "occurredAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -102,9 +107,9 @@ public class AuditLogController {
       "!correlationId", "!start", "!end"
   })
   public ResponseEntity<ApiResponse<PagedResponse<AuditLogResponse>>> getByActorUserId(
-      @RequestParam("actorUserId") Long actorUserId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("actorUserId") @Positive Long actorUserId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "occurredAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -132,9 +137,9 @@ public class AuditLogController {
       "!correlationId", "!start", "!end"
   })
   public ResponseEntity<ApiResponse<PagedResponse<AuditLogResponse>>> getByActionId(
-      @RequestParam("auditActionId") Long auditActionId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("auditActionId") @Positive Long auditActionId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "occurredAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -164,9 +169,9 @@ public class AuditLogController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<AuditLogResponse>>> getByEntity(
       @RequestParam("entityType") String entityType,
-      @RequestParam("entityId") Long entityId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("entityId") @Positive Long entityId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "occurredAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -195,8 +200,8 @@ public class AuditLogController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<AuditLogResponse>>> getByEntityType(
       @RequestParam("entityType") String entityType,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "occurredAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -225,8 +230,8 @@ public class AuditLogController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<AuditLogResponse>>> getByCorrelationId(
       @RequestParam("correlationId") String correlationId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "occurredAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -257,8 +262,8 @@ public class AuditLogController {
   public ResponseEntity<ApiResponse<PagedResponse<AuditLogResponse>>> getByOccurredAtBetween(
       @RequestParam("start") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
       @RequestParam("end") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "occurredAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {

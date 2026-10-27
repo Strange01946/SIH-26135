@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller.workflow;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.RecordAssessmentAndIssueCertificateRequest;
 import in.gov.sih.sih26135.dto.response.RecordAssessmentAndIssueCertificateResponse;
@@ -27,6 +29,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  *
  * <p>Base Route: /api/v1/workflows/training-outcomes (alias: /api/v1/workflows/training-outcome)
  */
+@Validated
 @RestController
 @RequestMapping({"/api/v1/workflows/training-outcomes", "/api/v1/workflows/training-outcome"})
 @PreAuthorize("hasAnyAuthority('enrollment.manage', 'assessment.manage')")
@@ -75,8 +78,8 @@ public class TrainingOutcomeWorkflowController {
    */
   @GetMapping("/summary")
   public ResponseEntity<ApiResponse<TraineeTrainingOutcomeSummaryResponse>> getTraineeTrainingOutcomeSummary(
-      @RequestParam("traineeId") Long traineeId,
-      @RequestParam("enrollmentId") Long enrollmentId,
+      @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam("enrollmentId") @Positive Long enrollmentId,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("traineeId", "enrollmentId"));
     TraineeTrainingOutcomeSummaryResponse response =

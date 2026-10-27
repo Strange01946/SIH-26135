@@ -1,5 +1,10 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateCommunicationLogRequest;
 import in.gov.sih.sih26135.dto.request.UpdateCommunicationLogRequest;
@@ -34,6 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
  * Consumes: CreateCommunicationLogRequest, UpdateCommunicationLogRequest
  * Produces: CommunicationLogResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/communication-logs")
 @PreAuthorize("hasAnyAuthority('survey.manage', 'system.manage')")
@@ -52,7 +58,7 @@ public class CommunicationLogController {
    * @return 200 OK with CommunicationLogResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<CommunicationLogResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<CommunicationLogResponse>> getById(@PathVariable @Positive Long id) {
     CommunicationLogResponse response = communicationLogService.getCommunicationLogById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -69,7 +75,7 @@ public class CommunicationLogController {
       "!surveyResponseId", "!channelId", "!statusId", "!purposeId", "!directionId"
   })
   public ResponseEntity<ApiResponse<CommunicationLogResponse>> getByProviderMessageId(
-      @RequestParam("providerMessageId") String providerMessageId,
+      @RequestParam("providerMessageId") @NotBlank String providerMessageId,
       HttpServletRequest httpRequest) {
     validateAllowedQueryParameters(httpRequest, Set.of("providerMessageId"));
     CommunicationLogResponse response = communicationLogService.getCommunicationLogByProviderMessageId(providerMessageId);
@@ -91,8 +97,8 @@ public class CommunicationLogController {
       "!surveyResponseId", "!channelId", "!statusId", "!purposeId", "!directionId"
   })
   public ResponseEntity<ApiResponse<PagedResponse<CommunicationLogResponse>>> getAllCommunicationLogs(
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -120,9 +126,9 @@ public class CommunicationLogController {
       "!surveyResponseId", "!channelId", "!statusId", "!purposeId", "!directionId"
   })
   public ResponseEntity<ApiResponse<PagedResponse<CommunicationLogResponse>>> getByTrainee(
-      @RequestParam("traineeId") Long traineeId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -150,9 +156,9 @@ public class CommunicationLogController {
       "!surveyResponseId", "!channelId", "!statusId", "!purposeId", "!directionId"
   })
   public ResponseEntity<ApiResponse<PagedResponse<CommunicationLogResponse>>> getByFollowupTask(
-      @RequestParam("followupTaskId") Long followupTaskId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("followupTaskId") @Positive Long followupTaskId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -180,9 +186,9 @@ public class CommunicationLogController {
       "!surveyResponseId", "!channelId", "!statusId", "!purposeId", "!directionId"
   })
   public ResponseEntity<ApiResponse<PagedResponse<CommunicationLogResponse>>> getBySurvey(
-      @RequestParam("surveyId") Long surveyId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("surveyId") @Positive Long surveyId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -210,9 +216,9 @@ public class CommunicationLogController {
       "!surveyId", "!channelId", "!statusId", "!purposeId", "!directionId"
   })
   public ResponseEntity<ApiResponse<PagedResponse<CommunicationLogResponse>>> getBySurveyResponse(
-      @RequestParam("surveyResponseId") Long surveyResponseId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("surveyResponseId") @Positive Long surveyResponseId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -240,9 +246,9 @@ public class CommunicationLogController {
       "!surveyId", "!surveyResponseId", "!statusId", "!purposeId", "!directionId"
   })
   public ResponseEntity<ApiResponse<PagedResponse<CommunicationLogResponse>>> getByChannel(
-      @RequestParam("channelId") Long channelId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("channelId") @Positive Long channelId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -270,9 +276,9 @@ public class CommunicationLogController {
       "!surveyId", "!surveyResponseId", "!channelId", "!purposeId", "!directionId"
   })
   public ResponseEntity<ApiResponse<PagedResponse<CommunicationLogResponse>>> getByStatus(
-      @RequestParam("statusId") Long statusId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("statusId") @Positive Long statusId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -300,9 +306,9 @@ public class CommunicationLogController {
       "!surveyId", "!surveyResponseId", "!channelId", "!statusId", "!directionId"
   })
   public ResponseEntity<ApiResponse<PagedResponse<CommunicationLogResponse>>> getByPurpose(
-      @RequestParam("purposeId") Long purposeId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("purposeId") @Positive Long purposeId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -330,9 +336,9 @@ public class CommunicationLogController {
       "!surveyId", "!surveyResponseId", "!channelId", "!statusId", "!purposeId"
   })
   public ResponseEntity<ApiResponse<PagedResponse<CommunicationLogResponse>>> getByDirection(
-      @RequestParam("directionId") Long directionId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("directionId") @Positive Long directionId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -369,7 +375,7 @@ public class CommunicationLogController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<CommunicationLogResponse>> updateCommunicationLog(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateCommunicationLogRequest request) {
     CommunicationLogResponse response = communicationLogService.updateCommunicationLog(id, request);
     return ResponseEntity.ok(ApiResponse.success("Communication log updated successfully", response));
@@ -382,7 +388,7 @@ public class CommunicationLogController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteCommunicationLog(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteCommunicationLog(@PathVariable @Positive Long id) {
     communicationLogService.deleteCommunicationLog(id);
     return ResponseEntity.ok(ApiResponse.success("Communication log deleted successfully"));
   }

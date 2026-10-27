@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateTraineeUnemploymentEventRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTraineeUnemploymentEventRequest;
@@ -33,6 +35,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateTraineeUnemploymentEventRequest, UpdateTraineeUnemploymentEventRequest
  * Produces: TraineeUnemploymentEventResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/trainee-unemployment-events")
 @PreAuthorize("hasAuthority('employment.manage')")
@@ -51,7 +54,7 @@ public class TraineeUnemploymentEventController {
    * @return 200 OK with TraineeUnemploymentEventResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<TraineeUnemploymentEventResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<TraineeUnemploymentEventResponse>> getById(@PathVariable @Positive Long id) {
     TraineeUnemploymentEventResponse response = traineeUnemploymentEventService.getUnemploymentEventById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -71,8 +74,8 @@ public class TraineeUnemploymentEventController {
       "!surveyResponseId", "!statusId"
   })
   public ResponseEntity<ApiResponse<TraineeUnemploymentEventResponse>> getByTraineeIdAndPeriodNumber(
-      @RequestParam("traineeId") Long traineeId,
-      @RequestParam("periodNumber") Integer periodNumber,
+      @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam("periodNumber") @Positive Integer periodNumber,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("traineeId", "periodNumber"));
     TraineeUnemploymentEventResponse response =
@@ -95,7 +98,7 @@ public class TraineeUnemploymentEventController {
       "!surveyResponseId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<TraineeUnemploymentEventResponse>>> getCurrentByTraineeId(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       @RequestParam("isCurrent") boolean isCurrent,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("traineeId", "isCurrent"));
@@ -124,7 +127,7 @@ public class TraineeUnemploymentEventController {
       "!surveyResponseId", "!statusId"
   })
   public ResponseEntity<ApiResponse<TraineeUnemploymentEventResponse>> getCurrentPeriodByTraineeId(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       @RequestParam("currentPeriod") boolean currentPeriod,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("traineeId", "currentPeriod"));
@@ -153,7 +156,7 @@ public class TraineeUnemploymentEventController {
       "!surveyResponseId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<TraineeUnemploymentEventResponse>>> getByTraineeId(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeId");
     List<TraineeUnemploymentEventResponse> events =
@@ -175,7 +178,7 @@ public class TraineeUnemploymentEventController {
       "!surveyResponseId", "!statusId"
   })
   public ResponseEntity<ApiResponse<TraineeUnemploymentEventResponse>> getByExitEventId(
-      @RequestParam("exitEventId") Long exitEventId,
+      @RequestParam("exitEventId") @Positive Long exitEventId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "exitEventId");
     TraineeUnemploymentEventResponse response =
@@ -220,7 +223,7 @@ public class TraineeUnemploymentEventController {
       "!surveyResponseId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<TraineeUnemploymentEventResponse>>> getByReasonId(
-      @RequestParam("reasonId") Long reasonId,
+      @RequestParam("reasonId") @Positive Long reasonId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "reasonId");
     List<TraineeUnemploymentEventResponse> events =
@@ -242,7 +245,7 @@ public class TraineeUnemploymentEventController {
       "!surveyResponseId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<TraineeUnemploymentEventResponse>>> getByLabourStatusId(
-      @RequestParam("labourStatusId") Long labourStatusId,
+      @RequestParam("labourStatusId") @Positive Long labourStatusId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "labourStatusId");
     List<TraineeUnemploymentEventResponse> events =
@@ -264,7 +267,7 @@ public class TraineeUnemploymentEventController {
       "!surveyResponseId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<TraineeUnemploymentEventResponse>>> getByPrecedingEmploymentId(
-      @RequestParam("precedingEmploymentId") Long precedingEmploymentId,
+      @RequestParam("precedingEmploymentId") @Positive Long precedingEmploymentId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "precedingEmploymentId");
     List<TraineeUnemploymentEventResponse> events =
@@ -286,7 +289,7 @@ public class TraineeUnemploymentEventController {
       "!surveyResponseId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<TraineeUnemploymentEventResponse>>> getBySucceedingEmploymentId(
-      @RequestParam("succeedingEmploymentId") Long succeedingEmploymentId,
+      @RequestParam("succeedingEmploymentId") @Positive Long succeedingEmploymentId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "succeedingEmploymentId");
     List<TraineeUnemploymentEventResponse> events =
@@ -308,7 +311,7 @@ public class TraineeUnemploymentEventController {
       "!surveyResponseId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<TraineeUnemploymentEventResponse>>> getByEnrollmentId(
-      @RequestParam("enrollmentId") Long enrollmentId,
+      @RequestParam("enrollmentId") @Positive Long enrollmentId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "enrollmentId");
     List<TraineeUnemploymentEventResponse> events =
@@ -330,7 +333,7 @@ public class TraineeUnemploymentEventController {
       "!surveyResponseId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<TraineeUnemploymentEventResponse>>> getByPlacementId(
-      @RequestParam("placementId") Long placementId,
+      @RequestParam("placementId") @Positive Long placementId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "placementId");
     List<TraineeUnemploymentEventResponse> events =
@@ -352,7 +355,7 @@ public class TraineeUnemploymentEventController {
       "!surveyResponseId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<TraineeUnemploymentEventResponse>>> getByFollowupTaskId(
-      @RequestParam("followupTaskId") Long followupTaskId,
+      @RequestParam("followupTaskId") @Positive Long followupTaskId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "followupTaskId");
     List<TraineeUnemploymentEventResponse> events =
@@ -374,7 +377,7 @@ public class TraineeUnemploymentEventController {
       "!followupTaskId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<TraineeUnemploymentEventResponse>>> getBySurveyResponseId(
-      @RequestParam("surveyResponseId") Long surveyResponseId,
+      @RequestParam("surveyResponseId") @Positive Long surveyResponseId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "surveyResponseId");
     List<TraineeUnemploymentEventResponse> events =
@@ -396,7 +399,7 @@ public class TraineeUnemploymentEventController {
       "!followupTaskId", "!surveyResponseId"
   })
   public ResponseEntity<ApiResponse<List<TraineeUnemploymentEventResponse>>> getByVerificationStatusId(
-      @RequestParam("statusId") Long statusId,
+      @RequestParam("statusId") @Positive Long statusId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "statusId");
     List<TraineeUnemploymentEventResponse> events =
@@ -433,7 +436,7 @@ public class TraineeUnemploymentEventController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<TraineeUnemploymentEventResponse>> updateUnemploymentEvent(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateTraineeUnemploymentEventRequest request) {
     TraineeUnemploymentEventResponse response =
         traineeUnemploymentEventService.updateUnemploymentEvent(id, request);
@@ -449,7 +452,7 @@ public class TraineeUnemploymentEventController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteUnemploymentEvent(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteUnemploymentEvent(@PathVariable @Positive Long id) {
     traineeUnemploymentEventService.deleteUnemploymentEvent(id);
     return ResponseEntity.ok(ApiResponse.success("Trainee unemployment event deleted successfully"));
   }

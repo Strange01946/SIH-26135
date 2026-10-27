@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateTraineeAssessmentRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTraineeAssessmentRequest;
@@ -30,6 +32,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateTraineeAssessmentRequest, UpdateTraineeAssessmentRequest
  * Produces: TraineeAssessmentResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/trainee-assessments")
 @PreAuthorize("hasAuthority('assessment.manage')")
@@ -48,7 +51,7 @@ public class TraineeAssessmentController {
    * @return 200 OK with TraineeAssessmentResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<TraineeAssessmentResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<TraineeAssessmentResponse>> getById(@PathVariable @Positive Long id) {
     TraineeAssessmentResponse response = traineeAssessmentService.getById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -63,9 +66,9 @@ public class TraineeAssessmentController {
    */
   @GetMapping(params = {"assessmentId", "traineeId", "attemptNumber"})
   public ResponseEntity<ApiResponse<TraineeAssessmentResponse>> getByAssessmentAndTraineeAndAttempt(
-      @RequestParam("assessmentId") Long assessmentId,
-      @RequestParam("traineeId") Long traineeId,
-      @RequestParam("attemptNumber") Integer attemptNumber) {
+      @RequestParam("assessmentId") @Positive Long assessmentId,
+      @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam("attemptNumber") @Positive Integer attemptNumber) {
     TraineeAssessmentResponse response = traineeAssessmentService.getByAssessmentAndTraineeAndAttempt(
         assessmentId, traineeId, attemptNumber);
     return ResponseEntity.ok(ApiResponse.ok(response));
@@ -79,7 +82,7 @@ public class TraineeAssessmentController {
    */
   @GetMapping(params = "assessmentId")
   public ResponseEntity<ApiResponse<List<TraineeAssessmentResponse>>> getByAssessmentId(
-      @RequestParam("assessmentId") Long assessmentId) {
+      @RequestParam("assessmentId") @Positive Long assessmentId) {
     List<TraineeAssessmentResponse> records = traineeAssessmentService.getByAssessmentId(assessmentId);
     return ResponseEntity.ok(ApiResponse.ok(records));
   }
@@ -92,7 +95,7 @@ public class TraineeAssessmentController {
    */
   @GetMapping(params = "enrollmentId")
   public ResponseEntity<ApiResponse<List<TraineeAssessmentResponse>>> getByEnrollmentId(
-      @RequestParam("enrollmentId") Long enrollmentId) {
+      @RequestParam("enrollmentId") @Positive Long enrollmentId) {
     List<TraineeAssessmentResponse> records = traineeAssessmentService.getByEnrollmentId(enrollmentId);
     return ResponseEntity.ok(ApiResponse.ok(records));
   }
@@ -105,7 +108,7 @@ public class TraineeAssessmentController {
    */
   @GetMapping(params = "traineeId")
   public ResponseEntity<ApiResponse<List<TraineeAssessmentResponse>>> getByTraineeId(
-      @RequestParam("traineeId") Long traineeId) {
+      @RequestParam("traineeId") @Positive Long traineeId) {
     List<TraineeAssessmentResponse> records = traineeAssessmentService.getByTraineeId(traineeId);
     return ResponseEntity.ok(ApiResponse.ok(records));
   }
@@ -159,7 +162,7 @@ public class TraineeAssessmentController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<TraineeAssessmentResponse>> updateTraineeAssessment(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateTraineeAssessmentRequest request) {
     TraineeAssessmentResponse response = traineeAssessmentService.updateTraineeAssessment(id, request);
     return ResponseEntity.ok(ApiResponse.success("Trainee assessment updated successfully", response));
@@ -172,7 +175,7 @@ public class TraineeAssessmentController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteTraineeAssessment(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteTraineeAssessment(@PathVariable @Positive Long id) {
     traineeAssessmentService.deleteTraineeAssessment(id);
     return ResponseEntity.ok(ApiResponse.success("Trainee assessment deleted successfully"));
   }

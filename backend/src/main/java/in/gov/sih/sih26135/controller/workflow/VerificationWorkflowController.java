@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller.workflow;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.InitiateVerificationFromSurveyRequest;
 import in.gov.sih.sih26135.dto.request.RecordVerificationVerdictRequest;
@@ -28,6 +30,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  *
  * <p>Base Route: /api/v1/workflows/verification (alias: /api/v1/workflows/verifications)
  */
+@Validated
 @RestController
 @RequestMapping({"/api/v1/workflows/verification", "/api/v1/workflows/verifications"})
 @PreAuthorize("hasAuthority('verification.manage')")
@@ -100,7 +103,7 @@ public class VerificationWorkflowController {
    */
   @GetMapping("/summary")
   public ResponseEntity<ApiResponse<EmploymentVerificationSummaryResponse>> getEmploymentVerificationSummary(
-      @RequestParam("employmentId") Long employmentId,
+      @RequestParam("employmentId") @Positive Long employmentId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "employmentId");
     EmploymentVerificationSummaryResponse response =

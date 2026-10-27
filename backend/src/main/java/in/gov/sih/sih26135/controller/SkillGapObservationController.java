@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateSkillGapObservationRequest;
 import in.gov.sih.sih26135.dto.request.UpdateSkillGapObservationRequest;
@@ -32,6 +34,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateSkillGapObservationRequest, UpdateSkillGapObservationRequest
  * Produces: SkillGapObservationResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/skill-gap-observations")
 @PreAuthorize("hasAuthority('assessment.manage')")
@@ -50,7 +53,7 @@ public class SkillGapObservationController {
    * @return 200 OK with SkillGapObservationResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<SkillGapObservationResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<SkillGapObservationResponse>> getById(@PathVariable @Positive Long id) {
     SkillGapObservationResponse response = skillGapObservationService.getObservationById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -68,8 +71,8 @@ public class SkillGapObservationController {
       "!sourceId", "!observedOn"
   })
   public ResponseEntity<ApiResponse<SkillGapObservationResponse>> getBySkillGapAndObservationNumber(
-      @RequestParam("skillGapId") Long skillGapId,
-      @RequestParam("observationNumber") Integer observationNumber,
+      @RequestParam("skillGapId") @Positive Long skillGapId,
+      @RequestParam("observationNumber") @Positive Integer observationNumber,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("skillGapId", "observationNumber"));
     SkillGapObservationResponse response =
@@ -89,7 +92,7 @@ public class SkillGapObservationController {
       "!sourceId", "!observedOn"
   })
   public ResponseEntity<ApiResponse<List<SkillGapObservationResponse>>> getBySkillGap(
-      @RequestParam("skillGapId") Long skillGapId,
+      @RequestParam("skillGapId") @Positive Long skillGapId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "skillGapId");
     List<SkillGapObservationResponse> observations =
@@ -109,7 +112,7 @@ public class SkillGapObservationController {
       "!sourceId", "!observedOn"
   })
   public ResponseEntity<ApiResponse<List<SkillGapObservationResponse>>> getBySeverity(
-      @RequestParam("severityId") Long severityId,
+      @RequestParam("severityId") @Positive Long severityId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "severityId");
     List<SkillGapObservationResponse> observations =
@@ -129,7 +132,7 @@ public class SkillGapObservationController {
       "!sourceId", "!observedOn"
   })
   public ResponseEntity<ApiResponse<List<SkillGapObservationResponse>>> getByStatus(
-      @RequestParam("statusId") Long statusId,
+      @RequestParam("statusId") @Positive Long statusId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "statusId");
     List<SkillGapObservationResponse> observations =
@@ -149,7 +152,7 @@ public class SkillGapObservationController {
       "!statusId", "!observedOn"
   })
   public ResponseEntity<ApiResponse<List<SkillGapObservationResponse>>> getBySource(
-      @RequestParam("sourceId") Long sourceId,
+      @RequestParam("sourceId") @Positive Long sourceId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "sourceId");
     List<SkillGapObservationResponse> observations =
@@ -205,7 +208,7 @@ public class SkillGapObservationController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<SkillGapObservationResponse>> updateObservation(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateSkillGapObservationRequest request) {
     SkillGapObservationResponse response = skillGapObservationService.updateObservation(id, request);
     return ResponseEntity.ok(ApiResponse.success(
@@ -220,7 +223,7 @@ public class SkillGapObservationController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteObservation(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteObservation(@PathVariable @Positive Long id) {
     skillGapObservationService.deleteObservation(id);
     return ResponseEntity.ok(ApiResponse.success("Skill gap observation deleted successfully"));
   }

@@ -1,5 +1,8 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateSkillGapRequest;
 import in.gov.sih.sih26135.dto.request.UpdateSkillGapRequest;
@@ -30,6 +33,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateSkillGapRequest, UpdateSkillGapRequest
  * Produces: SkillGapResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/skill-gaps")
 @PreAuthorize("hasAuthority('assessment.manage')")
@@ -48,7 +52,7 @@ public class SkillGapController {
    * @return 200 OK with SkillGapResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<SkillGapResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<SkillGapResponse>> getById(@PathVariable @Positive Long id) {
     SkillGapResponse response = skillGapService.getSkillGapById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -65,7 +69,7 @@ public class SkillGapController {
       "!isCurrent", "!severityId", "!statusId", "!sourceId"
   })
   public ResponseEntity<ApiResponse<SkillGapResponse>> getBySkillGapNumber(
-      @RequestParam("skillGapNumber") String skillGapNumber,
+      @RequestParam("skillGapNumber") @NotBlank String skillGapNumber,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "skillGapNumber");
     SkillGapResponse response = skillGapService.getSkillGapByNumber(skillGapNumber);
@@ -85,8 +89,8 @@ public class SkillGapController {
       "!severityId", "!statusId", "!sourceId", "!skillGapNumber"
   })
   public ResponseEntity<ApiResponse<SkillGapResponse>> getByAssessmentAndSkill(
-      @RequestParam("assessmentId") Long assessmentId,
-      @RequestParam("skillId") Long skillId,
+      @RequestParam("assessmentId") @Positive Long assessmentId,
+      @RequestParam("skillId") @Positive Long skillId,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("assessmentId", "skillId"));
     SkillGapResponse response = skillGapService.getSkillGapByAssessmentAndSkill(assessmentId, skillId);
@@ -105,7 +109,7 @@ public class SkillGapController {
       "!severityId", "!statusId", "!sourceId", "!skillGapNumber"
   })
   public ResponseEntity<ApiResponse<List<SkillGapResponse>>> getByAssessment(
-      @RequestParam("assessmentId") Long assessmentId,
+      @RequestParam("assessmentId") @Positive Long assessmentId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "assessmentId");
     List<SkillGapResponse> skillGaps = skillGapService.getSkillGapsByAssessment(assessmentId);
@@ -125,7 +129,7 @@ public class SkillGapController {
       "!severityId", "!statusId", "!sourceId", "!skillGapNumber"
   })
   public ResponseEntity<ApiResponse<List<SkillGapResponse>>> getCurrentByTrainee(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       @RequestParam("isCurrent") boolean isCurrent,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("traineeId", "isCurrent"));
@@ -150,7 +154,7 @@ public class SkillGapController {
       "!severityId", "!statusId", "!sourceId", "!skillGapNumber"
   })
   public ResponseEntity<ApiResponse<List<SkillGapResponse>>> getByTrainee(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeId");
     List<SkillGapResponse> skillGaps = skillGapService.getSkillGapsByTrainee(traineeId);
@@ -170,7 +174,7 @@ public class SkillGapController {
       "!severityId", "!statusId", "!sourceId", "!skillGapNumber"
   })
   public ResponseEntity<ApiResponse<List<SkillGapResponse>>> getCurrentBySkill(
-      @RequestParam("skillId") Long skillId,
+      @RequestParam("skillId") @Positive Long skillId,
       @RequestParam("isCurrent") boolean isCurrent,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("skillId", "isCurrent"));
@@ -195,7 +199,7 @@ public class SkillGapController {
       "!severityId", "!statusId", "!sourceId", "!skillGapNumber"
   })
   public ResponseEntity<ApiResponse<List<SkillGapResponse>>> getBySkill(
-      @RequestParam("skillId") Long skillId,
+      @RequestParam("skillId") @Positive Long skillId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "skillId");
     List<SkillGapResponse> skillGaps = skillGapService.getSkillGapsBySkill(skillId);
@@ -214,7 +218,7 @@ public class SkillGapController {
       "!traineeId", "!isCurrent", "!statusId", "!sourceId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapResponse>>> getBySeverity(
-      @RequestParam("severityId") Long severityId,
+      @RequestParam("severityId") @Positive Long severityId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "severityId");
     List<SkillGapResponse> skillGaps = skillGapService.getSkillGapsBySeverity(severityId);
@@ -233,7 +237,7 @@ public class SkillGapController {
       "!traineeId", "!isCurrent", "!severityId", "!sourceId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapResponse>>> getByStatus(
-      @RequestParam("statusId") Long statusId,
+      @RequestParam("statusId") @Positive Long statusId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "statusId");
     List<SkillGapResponse> skillGaps = skillGapService.getSkillGapsByStatus(statusId);
@@ -252,7 +256,7 @@ public class SkillGapController {
       "!traineeId", "!isCurrent", "!severityId", "!statusId"
   })
   public ResponseEntity<ApiResponse<List<SkillGapResponse>>> getBySource(
-      @RequestParam("sourceId") Long sourceId,
+      @RequestParam("sourceId") @Positive Long sourceId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "sourceId");
     List<SkillGapResponse> skillGaps = skillGapService.getSkillGapsBySource(sourceId);
@@ -287,7 +291,7 @@ public class SkillGapController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<SkillGapResponse>> updateSkillGap(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateSkillGapRequest request) {
     SkillGapResponse response = skillGapService.updateSkillGap(id, request);
     return ResponseEntity.ok(ApiResponse.success(
@@ -302,7 +306,7 @@ public class SkillGapController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteSkillGap(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteSkillGap(@PathVariable @Positive Long id) {
     skillGapService.deleteSkillGap(id);
     return ResponseEntity.ok(ApiResponse.success("Skill gap deleted successfully"));
   }

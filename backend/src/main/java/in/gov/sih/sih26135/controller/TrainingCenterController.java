@@ -1,5 +1,9 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateTrainingCenterRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTrainingCenterRequest;
@@ -32,6 +36,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateTrainingCenterRequest, UpdateTrainingCenterRequest
  * Produces: TrainingCenterResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/training-centers")
 @PreAuthorize("hasAuthority('center.manage')")
@@ -50,7 +55,7 @@ public class TrainingCenterController {
    * @return 200 OK with TrainingCenterResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<TrainingCenterResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<TrainingCenterResponse>> getById(@PathVariable @Positive Long id) {
     TrainingCenterResponse response = trainingCenterService.getById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -67,11 +72,11 @@ public class TrainingCenterController {
   @GetMapping
   public ResponseEntity<ApiResponse<?>> getTrainingCenters(
       @RequestParam(value = "code", required = false) String code,
-      @RequestParam(value = "providerId", required = false) Long providerId,
-      @RequestParam(value = "districtId", required = false) Long districtId,
-      @RequestParam(value = "stateId", required = false) Long stateId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "providerId", required = false) @Positive Long providerId,
+      @RequestParam(value = "districtId", required = false) @Positive Long districtId,
+      @RequestParam(value = "stateId", required = false) @Positive Long stateId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
     if (code != null && !code.isBlank()) {
@@ -122,7 +127,7 @@ public class TrainingCenterController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<TrainingCenterResponse>> updateTrainingCenter(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateTrainingCenterRequest request) {
     TrainingCenterResponse response = trainingCenterService.updateTrainingCenter(id, request);
     return ResponseEntity.ok(ApiResponse.success("Training center updated successfully", response));
@@ -135,7 +140,7 @@ public class TrainingCenterController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteTrainingCenter(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteTrainingCenter(@PathVariable @Positive Long id) {
     trainingCenterService.deleteTrainingCenter(id);
     return ResponseEntity.ok(ApiResponse.success("Training center deleted successfully"));
   }

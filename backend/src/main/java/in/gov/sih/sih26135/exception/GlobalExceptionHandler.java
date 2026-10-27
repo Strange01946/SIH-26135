@@ -33,6 +33,7 @@ import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingPathVariableException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestController;
@@ -197,11 +198,18 @@ public class GlobalExceptionHandler {
     String code = null;
     if (resolvable.getCodes() != null && resolvable.getCodes().length > 0) {
       for (String c : resolvable.getCodes()) {
-        int dot = c.lastIndexOf('.');
-        String simple = dot >= 0 ? c.substring(dot + 1) : c;
-        if (!simple.isBlank()) {
-          code = simple;
+        int firstDot = c.indexOf('.');
+        String prefix = firstDot >= 0 ? c.substring(0, firstDot) : c;
+        int lastDot = c.lastIndexOf('.');
+        String suffix = lastDot >= 0 ? c.substring(lastDot + 1) : c;
+        if (isRecognizedConstraintCode(prefix)) {
+          code = prefix;
           break;
+        } else if (isRecognizedConstraintCode(suffix)) {
+          code = suffix;
+          break;
+        } else if (code == null && !suffix.isBlank()) {
+          code = suffix;
         }
       }
     }
@@ -209,6 +217,20 @@ public class GlobalExceptionHandler {
       return paramName + ": " + getSafeValidationMessage(code);
     }
     return paramName + ": " + message;
+  }
+
+  private boolean isRecognizedConstraintCode(String code) {
+    if (code == null || code.isBlank()) {
+      return false;
+    }
+    return switch (code) {
+      case "NotNull", "NotBlank", "NotEmpty", "Email", "Min", "DecimalMin",
+           "Max", "DecimalMax", "Positive", "PositiveOrZero", "Negative",
+           "NegativeOrZero", "Size", "Length", "Digits", "Pattern",
+           "Past", "PastOrPresent", "Future", "FutureOrPresent",
+           "AssertTrue", "AssertFalse", "DateSequence", "NumberRange", "ValidDateOfBirth" -> true;
+      default -> false;
+    };
   }
 
   private String getSafeValidationMessage(String code) {
@@ -281,6 +303,11 @@ public class GlobalExceptionHandler {
       case "MALFORMED_REQUEST", "MALFORMED_JSON" -> "Malformed or unreadable request body";
       case "TYPE_MISMATCH" -> "Invalid parameter value provided";
       case "MISSING_PARAMETER" -> "Required parameter is missing";
+      case "MISSING_HEADER" -> "Required header is missing";
+      case "INVALID_PAGE" -> "Page index must not be less than zero";
+      case "INVALID_PAGE_SIZE" -> "Invalid page size provided";
+      case "INVALID_SORT_FIELD" -> "Invalid sort field provided";
+      case "INVALID_SORT_DIRECTION" -> "Invalid sort direction provided";
       case "RESOURCE_CONFLICT" -> "A resource with the specified unique attributes already exists";
       case "DUPLICATE_PLACEMENT_EMPLOYMENT" -> "Placement record is already linked to another employment record";
       case "DUPLICATE_ENROLLMENT" -> "Trainee is already enrolled in this training batch";
@@ -398,6 +425,48 @@ public class GlobalExceptionHandler {
     Collections.sort(validationErrors);
     Collections.sort(invalidParams);
 
+    // Preserve established Phase 26.3 / 26.4 pagination bounds contract (INVALID_PAGE, INVALID_PAGE_SIZE)
+    if (results.size() == 1) {
+      ParameterValidationResult singleResult = results.get(0);
+      String pName = "";
+      if (singleResult.getMethodParameter() != null) {
+        if (singleResult.getMethodParameter().getParameterName() == null) {
+          singleResult.getMethodParameter().initParameterNameDiscovery(new org.springframework.core.StandardReflectionParameterNameDiscoverer());
+        }
+        pName = singleResult.getMethodParameter().getParameterName();
+      }
+      if ("page".equals(pName) && singleResult.getResolvableErrors() != null && !singleResult.getResolvableErrors().isEmpty()) {
+        ErrorResponse errorResponse = new ErrorResponse(
+            HttpStatus.BAD_REQUEST.value(),
+            HttpStatus.BAD_REQUEST.getReasonPhrase(),
+            "INVALID_PAGE",
+            "Page index must not be less than zero",
+            request.getRequestURI()
+        );
+        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+      } else if ("size".equals(pName) && singleResult.getResolvableErrors() != null && !singleResult.getResolvableErrors().isEmpty()) {
+        MessageSourceResolvable resolvable = singleResult.getResolvableErrors().iterator().next();
+        String code = "";
+        if (resolvable.getCodes() != null) {
+          for (String c : resolvable.getCodes()) {
+            if (c != null && (c.startsWith("Min") || c.endsWith("Min"))) { code = "Min"; break; }
+            if (c != null && (c.startsWith("Max") || c.endsWith("Max"))) { code = "Max"; break; }
+          }
+        }
+        String message = "Max".equals(code)
+            ? "Page size must not exceed " + in.gov.sih.sih26135.response.PaginationUtils.MAX_SIZE
+            : "Page size must be at least 1";
+        ErrorResponse errorResponse = new ErrorResponse(
+            HttpStatus.BAD_REQUEST.value(),
+            HttpStatus.BAD_REQUEST.getReasonPhrase(),
+            "INVALID_PAGE_SIZE",
+            message,
+            request.getRequestURI()
+        );
+        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+      }
+    }
+
     log.warn("Handler method validation error on {}: status={}, code={}, invalidParams={}",
         request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "VALIDATION_ERROR", invalidParams);
 
@@ -431,6 +500,54 @@ public class GlobalExceptionHandler {
           request.getRequestURI()
       );
       return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    // Preserve established Phase 26.3 / 26.4 pagination bounds contract (INVALID_PAGE, INVALID_PAGE_SIZE)
+    if (ex.getConstraintViolations().size() == 1) {
+      ConstraintViolation<?> violation = ex.getConstraintViolations().iterator().next();
+      String property = violation.getPropertyPath() != null ? violation.getPropertyPath().toString() : "";
+      String annotation = "";
+      if (violation.getConstraintDescriptor() != null && violation.getConstraintDescriptor().getAnnotation() != null) {
+        annotation = violation.getConstraintDescriptor().getAnnotation().annotationType().getSimpleName();
+      }
+      if (property.endsWith(".page") || property.equals("page")) {
+        if ("Min".equals(annotation)) {
+          log.warn("Pagination bounds violation on {}: status={}, code={}, property='{}'",
+              request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "INVALID_PAGE", property);
+          ErrorResponse errorResponse = new ErrorResponse(
+              HttpStatus.BAD_REQUEST.value(),
+              HttpStatus.BAD_REQUEST.getReasonPhrase(),
+              "INVALID_PAGE",
+              "Page index must not be less than zero",
+              request.getRequestURI()
+          );
+          return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
+      } else if (property.endsWith(".size") || property.equals("size")) {
+        if ("Min".equals(annotation)) {
+          log.warn("Pagination bounds violation on {}: status={}, code={}, property='{}'",
+              request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "INVALID_PAGE_SIZE", property);
+          ErrorResponse errorResponse = new ErrorResponse(
+              HttpStatus.BAD_REQUEST.value(),
+              HttpStatus.BAD_REQUEST.getReasonPhrase(),
+              "INVALID_PAGE_SIZE",
+              "Page size must be at least 1",
+              request.getRequestURI()
+          );
+          return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        } else if ("Max".equals(annotation)) {
+          log.warn("Pagination bounds violation on {}: status={}, code={}, property='{}'",
+              request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "INVALID_PAGE_SIZE", property);
+          ErrorResponse errorResponse = new ErrorResponse(
+              HttpStatus.BAD_REQUEST.value(),
+              HttpStatus.BAD_REQUEST.getReasonPhrase(),
+              "INVALID_PAGE_SIZE",
+              "Page size must not exceed " + in.gov.sih.sih26135.response.PaginationUtils.MAX_SIZE,
+              request.getRequestURI()
+          );
+          return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
+      }
     }
 
     // Confirmed request / method parameter validation failure: map to HTTP 400 Bad Request
@@ -516,6 +633,7 @@ public class GlobalExceptionHandler {
       in.gov.sih.sih26135.controller.AttendanceRecordController.class,
       in.gov.sih.sih26135.controller.AuditLogController.class,
       in.gov.sih.sih26135.controller.CertificationController.class,
+      in.gov.sih.sih26135.controller.CommunicationLogController.class,
       in.gov.sih.sih26135.controller.ConsentController.class,
       in.gov.sih.sih26135.controller.CourseController.class,
       in.gov.sih.sih26135.controller.DataQualityIssueController.class,
@@ -764,6 +882,24 @@ public class GlobalExceptionHandler {
         HttpStatus.BAD_REQUEST.value(),
         HttpStatus.BAD_REQUEST.getReasonPhrase(),
         "MISSING_PARAMETER",
+        message,
+        request.getRequestURI()
+    );
+    return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+  }
+
+  @ExceptionHandler(MissingRequestHeaderException.class)
+  public ResponseEntity<ErrorResponse> handleMissingRequestHeader(
+      MissingRequestHeaderException ex,
+      HttpServletRequest request) {
+    String message = String.format("Required header '%s' is missing", ex.getHeaderName());
+
+    log.warn("Missing request header on {}: status={}, code={}, header='{}'",
+        request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "MISSING_HEADER", ex.getHeaderName());
+    ErrorResponse errorResponse = new ErrorResponse(
+        HttpStatus.BAD_REQUEST.value(),
+        HttpStatus.BAD_REQUEST.getReasonPhrase(),
+        "MISSING_HEADER",
         message,
         request.getRequestURI()
     );

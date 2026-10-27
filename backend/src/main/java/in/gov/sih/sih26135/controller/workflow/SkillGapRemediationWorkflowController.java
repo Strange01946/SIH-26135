@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller.workflow;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.RecordSkillGapAssessmentWithGapsRequest;
 import in.gov.sih.sih26135.dto.request.SkillGapRemediationEnrollmentRequest;
@@ -31,6 +33,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  *
  * <p>Base Route: /api/v1/workflows/skill-gap-remediation (alias: /api/v1/workflows/skill-gap-remediations)
  */
+@Validated
 @RestController
 @RequestMapping({"/api/v1/workflows/skill-gap-remediation", "/api/v1/workflows/skill-gap-remediations"})
 @PreAuthorize("hasAnyAuthority('assessment.manage', 'enrollment.manage')")
@@ -106,7 +109,7 @@ public class SkillGapRemediationWorkflowController {
   @PostMapping("/recommendations/{id}/accept")
   @PreAuthorize("hasAnyAuthority('assessment.manage', 'enrollment.manage') or hasRole('trainee')")
   public ResponseEntity<ApiResponse<SkillGapRecommendationResponse>> acceptRecommendation(
-      @PathVariable("id") Long id,
+      @PathVariable("id") @Positive Long id,
       @Valid @RequestBody(required = false) TraineeRecommendationDecisionRequest request,
       HttpServletRequest httpRequest) {
     if (!httpRequest.getParameterMap().isEmpty()) {
@@ -134,7 +137,7 @@ public class SkillGapRemediationWorkflowController {
   @PostMapping("/recommendations/{id}/reject")
   @PreAuthorize("hasAnyAuthority('assessment.manage', 'enrollment.manage') or hasRole('trainee')")
   public ResponseEntity<ApiResponse<SkillGapRecommendationResponse>> rejectRecommendation(
-      @PathVariable("id") Long id,
+      @PathVariable("id") @Positive Long id,
       @Valid @RequestBody(required = false) TraineeRecommendationDecisionRequest request,
       HttpServletRequest httpRequest) {
     if (!httpRequest.getParameterMap().isEmpty()) {
@@ -160,7 +163,7 @@ public class SkillGapRemediationWorkflowController {
    */
   @GetMapping("/profile")
   public ResponseEntity<ApiResponse<TraineeSkillGapProfileResponse>> getTraineeSkillGapProfile(
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeId");
     TraineeSkillGapProfileResponse response =

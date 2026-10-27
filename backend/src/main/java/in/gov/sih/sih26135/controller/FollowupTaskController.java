@@ -1,5 +1,9 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateFollowupTaskRequest;
 import in.gov.sih.sih26135.dto.request.UpdateFollowupTaskRequest;
@@ -37,6 +41,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateFollowupTaskRequest, UpdateFollowupTaskRequest
  * Produces: FollowupTaskResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/followup-tasks")
 @PreAuthorize("hasAuthority('survey.manage')")
@@ -55,7 +60,7 @@ public class FollowupTaskController {
    * @return 200 OK with FollowupTaskResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<FollowupTaskResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<FollowupTaskResponse>> getById(@PathVariable @Positive Long id) {
     FollowupTaskResponse response = followupTaskService.getFollowupTaskById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -70,8 +75,8 @@ public class FollowupTaskController {
    */
   @GetMapping(params = {"campaignId", "traineeId", "!enrollmentId", "!placementId", "!employmentId", "!surveyId", "!statusId", "!outcomeId", "!assignedUserId", "!scheduledDate"})
   public ResponseEntity<ApiResponse<FollowupTaskResponse>> getByCampaignAndTrainee(
-      @RequestParam("campaignId") Long campaignId,
-      @RequestParam("traineeId") Long traineeId,
+      @RequestParam("campaignId") @Positive Long campaignId,
+      @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateAllowedQueryParameters(httpRequest, Set.of("campaignId", "traineeId"));
     FollowupTaskResponse response = followupTaskService.getFollowupTaskByCampaignAndTrainee(campaignId, traineeId);
@@ -91,9 +96,9 @@ public class FollowupTaskController {
    */
   @GetMapping(params = {"campaignId", "!traineeId", "!enrollmentId", "!placementId", "!employmentId", "!surveyId", "!statusId", "!outcomeId", "!assignedUserId", "!scheduledDate"})
   public ResponseEntity<ApiResponse<PagedResponse<FollowupTaskResponse>>> getByCampaign(
-      @RequestParam("campaignId") Long campaignId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("campaignId") @Positive Long campaignId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -118,9 +123,9 @@ public class FollowupTaskController {
    */
   @GetMapping(params = {"traineeId", "!campaignId", "!enrollmentId", "!placementId", "!employmentId", "!surveyId", "!statusId", "!outcomeId", "!assignedUserId", "!scheduledDate"})
   public ResponseEntity<ApiResponse<PagedResponse<FollowupTaskResponse>>> getByTrainee(
-      @RequestParam("traineeId") Long traineeId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -145,9 +150,9 @@ public class FollowupTaskController {
    */
   @GetMapping(params = {"enrollmentId", "!campaignId", "!traineeId", "!placementId", "!employmentId", "!surveyId", "!statusId", "!outcomeId", "!assignedUserId", "!scheduledDate"})
   public ResponseEntity<ApiResponse<PagedResponse<FollowupTaskResponse>>> getByEnrollment(
-      @RequestParam("enrollmentId") Long enrollmentId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("enrollmentId") @Positive Long enrollmentId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -172,9 +177,9 @@ public class FollowupTaskController {
    */
   @GetMapping(params = {"placementId", "!campaignId", "!traineeId", "!enrollmentId", "!employmentId", "!surveyId", "!statusId", "!outcomeId", "!assignedUserId", "!scheduledDate"})
   public ResponseEntity<ApiResponse<PagedResponse<FollowupTaskResponse>>> getByPlacement(
-      @RequestParam("placementId") Long placementId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("placementId") @Positive Long placementId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -199,9 +204,9 @@ public class FollowupTaskController {
    */
   @GetMapping(params = {"employmentId", "!campaignId", "!traineeId", "!enrollmentId", "!placementId", "!surveyId", "!statusId", "!outcomeId", "!assignedUserId", "!scheduledDate"})
   public ResponseEntity<ApiResponse<PagedResponse<FollowupTaskResponse>>> getByEmployment(
-      @RequestParam("employmentId") Long employmentId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("employmentId") @Positive Long employmentId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -226,9 +231,9 @@ public class FollowupTaskController {
    */
   @GetMapping(params = {"surveyId", "!campaignId", "!traineeId", "!enrollmentId", "!placementId", "!employmentId", "!statusId", "!outcomeId", "!assignedUserId", "!scheduledDate"})
   public ResponseEntity<ApiResponse<PagedResponse<FollowupTaskResponse>>> getBySurvey(
-      @RequestParam("surveyId") Long surveyId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("surveyId") @Positive Long surveyId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -253,9 +258,9 @@ public class FollowupTaskController {
    */
   @GetMapping(params = {"statusId", "!campaignId", "!traineeId", "!enrollmentId", "!placementId", "!employmentId", "!surveyId", "!outcomeId", "!assignedUserId", "!scheduledDate"})
   public ResponseEntity<ApiResponse<PagedResponse<FollowupTaskResponse>>> getByStatus(
-      @RequestParam("statusId") Long statusId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("statusId") @Positive Long statusId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -280,9 +285,9 @@ public class FollowupTaskController {
    */
   @GetMapping(params = {"outcomeId", "!campaignId", "!traineeId", "!enrollmentId", "!placementId", "!employmentId", "!surveyId", "!statusId", "!assignedUserId", "!scheduledDate"})
   public ResponseEntity<ApiResponse<PagedResponse<FollowupTaskResponse>>> getByOutcome(
-      @RequestParam("outcomeId") Long outcomeId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("outcomeId") @Positive Long outcomeId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -307,9 +312,9 @@ public class FollowupTaskController {
    */
   @GetMapping(params = {"assignedUserId", "!campaignId", "!traineeId", "!enrollmentId", "!placementId", "!employmentId", "!surveyId", "!statusId", "!outcomeId", "!scheduledDate"})
   public ResponseEntity<ApiResponse<PagedResponse<FollowupTaskResponse>>> getByAssignedUser(
-      @RequestParam("assignedUserId") Long assignedUserId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("assignedUserId") @Positive Long assignedUserId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -335,8 +340,8 @@ public class FollowupTaskController {
   @GetMapping(params = {"scheduledDate", "!campaignId", "!traineeId", "!enrollmentId", "!placementId", "!employmentId", "!surveyId", "!statusId", "!outcomeId", "!assignedUserId"})
   public ResponseEntity<ApiResponse<PagedResponse<FollowupTaskResponse>>> getByScheduledDate(
       @RequestParam("scheduledDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate scheduledDate,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -373,7 +378,7 @@ public class FollowupTaskController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<FollowupTaskResponse>> updateFollowupTask(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateFollowupTaskRequest request) {
     FollowupTaskResponse response = followupTaskService.updateFollowupTask(id, request);
     return ResponseEntity.ok(ApiResponse.success("Follow-up task updated successfully", response));
@@ -386,7 +391,7 @@ public class FollowupTaskController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteFollowupTask(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteFollowupTask(@PathVariable @Positive Long id) {
     followupTaskService.deleteFollowupTask(id);
     return ResponseEntity.ok(ApiResponse.success("Follow-up task deleted successfully"));
   }

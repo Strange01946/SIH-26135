@@ -1,5 +1,8 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateFollowupCampaignRequest;
 import in.gov.sih.sih26135.dto.request.UpdateFollowupCampaignRequest;
@@ -31,6 +34,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateFollowupCampaignRequest, UpdateFollowupCampaignRequest
  * Produces: FollowupCampaignResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/followup-campaigns")
 @PreAuthorize("hasAuthority('survey.manage')")
@@ -49,7 +53,7 @@ public class FollowupCampaignController {
    * @return 200 OK with FollowupCampaignResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<FollowupCampaignResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<FollowupCampaignResponse>> getById(@PathVariable @Positive Long id) {
     FollowupCampaignResponse response = followupCampaignService.getFollowupCampaignById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -63,7 +67,7 @@ public class FollowupCampaignController {
    */
   @GetMapping(params = {"campaignCode", "!followupTypeId", "!surveyId", "!programId", "!courseId", "!lifecycleStatusId", "!scheduledStartDate"})
   public ResponseEntity<ApiResponse<FollowupCampaignResponse>> getByCode(
-      @RequestParam("campaignCode") String campaignCode,
+      @RequestParam("campaignCode") @NotBlank String campaignCode,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "campaignCode");
     FollowupCampaignResponse response = followupCampaignService.getFollowupCampaignByCode(campaignCode);
@@ -79,7 +83,7 @@ public class FollowupCampaignController {
    */
   @GetMapping(params = {"followupTypeId", "!campaignCode", "!surveyId", "!programId", "!courseId", "!lifecycleStatusId", "!scheduledStartDate"})
   public ResponseEntity<ApiResponse<List<FollowupCampaignResponse>>> getByFollowupType(
-      @RequestParam("followupTypeId") Long followupTypeId,
+      @RequestParam("followupTypeId") @Positive Long followupTypeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "followupTypeId");
     List<FollowupCampaignResponse> campaigns = followupCampaignService.getFollowupCampaignsByFollowupType(followupTypeId);
@@ -95,7 +99,7 @@ public class FollowupCampaignController {
    */
   @GetMapping(params = {"surveyId", "!campaignCode", "!followupTypeId", "!programId", "!courseId", "!lifecycleStatusId", "!scheduledStartDate"})
   public ResponseEntity<ApiResponse<List<FollowupCampaignResponse>>> getBySurvey(
-      @RequestParam("surveyId") Long surveyId,
+      @RequestParam("surveyId") @Positive Long surveyId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "surveyId");
     List<FollowupCampaignResponse> campaigns = followupCampaignService.getFollowupCampaignsBySurvey(surveyId);
@@ -111,7 +115,7 @@ public class FollowupCampaignController {
    */
   @GetMapping(params = {"programId", "!campaignCode", "!followupTypeId", "!surveyId", "!courseId", "!lifecycleStatusId", "!scheduledStartDate"})
   public ResponseEntity<ApiResponse<List<FollowupCampaignResponse>>> getByProgram(
-      @RequestParam("programId") Long programId,
+      @RequestParam("programId") @Positive Long programId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "programId");
     List<FollowupCampaignResponse> campaigns = followupCampaignService.getFollowupCampaignsByProgram(programId);
@@ -127,7 +131,7 @@ public class FollowupCampaignController {
    */
   @GetMapping(params = {"courseId", "!campaignCode", "!followupTypeId", "!surveyId", "!programId", "!lifecycleStatusId", "!scheduledStartDate"})
   public ResponseEntity<ApiResponse<List<FollowupCampaignResponse>>> getByCourse(
-      @RequestParam("courseId") Long courseId,
+      @RequestParam("courseId") @Positive Long courseId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "courseId");
     List<FollowupCampaignResponse> campaigns = followupCampaignService.getFollowupCampaignsByCourse(courseId);
@@ -143,7 +147,7 @@ public class FollowupCampaignController {
    */
   @GetMapping(params = {"lifecycleStatusId", "!campaignCode", "!followupTypeId", "!surveyId", "!programId", "!courseId", "!scheduledStartDate"})
   public ResponseEntity<ApiResponse<List<FollowupCampaignResponse>>> getByLifecycleStatus(
-      @RequestParam("lifecycleStatusId") Long lifecycleStatusId,
+      @RequestParam("lifecycleStatusId") @Positive Long lifecycleStatusId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "lifecycleStatusId");
     List<FollowupCampaignResponse> campaigns = followupCampaignService.getFollowupCampaignsByLifecycleStatus(lifecycleStatusId);
@@ -209,7 +213,7 @@ public class FollowupCampaignController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<FollowupCampaignResponse>> updateFollowupCampaign(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateFollowupCampaignRequest request) {
     FollowupCampaignResponse response = followupCampaignService.updateFollowupCampaign(id, request);
     return ResponseEntity.ok(ApiResponse.success("Follow-up campaign updated successfully", response));
@@ -222,7 +226,7 @@ public class FollowupCampaignController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteFollowupCampaign(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteFollowupCampaign(@PathVariable @Positive Long id) {
     followupCampaignService.deleteFollowupCampaign(id);
     return ResponseEntity.ok(ApiResponse.success("Follow-up campaign deleted successfully"));
   }

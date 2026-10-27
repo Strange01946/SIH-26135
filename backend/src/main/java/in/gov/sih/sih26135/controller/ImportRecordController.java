@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateImportRecordRequest;
 import in.gov.sih.sih26135.dto.request.UpdateImportRecordRequest;
@@ -30,6 +32,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateImportRecordRequest, UpdateImportRecordRequest
  * Produces: ImportRecordResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/import-records")
 @PreAuthorize("hasAnyAuthority('system.manage', 'audit.read')")
@@ -48,7 +51,7 @@ public class ImportRecordController {
    * @return 200 OK with ImportRecordResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<ImportRecordResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<ImportRecordResponse>> getById(@PathVariable @Positive Long id) {
     ImportRecordResponse response = importRecordService.getRecordById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -65,8 +68,8 @@ public class ImportRecordController {
       "batchId", "sourceRowNumber", "!statusId", "!entityType", "!entityId"
   })
   public ResponseEntity<ApiResponse<ImportRecordResponse>> getByBatchIdAndSourceRowNumber(
-      @RequestParam("batchId") Long batchId,
-      @RequestParam("sourceRowNumber") Integer sourceRowNumber,
+      @RequestParam("batchId") @Positive Long batchId,
+      @RequestParam("sourceRowNumber") @Positive Integer sourceRowNumber,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("batchId", "sourceRowNumber"));
     ImportRecordResponse response = importRecordService.getRecordByBatchIdAndSourceRowNumber(batchId, sourceRowNumber);
@@ -84,7 +87,7 @@ public class ImportRecordController {
       "batchId", "!sourceRowNumber", "!statusId", "!entityType", "!entityId"
   })
   public ResponseEntity<ApiResponse<List<ImportRecordResponse>>> getByBatchId(
-      @RequestParam("batchId") Long batchId,
+      @RequestParam("batchId") @Positive Long batchId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "batchId");
     List<ImportRecordResponse> records = importRecordService.getRecordsByBatchId(batchId);
@@ -102,7 +105,7 @@ public class ImportRecordController {
       "statusId", "!batchId", "!sourceRowNumber", "!entityType", "!entityId"
   })
   public ResponseEntity<ApiResponse<List<ImportRecordResponse>>> getByStatusId(
-      @RequestParam("statusId") Long statusId,
+      @RequestParam("statusId") @Positive Long statusId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "statusId");
     List<ImportRecordResponse> records = importRecordService.getRecordsByStatusId(statusId);
@@ -122,7 +125,7 @@ public class ImportRecordController {
   })
   public ResponseEntity<ApiResponse<List<ImportRecordResponse>>> getByEntity(
       @RequestParam("entityType") String entityType,
-      @RequestParam("entityId") Long entityId,
+      @RequestParam("entityId") @Positive Long entityId,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("entityType", "entityId"));
     List<ImportRecordResponse> records = importRecordService.getRecordsByEntity(entityType, entityId);
@@ -157,7 +160,7 @@ public class ImportRecordController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<ImportRecordResponse>> updateImportRecord(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateImportRecordRequest request) {
     ImportRecordResponse response = importRecordService.updateImportRecord(id, request);
     return ResponseEntity.ok(ApiResponse.success(
@@ -172,7 +175,7 @@ public class ImportRecordController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteImportRecord(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteImportRecord(@PathVariable @Positive Long id) {
     importRecordService.deleteImportRecord(id);
     return ResponseEntity.ok(ApiResponse.success("Import record deleted successfully"));
   }

@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateTraineeConsentRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTraineeConsentStatusRequest;
@@ -29,6 +31,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateTraineeConsentRequest, UpdateTraineeConsentStatusRequest
  * Produces: TraineeConsentResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/consents")
 @PreAuthorize("hasAuthority('consent.manage')")
@@ -47,7 +50,7 @@ public class ConsentController {
    * @return 200 OK with TraineeConsentResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<TraineeConsentResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<TraineeConsentResponse>> getById(@PathVariable @Positive Long id) {
     TraineeConsentResponse response = traineeConsentService.getById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -62,9 +65,9 @@ public class ConsentController {
    */
   @GetMapping
   public ResponseEntity<ApiResponse<List<TraineeConsentResponse>>> getConsents(
-      @RequestParam(value = "traineeId", required = false) Long traineeId,
-      @RequestParam(value = "consentTypeId", required = false) Long consentTypeId,
-      @RequestParam(value = "consentStatusId", required = false) Long consentStatusId) {
+      @RequestParam(value = "traineeId", required = false) @Positive Long traineeId,
+      @RequestParam(value = "consentTypeId", required = false) @Positive Long consentTypeId,
+      @RequestParam(value = "consentStatusId", required = false) @Positive Long consentStatusId) {
     if (traineeId == null) {
       throw new BadRequestException("Trainee ID is required to query consents", "MISSING_REQUIRED_PARAMETER");
     }
@@ -91,7 +94,7 @@ public class ConsentController {
   @PostMapping
   public ResponseEntity<ApiResponse<TraineeConsentResponse>> createConsent(
       @Valid @RequestBody CreateTraineeConsentRequest request,
-      @RequestHeader(value = "X-Actor-User-Id", required = false) Long actorUserId,
+      @RequestHeader(value = "X-Actor-User-Id", required = false) @Positive Long actorUserId,
       HttpServletRequest httpRequest) {
     TraineeConsentResponse response = traineeConsentService.createConsent(request, actorUserId);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -108,9 +111,9 @@ public class ConsentController {
    */
   @PutMapping(path = {"/{id}", "/{id}/status"})
   public ResponseEntity<ApiResponse<TraineeConsentResponse>> updateConsentStatus(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateTraineeConsentStatusRequest request,
-      @RequestHeader(value = "X-Actor-User-Id", required = false) Long actorUserId) {
+      @RequestHeader(value = "X-Actor-User-Id", required = false) @Positive Long actorUserId) {
     TraineeConsentResponse response = traineeConsentService.updateConsentStatus(id, request, actorUserId);
     return ResponseEntity.ok(ApiResponse.success("Consent status updated successfully", response));
   }

@@ -1,5 +1,10 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateTrainingEnrollmentRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTrainingEnrollmentRequest;
@@ -32,6 +37,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateTrainingEnrollmentRequest, UpdateTrainingEnrollmentRequest
  * Produces: TrainingEnrollmentResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/training-enrollments")
 @PreAuthorize("hasAuthority('enrollment.manage')")
@@ -50,7 +56,7 @@ public class TrainingEnrollmentController {
    * @return 200 OK with TrainingEnrollmentResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<TrainingEnrollmentResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<TrainingEnrollmentResponse>> getById(@PathVariable @Positive Long id) {
     TrainingEnrollmentResponse response = trainingEnrollmentService.getById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -63,7 +69,7 @@ public class TrainingEnrollmentController {
    */
   @GetMapping(params = "enrollmentNumber")
   public ResponseEntity<ApiResponse<TrainingEnrollmentResponse>> getByEnrollmentNumber(
-      @RequestParam("enrollmentNumber") String enrollmentNumber) {
+      @RequestParam("enrollmentNumber") @NotBlank String enrollmentNumber) {
     TrainingEnrollmentResponse response = trainingEnrollmentService.getByEnrollmentNumber(enrollmentNumber);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -76,9 +82,9 @@ public class TrainingEnrollmentController {
    */
   @GetMapping(params = "traineeId")
   public ResponseEntity<ApiResponse<PagedResponse<TrainingEnrollmentResponse>>> getByTraineeId(
-      @RequestParam("traineeId") Long traineeId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
     Pageable pageable = PaginationUtils.buildPageable(
@@ -100,9 +106,9 @@ public class TrainingEnrollmentController {
    */
   @GetMapping(params = "batchId")
   public ResponseEntity<ApiResponse<PagedResponse<TrainingEnrollmentResponse>>> getByBatchId(
-      @RequestParam("batchId") Long batchId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("batchId") @Positive Long batchId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
     Pageable pageable = PaginationUtils.buildPageable(
@@ -124,9 +130,9 @@ public class TrainingEnrollmentController {
    */
   @GetMapping(params = "programId")
   public ResponseEntity<ApiResponse<PagedResponse<TrainingEnrollmentResponse>>> getByProgramId(
-      @RequestParam("programId") Long programId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("programId") @Positive Long programId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
     Pageable pageable = PaginationUtils.buildPageable(
@@ -148,9 +154,9 @@ public class TrainingEnrollmentController {
    */
   @GetMapping(params = "courseId")
   public ResponseEntity<ApiResponse<PagedResponse<TrainingEnrollmentResponse>>> getByCourseId(
-      @RequestParam("courseId") Long courseId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("courseId") @Positive Long courseId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
     Pageable pageable = PaginationUtils.buildPageable(
@@ -172,9 +178,9 @@ public class TrainingEnrollmentController {
    */
   @GetMapping(params = "providerId")
   public ResponseEntity<ApiResponse<PagedResponse<TrainingEnrollmentResponse>>> getByProviderId(
-      @RequestParam("providerId") Long providerId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("providerId") @Positive Long providerId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
     Pageable pageable = PaginationUtils.buildPageable(
@@ -196,9 +202,9 @@ public class TrainingEnrollmentController {
    */
   @GetMapping(params = "centerId")
   public ResponseEntity<ApiResponse<PagedResponse<TrainingEnrollmentResponse>>> getByCenterId(
-      @RequestParam("centerId") Long centerId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("centerId") @Positive Long centerId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
     Pageable pageable = PaginationUtils.buildPageable(
@@ -220,9 +226,9 @@ public class TrainingEnrollmentController {
    */
   @GetMapping(params = "statusId")
   public ResponseEntity<ApiResponse<PagedResponse<TrainingEnrollmentResponse>>> getByStatusId(
-      @RequestParam("statusId") Long statusId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("statusId") @Positive Long statusId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
     Pageable pageable = PaginationUtils.buildPageable(
@@ -243,8 +249,8 @@ public class TrainingEnrollmentController {
    */
   @GetMapping
   public ResponseEntity<ApiResponse<PagedResponse<TrainingEnrollmentResponse>>> getAllEnrollments(
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
     Pageable pageable = PaginationUtils.buildPageable(
@@ -279,7 +285,7 @@ public class TrainingEnrollmentController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<TrainingEnrollmentResponse>> updateEnrollment(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateTrainingEnrollmentRequest request) {
     TrainingEnrollmentResponse response = trainingEnrollmentService.updateEnrollment(id, request);
     return ResponseEntity.ok(ApiResponse.success("Training enrollment updated successfully", response));
@@ -292,7 +298,7 @@ public class TrainingEnrollmentController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteEnrollment(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteEnrollment(@PathVariable @Positive Long id) {
     trainingEnrollmentService.deleteEnrollment(id);
     return ResponseEntity.ok(ApiResponse.success("Training enrollment deleted successfully"));
   }

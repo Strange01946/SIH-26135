@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateSurveyResponseAnswerRequest;
 import in.gov.sih.sih26135.dto.request.UpdateSurveyResponseAnswerRequest;
@@ -30,6 +32,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateSurveyResponseAnswerRequest, UpdateSurveyResponseAnswerRequest
  * Produces: SurveyResponseAnswerResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/survey-response-answers")
 @PreAuthorize("hasAuthority('survey.manage')")
@@ -48,7 +51,7 @@ public class SurveyResponseAnswerController {
    * @return 200 OK with SurveyResponseAnswerResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<SurveyResponseAnswerResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<SurveyResponseAnswerResponse>> getById(@PathVariable @Positive Long id) {
     SurveyResponseAnswerResponse response = surveyResponseAnswerService.getSurveyResponseAnswerById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -63,8 +66,8 @@ public class SurveyResponseAnswerController {
    */
   @GetMapping(params = {"surveyResponseId", "surveyQuestionId"})
   public ResponseEntity<ApiResponse<SurveyResponseAnswerResponse>> getByResponseAndQuestion(
-      @RequestParam("surveyResponseId") Long surveyResponseId,
-      @RequestParam("surveyQuestionId") Long surveyQuestionId,
+      @RequestParam("surveyResponseId") @Positive Long surveyResponseId,
+      @RequestParam("surveyQuestionId") @Positive Long surveyQuestionId,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("surveyResponseId", "surveyQuestionId"));
     SurveyResponseAnswerResponse response = surveyResponseAnswerService.getAnswerByResponseAndQuestion(surveyResponseId, surveyQuestionId);
@@ -80,7 +83,7 @@ public class SurveyResponseAnswerController {
    */
   @GetMapping(params = {"surveyResponseId", "!surveyQuestionId"})
   public ResponseEntity<ApiResponse<List<SurveyResponseAnswerResponse>>> getByResponse(
-      @RequestParam("surveyResponseId") Long surveyResponseId,
+      @RequestParam("surveyResponseId") @Positive Long surveyResponseId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "surveyResponseId");
     List<SurveyResponseAnswerResponse> answers = surveyResponseAnswerService.getAnswersByResponse(surveyResponseId);
@@ -96,7 +99,7 @@ public class SurveyResponseAnswerController {
    */
   @GetMapping(params = {"surveyQuestionId", "!surveyResponseId"})
   public ResponseEntity<ApiResponse<List<SurveyResponseAnswerResponse>>> getByQuestion(
-      @RequestParam("surveyQuestionId") Long surveyQuestionId,
+      @RequestParam("surveyQuestionId") @Positive Long surveyQuestionId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "surveyQuestionId");
     List<SurveyResponseAnswerResponse> answers = surveyResponseAnswerService.getAnswersByQuestion(surveyQuestionId);
@@ -128,7 +131,7 @@ public class SurveyResponseAnswerController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<SurveyResponseAnswerResponse>> updateSurveyResponseAnswer(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateSurveyResponseAnswerRequest request) {
     SurveyResponseAnswerResponse response = surveyResponseAnswerService.updateSurveyResponseAnswer(id, request);
     return ResponseEntity.ok(ApiResponse.success("Survey response answer updated successfully", response));
@@ -141,7 +144,7 @@ public class SurveyResponseAnswerController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteSurveyResponseAnswer(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteSurveyResponseAnswer(@PathVariable @Positive Long id) {
     surveyResponseAnswerService.deleteSurveyResponseAnswer(id);
     return ResponseEntity.ok(ApiResponse.success("Survey response answer deleted successfully"));
   }

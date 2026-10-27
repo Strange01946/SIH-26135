@@ -1,5 +1,9 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateSurveyResponseRequest;
 import in.gov.sih.sih26135.dto.request.UpdateSurveyResponseRequest;
@@ -35,6 +39,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateSurveyResponseRequest, UpdateSurveyResponseRequest
  * Produces: SurveyResponseResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/survey-responses")
 @PreAuthorize("hasAuthority('survey.manage')")
@@ -53,7 +58,7 @@ public class SurveyResponseController {
    * @return 200 OK with SurveyResponseResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<SurveyResponseResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<SurveyResponseResponse>> getById(@PathVariable @Positive Long id) {
     SurveyResponseResponse response = surveyResponseService.getSurveyResponseById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -69,9 +74,9 @@ public class SurveyResponseController {
    */
   @GetMapping(params = {"surveyId", "traineeId", "attemptNumber", "!followupTaskId", "!enrollmentId", "!statusId", "!versionId"})
   public ResponseEntity<ApiResponse<SurveyResponseResponse>> getByAttempt(
-      @RequestParam("surveyId") Long surveyId,
-      @RequestParam("traineeId") Long traineeId,
-      @RequestParam("attemptNumber") Integer attemptNumber,
+      @RequestParam("surveyId") @Positive Long surveyId,
+      @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam("attemptNumber") @Positive Integer attemptNumber,
       HttpServletRequest httpRequest) {
     validateAllowedQueryParameters(httpRequest, Set.of("surveyId", "traineeId", "attemptNumber"));
     SurveyResponseResponse response = surveyResponseService.getSurveyResponseByAttempt(surveyId, traineeId, attemptNumber);
@@ -91,9 +96,9 @@ public class SurveyResponseController {
    */
   @GetMapping(params = {"surveyId", "!traineeId", "!attemptNumber", "!followupTaskId", "!enrollmentId", "!statusId", "!versionId"})
   public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseResponse>>> getBySurvey(
-      @RequestParam("surveyId") Long surveyId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("surveyId") @Positive Long surveyId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -118,9 +123,9 @@ public class SurveyResponseController {
    */
   @GetMapping(params = {"traineeId", "!surveyId", "!attemptNumber", "!followupTaskId", "!enrollmentId", "!statusId", "!versionId"})
   public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseResponse>>> getByTrainee(
-      @RequestParam("traineeId") Long traineeId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -145,9 +150,9 @@ public class SurveyResponseController {
    */
   @GetMapping(params = {"followupTaskId", "!surveyId", "!traineeId", "!attemptNumber", "!enrollmentId", "!statusId", "!versionId"})
   public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseResponse>>> getByFollowupTask(
-      @RequestParam("followupTaskId") Long followupTaskId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("followupTaskId") @Positive Long followupTaskId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -172,9 +177,9 @@ public class SurveyResponseController {
    */
   @GetMapping(params = {"enrollmentId", "!surveyId", "!traineeId", "!attemptNumber", "!followupTaskId", "!statusId", "!versionId"})
   public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseResponse>>> getByEnrollment(
-      @RequestParam("enrollmentId") Long enrollmentId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("enrollmentId") @Positive Long enrollmentId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -199,9 +204,9 @@ public class SurveyResponseController {
    */
   @GetMapping(params = {"statusId", "!surveyId", "!traineeId", "!attemptNumber", "!followupTaskId", "!enrollmentId", "!versionId"})
   public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseResponse>>> getByStatus(
-      @RequestParam("statusId") Long statusId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("statusId") @Positive Long statusId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -226,9 +231,9 @@ public class SurveyResponseController {
    */
   @GetMapping(params = {"versionId", "!surveyId", "!traineeId", "!attemptNumber", "!followupTaskId", "!enrollmentId", "!statusId"})
   public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseResponse>>> getByTemplateVersion(
-      @RequestParam("versionId") Long versionId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam("versionId") @Positive Long versionId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
@@ -265,7 +270,7 @@ public class SurveyResponseController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<SurveyResponseResponse>> updateSurveyResponse(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateSurveyResponseRequest request) {
     SurveyResponseResponse response = surveyResponseService.updateSurveyResponse(id, request);
     return ResponseEntity.ok(ApiResponse.success("Survey response updated successfully", response));
@@ -278,7 +283,7 @@ public class SurveyResponseController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteSurveyResponse(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteSurveyResponse(@PathVariable @Positive Long id) {
     surveyResponseService.deleteSurveyResponse(id);
     return ResponseEntity.ok(ApiResponse.success("Survey response deleted successfully"));
   }

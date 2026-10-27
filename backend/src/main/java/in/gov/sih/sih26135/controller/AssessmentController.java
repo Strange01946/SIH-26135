@@ -1,5 +1,8 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateAssessmentRequest;
 import in.gov.sih.sih26135.dto.request.UpdateAssessmentRequest;
@@ -30,6 +33,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateAssessmentRequest, UpdateAssessmentRequest
  * Produces: AssessmentResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/assessments")
 @PreAuthorize("hasAuthority('assessment.manage')")
@@ -48,7 +52,7 @@ public class AssessmentController {
    * @return 200 OK with AssessmentResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<AssessmentResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<AssessmentResponse>> getById(@PathVariable @Positive Long id) {
     AssessmentResponse response = assessmentService.getById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -61,7 +65,7 @@ public class AssessmentController {
    */
   @GetMapping(params = "code")
   public ResponseEntity<ApiResponse<AssessmentResponse>> getByCode(
-      @RequestParam("code") String code) {
+      @RequestParam("code") @NotBlank String code) {
     AssessmentResponse response = assessmentService.getByCode(code);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -74,7 +78,7 @@ public class AssessmentController {
    */
   @GetMapping(params = "courseId")
   public ResponseEntity<ApiResponse<List<AssessmentResponse>>> getByCourseId(
-      @RequestParam("courseId") Long courseId) {
+      @RequestParam("courseId") @Positive Long courseId) {
     List<AssessmentResponse> assessments = assessmentService.getByCourseId(courseId);
     return ResponseEntity.ok(ApiResponse.ok(assessments));
   }
@@ -87,7 +91,7 @@ public class AssessmentController {
    */
   @GetMapping(params = "batchId")
   public ResponseEntity<ApiResponse<List<AssessmentResponse>>> getByBatchId(
-      @RequestParam("batchId") Long batchId) {
+      @RequestParam("batchId") @Positive Long batchId) {
     List<AssessmentResponse> assessments = assessmentService.getByBatchId(batchId);
     return ResponseEntity.ok(ApiResponse.ok(assessments));
   }
@@ -100,7 +104,7 @@ public class AssessmentController {
    */
   @GetMapping(params = "programId")
   public ResponseEntity<ApiResponse<List<AssessmentResponse>>> getByProgramId(
-      @RequestParam("programId") Long programId) {
+      @RequestParam("programId") @Positive Long programId) {
     List<AssessmentResponse> assessments = assessmentService.getByProgramId(programId);
     return ResponseEntity.ok(ApiResponse.ok(assessments));
   }
@@ -113,7 +117,7 @@ public class AssessmentController {
    */
   @GetMapping(params = "assessmentTypeId")
   public ResponseEntity<ApiResponse<List<AssessmentResponse>>> getByAssessmentTypeId(
-      @RequestParam("assessmentTypeId") Long assessmentTypeId) {
+      @RequestParam("assessmentTypeId") @Positive Long assessmentTypeId) {
     List<AssessmentResponse> assessments = assessmentService.getByAssessmentTypeId(assessmentTypeId);
     return ResponseEntity.ok(ApiResponse.ok(assessments));
   }
@@ -139,7 +143,7 @@ public class AssessmentController {
    */
   @GetMapping(params = "lifecycleStatusId")
   public ResponseEntity<ApiResponse<List<AssessmentResponse>>> getByLifecycleStatusId(
-      @RequestParam("lifecycleStatusId") Long lifecycleStatusId) {
+      @RequestParam("lifecycleStatusId") @Positive Long lifecycleStatusId) {
     List<AssessmentResponse> assessments = assessmentService.getByLifecycleStatusId(lifecycleStatusId);
     return ResponseEntity.ok(ApiResponse.ok(assessments));
   }
@@ -180,7 +184,7 @@ public class AssessmentController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<AssessmentResponse>> updateAssessment(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateAssessmentRequest request) {
     AssessmentResponse response = assessmentService.updateAssessment(id, request);
     return ResponseEntity.ok(ApiResponse.success("Assessment updated successfully", response));
@@ -193,7 +197,7 @@ public class AssessmentController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteAssessment(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteAssessment(@PathVariable @Positive Long id) {
     assessmentService.deleteAssessment(id);
     return ResponseEntity.ok(ApiResponse.success("Assessment deleted successfully"));
   }

@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateAttendanceRecordRequest;
 import in.gov.sih.sih26135.dto.request.UpdateAttendanceRecordRequest;
@@ -30,6 +32,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateAttendanceRecordRequest, UpdateAttendanceRecordRequest
  * Produces: AttendanceRecordResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/attendance-records")
 @PreAuthorize("hasAuthority('enrollment.manage')")
@@ -48,7 +51,7 @@ public class AttendanceRecordController {
    * @return 200 OK with AttendanceRecordResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<AttendanceRecordResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<AttendanceRecordResponse>> getById(@PathVariable @Positive Long id) {
     AttendanceRecordResponse response = attendanceRecordService.getById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -61,7 +64,7 @@ public class AttendanceRecordController {
    */
   @GetMapping(params = "enrollmentId")
   public ResponseEntity<ApiResponse<List<AttendanceRecordResponse>>> getByEnrollmentId(
-      @RequestParam("enrollmentId") Long enrollmentId) {
+      @RequestParam("enrollmentId") @Positive Long enrollmentId) {
     List<AttendanceRecordResponse> records = attendanceRecordService.getByEnrollmentId(enrollmentId);
     return ResponseEntity.ok(ApiResponse.ok(records));
   }
@@ -74,7 +77,7 @@ public class AttendanceRecordController {
    */
   @GetMapping(params = "traineeId")
   public ResponseEntity<ApiResponse<List<AttendanceRecordResponse>>> getByTraineeId(
-      @RequestParam("traineeId") Long traineeId) {
+      @RequestParam("traineeId") @Positive Long traineeId) {
     List<AttendanceRecordResponse> records = attendanceRecordService.getByTraineeId(traineeId);
     return ResponseEntity.ok(ApiResponse.ok(records));
   }
@@ -88,7 +91,7 @@ public class AttendanceRecordController {
    */
   @GetMapping(params = {"batchId", "sessionDate"})
   public ResponseEntity<ApiResponse<List<AttendanceRecordResponse>>> getByBatchAndDate(
-      @RequestParam("batchId") Long batchId,
+      @RequestParam("batchId") @Positive Long batchId,
       @RequestParam("sessionDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate sessionDate) {
     List<AttendanceRecordResponse> records = attendanceRecordService.getByBatchAndDate(batchId, sessionDate);
     return ResponseEntity.ok(ApiResponse.ok(records));
@@ -102,7 +105,7 @@ public class AttendanceRecordController {
    */
   @GetMapping(params = "batchId")
   public ResponseEntity<ApiResponse<List<AttendanceRecordResponse>>> getByBatchId(
-      @RequestParam("batchId") Long batchId) {
+      @RequestParam("batchId") @Positive Long batchId) {
     List<AttendanceRecordResponse> records = attendanceRecordService.getByBatchId(batchId);
     return ResponseEntity.ok(ApiResponse.ok(records));
   }
@@ -128,7 +131,7 @@ public class AttendanceRecordController {
    */
   @GetMapping(params = "attendanceStatusId")
   public ResponseEntity<ApiResponse<List<AttendanceRecordResponse>>> getByAttendanceStatusId(
-      @RequestParam("attendanceStatusId") Long attendanceStatusId) {
+      @RequestParam("attendanceStatusId") @Positive Long attendanceStatusId) {
     List<AttendanceRecordResponse> records = attendanceRecordService.getByAttendanceStatusId(attendanceStatusId);
     return ResponseEntity.ok(ApiResponse.ok(records));
   }
@@ -158,7 +161,7 @@ public class AttendanceRecordController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<AttendanceRecordResponse>> updateAttendanceRecord(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateAttendanceRecordRequest request) {
     AttendanceRecordResponse response = attendanceRecordService.updateAttendanceRecord(id, request);
     return ResponseEntity.ok(ApiResponse.success("Attendance record updated successfully", response));
@@ -171,7 +174,7 @@ public class AttendanceRecordController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteAttendanceRecord(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteAttendanceRecord(@PathVariable @Positive Long id) {
     attendanceRecordService.deleteAttendanceRecord(id);
     return ResponseEntity.ok(ApiResponse.success("Attendance record deleted successfully"));
   }

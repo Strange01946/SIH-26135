@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateEmploymentVerificationEvidenceRequest;
 import in.gov.sih.sih26135.dto.request.UpdateEmploymentVerificationEvidenceRequest;
@@ -29,6 +31,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateEmploymentVerificationEvidenceRequest, UpdateEmploymentVerificationEvidenceRequest
  * Produces: EmploymentVerificationEvidenceResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/employment-verification-evidence")
 @PreAuthorize("hasAuthority('verification.manage')")
@@ -48,7 +51,7 @@ public class EmploymentVerificationEvidenceController {
    * @return 200 OK with EmploymentVerificationEvidenceResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<EmploymentVerificationEvidenceResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<EmploymentVerificationEvidenceResponse>> getById(@PathVariable @Positive Long id) {
     EmploymentVerificationEvidenceResponse response =
         employmentVerificationEvidenceService.getVerificationEvidenceById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
@@ -63,7 +66,7 @@ public class EmploymentVerificationEvidenceController {
    */
   @GetMapping(params = {"verificationId", "!attemptId", "!typeId"})
   public ResponseEntity<ApiResponse<List<EmploymentVerificationEvidenceResponse>>> getByVerificationId(
-      @RequestParam("verificationId") Long verificationId,
+      @RequestParam("verificationId") @Positive Long verificationId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "verificationId");
     List<EmploymentVerificationEvidenceResponse> evidenceList =
@@ -80,7 +83,7 @@ public class EmploymentVerificationEvidenceController {
    */
   @GetMapping(params = {"attemptId", "!verificationId", "!typeId"})
   public ResponseEntity<ApiResponse<List<EmploymentVerificationEvidenceResponse>>> getByAttemptId(
-      @RequestParam("attemptId") Long attemptId,
+      @RequestParam("attemptId") @Positive Long attemptId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "attemptId");
     List<EmploymentVerificationEvidenceResponse> evidenceList =
@@ -97,7 +100,7 @@ public class EmploymentVerificationEvidenceController {
    */
   @GetMapping(params = {"typeId", "!verificationId", "!attemptId"})
   public ResponseEntity<ApiResponse<List<EmploymentVerificationEvidenceResponse>>> getByTypeId(
-      @RequestParam("typeId") Long typeId,
+      @RequestParam("typeId") @Positive Long typeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "typeId");
     List<EmploymentVerificationEvidenceResponse> evidenceList =
@@ -134,7 +137,7 @@ public class EmploymentVerificationEvidenceController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<EmploymentVerificationEvidenceResponse>> updateVerificationEvidence(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateEmploymentVerificationEvidenceRequest request) {
     EmploymentVerificationEvidenceResponse response =
         employmentVerificationEvidenceService.updateVerificationEvidence(id, request);
@@ -150,7 +153,7 @@ public class EmploymentVerificationEvidenceController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteVerificationEvidence(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteVerificationEvidence(@PathVariable @Positive Long id) {
     employmentVerificationEvidenceService.deleteVerificationEvidence(id);
     return ResponseEntity.ok(ApiResponse.success("Employment verification evidence deleted successfully"));
   }

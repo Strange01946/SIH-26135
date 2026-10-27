@@ -1,5 +1,9 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateSurveyQuestionRequest;
 import in.gov.sih.sih26135.dto.request.UpdateSurveyQuestionRequest;
@@ -30,6 +34,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateSurveyQuestionRequest, UpdateSurveyQuestionRequest
  * Produces: SurveyQuestionResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/survey-questions")
 @PreAuthorize("hasAuthority('survey.manage')")
@@ -48,7 +53,7 @@ public class SurveyQuestionController {
    * @return 200 OK with SurveyQuestionResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<SurveyQuestionResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<SurveyQuestionResponse>> getById(@PathVariable @Positive Long id) {
     SurveyQuestionResponse response = surveyQuestionService.getSurveyQuestionById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -63,8 +68,8 @@ public class SurveyQuestionController {
    */
   @GetMapping(params = {"versionId", "questionCode", "!displayOrder", "!ordered", "!questionTypeId"})
   public ResponseEntity<ApiResponse<SurveyQuestionResponse>> getByVersionAndCode(
-      @RequestParam("versionId") Long versionId,
-      @RequestParam("questionCode") String questionCode,
+      @RequestParam("versionId") @Positive Long versionId,
+      @RequestParam("questionCode") @NotBlank String questionCode,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("versionId", "questionCode"));
     SurveyQuestionResponse response = surveyQuestionService.getSurveyQuestionByVersionAndCode(versionId, questionCode);
@@ -81,8 +86,8 @@ public class SurveyQuestionController {
    */
   @GetMapping(params = {"versionId", "displayOrder", "!questionCode", "!ordered", "!questionTypeId"})
   public ResponseEntity<ApiResponse<SurveyQuestionResponse>> getByVersionAndDisplayOrder(
-      @RequestParam("versionId") Long versionId,
-      @RequestParam("displayOrder") Integer displayOrder,
+      @RequestParam("versionId") @Positive Long versionId,
+      @RequestParam("displayOrder") @PositiveOrZero Integer displayOrder,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("versionId", "displayOrder"));
     SurveyQuestionResponse response = surveyQuestionService.getSurveyQuestionByVersionAndDisplayOrder(versionId, displayOrder);
@@ -99,7 +104,7 @@ public class SurveyQuestionController {
    */
   @GetMapping(params = {"versionId", "ordered", "!questionCode", "!displayOrder", "!questionTypeId"})
   public ResponseEntity<ApiResponse<List<SurveyQuestionResponse>>> getByVersionAndOrdered(
-      @RequestParam("versionId") Long versionId,
+      @RequestParam("versionId") @Positive Long versionId,
       @RequestParam("ordered") boolean ordered,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("versionId", "ordered"));
@@ -118,7 +123,7 @@ public class SurveyQuestionController {
    */
   @GetMapping(params = {"versionId", "!questionCode", "!displayOrder", "!ordered", "!questionTypeId"})
   public ResponseEntity<ApiResponse<List<SurveyQuestionResponse>>> getByVersion(
-      @RequestParam("versionId") Long versionId,
+      @RequestParam("versionId") @Positive Long versionId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "versionId");
     List<SurveyQuestionResponse> questions = surveyQuestionService.getQuestionsByVersion(versionId);
@@ -134,7 +139,7 @@ public class SurveyQuestionController {
    */
   @GetMapping(params = {"questionTypeId", "!versionId", "!questionCode", "!displayOrder", "!ordered"})
   public ResponseEntity<ApiResponse<List<SurveyQuestionResponse>>> getByType(
-      @RequestParam("questionTypeId") Long questionTypeId,
+      @RequestParam("questionTypeId") @Positive Long questionTypeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "questionTypeId");
     List<SurveyQuestionResponse> questions = surveyQuestionService.getQuestionsByType(questionTypeId);
@@ -166,7 +171,7 @@ public class SurveyQuestionController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<SurveyQuestionResponse>> updateSurveyQuestion(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateSurveyQuestionRequest request) {
     SurveyQuestionResponse response = surveyQuestionService.updateSurveyQuestion(id, request);
     return ResponseEntity.ok(ApiResponse.success("Survey question updated successfully", response));
@@ -179,7 +184,7 @@ public class SurveyQuestionController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteSurveyQuestion(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteSurveyQuestion(@PathVariable @Positive Long id) {
     surveyQuestionService.deleteSurveyQuestion(id);
     return ResponseEntity.ok(ApiResponse.success("Survey question deleted successfully"));
   }

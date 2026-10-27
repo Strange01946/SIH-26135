@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateDataQualityIssueRequest;
 import in.gov.sih.sih26135.dto.request.ResolveDataQualityIssueRequest;
@@ -32,6 +34,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  *
  * <p>Data quality issues do not support deletion; resolutions are performed via dedicated domain actions.
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/data-quality-issues")
 @PreAuthorize("hasAnyAuthority('audit.read', 'system.manage')")
@@ -50,7 +53,7 @@ public class DataQualityIssueController {
    * @return 200 OK with DataQualityIssueResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<DataQualityIssueResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<DataQualityIssueResponse>> getById(@PathVariable @Positive Long id) {
     DataQualityIssueResponse response = dataQualityIssueService.getIssueById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -67,7 +70,7 @@ public class DataQualityIssueController {
       "!sourceId", "!entityType", "!entityId", "!assignedUserId", "!resolvedByUserId"
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueResponse>>> getByRuleId(
-      @RequestParam("ruleId") Long ruleId,
+      @RequestParam("ruleId") @Positive Long ruleId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "ruleId");
     List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByRuleId(ruleId);
@@ -86,7 +89,7 @@ public class DataQualityIssueController {
       "!sourceId", "!entityType", "!entityId", "!assignedUserId", "!resolvedByUserId"
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueResponse>>> getByCategoryId(
-      @RequestParam("categoryId") Long categoryId,
+      @RequestParam("categoryId") @Positive Long categoryId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "categoryId");
     List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByCategoryId(categoryId);
@@ -105,7 +108,7 @@ public class DataQualityIssueController {
       "!sourceId", "!entityType", "!entityId", "!assignedUserId", "!resolvedByUserId"
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueResponse>>> getBySeverityId(
-      @RequestParam("severityId") Long severityId,
+      @RequestParam("severityId") @Positive Long severityId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "severityId");
     List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesBySeverityId(severityId);
@@ -124,7 +127,7 @@ public class DataQualityIssueController {
       "!sourceId", "!entityType", "!entityId", "!assignedUserId", "!resolvedByUserId"
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueResponse>>> getByStatusId(
-      @RequestParam("statusId") Long statusId,
+      @RequestParam("statusId") @Positive Long statusId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "statusId");
     List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByStatusId(statusId);
@@ -143,7 +146,7 @@ public class DataQualityIssueController {
       "!statusId", "!entityType", "!entityId", "!assignedUserId", "!resolvedByUserId"
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueResponse>>> getByDetectionSourceId(
-      @RequestParam("sourceId") Long sourceId,
+      @RequestParam("sourceId") @Positive Long sourceId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "sourceId");
     List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByDetectionSourceId(sourceId);
@@ -164,7 +167,7 @@ public class DataQualityIssueController {
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueResponse>>> getByEntity(
       @RequestParam("entityType") String entityType,
-      @RequestParam("entityId") Long entityId,
+      @RequestParam("entityId") @Positive Long entityId,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("entityType", "entityId"));
     List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByEntity(entityType, entityId);
@@ -202,7 +205,7 @@ public class DataQualityIssueController {
       "!statusId", "!sourceId", "!entityType", "!entityId", "!resolvedByUserId"
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueResponse>>> getByAssignedUserId(
-      @RequestParam("assignedUserId") Long assignedUserId,
+      @RequestParam("assignedUserId") @Positive Long assignedUserId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "assignedUserId");
     List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByAssignedUserId(assignedUserId);
@@ -221,7 +224,7 @@ public class DataQualityIssueController {
       "!statusId", "!sourceId", "!entityType", "!entityId", "!assignedUserId"
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueResponse>>> getByResolvedByUserId(
-      @RequestParam("resolvedByUserId") Long resolvedByUserId,
+      @RequestParam("resolvedByUserId") @Positive Long resolvedByUserId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "resolvedByUserId");
     List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByResolvedByUserId(resolvedByUserId);
@@ -256,7 +259,7 @@ public class DataQualityIssueController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<DataQualityIssueResponse>> updateIssue(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateDataQualityIssueRequest request) {
     DataQualityIssueResponse response = dataQualityIssueService.updateIssue(id, request);
     return ResponseEntity.ok(ApiResponse.success(
@@ -274,8 +277,8 @@ public class DataQualityIssueController {
    */
   @PostMapping("/{id}/assign")
   public ResponseEntity<ApiResponse<DataQualityIssueResponse>> assignIssue(
-      @PathVariable Long id,
-      @RequestParam("assignedUserId") Long assignedUserId,
+      @PathVariable @Positive Long id,
+      @RequestParam("assignedUserId") @Positive Long assignedUserId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "assignedUserId");
     DataQualityIssueResponse response =
@@ -294,7 +297,7 @@ public class DataQualityIssueController {
    */
   @PostMapping("/{id}/resolve")
   public ResponseEntity<ApiResponse<DataQualityIssueResponse>> resolveIssue(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody ResolveDataQualityIssueRequest request) {
     DataQualityIssueResponse response = dataQualityIssueService.resolveIssue(id, request);
     return ResponseEntity.ok(ApiResponse.success(

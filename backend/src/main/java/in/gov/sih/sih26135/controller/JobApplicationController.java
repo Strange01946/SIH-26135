@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateJobApplicationRequest;
 import in.gov.sih.sih26135.dto.request.UpdateJobApplicationRequest;
@@ -28,6 +30,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateJobApplicationRequest, UpdateJobApplicationRequest
  * Produces: JobApplicationResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/job-applications")
 @PreAuthorize("hasAuthority('placement.manage')")
@@ -46,7 +49,7 @@ public class JobApplicationController {
    * @return 200 OK with JobApplicationResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<JobApplicationResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<JobApplicationResponse>> getById(@PathVariable @Positive Long id) {
     JobApplicationResponse response = jobApplicationService.getJobApplicationById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -60,8 +63,8 @@ public class JobApplicationController {
    */
   @GetMapping(params = {"traineeId", "jobPostingId"})
   public ResponseEntity<ApiResponse<JobApplicationResponse>> getByTraineeAndPosting(
-      @RequestParam("traineeId") Long traineeId,
-      @RequestParam("jobPostingId") Long jobPostingId) {
+      @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam("jobPostingId") @Positive Long jobPostingId) {
     JobApplicationResponse response = jobApplicationService.getJobApplicationByTraineeAndPosting(
         traineeId, jobPostingId);
     return ResponseEntity.ok(ApiResponse.ok(response));
@@ -75,7 +78,7 @@ public class JobApplicationController {
    */
   @GetMapping(params = "traineeId")
   public ResponseEntity<ApiResponse<List<JobApplicationResponse>>> getByTrainee(
-      @RequestParam("traineeId") Long traineeId) {
+      @RequestParam("traineeId") @Positive Long traineeId) {
     List<JobApplicationResponse> applications = jobApplicationService.getJobApplicationsByTrainee(traineeId);
     return ResponseEntity.ok(ApiResponse.ok(applications));
   }
@@ -88,7 +91,7 @@ public class JobApplicationController {
    */
   @GetMapping(params = "jobPostingId")
   public ResponseEntity<ApiResponse<List<JobApplicationResponse>>> getByPosting(
-      @RequestParam("jobPostingId") Long jobPostingId) {
+      @RequestParam("jobPostingId") @Positive Long jobPostingId) {
     List<JobApplicationResponse> applications = jobApplicationService.getJobApplicationsByPosting(jobPostingId);
     return ResponseEntity.ok(ApiResponse.ok(applications));
   }
@@ -101,7 +104,7 @@ public class JobApplicationController {
    */
   @GetMapping(params = "statusId")
   public ResponseEntity<ApiResponse<List<JobApplicationResponse>>> getByStatus(
-      @RequestParam("statusId") Long statusId) {
+      @RequestParam("statusId") @Positive Long statusId) {
     List<JobApplicationResponse> applications = jobApplicationService.getJobApplicationsByStatus(statusId);
     return ResponseEntity.ok(ApiResponse.ok(applications));
   }
@@ -131,7 +134,7 @@ public class JobApplicationController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<JobApplicationResponse>> updateJobApplication(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateJobApplicationRequest request) {
     JobApplicationResponse response = jobApplicationService.updateJobApplication(id, request);
     return ResponseEntity.ok(ApiResponse.success("Job application updated successfully", response));
@@ -144,7 +147,7 @@ public class JobApplicationController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteJobApplication(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteJobApplication(@PathVariable @Positive Long id) {
     jobApplicationService.deleteJobApplication(id);
     return ResponseEntity.ok(ApiResponse.success("Job application deleted successfully"));
   }

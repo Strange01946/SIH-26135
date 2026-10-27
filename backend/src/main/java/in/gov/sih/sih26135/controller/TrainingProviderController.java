@@ -1,5 +1,9 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateTrainingProviderRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTrainingProviderRequest;
@@ -32,6 +36,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateTrainingProviderRequest, UpdateTrainingProviderRequest
  * Produces: TrainingProviderResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/training-providers")
 @PreAuthorize("hasAuthority('provider.manage')")
@@ -50,7 +55,7 @@ public class TrainingProviderController {
    * @return 200 OK with TrainingProviderResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<TrainingProviderResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<TrainingProviderResponse>> getById(@PathVariable @Positive Long id) {
     TrainingProviderResponse response = trainingProviderService.getById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -68,10 +73,10 @@ public class TrainingProviderController {
   public ResponseEntity<ApiResponse<?>> getTrainingProviders(
       @RequestParam(value = "code", required = false) String code,
       @RequestParam(value = "registrationNumber", required = false) String registrationNumber,
-      @RequestParam(value = "stateId", required = false) Long stateId,
-      @RequestParam(value = "districtId", required = false) Long districtId,
-      @RequestParam(value = "page", defaultValue = "0") int page,
-      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "stateId", required = false) @Positive Long stateId,
+      @RequestParam(value = "districtId", required = false) @Positive Long districtId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
     if (code != null && !code.isBlank()) {
@@ -122,7 +127,7 @@ public class TrainingProviderController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<TrainingProviderResponse>> updateTrainingProvider(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateTrainingProviderRequest request) {
     TrainingProviderResponse response = trainingProviderService.updateTrainingProvider(id, request);
     return ResponseEntity.ok(ApiResponse.success("Training provider updated successfully", response));
@@ -135,7 +140,7 @@ public class TrainingProviderController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteTrainingProvider(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteTrainingProvider(@PathVariable @Positive Long id) {
     trainingProviderService.deleteTrainingProvider(id);
     return ResponseEntity.ok(ApiResponse.success("Training provider deleted successfully"));
   }

@@ -1,5 +1,8 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateImportBatchRequest;
 import in.gov.sih.sih26135.dto.request.UpdateImportBatchRequest;
@@ -29,6 +32,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateImportBatchRequest, UpdateImportBatchRequest
  * Produces: ImportBatchResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/import-batches")
 @PreAuthorize("hasAnyAuthority('system.manage', 'audit.read')")
@@ -47,7 +51,7 @@ public class ImportBatchController {
    * @return 200 OK with ImportBatchResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<ImportBatchResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<ImportBatchResponse>> getById(@PathVariable @Positive Long id) {
     ImportBatchResponse response = importBatchService.getBatchById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -63,7 +67,7 @@ public class ImportBatchController {
       "batchCode", "!statusId", "!entityType", "!sourceSystem", "!initiatedByUserId"
   })
   public ResponseEntity<ApiResponse<ImportBatchResponse>> getByBatchCode(
-      @RequestParam("batchCode") String batchCode,
+      @RequestParam("batchCode") @NotBlank String batchCode,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "batchCode");
     ImportBatchResponse response = importBatchService.getBatchByCode(batchCode);
@@ -81,7 +85,7 @@ public class ImportBatchController {
       "statusId", "!batchCode", "!entityType", "!sourceSystem", "!initiatedByUserId"
   })
   public ResponseEntity<ApiResponse<List<ImportBatchResponse>>> getByStatusId(
-      @RequestParam("statusId") Long statusId,
+      @RequestParam("statusId") @Positive Long statusId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "statusId");
     List<ImportBatchResponse> batches = importBatchService.getBatchesByStatusId(statusId);
@@ -135,7 +139,7 @@ public class ImportBatchController {
       "initiatedByUserId", "!batchCode", "!statusId", "!entityType", "!sourceSystem"
   })
   public ResponseEntity<ApiResponse<List<ImportBatchResponse>>> getByInitiatedByUserId(
-      @RequestParam("initiatedByUserId") Long initiatedByUserId,
+      @RequestParam("initiatedByUserId") @Positive Long initiatedByUserId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "initiatedByUserId");
     List<ImportBatchResponse> batches = importBatchService.getBatchesByInitiatedByUserId(initiatedByUserId);
@@ -170,7 +174,7 @@ public class ImportBatchController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<ImportBatchResponse>> updateImportBatch(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateImportBatchRequest request) {
     ImportBatchResponse response = importBatchService.updateImportBatch(id, request);
     return ResponseEntity.ok(ApiResponse.success(
@@ -185,7 +189,7 @@ public class ImportBatchController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteImportBatch(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<Void>> deleteImportBatch(@PathVariable @Positive Long id) {
     importBatchService.deleteImportBatch(id);
     return ResponseEntity.ok(ApiResponse.success("Import batch deleted successfully"));
   }

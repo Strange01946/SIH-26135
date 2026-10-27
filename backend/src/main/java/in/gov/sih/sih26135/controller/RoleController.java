@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.controller;
 
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.AssignRolePermissionRequest;
 import in.gov.sih.sih26135.dto.request.CreateRoleRequest;
@@ -30,6 +32,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateRoleRequest, UpdateRoleRequest, AssignRolePermissionRequest
  * Produces: RoleResponse, RolePermissionResponse enveloped in ApiResponse
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/roles")
 @PreAuthorize("hasAuthority('user.manage')")
@@ -48,7 +51,7 @@ public class RoleController {
    * @return 200 OK with RoleResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}")
-  public ResponseEntity<ApiResponse<RoleResponse>> getById(@PathVariable Long id) {
+  public ResponseEntity<ApiResponse<RoleResponse>> getById(@PathVariable @Positive Long id) {
     RoleResponse response = roleService.getById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -95,7 +98,7 @@ public class RoleController {
    */
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<RoleResponse>> updateRole(
-      @PathVariable Long id,
+      @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateRoleRequest request) {
     RoleResponse response = roleService.updateRole(id, request);
     return ResponseEntity.ok(ApiResponse.success("Role updated successfully", response));
@@ -109,7 +112,7 @@ public class RoleController {
    */
   @GetMapping("/{roleId}/permissions")
   public ResponseEntity<ApiResponse<List<RolePermissionResponse>>> getRolePermissions(
-      @PathVariable Long roleId) {
+      @PathVariable @Positive Long roleId) {
     List<RolePermissionResponse> permissions = roleService.getRolePermissions(roleId);
     return ResponseEntity.ok(ApiResponse.ok(permissions));
   }
@@ -124,7 +127,7 @@ public class RoleController {
    */
   @PostMapping("/{roleId}/permissions")
   public ResponseEntity<ApiResponse<RolePermissionResponse>> assignPermission(
-      @PathVariable Long roleId,
+      @PathVariable @Positive Long roleId,
       @Valid @RequestBody AssignRolePermissionRequest request,
       HttpServletRequest httpRequest) {
     RolePermissionResponse response = roleService.assignPermission(roleId, request);
@@ -141,8 +144,8 @@ public class RoleController {
    */
   @DeleteMapping("/{roleId}/permissions/{permissionId}")
   public ResponseEntity<ApiResponse<Void>> removePermission(
-      @PathVariable Long roleId,
-      @PathVariable Long permissionId) {
+      @PathVariable @Positive Long roleId,
+      @PathVariable @Positive Long permissionId) {
     roleService.removePermission(roleId, permissionId);
     return ResponseEntity.ok(ApiResponse.success("Permission removed from role successfully"));
   }
