@@ -10,6 +10,8 @@ import in.gov.sih.sih26135.dto.request.CreateEmploymentExitEventRequest;
 import in.gov.sih.sih26135.dto.request.CreateEmploymentRecordRequest;
 import in.gov.sih.sih26135.dto.request.CreateEmploymentVerificationRequest;
 import in.gov.sih.sih26135.dto.request.CreateEmploymentVerificationRequestRequest;
+import in.gov.sih.sih26135.dto.request.CreateSkillGapAssessmentRequest;
+import in.gov.sih.sih26135.dto.request.CreateSkillGapRequest;
 import in.gov.sih.sih26135.dto.request.CreateSurveyResponseRequest;
 import in.gov.sih.sih26135.dto.request.CreateTrainingEnrollmentRequest;
 import in.gov.sih.sih26135.dto.request.EmploymentExitAndUnemploymentRequest;
@@ -18,6 +20,7 @@ import in.gov.sih.sih26135.dto.request.PlacementToEmploymentTransitionRequest;
 import in.gov.sih.sih26135.dto.request.RecordAssessmentAndIssueCertificateRequest;
 import in.gov.sih.sih26135.dto.request.RecordEngagementAttemptRequest;
 import in.gov.sih.sih26135.dto.request.RecordFollowupSurveyResponseRequest;
+import in.gov.sih.sih26135.dto.request.RecordSkillGapAssessmentWithGapsRequest;
 import in.gov.sih.sih26135.dto.request.RecordVerificationVerdictRequest;
 import in.gov.sih.sih26135.dto.request.SkillGapRemediationEnrollmentRequest;
 import in.gov.sih.sih26135.dto.request.TraineeRecommendationDecisionRequest;
@@ -36,6 +39,7 @@ import in.gov.sih.sih26135.service.VerificationWorkflowService;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.sql.Connection;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -57,6 +61,9 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
@@ -209,11 +216,46 @@ class WorkflowTransactionRollbackIntegrationTest {
         .collect(Collectors.joining(",")) + ")";
   }
 
+  private static final Long FIXTURE_STATE_ID = 9991L;
+  private static final String FIXTURE_STATE_CODE = "TS";
+  private static final String FIXTURE_STATE_NAME = "Test State 9991";
+
+  private static final Long FIXTURE_DISTRICT_ID = 9991L;
+  private static final String FIXTURE_DISTRICT_CODE = "TD91";
+  private static final String FIXTURE_DISTRICT_NAME = "Test District 9991";
+
+  private static final Long FIXTURE_TRAINEE_ID = 9991L;
+  private static final String FIXTURE_TRAINEE_REG = "REG-TX-9991";
+
+  private static final Long FIXTURE_SKILL_CATEGORY_ID = 9991L;
+  private static final String FIXTURE_SKILL_CAT_CODE = "CAT-TX-9991";
+  private static final String FIXTURE_SKILL_CAT_NAME = "Category Tx 9991";
+
+  private static final Long FIXTURE_SKILL_ID = 9991L;
+  private static final String FIXTURE_SKILL_CODE = "SKL-TX-9991";
+  private static final String FIXTURE_SKILL_NAME = "Skill Tx 9991";
+
+  // Tracking flags to ensure cleanup targets ONLY records demonstrably created by this test
+  private boolean stateCreatedByTest = false;
+  private boolean districtCreatedByTest = false;
+  private boolean traineeCreatedByTest = false;
+  private boolean skillCategoryCreatedByTest = false;
+  private boolean skillCreatedByTest = false;
+  private final Set<String> createdAssessmentNumbers = new HashSet<>();
+  private final Set<String> createdSkillGapNumbers = new HashSet<>();
+
   @BeforeEach
   void enforceDatabaseIsolationGuard() throws Exception {
     try (Connection connection = dataSource.getConnection()) {
       MysqlConnectionTest.assertDedicatedTestCatalog(connection.getCatalog());
     }
+    stateCreatedByTest = false;
+    districtCreatedByTest = false;
+    traineeCreatedByTest = false;
+    skillCategoryCreatedByTest = false;
+    skillCreatedByTest = false;
+    createdAssessmentNumbers.clear();
+    createdSkillGapNumbers.clear();
   }
 
   @AfterEach
@@ -223,6 +265,177 @@ class WorkflowTransactionRollbackIntegrationTest {
     refSkillGapStatusRepository.findByStatusCode(CODE_FAIL_1).ifPresent(refSkillGapStatusRepository::delete);
     refSkillGapStatusRepository.findByStatusCode(CODE_FAIL_2).ifPresent(refSkillGapStatusRepository::delete);
     refSkillGapStatusRepository.findByStatusCode(CODE_MISMATCH).ifPresent(refSkillGapStatusRepository::delete);
+    cleanUpDomainFixture();
+    SecurityContextHolder.clearContext();
+  }
+
+  private void checkNoCollisions(JdbcTemplate jdbc) {
+    Integer stateCollisions = jdbc.queryForObject(
+        "SELECT count(*) FROM states WHERE state_id = ? OR state_code = ? OR state_name = ?",
+        Integer.class, FIXTURE_STATE_ID, FIXTURE_STATE_CODE, FIXTURE_STATE_NAME);
+    if (stateCollisions != null && stateCollisions > 0) {
+      throw new IllegalStateException("Test fixture setup collision: state record already exists with ID "
+          + FIXTURE_STATE_ID + " or code '" + FIXTURE_STATE_CODE + "' or name '" + FIXTURE_STATE_NAME + "'. Aborting safely without deleting.");
+    }
+
+    Integer districtCollisions = jdbc.queryForObject(
+        "SELECT count(*) FROM districts WHERE district_id = ? OR district_code = ? OR district_name = ?",
+        Integer.class, FIXTURE_DISTRICT_ID, FIXTURE_DISTRICT_CODE, FIXTURE_DISTRICT_NAME);
+    if (districtCollisions != null && districtCollisions > 0) {
+      throw new IllegalStateException("Test fixture setup collision: district record already exists with ID "
+          + FIXTURE_DISTRICT_ID + " or code '" + FIXTURE_DISTRICT_CODE + "' or name '" + FIXTURE_DISTRICT_NAME + "'. Aborting safely without deleting.");
+    }
+
+    Integer traineeCollisions = jdbc.queryForObject(
+        "SELECT count(*) FROM trainees WHERE trainee_id = ? OR registration_number = ?",
+        Integer.class, FIXTURE_TRAINEE_ID, FIXTURE_TRAINEE_REG);
+    if (traineeCollisions != null && traineeCollisions > 0) {
+      throw new IllegalStateException("Test fixture setup collision: trainee record already exists with ID "
+          + FIXTURE_TRAINEE_ID + " or registration '" + FIXTURE_TRAINEE_REG + "'. Aborting safely without deleting.");
+    }
+
+    Integer catCollisions = jdbc.queryForObject(
+        "SELECT count(*) FROM skill_categories WHERE skill_category_id = ? OR category_code = ? OR category_name = ?",
+        Integer.class, FIXTURE_SKILL_CATEGORY_ID, FIXTURE_SKILL_CAT_CODE, FIXTURE_SKILL_CAT_NAME);
+    if (catCollisions != null && catCollisions > 0) {
+      throw new IllegalStateException("Test fixture setup collision: skill category record already exists with ID "
+          + FIXTURE_SKILL_CATEGORY_ID + " or code '" + FIXTURE_SKILL_CAT_CODE + "' or name '" + FIXTURE_SKILL_CAT_NAME + "'. Aborting safely without deleting.");
+    }
+
+    Integer skillCollisions = jdbc.queryForObject(
+        "SELECT count(*) FROM skills WHERE skill_id = ? OR skill_code = ? OR skill_name = ?",
+        Integer.class, FIXTURE_SKILL_ID, FIXTURE_SKILL_CODE, FIXTURE_SKILL_NAME);
+    if (skillCollisions != null && skillCollisions > 0) {
+      throw new IllegalStateException("Test fixture setup collision: skill record already exists with ID "
+          + FIXTURE_SKILL_ID + " or code '" + FIXTURE_SKILL_CODE + "' or name '" + FIXTURE_SKILL_NAME + "'. Aborting safely without deleting.");
+    }
+
+    Integer assessCollisions = jdbc.queryForObject(
+        "SELECT count(*) FROM skill_gap_assessments WHERE assessment_number IN ('TX-SGA-ROLLBACK-001', 'TX-SGA-COMMIT-001')",
+        Integer.class);
+    if (assessCollisions != null && assessCollisions > 0) {
+      throw new IllegalStateException("Test fixture setup collision: assessment record already exists with test assessment numbers. Aborting safely without deleting.");
+    }
+
+    Integer gapCollisions = jdbc.queryForObject(
+        "SELECT count(*) FROM skill_gaps WHERE skill_gap_number IN ('TX-GAP-ROLLBACK-001', 'TX-GAP-ROLLBACK-002', 'TX-GAP-COMMIT-001')",
+        Integer.class);
+    if (gapCollisions != null && gapCollisions > 0) {
+      throw new IllegalStateException("Test fixture setup collision: skill gap record already exists with test skill gap numbers. Aborting safely without deleting.");
+    }
+  }
+
+  private void cleanUpDomainFixture() {
+    JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+    // 1. Clean up created skill gaps by their exact recorded numbers
+    for (String gapNum : new HashSet<>(createdSkillGapNumbers)) {
+      try {
+        jdbc.update("DELETE FROM skill_gaps WHERE skill_gap_number = ?", gapNum);
+      } catch (Exception ignored) {
+      }
+    }
+    createdSkillGapNumbers.clear();
+
+    // 2. Clean up created assessments by their exact recorded numbers
+    for (String assessNum : new HashSet<>(createdAssessmentNumbers)) {
+      try {
+        jdbc.update("DELETE FROM skill_gap_assessments WHERE assessment_number = ?", assessNum);
+      } catch (Exception ignored) {
+      }
+    }
+    createdAssessmentNumbers.clear();
+
+    // 3. Clean up skills only if demonstrably created by this test
+    if (skillCreatedByTest) {
+      try {
+        jdbc.update("DELETE FROM skills WHERE skill_id = ? AND skill_code = ?", FIXTURE_SKILL_ID, FIXTURE_SKILL_CODE);
+      } finally {
+        skillCreatedByTest = false;
+      }
+    }
+
+    // 4. Clean up skill categories only if demonstrably created by this test
+    if (skillCategoryCreatedByTest) {
+      try {
+        jdbc.update("DELETE FROM skill_categories WHERE skill_category_id = ? AND category_code = ?", FIXTURE_SKILL_CATEGORY_ID, FIXTURE_SKILL_CAT_CODE);
+      } finally {
+        skillCategoryCreatedByTest = false;
+      }
+    }
+
+    // 5. Clean up trainees only if demonstrably created by this test
+    if (traineeCreatedByTest) {
+      try {
+        jdbc.update("DELETE FROM trainees WHERE trainee_id = ? AND registration_number = ?", FIXTURE_TRAINEE_ID, FIXTURE_TRAINEE_REG);
+      } finally {
+        traineeCreatedByTest = false;
+      }
+    }
+
+    // 6. Clean up districts only if demonstrably created by this test
+    if (districtCreatedByTest) {
+      try {
+        jdbc.update("DELETE FROM districts WHERE district_id = ? AND district_code = ?", FIXTURE_DISTRICT_ID, FIXTURE_DISTRICT_CODE);
+      } finally {
+        districtCreatedByTest = false;
+      }
+    }
+
+    // 7. Clean up states only if demonstrably created by this test
+    if (stateCreatedByTest) {
+      try {
+        jdbc.update("DELETE FROM states WHERE state_id = ? AND state_code = ?", FIXTURE_STATE_ID, FIXTURE_STATE_CODE);
+      } finally {
+        stateCreatedByTest = false;
+      }
+    }
+  }
+
+  private void insertMinimalDomainFixture() {
+    JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+    checkNoCollisions(jdbc);
+
+    try {
+      jdbc.update(
+          "INSERT INTO states (state_id, state_code, state_name, lifecycle_status_id, created_at, updated_at) "
+              + "VALUES (?, ?, ?, 1, NOW(), NOW())",
+          FIXTURE_STATE_ID, FIXTURE_STATE_CODE, FIXTURE_STATE_NAME
+      );
+      stateCreatedByTest = true;
+
+      jdbc.update(
+          "INSERT INTO districts (district_id, state_id, district_code, district_name, lifecycle_status_id, created_at, updated_at) "
+              + "VALUES (?, ?, ?, ?, 1, NOW(), NOW())",
+          FIXTURE_DISTRICT_ID, FIXTURE_STATE_ID, FIXTURE_DISTRICT_CODE, FIXTURE_DISTRICT_NAME
+      );
+      districtCreatedByTest = true;
+
+      jdbc.update(
+          "INSERT INTO trainees (trainee_id, registration_number, first_name, last_name, gender_id, state_id, district_id, "
+              + "current_employment_status_id, profile_status_id, created_at, updated_at) "
+              + "VALUES (?, ?, 'Rollback', 'Tester', 1, ?, ?, 1, 3, NOW(), NOW())",
+          FIXTURE_TRAINEE_ID, FIXTURE_TRAINEE_REG, FIXTURE_STATE_ID, FIXTURE_DISTRICT_ID
+      );
+      traineeCreatedByTest = true;
+
+      jdbc.update(
+          "INSERT INTO skill_categories (skill_category_id, category_code, category_name, lifecycle_status_id, created_at, updated_at) "
+              + "VALUES (?, ?, ?, 1, NOW(), NOW())",
+          FIXTURE_SKILL_CATEGORY_ID, FIXTURE_SKILL_CAT_CODE, FIXTURE_SKILL_CAT_NAME
+      );
+      skillCategoryCreatedByTest = true;
+
+      jdbc.update(
+          "INSERT INTO skills (skill_id, skill_code, skill_name, skill_category_id, lifecycle_status_id, created_at, updated_at) "
+              + "VALUES (?, ?, ?, ?, 1, NOW(), NOW())",
+          FIXTURE_SKILL_ID, FIXTURE_SKILL_CODE, FIXTURE_SKILL_NAME, FIXTURE_SKILL_CATEGORY_ID
+      );
+      skillCreatedByTest = true;
+    } catch (Exception e) {
+      cleanUpDomainFixture();
+      throw e;
+    }
   }
 
   @Test
@@ -503,6 +716,515 @@ class WorkflowTransactionRollbackIntegrationTest {
     assertThat(countsAfter)
         .as("Row counts across all 17 participating domain tables must remain strictly identical before and after fail-closed workflow executions")
         .isEqualTo(countsBefore);
+  }
+
+  @Test
+  @DisplayName("8. Real production workflow bean rolls back multi-step business-domain modifications when subsequent step fails")
+  void testProductionWorkflowMultiStepRollback_realDomainEntities_rollsBackPrecedingWritesOnFailure() {
+    JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+    insertMinimalDomainFixture();
+
+    SecurityContextHolder.getContext().setAuthentication(
+        new UsernamePasswordAuthenticationToken("super_admin_user", "N/A",
+            List.of(new SimpleGrantedAuthority("ROLE_super_admin")))
+    );
+
+    String assessmentNum = "TX-SGA-ROLLBACK-001";
+    String gapNum1 = "TX-GAP-ROLLBACK-001";
+    String gapNum2 = "TX-GAP-ROLLBACK-002";
+
+    createdAssessmentNumbers.add(assessmentNum);
+    createdSkillGapNumbers.add(gapNum1);
+    createdSkillGapNumbers.add(gapNum2);
+
+    int sgaCountBefore = jdbcTemplate.queryForObject("SELECT count(*) FROM skill_gap_assessments", Integer.class);
+    int sgCountBefore = jdbcTemplate.queryForObject("SELECT count(*) FROM skill_gaps", Integer.class);
+
+    RecordSkillGapAssessmentWithGapsRequest request = new RecordSkillGapAssessmentWithGapsRequest();
+
+    CreateSkillGapAssessmentRequest assessReq = new CreateSkillGapAssessmentRequest();
+    assessReq.setAssessmentNumber(assessmentNum);
+    assessReq.setTraineeId(FIXTURE_TRAINEE_ID);
+    assessReq.setSkillGapSourceId(1L); // ASSESSMENT
+    assessReq.setSkillGapAssessmentStatusId(1L); // DRAFT
+    assessReq.setAssessedOn(LocalDate.now());
+    request.setAssessmentRequest(assessReq);
+
+    // Step 2a: Valid skill gap that is written to database during transaction
+    CreateSkillGapRequest gap1 = new CreateSkillGapRequest();
+    gap1.setSkillGapNumber(gapNum1);
+    gap1.setTraineeId(FIXTURE_TRAINEE_ID);
+    gap1.setSkillId(FIXTURE_SKILL_ID);
+    gap1.setRequiredSkillLevelId(3L); // INTERMEDIATE
+    gap1.setObservedSkillLevelId(1L); // AWARENESS
+    gap1.setSkillGapSeverityId(2L); // LOW
+    gap1.setSkillGapStatusId(1L); // OPEN
+    gap1.setSkillGapSourceId(1L); // ASSESSMENT
+    gap1.setIdentifiedOn(LocalDate.now());
+
+    // Step 2b: Second skill gap with mismatched trainee ID to trigger controlled failure
+    CreateSkillGapRequest gap2 = new CreateSkillGapRequest();
+    gap2.setSkillGapNumber(gapNum2);
+    gap2.setTraineeId(888888L); // Mismatched trainee ID triggers SKILL_GAP_TRAINEE_MISMATCH after gap1 write
+    gap2.setSkillId(FIXTURE_SKILL_ID);
+    gap2.setRequiredSkillLevelId(3L);
+    gap2.setSkillGapSeverityId(2L);
+    gap2.setSkillGapStatusId(1L);
+    gap2.setSkillGapSourceId(1L);
+    gap2.setIdentifiedOn(LocalDate.now());
+
+    request.setGapRequests(List.of(gap1, gap2));
+
+    // Act: Invoke the genuine Spring transaction proxy of SkillGapRemediationWorkflowService
+    assertThatThrownBy(() -> skillGapRemediationWorkflowService.recordAssessmentWithGapsAndRecommendations(request))
+        .isInstanceOf(BadRequestException.class)
+        .hasMessageContaining("Skill gap trainee does not match assessment trainee")
+        .hasFieldOrPropertyWithValue("errorCode", "SKILL_GAP_TRAINEE_MISMATCH");
+
+    // Assert: MySQL InnoDB transaction rolled back preceding domain writes
+    int sgaCountAfter = jdbcTemplate.queryForObject("SELECT count(*) FROM skill_gap_assessments", Integer.class);
+    int sgCountAfter = jdbcTemplate.queryForObject("SELECT count(*) FROM skill_gaps", Integer.class);
+
+    assertThat(sgaCountAfter)
+        .as("skill_gap_assessments table row count must remain unchanged after transaction rollback")
+        .isEqualTo(sgaCountBefore);
+    assertThat(sgCountAfter)
+        .as("skill_gaps table row count must remain unchanged after transaction rollback")
+        .isEqualTo(sgCountBefore);
+
+    // Assert no partial state remains in MySQL
+    int sgaMatch = jdbcTemplate.queryForObject(
+        "SELECT count(*) FROM skill_gap_assessments WHERE assessment_number = ?", Integer.class, assessmentNum);
+    int sgMatch = jdbcTemplate.queryForObject(
+        "SELECT count(*) FROM skill_gaps WHERE skill_gap_number = ?", Integer.class, gapNum1);
+
+    assertThat(sgaMatch).as("Assessment record written in step 1 must be discarded by MySQL rollback").isZero();
+    assertThat(sgMatch).as("Skill gap record written in step 2 must be discarded by MySQL rollback").isZero();
+  }
+
+  @Test
+  @DisplayName("9. Real production workflow bean commits multi-step business-domain modifications when all steps succeed")
+  void testProductionWorkflowMultiStepCommit_realDomainEntities_commitsAtomically() {
+    JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+    insertMinimalDomainFixture();
+
+    SecurityContextHolder.getContext().setAuthentication(
+        new UsernamePasswordAuthenticationToken("super_admin_user", "N/A",
+            List.of(new SimpleGrantedAuthority("ROLE_super_admin")))
+    );
+
+    String assessmentNum = "TX-SGA-COMMIT-001";
+    String gapNum = "TX-GAP-COMMIT-001";
+
+    createdAssessmentNumbers.add(assessmentNum);
+    createdSkillGapNumbers.add(gapNum);
+
+    int sgaCountBefore = jdbcTemplate.queryForObject("SELECT count(*) FROM skill_gap_assessments", Integer.class);
+    int sgCountBefore = jdbcTemplate.queryForObject("SELECT count(*) FROM skill_gaps", Integer.class);
+
+    RecordSkillGapAssessmentWithGapsRequest request = new RecordSkillGapAssessmentWithGapsRequest();
+
+    CreateSkillGapAssessmentRequest assessReq = new CreateSkillGapAssessmentRequest();
+    assessReq.setAssessmentNumber(assessmentNum);
+    assessReq.setTraineeId(FIXTURE_TRAINEE_ID);
+    assessReq.setSkillGapSourceId(1L); // ASSESSMENT
+    assessReq.setSkillGapAssessmentStatusId(1L); // DRAFT
+    assessReq.setAssessedOn(LocalDate.now());
+    request.setAssessmentRequest(assessReq);
+
+    CreateSkillGapRequest gap = new CreateSkillGapRequest();
+    gap.setSkillGapNumber(gapNum);
+    gap.setTraineeId(FIXTURE_TRAINEE_ID);
+    gap.setSkillId(FIXTURE_SKILL_ID);
+    gap.setRequiredSkillLevelId(3L); // INTERMEDIATE
+    gap.setObservedSkillLevelId(1L); // AWARENESS
+    gap.setSkillGapSeverityId(2L); // LOW
+    gap.setSkillGapStatusId(1L); // OPEN
+    gap.setSkillGapSourceId(1L); // ASSESSMENT
+    gap.setIdentifiedOn(LocalDate.now());
+
+    request.setGapRequests(List.of(gap));
+
+    // Act: Invoke the genuine Spring transaction proxy of SkillGapRemediationWorkflowService
+    var response = skillGapRemediationWorkflowService.recordAssessmentWithGapsAndRecommendations(request);
+
+    // Assert: Both domain writes were committed to MySQL
+    assertThat(response).isNotNull();
+    assertThat(response.assessment()).isNotNull();
+    assertThat(response.assessment().assessmentNumber()).isEqualTo(assessmentNum);
+    assertThat(response.skillGaps()).hasSize(1);
+    assertThat(response.skillGaps().get(0).skillGapNumber()).isEqualTo(gapNum);
+
+    int sgaCountAfter = jdbcTemplate.queryForObject("SELECT count(*) FROM skill_gap_assessments", Integer.class);
+    int sgCountAfter = jdbcTemplate.queryForObject("SELECT count(*) FROM skill_gaps", Integer.class);
+
+    assertThat(sgaCountAfter)
+        .as("skill_gap_assessments row count must increase by 1 upon successful commit")
+        .isEqualTo(sgaCountBefore + 1);
+    assertThat(sgCountAfter)
+        .as("skill_gaps row count must increase by 1 upon successful commit")
+        .isEqualTo(sgCountBefore + 1);
+
+    int sgaMatch = jdbcTemplate.queryForObject(
+        "SELECT count(*) FROM skill_gap_assessments WHERE assessment_number = ?", Integer.class, assessmentNum);
+    int sgMatch = jdbcTemplate.queryForObject(
+        "SELECT count(*) FROM skill_gaps WHERE skill_gap_number = ?", Integer.class, gapNum);
+
+    assertThat(sgaMatch).as("Assessment record must exist in MySQL").isEqualTo(1);
+    assertThat(sgMatch).as("Skill gap record must exist in MySQL").isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("10. Domain fixture setup detects pre-existing records across fixture tables and unique keys, fails safely, and preserves pre-existing records")
+  void testDomainFixtureSetup_onCollision_failsSafelyWithoutDeletingPreExistingRecords() {
+    JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+
+    // Scenario 1: Pre-existing state colliding on state_id
+    verifyStateCollision(jdbc, FIXTURE_STATE_ID, "PX", "Pre-existing State 9991", "state record already exists with ID " + FIXTURE_STATE_ID);
+
+    // Scenario 2: Pre-existing state colliding on state_code
+    verifyStateCollision(jdbc, 9993L, FIXTURE_STATE_CODE, "Pre-existing State TS", "or code '" + FIXTURE_STATE_CODE + "'");
+
+    // Scenario 3: Pre-existing state colliding on state_name
+    verifyStateCollision(jdbc, 9993L, "PZ", FIXTURE_STATE_NAME, "or name '" + FIXTURE_STATE_NAME + "'");
+
+    // Scenario 4: Pre-existing skill category colliding on skill_category_id
+    verifySkillCategoryCollision(jdbc, FIXTURE_SKILL_CATEGORY_ID, "CAT-PX", "Pre-existing Cat 9991", "skill category record already exists with ID " + FIXTURE_SKILL_CATEGORY_ID);
+
+    // Scenario 5: Pre-existing skill category colliding on category_code
+    verifySkillCategoryCollision(jdbc, 9993L, FIXTURE_SKILL_CAT_CODE, "Pre-existing Cat Code", "or code '" + FIXTURE_SKILL_CAT_CODE + "'");
+
+    // Scenario 6: Pre-existing skill category colliding on category_name
+    verifySkillCategoryCollision(jdbc, 9993L, "CAT-PZ", FIXTURE_SKILL_CAT_NAME, "or name '" + FIXTURE_SKILL_CAT_NAME + "'");
+
+    // Scenario 7: Pre-existing district colliding on district_id
+    verifyDistrictCollision(jdbc, FIXTURE_DISTRICT_ID, "DPX", "Pre-existing District 9991", "district record already exists with ID " + FIXTURE_DISTRICT_ID);
+
+    // Scenario 8: Pre-existing district colliding on district_code
+    verifyDistrictCollision(jdbc, 9993L, FIXTURE_DISTRICT_CODE, "Pre-existing District Code", "or code '" + FIXTURE_DISTRICT_CODE + "'");
+
+    // Scenario 9: Pre-existing district colliding on district_name
+    verifyDistrictCollision(jdbc, 9993L, "DPZ", FIXTURE_DISTRICT_NAME, "or name '" + FIXTURE_DISTRICT_NAME + "'");
+
+    // Scenario 10: Pre-existing skill colliding on skill_id
+    verifySkillCollision(jdbc, FIXTURE_SKILL_ID, "SPX", "Pre-existing Skill 9991", "skill record already exists with ID " + FIXTURE_SKILL_ID);
+
+    // Scenario 11: Pre-existing skill colliding on skill_code
+    verifySkillCollision(jdbc, 9993L, FIXTURE_SKILL_CODE, "Pre-existing Skill Code", "or code '" + FIXTURE_SKILL_CODE + "'");
+
+    // Scenario 12: Pre-existing skill colliding on skill_name
+    verifySkillCollision(jdbc, 9993L, "SPZ", FIXTURE_SKILL_NAME, "or name '" + FIXTURE_SKILL_NAME + "'");
+
+    // Scenario 13: Pre-existing trainee colliding on trainee_id
+    verifyTraineeCollision(jdbc, FIXTURE_TRAINEE_ID, "REG-PX", "trainee record already exists with ID " + FIXTURE_TRAINEE_ID);
+
+    // Scenario 14: Pre-existing trainee colliding on registration_number
+    verifyTraineeCollision(jdbc, 9993L, FIXTURE_TRAINEE_REG, "or registration '" + FIXTURE_TRAINEE_REG + "'");
+
+    // Scenario 15: Pre-existing assessment colliding on assessment_number 'TX-SGA-ROLLBACK-001'
+    verifyAssessmentCollision(jdbc, "TX-SGA-ROLLBACK-001");
+
+    // Scenario 16: Pre-existing assessment colliding on assessment_number 'TX-SGA-COMMIT-001'
+    verifyAssessmentCollision(jdbc, "TX-SGA-COMMIT-001");
+
+    // Scenario 17: Pre-existing skill gap colliding on skill_gap_number 'TX-GAP-ROLLBACK-001'
+    verifySkillGapCollision(jdbc, "TX-GAP-ROLLBACK-001");
+
+    // Scenario 18: Pre-existing skill gap colliding on skill_gap_number 'TX-GAP-ROLLBACK-002'
+    verifySkillGapCollision(jdbc, "TX-GAP-ROLLBACK-002");
+
+    // Scenario 19: Pre-existing skill gap colliding on skill_gap_number 'TX-GAP-COMMIT-001'
+    verifySkillGapCollision(jdbc, "TX-GAP-COMMIT-001");
+  }
+
+  private void verifyStateCollision(JdbcTemplate jdbc, Long stateId, String stateCode, String stateName, String expectedMessage) {
+    jdbc.update(
+        "INSERT INTO states (state_id, state_code, state_name, lifecycle_status_id, created_at, updated_at) "
+            + "VALUES (?, ?, ?, 1, NOW(), NOW())",
+        stateId, stateCode, stateName
+    );
+    try {
+      assertThatThrownBy(this::insertMinimalDomainFixture)
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining(expectedMessage);
+
+      cleanUpDomainFixture();
+
+      var rows = jdbc.queryForList("SELECT state_id, state_code, state_name FROM states WHERE state_id = ?", stateId);
+      assertThat(rows).hasSize(1);
+      assertThat(rows.get(0).get("state_code")).isEqualTo(stateCode);
+      assertThat(rows.get(0).get("state_name")).isEqualTo(stateName);
+    } finally {
+      jdbc.update("DELETE FROM states WHERE state_id = ?", stateId);
+    }
+  }
+
+  private void verifySkillCategoryCollision(JdbcTemplate jdbc, Long catId, String catCode, String catName, String expectedMessage) {
+    jdbc.update(
+        "INSERT INTO skill_categories (skill_category_id, category_code, category_name, lifecycle_status_id, created_at, updated_at) "
+            + "VALUES (?, ?, ?, 1, NOW(), NOW())",
+        catId, catCode, catName
+    );
+    try {
+      assertThatThrownBy(this::insertMinimalDomainFixture)
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining(expectedMessage);
+
+      cleanUpDomainFixture();
+
+      var rows = jdbc.queryForList("SELECT skill_category_id, category_code, category_name FROM skill_categories WHERE skill_category_id = ?", catId);
+      assertThat(rows).hasSize(1);
+      assertThat(rows.get(0).get("category_code")).isEqualTo(catCode);
+      assertThat(rows.get(0).get("category_name")).isEqualTo(catName);
+    } finally {
+      jdbc.update("DELETE FROM skill_categories WHERE skill_category_id = ?", catId);
+    }
+  }
+
+  private void verifyDistrictCollision(JdbcTemplate jdbc, Long districtId, String districtCode, String districtName, String expectedMessage) {
+    Long parentStateId = 9998L;
+    jdbc.update(
+        "INSERT INTO states (state_id, state_code, state_name, lifecycle_status_id, created_at, updated_at) "
+            + "VALUES (?, 'P8', 'Pre Parent State 9998', 1, NOW(), NOW())",
+        parentStateId
+    );
+    try {
+      jdbc.update(
+          "INSERT INTO districts (district_id, state_id, district_code, district_name, lifecycle_status_id, created_at, updated_at) "
+              + "VALUES (?, ?, ?, ?, 1, NOW(), NOW())",
+          districtId, parentStateId, districtCode, districtName
+      );
+      try {
+        assertThatThrownBy(this::insertMinimalDomainFixture)
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining(expectedMessage);
+
+        cleanUpDomainFixture();
+
+        var rows = jdbc.queryForList("SELECT district_id, district_code, district_name FROM districts WHERE district_id = ?", districtId);
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).get("district_code")).isEqualTo(districtCode);
+        assertThat(rows.get(0).get("district_name")).isEqualTo(districtName);
+      } finally {
+        jdbc.update("DELETE FROM districts WHERE district_id = ?", districtId);
+      }
+    } finally {
+      jdbc.update("DELETE FROM states WHERE state_id = ?", parentStateId);
+    }
+  }
+
+  private void verifySkillCollision(JdbcTemplate jdbc, Long skillId, String skillCode, String skillName, String expectedMessage) {
+    Long parentCatId = 9998L;
+    jdbc.update(
+        "INSERT INTO skill_categories (skill_category_id, category_code, category_name, lifecycle_status_id, created_at, updated_at) "
+            + "VALUES (?, 'CAT-P8', 'Pre Parent Cat 9998', 1, NOW(), NOW())",
+        parentCatId
+    );
+    try {
+      jdbc.update(
+          "INSERT INTO skills (skill_id, skill_code, skill_name, skill_category_id, lifecycle_status_id, created_at, updated_at) "
+              + "VALUES (?, ?, ?, ?, 1, NOW(), NOW())",
+          skillId, skillCode, skillName, parentCatId
+      );
+      try {
+        assertThatThrownBy(this::insertMinimalDomainFixture)
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining(expectedMessage);
+
+        cleanUpDomainFixture();
+
+        var rows = jdbc.queryForList("SELECT skill_id, skill_code, skill_name FROM skills WHERE skill_id = ?", skillId);
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).get("skill_code")).isEqualTo(skillCode);
+        assertThat(rows.get(0).get("skill_name")).isEqualTo(skillName);
+      } finally {
+        jdbc.update("DELETE FROM skills WHERE skill_id = ?", skillId);
+      }
+    } finally {
+      jdbc.update("DELETE FROM skill_categories WHERE skill_category_id = ?", parentCatId);
+    }
+  }
+
+  private void verifyTraineeCollision(JdbcTemplate jdbc, Long traineeId, String regNumber, String expectedMessage) {
+    Long parentStateId = 9998L;
+    Long parentDistrictId = 9998L;
+    jdbc.update(
+        "INSERT INTO states (state_id, state_code, state_name, lifecycle_status_id, created_at, updated_at) "
+            + "VALUES (?, 'P8', 'Pre Parent State 9998', 1, NOW(), NOW())",
+        parentStateId
+    );
+    try {
+      jdbc.update(
+          "INSERT INTO districts (district_id, state_id, district_code, district_name, lifecycle_status_id, created_at, updated_at) "
+              + "VALUES (?, ?, 'DP8', 'Pre Parent Dist 9998', 1, NOW(), NOW())",
+          parentDistrictId, parentStateId
+      );
+      try {
+        jdbc.update(
+            "INSERT INTO trainees (trainee_id, registration_number, first_name, last_name, gender_id, state_id, district_id, "
+                + "current_employment_status_id, profile_status_id, created_at, updated_at) "
+                + "VALUES (?, ?, 'Pre', 'Trainee', 1, ?, ?, 1, 3, NOW(), NOW())",
+            traineeId, regNumber, parentStateId, parentDistrictId
+        );
+        try {
+          assertThatThrownBy(this::insertMinimalDomainFixture)
+              .isInstanceOf(IllegalStateException.class)
+              .hasMessageContaining(expectedMessage);
+
+          cleanUpDomainFixture();
+
+          var rows = jdbc.queryForList("SELECT trainee_id, registration_number FROM trainees WHERE trainee_id = ?", traineeId);
+          assertThat(rows).hasSize(1);
+          assertThat(rows.get(0).get("registration_number")).isEqualTo(regNumber);
+        } finally {
+          jdbc.update("DELETE FROM trainees WHERE trainee_id = ?", traineeId);
+        }
+      } finally {
+        jdbc.update("DELETE FROM districts WHERE district_id = ?", parentDistrictId);
+      }
+    } finally {
+      jdbc.update("DELETE FROM states WHERE state_id = ?", parentStateId);
+    }
+  }
+
+  private void verifyAssessmentCollision(JdbcTemplate jdbc, String assessmentNumber) {
+    Long parentStateId = 9998L;
+    Long parentDistrictId = 9998L;
+    Long parentTraineeId = 9998L;
+
+    jdbc.update(
+        "INSERT INTO states (state_id, state_code, state_name, lifecycle_status_id, created_at, updated_at) "
+            + "VALUES (?, 'P8', 'Pre Parent State 9998', 1, NOW(), NOW())",
+        parentStateId
+    );
+    try {
+      jdbc.update(
+          "INSERT INTO districts (district_id, state_id, district_code, district_name, lifecycle_status_id, created_at, updated_at) "
+              + "VALUES (?, ?, 'DP8', 'Pre Parent Dist 9998', 1, NOW(), NOW())",
+          parentDistrictId, parentStateId
+      );
+      try {
+        jdbc.update(
+            "INSERT INTO trainees (trainee_id, registration_number, first_name, last_name, gender_id, state_id, district_id, "
+                + "current_employment_status_id, profile_status_id, created_at, updated_at) "
+                + "VALUES (?, 'REG-P8', 'Pre', 'Trainee', 1, ?, ?, 1, 3, NOW(), NOW())",
+            parentTraineeId, parentStateId, parentDistrictId
+        );
+        try {
+          jdbc.update(
+              "INSERT INTO skill_gap_assessments (assessment_number, trainee_id, skill_gap_source_id, skill_gap_assessment_status_id, assessed_on, created_at, updated_at) "
+                  + "VALUES (?, ?, 1, 1, CURDATE(), NOW(), NOW())",
+              assessmentNumber, parentTraineeId
+          );
+          try {
+            assertThatThrownBy(this::insertMinimalDomainFixture)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("assessment record already exists with test assessment numbers");
+
+            cleanUpDomainFixture();
+
+            var rows = jdbc.queryForList(
+                "SELECT assessment_number, trainee_id FROM skill_gap_assessments WHERE assessment_number = ?", assessmentNumber);
+            assertThat(rows).hasSize(1);
+            assertThat(rows.get(0).get("assessment_number")).isEqualTo(assessmentNumber);
+          } finally {
+            jdbc.update("DELETE FROM skill_gap_assessments WHERE assessment_number = ?", assessmentNumber);
+          }
+        } finally {
+          jdbc.update("DELETE FROM trainees WHERE trainee_id = ?", parentTraineeId);
+        }
+      } finally {
+        jdbc.update("DELETE FROM districts WHERE district_id = ?", parentDistrictId);
+      }
+    } finally {
+      jdbc.update("DELETE FROM states WHERE state_id = ?", parentStateId);
+    }
+  }
+
+  private void verifySkillGapCollision(JdbcTemplate jdbc, String skillGapNumber) {
+    Long parentStateId = 9998L;
+    Long parentDistrictId = 9998L;
+    Long parentTraineeId = 9998L;
+    Long parentCatId = 9998L;
+    Long parentSkillId = 9998L;
+    String parentAssessNumber = "TX-SGA-PRE-9998";
+
+    jdbc.update(
+        "INSERT INTO states (state_id, state_code, state_name, lifecycle_status_id, created_at, updated_at) "
+            + "VALUES (?, 'P8', 'Pre Parent State 9998', 1, NOW(), NOW())",
+        parentStateId
+    );
+    try {
+      jdbc.update(
+          "INSERT INTO districts (district_id, state_id, district_code, district_name, lifecycle_status_id, created_at, updated_at) "
+              + "VALUES (?, ?, 'DP8', 'Pre Parent Dist 9998', 1, NOW(), NOW())",
+          parentDistrictId, parentStateId
+      );
+      try {
+        jdbc.update(
+            "INSERT INTO trainees (trainee_id, registration_number, first_name, last_name, gender_id, state_id, district_id, "
+                + "current_employment_status_id, profile_status_id, created_at, updated_at) "
+                + "VALUES (?, 'REG-P8', 'Pre', 'Trainee', 1, ?, ?, 1, 3, NOW(), NOW())",
+            parentTraineeId, parentStateId, parentDistrictId
+        );
+        try {
+          jdbc.update(
+              "INSERT INTO skill_categories (skill_category_id, category_code, category_name, lifecycle_status_id, created_at, updated_at) "
+                  + "VALUES (?, 'CAT-P8', 'Pre Parent Cat 9998', 1, NOW(), NOW())",
+              parentCatId
+          );
+          try {
+            jdbc.update(
+                "INSERT INTO skills (skill_id, skill_code, skill_name, skill_category_id, lifecycle_status_id, created_at, updated_at) "
+                    + "VALUES (?, 'SKL-P8', 'Pre Skill P8', ?, 1, NOW(), NOW())",
+                parentSkillId, parentCatId
+            );
+            try {
+              jdbc.update(
+                  "INSERT INTO skill_gap_assessments (assessment_number, trainee_id, skill_gap_source_id, skill_gap_assessment_status_id, assessed_on, created_at, updated_at) "
+                      + "VALUES (?, ?, 1, 1, CURDATE(), NOW(), NOW())",
+                  parentAssessNumber, parentTraineeId
+              );
+              Long sgaId = jdbc.queryForObject(
+                  "SELECT skill_gap_assessment_id FROM skill_gap_assessments WHERE assessment_number = ?", Long.class, parentAssessNumber);
+              try {
+                jdbc.update(
+                    "INSERT INTO skill_gaps (skill_gap_number, skill_gap_assessment_id, trainee_id, skill_id, required_skill_level_id, observed_skill_level_id, skill_gap_severity_id, skill_gap_status_id, skill_gap_source_id, is_current, identified_on, created_at, updated_at) "
+                        + "VALUES (?, ?, ?, ?, 3, 1, 2, 1, 1, 1, CURDATE(), NOW(), NOW())",
+                    skillGapNumber, sgaId, parentTraineeId, parentSkillId
+                );
+                try {
+                  assertThatThrownBy(this::insertMinimalDomainFixture)
+                      .isInstanceOf(IllegalStateException.class)
+                      .hasMessageContaining("skill gap record already exists with test skill gap numbers");
+
+                  cleanUpDomainFixture();
+
+                  var rows = jdbc.queryForList(
+                      "SELECT skill_gap_number, trainee_id, skill_id FROM skill_gaps WHERE skill_gap_number = ?", skillGapNumber);
+                  assertThat(rows).hasSize(1);
+                  assertThat(rows.get(0).get("skill_gap_number")).isEqualTo(skillGapNumber);
+                } finally {
+                  jdbc.update("DELETE FROM skill_gaps WHERE skill_gap_number = ?", skillGapNumber);
+                }
+              } finally {
+                jdbc.update("DELETE FROM skill_gap_assessments WHERE assessment_number = ?", parentAssessNumber);
+              }
+            } finally {
+              jdbc.update("DELETE FROM skills WHERE skill_id = ?", parentSkillId);
+            }
+          } finally {
+            jdbc.update("DELETE FROM skill_categories WHERE skill_category_id = ?", parentCatId);
+          }
+        } finally {
+          jdbc.update("DELETE FROM trainees WHERE trainee_id = ?", parentTraineeId);
+        }
+      } finally {
+        jdbc.update("DELETE FROM districts WHERE district_id = ?", parentDistrictId);
+      }
+    } finally {
+      jdbc.update("DELETE FROM states WHERE state_id = ?", parentStateId);
+    }
   }
 
   private Object getServiceProxyForInterface(Class<?> iface) {

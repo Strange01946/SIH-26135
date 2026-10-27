@@ -28,6 +28,7 @@ import in.gov.sih.sih26135.repository.SkillLevelRepository;
 import in.gov.sih.sih26135.repository.SkillRepository;
 import in.gov.sih.sih26135.service.SkillGapService;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
@@ -207,6 +208,10 @@ public class SkillGapServiceImpl implements SkillGapService {
     gap.setResolvedOn(resolvedOn);
     gap.setNotes(request.getNotes() != null ? request.getNotes().trim() : null);
 
+    LocalDateTime now = LocalDateTime.now();
+    gap.setCreatedAt(now);
+    gap.setUpdatedAt(now);
+
     SkillGap saved = skillGapRepository.save(gap);
     return mapper.toResponse(saved);
   }
@@ -308,6 +313,7 @@ public class SkillGapServiceImpl implements SkillGapService {
       gap.setNotes(request.getNotes().trim());
     }
 
+    gap.setUpdatedAt(LocalDateTime.now());
     SkillGap updated = skillGapRepository.save(gap);
     return mapper.toResponse(updated);
   }

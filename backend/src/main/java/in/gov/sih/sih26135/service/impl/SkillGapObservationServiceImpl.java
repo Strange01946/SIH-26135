@@ -22,6 +22,7 @@ import in.gov.sih.sih26135.repository.SkillLevelRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
 import in.gov.sih.sih26135.service.SkillGapObservationService;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -156,6 +157,10 @@ public class SkillGapObservationServiceImpl implements SkillGapObservationServic
     observation.setObservedByUserId(request.getObservedByUserId());
     observation.setNotes(request.getNotes() != null ? request.getNotes().trim() : null);
 
+    LocalDateTime now = LocalDateTime.now();
+    observation.setCreatedAt(now);
+    observation.setUpdatedAt(now);
+
     SkillGapObservation saved = observationRepository.save(observation);
     return mapper.toResponse(saved);
   }
@@ -234,6 +239,7 @@ public class SkillGapObservationServiceImpl implements SkillGapObservationServic
       observation.setNotes(request.getNotes().trim());
     }
 
+    observation.setUpdatedAt(LocalDateTime.now());
     SkillGapObservation updated = observationRepository.save(observation);
     return mapper.toResponse(updated);
   }

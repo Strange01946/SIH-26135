@@ -46,6 +46,7 @@ import in.gov.sih.sih26135.repository.TrainingEnrollmentRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
 import in.gov.sih.sih26135.service.SkillGapAssessmentService;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -193,6 +194,10 @@ public class SkillGapAssessmentServiceImpl implements SkillGapAssessmentService 
         request.getEmploymentVerificationId()
     );
 
+    LocalDateTime now = LocalDateTime.now();
+    assessment.setCreatedAt(now);
+    assessment.setUpdatedAt(now);
+
     SkillGapAssessment saved = assessmentRepository.save(assessment);
     return mapper.toResponse(saved);
   }
@@ -256,6 +261,7 @@ public class SkillGapAssessmentServiceImpl implements SkillGapAssessmentService 
         request.getEmploymentVerificationId() != null ? request.getEmploymentVerificationId() : (assessment.getEmploymentVerification() != null ? assessment.getEmploymentVerification().getId() : null)
     );
 
+    assessment.setUpdatedAt(LocalDateTime.now());
     SkillGapAssessment updated = assessmentRepository.save(assessment);
     return mapper.toResponse(updated);
   }

@@ -6,9 +6,16 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.ElementKind;
 import jakarta.validation.Path;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
+import org.springframework.context.MessageSourceResolvable;
+import org.springframework.validation.ObjectError;
+import org.springframework.validation.method.ParameterValidationResult;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -165,6 +172,43 @@ public class GlobalExceptionHandler {
     return field + ": " + defaultMessage;
   }
 
+  private String sanitizeObjectError(ObjectError objectError) {
+    if (objectError instanceof FieldError fieldError) {
+      return sanitizeFieldError(fieldError);
+    }
+    if (objectError == null) {
+      return "object: is invalid";
+    }
+    String name = objectError.getObjectName() != null ? objectError.getObjectName() : "object";
+    String defaultMessage = objectError.getDefaultMessage();
+    if (!isSafeStandardValidationMessage(name, defaultMessage, null)) {
+      return name + ": " + getSafeValidationMessage(objectError.getCode());
+    }
+    return name + ": " + defaultMessage;
+  }
+
+  private String sanitizeParameterError(String paramName, MessageSourceResolvable resolvable, Object rejectedValue) {
+    if (resolvable == null) {
+      return paramName + ": is invalid";
+    }
+    String message = resolvable.getDefaultMessage();
+    String code = null;
+    if (resolvable.getCodes() != null && resolvable.getCodes().length > 0) {
+      for (String c : resolvable.getCodes()) {
+        int dot = c.lastIndexOf('.');
+        String simple = dot >= 0 ? c.substring(dot + 1) : c;
+        if (!simple.isBlank()) {
+          code = simple;
+          break;
+        }
+      }
+    }
+    if (!isSafeStandardValidationMessage(paramName, message, rejectedValue)) {
+      return paramName + ": " + getSafeValidationMessage(code);
+    }
+    return paramName + ": " + message;
+  }
+
   private String getSafeValidationMessage(String code) {
     if (code == null) {
       return "is invalid";
@@ -278,16 +322,80 @@ public class GlobalExceptionHandler {
 
   @ExceptionHandler(MethodArgumentNotValidException.class)
   public ResponseEntity<ErrorResponse> handleValidationException(MethodArgumentNotValidException ex, HttpServletRequest request) {
-    List<String> validationErrors = ex.getBindingResult().getFieldErrors().stream()
-        .map(this::sanitizeFieldError)
+    List<String> validationErrors = Stream.concat(
+            ex.getBindingResult().getFieldErrors().stream().map(this::sanitizeFieldError),
+            ex.getBindingResult().getGlobalErrors().stream().map(this::sanitizeObjectError)
+        )
+        .sorted()
         .toList();
     List<String> invalidFields = ex.getBindingResult().getFieldErrors().stream()
         .map(FieldError::getField)
         .distinct()
+        .sorted()
         .toList();
 
     log.warn("Validation error on {}: status={}, code={}, invalidFields={}",
         request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "VALIDATION_ERROR", invalidFields);
+    ErrorResponse errorResponse = new ErrorResponse(
+        HttpStatus.BAD_REQUEST.value(),
+        HttpStatus.BAD_REQUEST.getReasonPhrase(),
+        "VALIDATION_ERROR",
+        "Request validation failed",
+        request.getRequestURI(),
+        validationErrors
+    );
+    return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+  }
+
+  @ExceptionHandler(HandlerMethodValidationException.class)
+  public ResponseEntity<ErrorResponse> handleHandlerMethodValidationException(
+      HandlerMethodValidationException ex,
+      HttpServletRequest request) {
+
+    List<String> validationErrors = new ArrayList<>();
+    List<String> invalidParams = new ArrayList<>();
+
+    List<ParameterValidationResult> results = new ArrayList<>();
+    if (ex.getValueResults() != null) {
+      results.addAll(ex.getValueResults());
+    }
+    if (ex.getBeanResults() != null) {
+      results.addAll(ex.getBeanResults());
+    }
+    for (ParameterValidationResult result : results) {
+        if (result == null) {
+          continue;
+        }
+        String paramName = "parameter";
+        if (result.getMethodParameter() != null) {
+          if (result.getMethodParameter().getParameterName() == null) {
+            result.getMethodParameter().initParameterNameDiscovery(new org.springframework.core.StandardReflectionParameterNameDiscoverer());
+          }
+          if (result.getMethodParameter().getParameterName() != null) {
+            paramName = result.getMethodParameter().getParameterName();
+          }
+        }
+        invalidParams.add(paramName);
+
+        if (result.getResolvableErrors() != null) {
+          for (MessageSourceResolvable resolvable : result.getResolvableErrors()) {
+            if (resolvable instanceof FieldError fieldError) {
+              validationErrors.add(sanitizeFieldError(fieldError));
+            } else if (resolvable instanceof ObjectError objectError) {
+              validationErrors.add(sanitizeObjectError(objectError));
+            } else {
+              validationErrors.add(sanitizeParameterError(paramName, resolvable, result.getArgument()));
+            }
+          }
+        }
+      }
+
+    Collections.sort(validationErrors);
+    Collections.sort(invalidParams);
+
+    log.warn("Handler method validation error on {}: status={}, code={}, invalidParams={}",
+        request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "VALIDATION_ERROR", invalidParams);
+
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.BAD_REQUEST.value(),
         HttpStatus.BAD_REQUEST.getReasonPhrase(),
@@ -323,10 +431,12 @@ public class GlobalExceptionHandler {
     // Confirmed request / method parameter validation failure: map to HTTP 400 Bad Request
     List<String> validationErrors = ex.getConstraintViolations().stream()
         .map(this::sanitizeConstraintViolation)
+        .sorted()
         .toList();
     List<String> invalidProperties = ex.getConstraintViolations().stream()
         .map(v -> v.getPropertyPath() != null ? v.getPropertyPath().toString() : "unknown")
         .distinct()
+        .sorted()
         .toList();
 
     log.warn("Request constraint violation on {}: status={}, code={}, invalidProperties={}",

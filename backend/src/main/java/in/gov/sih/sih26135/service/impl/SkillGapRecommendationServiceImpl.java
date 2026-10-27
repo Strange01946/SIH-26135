@@ -20,6 +20,7 @@ import in.gov.sih.sih26135.repository.SkillRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
 import in.gov.sih.sih26135.service.SkillGapRecommendationService;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
@@ -155,6 +156,10 @@ public class SkillGapRecommendationServiceImpl implements SkillGapRecommendation
     recommendation.setRemarks(request.getRemarks() != null ? request.getRemarks().trim() : null);
     recommendation.setCreatedByUserId(request.getCreatedByUserId());
 
+    LocalDateTime now = LocalDateTime.now();
+    recommendation.setCreatedAt(now);
+    recommendation.setUpdatedAt(now);
+
     SkillGapRecommendation saved = recommendationRepository.save(recommendation);
     return mapper.toResponse(saved);
   }
@@ -251,6 +256,7 @@ public class SkillGapRecommendationServiceImpl implements SkillGapRecommendation
       recommendation.setRemarks(request.getRemarks().trim());
     }
 
+    recommendation.setUpdatedAt(LocalDateTime.now());
     SkillGapRecommendation updated = recommendationRepository.save(recommendation);
     return mapper.toResponse(updated);
   }
