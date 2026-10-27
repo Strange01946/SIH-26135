@@ -23,6 +23,8 @@ import in.gov.sih.sih26135.repository.UserRepository;
 import in.gov.sih.sih26135.service.EmploymentVerificationAttemptService;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -236,6 +238,15 @@ public class EmploymentVerificationAttemptServiceImpl implements EmploymentVerif
   }
 
   @Override
+  public Page<EmploymentVerificationAttemptResponse> getAttemptsByRequestId(Long requestId, Pageable pageable) {
+    if (requestId == null) {
+      throw new BadRequestException("Request ID is required");
+    }
+    return employmentVerificationAttemptRepository.findByEmploymentVerificationRequestId(requestId, pageable)
+        .map(employmentVerificationAttemptMapper::toResponse);
+  }
+
+  @Override
   public List<EmploymentVerificationAttemptResponse> getAttemptsByMethodId(Long methodId) {
     if (methodId == null) {
       throw new BadRequestException("Method ID is required");
@@ -246,6 +257,15 @@ public class EmploymentVerificationAttemptServiceImpl implements EmploymentVerif
   }
 
   @Override
+  public Page<EmploymentVerificationAttemptResponse> getAttemptsByMethodId(Long methodId, Pageable pageable) {
+    if (methodId == null) {
+      throw new BadRequestException("Method ID is required");
+    }
+    return employmentVerificationAttemptRepository.findByEmploymentVerificationMethodId(methodId, pageable)
+        .map(employmentVerificationAttemptMapper::toResponse);
+  }
+
+  @Override
   public List<EmploymentVerificationAttemptResponse> getAttemptsByStatusId(Long statusId) {
     if (statusId == null) {
       throw new BadRequestException("Status ID is required");
@@ -253,6 +273,15 @@ public class EmploymentVerificationAttemptServiceImpl implements EmploymentVerif
     return employmentVerificationAttemptRepository.findByEmploymentVerificationAttemptStatusId(statusId).stream()
         .map(employmentVerificationAttemptMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<EmploymentVerificationAttemptResponse> getAttemptsByStatusId(Long statusId, Pageable pageable) {
+    if (statusId == null) {
+      throw new BadRequestException("Status ID is required");
+    }
+    return employmentVerificationAttemptRepository.findByEmploymentVerificationAttemptStatusId(statusId, pageable)
+        .map(employmentVerificationAttemptMapper::toResponse);
   }
 
   @Override

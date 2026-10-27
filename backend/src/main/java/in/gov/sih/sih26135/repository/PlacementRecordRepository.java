@@ -3,6 +3,8 @@ package in.gov.sih.sih26135.repository;
 import in.gov.sih.sih26135.entity.PlacementRecord;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -46,4 +48,18 @@ public interface PlacementRecordRepository extends JpaRepository<PlacementRecord
   List<PlacementRecord> findByRecordVerificationStatusId(Long recordVerificationStatusId);
 
   List<PlacementRecord> findByDeletedAtIsNull();
+
+  Page<PlacementRecord> findByDeletedAtIsNull(Pageable pageable);
+
+  Page<PlacementRecord> findByTraineeIdAndDeletedAtIsNull(Long traineeId, Pageable pageable);
+
+  Page<PlacementRecord> findByEnrollmentIdAndDeletedAtIsNull(Long enrollmentId, Pageable pageable);
+
+  Page<PlacementRecord> findByEmployerIdAndDeletedAtIsNull(Long employerId, Pageable pageable);
+
+  Page<PlacementRecord> findByJobPostingIdAndDeletedAtIsNull(Long jobPostingId, Pageable pageable);
+
+  Page<PlacementRecord> findByCourseIdAndDeletedAtIsNull(Long courseId, Pageable pageable);
+
+  Page<PlacementRecord> findByPlacementStatusIdAndDeletedAtIsNull(Long placementStatusId, Pageable pageable);
 }

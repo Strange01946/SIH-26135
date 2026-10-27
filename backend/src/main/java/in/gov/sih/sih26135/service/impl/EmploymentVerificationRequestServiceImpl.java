@@ -32,6 +32,8 @@ import in.gov.sih.sih26135.repository.UserRepository;
 import in.gov.sih.sih26135.service.EmploymentVerificationRequestService;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -386,6 +388,15 @@ public class EmploymentVerificationRequestServiceImpl implements EmploymentVerif
   }
 
   @Override
+  public Page<EmploymentVerificationRequestResponse> getRequestsByEmploymentId(Long employmentId, Pageable pageable) {
+    if (employmentId == null) {
+      throw new BadRequestException("Employment ID is required");
+    }
+    return employmentVerificationRequestRepository.findByEmploymentRecordId(employmentId, pageable)
+        .map(employmentVerificationRequestMapper::toResponse);
+  }
+
+  @Override
   public List<EmploymentVerificationRequestResponse> getRequestsByTraineeId(Long traineeId) {
     if (traineeId == null) {
       throw new BadRequestException("Trainee ID is required");
@@ -393,6 +404,15 @@ public class EmploymentVerificationRequestServiceImpl implements EmploymentVerif
     return employmentVerificationRequestRepository.findByTraineeId(traineeId).stream()
         .map(employmentVerificationRequestMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<EmploymentVerificationRequestResponse> getRequestsByTraineeId(Long traineeId, Pageable pageable) {
+    if (traineeId == null) {
+      throw new BadRequestException("Trainee ID is required");
+    }
+    return employmentVerificationRequestRepository.findByTraineeId(traineeId, pageable)
+        .map(employmentVerificationRequestMapper::toResponse);
   }
 
   @Override
@@ -406,6 +426,15 @@ public class EmploymentVerificationRequestServiceImpl implements EmploymentVerif
   }
 
   @Override
+  public Page<EmploymentVerificationRequestResponse> getRequestsByStatusId(Long statusId, Pageable pageable) {
+    if (statusId == null) {
+      throw new BadRequestException("Status ID is required");
+    }
+    return employmentVerificationRequestRepository.findByEmploymentVerificationRequestStatusId(statusId, pageable)
+        .map(employmentVerificationRequestMapper::toResponse);
+  }
+
+  @Override
   public List<EmploymentVerificationRequestResponse> getRequestsByAssignedVerifierId(Long assignedVerifierUserId) {
     if (assignedVerifierUserId == null) {
       throw new BadRequestException("Assigned verifier user ID is required");
@@ -413,6 +442,15 @@ public class EmploymentVerificationRequestServiceImpl implements EmploymentVerif
     return employmentVerificationRequestRepository.findByAssignedVerifierUserId(assignedVerifierUserId).stream()
         .map(employmentVerificationRequestMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<EmploymentVerificationRequestResponse> getRequestsByAssignedVerifierId(Long assignedVerifierUserId, Pageable pageable) {
+    if (assignedVerifierUserId == null) {
+      throw new BadRequestException("Assigned verifier user ID is required");
+    }
+    return employmentVerificationRequestRepository.findByAssignedVerifierUserId(assignedVerifierUserId, pageable)
+        .map(employmentVerificationRequestMapper::toResponse);
   }
 
   @Override

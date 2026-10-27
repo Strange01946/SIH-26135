@@ -3,6 +3,8 @@ package in.gov.sih.sih26135.repository;
 import in.gov.sih.sih26135.entity.AuditLog;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -20,4 +22,16 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
   List<AuditLog> findByCorrelationId(String correlationId);
 
   List<AuditLog> findByOccurredAtBetween(LocalDateTime start, LocalDateTime end);
+
+  Page<AuditLog> findByActorUserId(Long actorUserId, Pageable pageable);
+
+  Page<AuditLog> findByAuditActionId(Long auditActionId, Pageable pageable);
+
+  Page<AuditLog> findByEntityType(String entityType, Pageable pageable);
+
+  Page<AuditLog> findByEntityTypeAndEntityId(String entityType, Long entityId, Pageable pageable);
+
+  Page<AuditLog> findByCorrelationId(String correlationId, Pageable pageable);
+
+  Page<AuditLog> findByOccurredAtBetween(LocalDateTime start, LocalDateTime end, Pageable pageable);
 }

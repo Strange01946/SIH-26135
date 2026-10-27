@@ -5,10 +5,15 @@ import in.gov.sih.sih26135.dto.request.UpdateSurveyResponseRequest;
 import in.gov.sih.sih26135.dto.response.SurveyResponseResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.response.ApiResponse;
+import in.gov.sih.sih26135.response.PagedResponse;
+import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.service.SurveyResponseService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Set;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -67,105 +72,171 @@ public class SurveyResponseController {
       @RequestParam("traineeId") Long traineeId,
       @RequestParam("attemptNumber") Integer attemptNumber,
       HttpServletRequest httpRequest) {
-    validateCompoundQueryParameters(httpRequest, Set.of("surveyId", "traineeId", "attemptNumber"));
+    validateAllowedQueryParameters(httpRequest, Set.of("surveyId", "traineeId", "attemptNumber"));
     SurveyResponseResponse response = surveyResponseService.getSurveyResponseByAttempt(surveyId, traineeId, attemptNumber);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
 
   /**
-   * Retrieves all survey responses associated with a specific survey.
+   * Retrieves paginated survey responses associated with a specific survey.
    *
    * @param surveyId survey identifier
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: createdAt)
+   * @param direction sort direction (ASC or DESC, default: DESC)
    * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with list of SurveyResponseResponse enveloped in ApiResponse
+   * @return 200 OK with paginated SurveyResponseResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"surveyId", "!traineeId", "!attemptNumber", "!followupTaskId", "!enrollmentId", "!statusId", "!versionId"})
-  public ResponseEntity<ApiResponse<List<SurveyResponseResponse>>> getBySurvey(
+  public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseResponse>>> getBySurvey(
       @RequestParam("surveyId") Long surveyId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
+      @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "surveyId");
-    List<SurveyResponseResponse> responses = surveyResponseService.getResponsesBySurvey(surveyId);
-    return ResponseEntity.ok(ApiResponse.ok(responses));
+    validateAllowedQueryParameters(httpRequest, Set.of("surveyId", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.SURVEY_RESPONSE_SORT_FIELDS, "createdAt", Sort.Direction.DESC
+    );
+    Page<SurveyResponseResponse> responses = surveyResponseService.getResponsesBySurvey(surveyId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(responses)));
   }
 
   /**
-   * Retrieves all survey responses submitted by a specific trainee.
+   * Retrieves paginated survey responses submitted by a specific trainee.
    *
    * @param traineeId trainee identifier
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: createdAt)
+   * @param direction sort direction (ASC or DESC, default: DESC)
    * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with list of SurveyResponseResponse enveloped in ApiResponse
+   * @return 200 OK with paginated SurveyResponseResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"traineeId", "!surveyId", "!attemptNumber", "!followupTaskId", "!enrollmentId", "!statusId", "!versionId"})
-  public ResponseEntity<ApiResponse<List<SurveyResponseResponse>>> getByTrainee(
+  public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseResponse>>> getByTrainee(
       @RequestParam("traineeId") Long traineeId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
+      @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "traineeId");
-    List<SurveyResponseResponse> responses = surveyResponseService.getResponsesByTrainee(traineeId);
-    return ResponseEntity.ok(ApiResponse.ok(responses));
+    validateAllowedQueryParameters(httpRequest, Set.of("traineeId", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.SURVEY_RESPONSE_SORT_FIELDS, "createdAt", Sort.Direction.DESC
+    );
+    Page<SurveyResponseResponse> responses = surveyResponseService.getResponsesByTrainee(traineeId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(responses)));
   }
 
   /**
-   * Retrieves all survey responses linked to a specific follow-up task.
+   * Retrieves paginated survey responses linked to a specific follow-up task.
    *
    * @param followupTaskId follow-up task identifier
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: createdAt)
+   * @param direction sort direction (ASC or DESC, default: DESC)
    * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with list of SurveyResponseResponse enveloped in ApiResponse
+   * @return 200 OK with paginated SurveyResponseResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"followupTaskId", "!surveyId", "!traineeId", "!attemptNumber", "!enrollmentId", "!statusId", "!versionId"})
-  public ResponseEntity<ApiResponse<List<SurveyResponseResponse>>> getByFollowupTask(
+  public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseResponse>>> getByFollowupTask(
       @RequestParam("followupTaskId") Long followupTaskId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
+      @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "followupTaskId");
-    List<SurveyResponseResponse> responses = surveyResponseService.getResponsesByFollowupTask(followupTaskId);
-    return ResponseEntity.ok(ApiResponse.ok(responses));
+    validateAllowedQueryParameters(httpRequest, Set.of("followupTaskId", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.SURVEY_RESPONSE_SORT_FIELDS, "createdAt", Sort.Direction.DESC
+    );
+    Page<SurveyResponseResponse> responses = surveyResponseService.getResponsesByFollowupTask(followupTaskId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(responses)));
   }
 
   /**
-   * Retrieves all survey responses linked to a specific training enrollment.
+   * Retrieves paginated survey responses linked to a specific training enrollment.
    *
    * @param enrollmentId training enrollment identifier
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: createdAt)
+   * @param direction sort direction (ASC or DESC, default: DESC)
    * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with list of SurveyResponseResponse enveloped in ApiResponse
+   * @return 200 OK with paginated SurveyResponseResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"enrollmentId", "!surveyId", "!traineeId", "!attemptNumber", "!followupTaskId", "!statusId", "!versionId"})
-  public ResponseEntity<ApiResponse<List<SurveyResponseResponse>>> getByEnrollment(
+  public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseResponse>>> getByEnrollment(
       @RequestParam("enrollmentId") Long enrollmentId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
+      @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "enrollmentId");
-    List<SurveyResponseResponse> responses = surveyResponseService.getResponsesByEnrollment(enrollmentId);
-    return ResponseEntity.ok(ApiResponse.ok(responses));
+    validateAllowedQueryParameters(httpRequest, Set.of("enrollmentId", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.SURVEY_RESPONSE_SORT_FIELDS, "createdAt", Sort.Direction.DESC
+    );
+    Page<SurveyResponseResponse> responses = surveyResponseService.getResponsesByEnrollment(enrollmentId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(responses)));
   }
 
   /**
-   * Retrieves all survey responses with a specific survey response status.
+   * Retrieves paginated survey responses with a specific survey response status.
    *
    * @param statusId survey response status identifier
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: createdAt)
+   * @param direction sort direction (ASC or DESC, default: DESC)
    * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with list of SurveyResponseResponse enveloped in ApiResponse
+   * @return 200 OK with paginated SurveyResponseResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"statusId", "!surveyId", "!traineeId", "!attemptNumber", "!followupTaskId", "!enrollmentId", "!versionId"})
-  public ResponseEntity<ApiResponse<List<SurveyResponseResponse>>> getByStatus(
+  public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseResponse>>> getByStatus(
       @RequestParam("statusId") Long statusId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
+      @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "statusId");
-    List<SurveyResponseResponse> responses = surveyResponseService.getResponsesByStatus(statusId);
-    return ResponseEntity.ok(ApiResponse.ok(responses));
+    validateAllowedQueryParameters(httpRequest, Set.of("statusId", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.SURVEY_RESPONSE_SORT_FIELDS, "createdAt", Sort.Direction.DESC
+    );
+    Page<SurveyResponseResponse> responses = surveyResponseService.getResponsesByStatus(statusId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(responses)));
   }
 
   /**
-   * Retrieves all survey responses linked to a specific survey template version.
+   * Retrieves paginated survey responses linked to a specific survey template version.
    *
    * @param versionId survey template version identifier
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: createdAt)
+   * @param direction sort direction (ASC or DESC, default: DESC)
    * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with list of SurveyResponseResponse enveloped in ApiResponse
+   * @return 200 OK with paginated SurveyResponseResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"versionId", "!surveyId", "!traineeId", "!attemptNumber", "!followupTaskId", "!enrollmentId", "!statusId"})
-  public ResponseEntity<ApiResponse<List<SurveyResponseResponse>>> getByTemplateVersion(
+  public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseResponse>>> getByTemplateVersion(
       @RequestParam("versionId") Long versionId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
+      @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "versionId");
-    List<SurveyResponseResponse> responses = surveyResponseService.getResponsesByTemplateVersion(versionId);
-    return ResponseEntity.ok(ApiResponse.ok(responses));
+    validateAllowedQueryParameters(httpRequest, Set.of("versionId", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.SURVEY_RESPONSE_SORT_FIELDS, "createdAt", Sort.Direction.DESC
+    );
+    Page<SurveyResponseResponse> responses = surveyResponseService.getResponsesByTemplateVersion(versionId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(responses)));
   }
 
   /**
@@ -211,18 +282,7 @@ public class SurveyResponseController {
     return ResponseEntity.ok(ApiResponse.success("Survey response deleted successfully"));
   }
 
-  private void validateOnlyQueryParameter(HttpServletRequest request, String allowedParam) {
-    for (String paramName : request.getParameterMap().keySet()) {
-      if (!paramName.equals(allowedParam)) {
-        throw new BadRequestException(
-            "Unsupported query parameter: " + paramName,
-            "UNSUPPORTED_PARAMETER"
-        );
-      }
-    }
-  }
-
-  private void validateCompoundQueryParameters(HttpServletRequest request, Set<String> allowedParams) {
+  private void validateAllowedQueryParameters(HttpServletRequest request, Set<String> allowedParams) {
     for (String paramName : request.getParameterMap().keySet()) {
       if (!allowedParams.contains(paramName)) {
         throw new BadRequestException(

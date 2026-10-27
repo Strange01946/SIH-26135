@@ -4,6 +4,8 @@ import in.gov.sih.sih26135.entity.FollowupTask;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -33,4 +35,24 @@ public interface FollowupTaskRepository extends JpaRepository<FollowupTask, Long
   List<FollowupTask> findByAssignedUserId(Long assignedUserId);
 
   List<FollowupTask> findByScheduledDate(LocalDate scheduledDate);
+
+  Page<FollowupTask> findByFollowupCampaignId(Long campaignId, Pageable pageable);
+
+  Page<FollowupTask> findByTraineeId(Long traineeId, Pageable pageable);
+
+  Page<FollowupTask> findByEnrollmentId(Long enrollmentId, Pageable pageable);
+
+  Page<FollowupTask> findByPlacementRecordId(Long placementId, Pageable pageable);
+
+  Page<FollowupTask> findByEmploymentRecordId(Long employmentId, Pageable pageable);
+
+  Page<FollowupTask> findBySurveyId(Long surveyId, Pageable pageable);
+
+  Page<FollowupTask> findByFollowupStatusId(Long statusId, Pageable pageable);
+
+  Page<FollowupTask> findByFollowupOutcomeId(Long outcomeId, Pageable pageable);
+
+  Page<FollowupTask> findByAssignedUserId(Long assignedUserId, Pageable pageable);
+
+  Page<FollowupTask> findByScheduledDate(LocalDate scheduledDate, Pageable pageable);
 }

@@ -5,9 +5,15 @@ import in.gov.sih.sih26135.dto.request.UpdateEmploymentVerificationAttemptReques
 import in.gov.sih.sih26135.dto.response.EmploymentVerificationAttemptResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.response.ApiResponse;
+import in.gov.sih.sih26135.response.PagedResponse;
+import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.service.EmploymentVerificationAttemptService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
+import java.util.Set;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -54,54 +60,87 @@ public class EmploymentVerificationAttemptController {
   }
 
   /**
-   * Retrieves all attempts linked to a specific employment verification request.
+   * Retrieves paginated attempts linked to a specific employment verification request.
    *
    * @param requestId verification request identifier
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: createdAt)
+   * @param direction sort direction (ASC or DESC, default: DESC)
    * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with list of EmploymentVerificationAttemptResponse enveloped in ApiResponse
+   * @return 200 OK with paginated EmploymentVerificationAttemptResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"requestId", "!methodId", "!statusId"})
-  public ResponseEntity<ApiResponse<List<EmploymentVerificationAttemptResponse>>> getByRequestId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationAttemptResponse>>> getByRequestId(
       @RequestParam("requestId") Long requestId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
+      @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "requestId");
-    List<EmploymentVerificationAttemptResponse> attempts =
-        employmentVerificationAttemptService.getAttemptsByRequestId(requestId);
-    return ResponseEntity.ok(ApiResponse.ok(attempts));
+    validateAllowedQueryParameters(httpRequest, Set.of("requestId", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.EMPLOYMENT_VERIFICATION_ATTEMPT_SORT_FIELDS, "createdAt", Sort.Direction.DESC
+    );
+    Page<EmploymentVerificationAttemptResponse> attempts =
+        employmentVerificationAttemptService.getAttemptsByRequestId(requestId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(attempts)));
   }
 
   /**
-   * Retrieves all verification attempts using a specific verification method.
+   * Retrieves paginated verification attempts using a specific verification method.
    *
    * @param methodId verification method reference identifier
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: createdAt)
+   * @param direction sort direction (ASC or DESC, default: DESC)
    * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with list of EmploymentVerificationAttemptResponse enveloped in ApiResponse
+   * @return 200 OK with paginated EmploymentVerificationAttemptResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"methodId", "!requestId", "!statusId"})
-  public ResponseEntity<ApiResponse<List<EmploymentVerificationAttemptResponse>>> getByMethodId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationAttemptResponse>>> getByMethodId(
       @RequestParam("methodId") Long methodId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
+      @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "methodId");
-    List<EmploymentVerificationAttemptResponse> attempts =
-        employmentVerificationAttemptService.getAttemptsByMethodId(methodId);
-    return ResponseEntity.ok(ApiResponse.ok(attempts));
+    validateAllowedQueryParameters(httpRequest, Set.of("methodId", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.EMPLOYMENT_VERIFICATION_ATTEMPT_SORT_FIELDS, "createdAt", Sort.Direction.DESC
+    );
+    Page<EmploymentVerificationAttemptResponse> attempts =
+        employmentVerificationAttemptService.getAttemptsByMethodId(methodId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(attempts)));
   }
 
   /**
-   * Retrieves all verification attempts with a specific attempt status.
+   * Retrieves paginated verification attempts with a specific attempt status.
    *
    * @param statusId verification attempt status reference identifier
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: createdAt)
+   * @param direction sort direction (ASC or DESC, default: DESC)
    * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with list of EmploymentVerificationAttemptResponse enveloped in ApiResponse
+   * @return 200 OK with paginated EmploymentVerificationAttemptResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"statusId", "!requestId", "!methodId"})
-  public ResponseEntity<ApiResponse<List<EmploymentVerificationAttemptResponse>>> getByStatusId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationAttemptResponse>>> getByStatusId(
       @RequestParam("statusId") Long statusId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
+      @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "statusId");
-    List<EmploymentVerificationAttemptResponse> attempts =
-        employmentVerificationAttemptService.getAttemptsByStatusId(statusId);
-    return ResponseEntity.ok(ApiResponse.ok(attempts));
+    validateAllowedQueryParameters(httpRequest, Set.of("statusId", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.EMPLOYMENT_VERIFICATION_ATTEMPT_SORT_FIELDS, "createdAt", Sort.Direction.DESC
+    );
+    Page<EmploymentVerificationAttemptResponse> attempts =
+        employmentVerificationAttemptService.getAttemptsByStatusId(statusId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(attempts)));
   }
 
   /**
@@ -154,9 +193,9 @@ public class EmploymentVerificationAttemptController {
     return ResponseEntity.ok(ApiResponse.success("Employment verification attempt deleted successfully"));
   }
 
-  private void validateOnlyQueryParameter(HttpServletRequest request, String allowedParam) {
+  private void validateAllowedQueryParameters(HttpServletRequest request, Set<String> allowedParams) {
     for (String paramName : request.getParameterMap().keySet()) {
-      if (!paramName.equals(allowedParam)) {
+      if (!allowedParams.contains(paramName)) {
         throw new BadRequestException(
             "Unsupported query parameter: " + paramName,
             "UNSUPPORTED_PARAMETER"

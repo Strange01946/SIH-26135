@@ -20,6 +20,8 @@ import in.gov.sih.sih26135.service.SurveyResponseService;
 import in.gov.sih.sih26135.service.TraineeConsentService;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -222,6 +224,15 @@ public class SurveyResponseServiceImpl implements SurveyResponseService {
   }
 
   @Override
+  public Page<SurveyResponseResponse> getResponsesBySurvey(Long surveyId, Pageable pageable) {
+    if (surveyId == null) {
+      throw new BadRequestException("Survey ID is required");
+    }
+    return surveyResponseRepository.findBySurveyId(surveyId, pageable)
+        .map(surveyResponseMapper::toResponse);
+  }
+
+  @Override
   public List<SurveyResponseResponse> getResponsesByTrainee(Long traineeId) {
     if (traineeId == null) {
       throw new BadRequestException("Trainee ID is required");
@@ -229,6 +240,15 @@ public class SurveyResponseServiceImpl implements SurveyResponseService {
     return surveyResponseRepository.findByTraineeId(traineeId).stream()
         .map(surveyResponseMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<SurveyResponseResponse> getResponsesByTrainee(Long traineeId, Pageable pageable) {
+    if (traineeId == null) {
+      throw new BadRequestException("Trainee ID is required");
+    }
+    return surveyResponseRepository.findByTraineeId(traineeId, pageable)
+        .map(surveyResponseMapper::toResponse);
   }
 
   @Override
@@ -242,6 +262,15 @@ public class SurveyResponseServiceImpl implements SurveyResponseService {
   }
 
   @Override
+  public Page<SurveyResponseResponse> getResponsesByFollowupTask(Long followupTaskId, Pageable pageable) {
+    if (followupTaskId == null) {
+      throw new BadRequestException("Followup task ID is required");
+    }
+    return surveyResponseRepository.findByFollowupTaskId(followupTaskId, pageable)
+        .map(surveyResponseMapper::toResponse);
+  }
+
+  @Override
   public List<SurveyResponseResponse> getResponsesByEnrollment(Long enrollmentId) {
     if (enrollmentId == null) {
       throw new BadRequestException("Enrollment ID is required");
@@ -249,6 +278,15 @@ public class SurveyResponseServiceImpl implements SurveyResponseService {
     return surveyResponseRepository.findByEnrollmentId(enrollmentId).stream()
         .map(surveyResponseMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<SurveyResponseResponse> getResponsesByEnrollment(Long enrollmentId, Pageable pageable) {
+    if (enrollmentId == null) {
+      throw new BadRequestException("Enrollment ID is required");
+    }
+    return surveyResponseRepository.findByEnrollmentId(enrollmentId, pageable)
+        .map(surveyResponseMapper::toResponse);
   }
 
   @Override
@@ -262,6 +300,15 @@ public class SurveyResponseServiceImpl implements SurveyResponseService {
   }
 
   @Override
+  public Page<SurveyResponseResponse> getResponsesByStatus(Long statusId, Pageable pageable) {
+    if (statusId == null) {
+      throw new BadRequestException("Survey response status ID is required");
+    }
+    return surveyResponseRepository.findBySurveyResponseStatusId(statusId, pageable)
+        .map(surveyResponseMapper::toResponse);
+  }
+
+  @Override
   public List<SurveyResponseResponse> getResponsesByTemplateVersion(Long versionId) {
     if (versionId == null) {
       throw new BadRequestException("Template version ID is required");
@@ -269,6 +316,15 @@ public class SurveyResponseServiceImpl implements SurveyResponseService {
     return surveyResponseRepository.findBySurveyTemplateVersionId(versionId).stream()
         .map(surveyResponseMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<SurveyResponseResponse> getResponsesByTemplateVersion(Long versionId, Pageable pageable) {
+    if (versionId == null) {
+      throw new BadRequestException("Template version ID is required");
+    }
+    return surveyResponseRepository.findBySurveyTemplateVersionId(versionId, pageable)
+        .map(surveyResponseMapper::toResponse);
   }
 
   @Override

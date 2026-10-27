@@ -4,6 +4,8 @@ import in.gov.sih.sih26135.dto.request.CreateEmploymentVerificationAttemptReques
 import in.gov.sih.sih26135.dto.request.UpdateEmploymentVerificationAttemptRequest;
 import in.gov.sih.sih26135.dto.response.EmploymentVerificationAttemptResponse;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 public interface EmploymentVerificationAttemptService {
 
@@ -15,9 +17,15 @@ public interface EmploymentVerificationAttemptService {
 
   List<EmploymentVerificationAttemptResponse> getAttemptsByRequestId(Long requestId);
 
+  Page<EmploymentVerificationAttemptResponse> getAttemptsByRequestId(Long requestId, Pageable pageable);
+
   List<EmploymentVerificationAttemptResponse> getAttemptsByMethodId(Long methodId);
 
+  Page<EmploymentVerificationAttemptResponse> getAttemptsByMethodId(Long methodId, Pageable pageable);
+
   List<EmploymentVerificationAttemptResponse> getAttemptsByStatusId(Long statusId);
+
+  Page<EmploymentVerificationAttemptResponse> getAttemptsByStatusId(Long statusId, Pageable pageable);
 
   void deleteVerificationAttempt(Long id);
 }

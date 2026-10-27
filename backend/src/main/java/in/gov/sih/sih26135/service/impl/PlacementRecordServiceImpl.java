@@ -44,6 +44,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -141,6 +143,14 @@ public class PlacementRecordServiceImpl implements PlacementRecordService {
   }
 
   @Override
+  public Page<PlacementRecordResponse> getAllPlacementRecords(boolean includeDeleted, Pageable pageable) {
+    Page<PlacementRecord> page = includeDeleted
+        ? placementRecordRepository.findAll(pageable)
+        : placementRecordRepository.findByDeletedAtIsNull(pageable);
+    return page.map(placementRecordMapper::toResponse);
+  }
+
+  @Override
   public List<PlacementRecordResponse> getPlacementRecordsByTrainee(Long traineeId) {
     if (traineeId == null) {
       throw new BadRequestException("Trainee ID is required");
@@ -149,6 +159,15 @@ public class PlacementRecordServiceImpl implements PlacementRecordService {
         .filter(r -> r.getDeletedAt() == null)
         .map(placementRecordMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<PlacementRecordResponse> getPlacementRecordsByTrainee(Long traineeId, Pageable pageable) {
+    if (traineeId == null) {
+      throw new BadRequestException("Trainee ID is required");
+    }
+    return placementRecordRepository.findByTraineeIdAndDeletedAtIsNull(traineeId, pageable)
+        .map(placementRecordMapper::toResponse);
   }
 
   @Override
@@ -163,6 +182,15 @@ public class PlacementRecordServiceImpl implements PlacementRecordService {
   }
 
   @Override
+  public Page<PlacementRecordResponse> getPlacementRecordsByEnrollment(Long enrollmentId, Pageable pageable) {
+    if (enrollmentId == null) {
+      throw new BadRequestException("Enrollment ID is required");
+    }
+    return placementRecordRepository.findByEnrollmentIdAndDeletedAtIsNull(enrollmentId, pageable)
+        .map(placementRecordMapper::toResponse);
+  }
+
+  @Override
   public List<PlacementRecordResponse> getPlacementRecordsByEmployer(Long employerId) {
     if (employerId == null) {
       throw new BadRequestException("Employer ID is required");
@@ -171,6 +199,15 @@ public class PlacementRecordServiceImpl implements PlacementRecordService {
         .filter(r -> r.getDeletedAt() == null)
         .map(placementRecordMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<PlacementRecordResponse> getPlacementRecordsByEmployer(Long employerId, Pageable pageable) {
+    if (employerId == null) {
+      throw new BadRequestException("Employer ID is required");
+    }
+    return placementRecordRepository.findByEmployerIdAndDeletedAtIsNull(employerId, pageable)
+        .map(placementRecordMapper::toResponse);
   }
 
   @Override
@@ -185,6 +222,15 @@ public class PlacementRecordServiceImpl implements PlacementRecordService {
   }
 
   @Override
+  public Page<PlacementRecordResponse> getPlacementRecordsByJobPosting(Long jobPostingId, Pageable pageable) {
+    if (jobPostingId == null) {
+      throw new BadRequestException("Job posting ID is required");
+    }
+    return placementRecordRepository.findByJobPostingIdAndDeletedAtIsNull(jobPostingId, pageable)
+        .map(placementRecordMapper::toResponse);
+  }
+
+  @Override
   public List<PlacementRecordResponse> getPlacementRecordsByCourse(Long courseId) {
     if (courseId == null) {
       throw new BadRequestException("Course ID is required");
@@ -195,6 +241,15 @@ public class PlacementRecordServiceImpl implements PlacementRecordService {
   }
 
   @Override
+  public Page<PlacementRecordResponse> getPlacementRecordsByCourse(Long courseId, Pageable pageable) {
+    if (courseId == null) {
+      throw new BadRequestException("Course ID is required");
+    }
+    return placementRecordRepository.findByCourseIdAndDeletedAtIsNull(courseId, pageable)
+        .map(placementRecordMapper::toResponse);
+  }
+
+  @Override
   public List<PlacementRecordResponse> getPlacementRecordsByStatus(Long placementStatusId) {
     if (placementStatusId == null) {
       throw new BadRequestException("Placement status ID is required");
@@ -202,6 +257,15 @@ public class PlacementRecordServiceImpl implements PlacementRecordService {
     return placementRecordRepository.findByPlacementStatusId(placementStatusId).stream()
         .map(placementRecordMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<PlacementRecordResponse> getPlacementRecordsByStatus(Long placementStatusId, Pageable pageable) {
+    if (placementStatusId == null) {
+      throw new BadRequestException("Placement status ID is required");
+    }
+    return placementRecordRepository.findByPlacementStatusIdAndDeletedAtIsNull(placementStatusId, pageable)
+        .map(placementRecordMapper::toResponse);
   }
 
   @Override

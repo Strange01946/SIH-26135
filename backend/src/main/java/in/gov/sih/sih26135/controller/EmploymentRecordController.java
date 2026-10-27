@@ -7,7 +7,12 @@ import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.service.EmploymentRecordService;
 import jakarta.servlet.http.HttpServletRequest;
+import in.gov.sih.sih26135.response.PagedResponse;
+import in.gov.sih.sih26135.response.PaginationUtils;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -63,7 +68,7 @@ public class EmploymentRecordController {
   public ResponseEntity<ApiResponse<EmploymentRecordResponse>> getByEmploymentNumber(
       @RequestParam("employmentNumber") String employmentNumber,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "employmentNumber");
+    validateAllowedQueryParameters(httpRequest, Set.of("employmentNumber"));
     EmploymentRecordResponse response = employmentRecordService.getEmploymentRecordByNumber(employmentNumber);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -79,110 +84,174 @@ public class EmploymentRecordController {
   public ResponseEntity<ApiResponse<EmploymentRecordResponse>> getByPlacementId(
       @RequestParam("placementId") Long placementId,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "placementId");
+    validateAllowedQueryParameters(httpRequest, Set.of("placementId"));
     EmploymentRecordResponse response = employmentRecordService.getEmploymentRecordByPlacementId(placementId);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
 
   /**
-   * Retrieves all employment records for a specific trainee.
+   * Retrieves paginated employment records for a specific trainee.
    *
    * @param traineeId trainee identifier
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: createdAt)
+   * @param direction sort direction (ASC or DESC, default: DESC)
    * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with list of EmploymentRecordResponse enveloped in ApiResponse
+   * @return 200 OK with paginated EmploymentRecordResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"traineeId", "!isCurrent", "!employmentNumber", "!placementId", "!employerId", "!statusId", "!includeDeleted"})
-  public ResponseEntity<ApiResponse<List<EmploymentRecordResponse>>> getByTrainee(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentRecordResponse>>> getByTrainee(
       @RequestParam("traineeId") Long traineeId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
+      @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "traineeId");
-    List<EmploymentRecordResponse> records = employmentRecordService.getEmploymentRecordsByTrainee(traineeId);
-    return ResponseEntity.ok(ApiResponse.ok(records));
+    validateAllowedQueryParameters(httpRequest, Set.of("traineeId", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.EMPLOYMENT_RECORD_SORT_FIELDS, "createdAt", Sort.Direction.DESC
+    );
+    Page<EmploymentRecordResponse> records = employmentRecordService.getEmploymentRecordsByTrainee(traineeId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(records)));
   }
 
   /**
-   * Retrieves current active employment records for a specific trainee.
+   * Retrieves paginated current active employment records for a specific trainee.
    *
    * @param traineeId trainee identifier
    * @param isCurrent boolean indicating current status filter (must be true)
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: createdAt)
+   * @param direction sort direction (ASC or DESC, default: DESC)
    * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with list of EmploymentRecordResponse enveloped in ApiResponse
+   * @return 200 OK with paginated EmploymentRecordResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"traineeId", "isCurrent", "!employmentNumber", "!placementId", "!employerId", "!statusId", "!includeDeleted"})
-  public ResponseEntity<ApiResponse<List<EmploymentRecordResponse>>> getCurrentByTrainee(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentRecordResponse>>> getCurrentByTrainee(
       @RequestParam("traineeId") Long traineeId,
       @RequestParam("isCurrent") boolean isCurrent,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
+      @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
-    validateCompoundQueryParameters(httpRequest, Set.of("traineeId", "isCurrent"));
+    validateAllowedQueryParameters(httpRequest, Set.of("traineeId", "isCurrent", "page", "size", "sort", "direction"));
     if (!isCurrent) {
       throw new BadRequestException("Only isCurrent=true is supported for current employment records filter", "INVALID_FILTER_PARAMETER");
     }
-    List<EmploymentRecordResponse> records = employmentRecordService.getCurrentEmploymentRecordsByTrainee(traineeId);
-    return ResponseEntity.ok(ApiResponse.ok(records));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.EMPLOYMENT_RECORD_SORT_FIELDS, "createdAt", Sort.Direction.DESC
+    );
+    Page<EmploymentRecordResponse> records = employmentRecordService.getCurrentEmploymentRecordsByTrainee(traineeId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(records)));
   }
 
   /**
-   * Retrieves all employment records with a specific employer.
+   * Retrieves paginated employment records with a specific employer.
    *
    * @param employerId employer identifier
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: createdAt)
+   * @param direction sort direction (ASC or DESC, default: DESC)
    * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with list of EmploymentRecordResponse enveloped in ApiResponse
+   * @return 200 OK with paginated EmploymentRecordResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"employerId", "!employmentNumber", "!placementId", "!traineeId", "!statusId", "!includeDeleted", "!isCurrent"})
-  public ResponseEntity<ApiResponse<List<EmploymentRecordResponse>>> getByEmployer(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentRecordResponse>>> getByEmployer(
       @RequestParam("employerId") Long employerId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
+      @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "employerId");
-    List<EmploymentRecordResponse> records = employmentRecordService.getEmploymentRecordsByEmployer(employerId);
-    return ResponseEntity.ok(ApiResponse.ok(records));
+    validateAllowedQueryParameters(httpRequest, Set.of("employerId", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.EMPLOYMENT_RECORD_SORT_FIELDS, "createdAt", Sort.Direction.DESC
+    );
+    Page<EmploymentRecordResponse> records = employmentRecordService.getEmploymentRecordsByEmployer(employerId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(records)));
   }
 
   /**
-   * Retrieves all employment records with a specific employment spell status.
+   * Retrieves paginated employment records with a specific employment spell status.
    *
    * @param statusId employment spell status identifier
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: createdAt)
+   * @param direction sort direction (ASC or DESC, default: DESC)
    * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with list of EmploymentRecordResponse enveloped in ApiResponse
+   * @return 200 OK with paginated EmploymentRecordResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"statusId", "!employmentNumber", "!placementId", "!traineeId", "!employerId", "!includeDeleted", "!isCurrent"})
-  public ResponseEntity<ApiResponse<List<EmploymentRecordResponse>>> getByStatus(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentRecordResponse>>> getByStatus(
       @RequestParam("statusId") Long statusId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
+      @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "statusId");
-    List<EmploymentRecordResponse> records = employmentRecordService.getEmploymentRecordsByStatus(statusId);
-    return ResponseEntity.ok(ApiResponse.ok(records));
+    validateAllowedQueryParameters(httpRequest, Set.of("statusId", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.EMPLOYMENT_RECORD_SORT_FIELDS, "createdAt", Sort.Direction.DESC
+    );
+    Page<EmploymentRecordResponse> records = employmentRecordService.getEmploymentRecordsByStatus(statusId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(records)));
   }
 
   /**
-   * Retrieves all employment records with soft-delete inclusion specified.
+   * Retrieves paginated employment records with soft-delete inclusion specified.
    *
    * @param includeDeleted whether to include soft-deleted employment records
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: createdAt)
+   * @param direction sort direction (ASC or DESC, default: DESC)
    * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with list of EmploymentRecordResponse enveloped in ApiResponse
+   * @return 200 OK with paginated EmploymentRecordResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"includeDeleted", "!employmentNumber", "!placementId", "!traineeId", "!employerId", "!statusId", "!isCurrent"})
-  public ResponseEntity<ApiResponse<List<EmploymentRecordResponse>>> getByIncludeDeleted(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentRecordResponse>>> getByIncludeDeleted(
       @RequestParam("includeDeleted") boolean includeDeleted,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
+      @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "includeDeleted");
-    List<EmploymentRecordResponse> records = employmentRecordService.getAllEmploymentRecords(includeDeleted);
-    return ResponseEntity.ok(ApiResponse.ok(records));
+    validateAllowedQueryParameters(httpRequest, Set.of("includeDeleted", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.EMPLOYMENT_RECORD_SORT_FIELDS, "createdAt", Sort.Direction.DESC
+    );
+    Page<EmploymentRecordResponse> records = employmentRecordService.getAllEmploymentRecords(includeDeleted, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(records)));
   }
 
   /**
-   * Retrieves all active employment records.
+   * Retrieves all active employment records with pagination.
    *
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: createdAt)
+   * @param direction sort direction (ASC or DESC, default: DESC)
    * @param httpRequest HTTP servlet request to ensure unsupported query parameters are not silently accepted
-   * @return 200 OK with list of active EmploymentRecordResponse enveloped in ApiResponse
+   * @return 200 OK with paginated active EmploymentRecordResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"!employmentNumber", "!placementId", "!traineeId", "!employerId", "!statusId", "!includeDeleted", "!isCurrent"})
-  public ResponseEntity<ApiResponse<List<EmploymentRecordResponse>>> getAllEmploymentRecords(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentRecordResponse>>> getAllEmploymentRecords(
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
+      @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
-    if (!httpRequest.getParameterMap().isEmpty()) {
-      throw new BadRequestException("Unsupported query parameters: " + httpRequest.getParameterMap().keySet(), "UNSUPPORTED_PARAMETER");
-    }
-    List<EmploymentRecordResponse> records = employmentRecordService.getAllEmploymentRecords(false);
-    return ResponseEntity.ok(ApiResponse.ok(records));
+    validateAllowedQueryParameters(httpRequest, Set.of("page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.EMPLOYMENT_RECORD_SORT_FIELDS, "createdAt", Sort.Direction.DESC
+    );
+    Page<EmploymentRecordResponse> records = employmentRecordService.getAllEmploymentRecords(false, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(records)));
   }
 
   /**
@@ -228,15 +297,7 @@ public class EmploymentRecordController {
     return ResponseEntity.ok(ApiResponse.success("Employment record deleted successfully"));
   }
 
-  private void validateOnlyQueryParameter(HttpServletRequest request, String allowedParam) {
-    for (String paramName : request.getParameterMap().keySet()) {
-      if (!paramName.equals(allowedParam)) {
-        throw new BadRequestException("Unsupported query parameter: " + paramName, "UNSUPPORTED_PARAMETER");
-      }
-    }
-  }
-
-  private void validateCompoundQueryParameters(HttpServletRequest request, Set<String> allowedParams) {
+  private void validateAllowedQueryParameters(HttpServletRequest request, Set<String> allowedParams) {
     for (String paramName : request.getParameterMap().keySet()) {
       if (!allowedParams.contains(paramName)) {
         throw new BadRequestException("Unsupported query parameter: " + paramName, "UNSUPPORTED_PARAMETER");

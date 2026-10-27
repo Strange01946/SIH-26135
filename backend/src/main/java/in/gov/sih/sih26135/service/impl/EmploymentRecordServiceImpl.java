@@ -38,6 +38,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -133,6 +135,14 @@ public class EmploymentRecordServiceImpl implements EmploymentRecordService {
   }
 
   @Override
+  public Page<EmploymentRecordResponse> getAllEmploymentRecords(boolean includeDeleted, Pageable pageable) {
+    Page<EmploymentRecord> page = includeDeleted
+        ? employmentRecordRepository.findAll(pageable)
+        : employmentRecordRepository.findByDeletedAtIsNull(pageable);
+    return page.map(employmentRecordMapper::toResponse);
+  }
+
+  @Override
   public List<EmploymentRecordResponse> getEmploymentRecordsByTrainee(Long traineeId) {
     if (traineeId == null) {
       throw new BadRequestException("Trainee ID is required");
@@ -141,6 +151,15 @@ public class EmploymentRecordServiceImpl implements EmploymentRecordService {
         .filter(r -> r.getDeletedAt() == null)
         .map(employmentRecordMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<EmploymentRecordResponse> getEmploymentRecordsByTrainee(Long traineeId, Pageable pageable) {
+    if (traineeId == null) {
+      throw new BadRequestException("Trainee ID is required");
+    }
+    return employmentRecordRepository.findByTraineeIdAndDeletedAtIsNull(traineeId, pageable)
+        .map(employmentRecordMapper::toResponse);
   }
 
   @Override
@@ -155,6 +174,15 @@ public class EmploymentRecordServiceImpl implements EmploymentRecordService {
   }
 
   @Override
+  public Page<EmploymentRecordResponse> getEmploymentRecordsByEmployer(Long employerId, Pageable pageable) {
+    if (employerId == null) {
+      throw new BadRequestException("Employer ID is required");
+    }
+    return employmentRecordRepository.findByEmployerIdAndDeletedAtIsNull(employerId, pageable)
+        .map(employmentRecordMapper::toResponse);
+  }
+
+  @Override
   public List<EmploymentRecordResponse> getEmploymentRecordsByStatus(Long statusId) {
     if (statusId == null) {
       throw new BadRequestException("Employment spell status ID is required");
@@ -166,6 +194,15 @@ public class EmploymentRecordServiceImpl implements EmploymentRecordService {
   }
 
   @Override
+  public Page<EmploymentRecordResponse> getEmploymentRecordsByStatus(Long statusId, Pageable pageable) {
+    if (statusId == null) {
+      throw new BadRequestException("Employment spell status ID is required");
+    }
+    return employmentRecordRepository.findByEmploymentSpellStatusIdAndDeletedAtIsNull(statusId, pageable)
+        .map(employmentRecordMapper::toResponse);
+  }
+
+  @Override
   public List<EmploymentRecordResponse> getCurrentEmploymentRecordsByTrainee(Long traineeId) {
     if (traineeId == null) {
       throw new BadRequestException("Trainee ID is required");
@@ -174,6 +211,15 @@ public class EmploymentRecordServiceImpl implements EmploymentRecordService {
         .filter(r -> r.getDeletedAt() == null)
         .map(employmentRecordMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<EmploymentRecordResponse> getCurrentEmploymentRecordsByTrainee(Long traineeId, Pageable pageable) {
+    if (traineeId == null) {
+      throw new BadRequestException("Trainee ID is required");
+    }
+    return employmentRecordRepository.findByTraineeIdAndIsCurrentAndDeletedAtIsNull(traineeId, true, pageable)
+        .map(employmentRecordMapper::toResponse);
   }
 
   @Override

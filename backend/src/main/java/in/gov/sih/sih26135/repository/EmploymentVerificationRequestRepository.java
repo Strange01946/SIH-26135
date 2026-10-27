@@ -3,6 +3,8 @@ package in.gov.sih.sih26135.repository;
 import in.gov.sih.sih26135.entity.EmploymentVerificationRequest;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -35,4 +37,12 @@ public interface EmploymentVerificationRequestRepository extends
   List<EmploymentVerificationRequest> findByFollowupTaskId(Long followupTaskId);
 
   List<EmploymentVerificationRequest> findBySurveyResponseId(Long surveyResponseId);
+
+  Page<EmploymentVerificationRequest> findByEmploymentRecordId(Long employmentId, Pageable pageable);
+
+  Page<EmploymentVerificationRequest> findByTraineeId(Long traineeId, Pageable pageable);
+
+  Page<EmploymentVerificationRequest> findByEmploymentVerificationRequestStatusId(Long statusId, Pageable pageable);
+
+  Page<EmploymentVerificationRequest> findByAssignedVerifierUserId(Long assignedVerifierUserId, Pageable pageable);
 }

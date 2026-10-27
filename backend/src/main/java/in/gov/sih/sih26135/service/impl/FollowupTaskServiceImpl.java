@@ -28,6 +28,8 @@ import in.gov.sih.sih26135.service.FollowupTaskService;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -353,6 +355,15 @@ public class FollowupTaskServiceImpl implements FollowupTaskService {
   }
 
   @Override
+  public Page<FollowupTaskResponse> getFollowupTasksByCampaign(Long campaignId, Pageable pageable) {
+    if (campaignId == null) {
+      throw new BadRequestException("Campaign ID is required");
+    }
+    return followupTaskRepository.findByFollowupCampaignId(campaignId, pageable)
+        .map(followupTaskMapper::toResponse);
+  }
+
+  @Override
   public List<FollowupTaskResponse> getFollowupTasksByTrainee(Long traineeId) {
     if (traineeId == null) {
       throw new BadRequestException("Trainee ID is required");
@@ -360,6 +371,15 @@ public class FollowupTaskServiceImpl implements FollowupTaskService {
     return followupTaskRepository.findByTraineeId(traineeId).stream()
         .map(followupTaskMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<FollowupTaskResponse> getFollowupTasksByTrainee(Long traineeId, Pageable pageable) {
+    if (traineeId == null) {
+      throw new BadRequestException("Trainee ID is required");
+    }
+    return followupTaskRepository.findByTraineeId(traineeId, pageable)
+        .map(followupTaskMapper::toResponse);
   }
 
   @Override
@@ -373,6 +393,15 @@ public class FollowupTaskServiceImpl implements FollowupTaskService {
   }
 
   @Override
+  public Page<FollowupTaskResponse> getFollowupTasksByEnrollment(Long enrollmentId, Pageable pageable) {
+    if (enrollmentId == null) {
+      throw new BadRequestException("Enrollment ID is required");
+    }
+    return followupTaskRepository.findByEnrollmentId(enrollmentId, pageable)
+        .map(followupTaskMapper::toResponse);
+  }
+
+  @Override
   public List<FollowupTaskResponse> getFollowupTasksByPlacement(Long placementId) {
     if (placementId == null) {
       throw new BadRequestException("Placement ID is required");
@@ -380,6 +409,15 @@ public class FollowupTaskServiceImpl implements FollowupTaskService {
     return followupTaskRepository.findByPlacementRecordId(placementId).stream()
         .map(followupTaskMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<FollowupTaskResponse> getFollowupTasksByPlacement(Long placementId, Pageable pageable) {
+    if (placementId == null) {
+      throw new BadRequestException("Placement ID is required");
+    }
+    return followupTaskRepository.findByPlacementRecordId(placementId, pageable)
+        .map(followupTaskMapper::toResponse);
   }
 
   @Override
@@ -393,6 +431,15 @@ public class FollowupTaskServiceImpl implements FollowupTaskService {
   }
 
   @Override
+  public Page<FollowupTaskResponse> getFollowupTasksByEmployment(Long employmentId, Pageable pageable) {
+    if (employmentId == null) {
+      throw new BadRequestException("Employment ID is required");
+    }
+    return followupTaskRepository.findByEmploymentRecordId(employmentId, pageable)
+        .map(followupTaskMapper::toResponse);
+  }
+
+  @Override
   public List<FollowupTaskResponse> getFollowupTasksBySurvey(Long surveyId) {
     if (surveyId == null) {
       throw new BadRequestException("Survey ID is required");
@@ -400,6 +447,15 @@ public class FollowupTaskServiceImpl implements FollowupTaskService {
     return followupTaskRepository.findBySurveyId(surveyId).stream()
         .map(followupTaskMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<FollowupTaskResponse> getFollowupTasksBySurvey(Long surveyId, Pageable pageable) {
+    if (surveyId == null) {
+      throw new BadRequestException("Survey ID is required");
+    }
+    return followupTaskRepository.findBySurveyId(surveyId, pageable)
+        .map(followupTaskMapper::toResponse);
   }
 
   @Override
@@ -413,6 +469,15 @@ public class FollowupTaskServiceImpl implements FollowupTaskService {
   }
 
   @Override
+  public Page<FollowupTaskResponse> getFollowupTasksByStatus(Long statusId, Pageable pageable) {
+    if (statusId == null) {
+      throw new BadRequestException("Followup status ID is required");
+    }
+    return followupTaskRepository.findByFollowupStatusId(statusId, pageable)
+        .map(followupTaskMapper::toResponse);
+  }
+
+  @Override
   public List<FollowupTaskResponse> getFollowupTasksByOutcome(Long outcomeId) {
     if (outcomeId == null) {
       throw new BadRequestException("Followup outcome ID is required");
@@ -420,6 +485,15 @@ public class FollowupTaskServiceImpl implements FollowupTaskService {
     return followupTaskRepository.findByFollowupOutcomeId(outcomeId).stream()
         .map(followupTaskMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<FollowupTaskResponse> getFollowupTasksByOutcome(Long outcomeId, Pageable pageable) {
+    if (outcomeId == null) {
+      throw new BadRequestException("Followup outcome ID is required");
+    }
+    return followupTaskRepository.findByFollowupOutcomeId(outcomeId, pageable)
+        .map(followupTaskMapper::toResponse);
   }
 
   @Override
@@ -433,6 +507,15 @@ public class FollowupTaskServiceImpl implements FollowupTaskService {
   }
 
   @Override
+  public Page<FollowupTaskResponse> getFollowupTasksByAssignedUser(Long assignedUserId, Pageable pageable) {
+    if (assignedUserId == null) {
+      throw new BadRequestException("Assigned user ID is required");
+    }
+    return followupTaskRepository.findByAssignedUserId(assignedUserId, pageable)
+        .map(followupTaskMapper::toResponse);
+  }
+
+  @Override
   public List<FollowupTaskResponse> getFollowupTasksByScheduledDate(LocalDate scheduledDate) {
     if (scheduledDate == null) {
       throw new BadRequestException("Scheduled date is required");
@@ -440,6 +523,15 @@ public class FollowupTaskServiceImpl implements FollowupTaskService {
     return followupTaskRepository.findByScheduledDate(scheduledDate).stream()
         .map(followupTaskMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<FollowupTaskResponse> getFollowupTasksByScheduledDate(LocalDate scheduledDate, Pageable pageable) {
+    if (scheduledDate == null) {
+      throw new BadRequestException("Scheduled date is required");
+    }
+    return followupTaskRepository.findByScheduledDate(scheduledDate, pageable)
+        .map(followupTaskMapper::toResponse);
   }
 
   @Override

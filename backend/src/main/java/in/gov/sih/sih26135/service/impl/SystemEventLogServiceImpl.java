@@ -17,6 +17,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -199,5 +201,89 @@ public class SystemEventLogServiceImpl implements SystemEventLogService {
     return systemEventLogRepository.findByOccurredAtBetween(start, end).stream()
         .map(mapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<SystemEventLogResponse> getAllEvents(Pageable pageable) {
+    return systemEventLogRepository.findAll(pageable)
+        .map(mapper::toResponse);
+  }
+
+  @Override
+  public Page<SystemEventLogResponse> getEventsByCategoryId(Long categoryId, Pageable pageable) {
+    if (categoryId == null) {
+      throw new BadRequestException("Category ID is required");
+    }
+    return systemEventLogRepository.findBySystemEventCategoryId(categoryId, pageable)
+        .map(mapper::toResponse);
+  }
+
+  @Override
+  public Page<SystemEventLogResponse> getEventsBySeverityId(Long severityId, Pageable pageable) {
+    if (severityId == null) {
+      throw new BadRequestException("Severity ID is required");
+    }
+    return systemEventLogRepository.findBySystemEventSeverityId(severityId, pageable)
+        .map(mapper::toResponse);
+  }
+
+  @Override
+  public Page<SystemEventLogResponse> getEventsByEventCode(String eventCode, Pageable pageable) {
+    if (eventCode == null || eventCode.isBlank()) {
+      throw new BadRequestException("Event code is required");
+    }
+    return systemEventLogRepository.findByEventCode(eventCode.trim(), pageable)
+        .map(mapper::toResponse);
+  }
+
+  @Override
+  public Page<SystemEventLogResponse> getEventsByActorUserId(Long actorUserId, Pageable pageable) {
+    if (actorUserId == null) {
+      throw new BadRequestException("Actor user ID is required");
+    }
+    return systemEventLogRepository.findByActorUserId(actorUserId, pageable)
+        .map(mapper::toResponse);
+  }
+
+  @Override
+  public Page<SystemEventLogResponse> getEventsByEntityType(String entityType, Pageable pageable) {
+    if (entityType == null || entityType.isBlank()) {
+      throw new BadRequestException("Entity type is required");
+    }
+    return systemEventLogRepository.findByEntityType(entityType.trim(), pageable)
+        .map(mapper::toResponse);
+  }
+
+  @Override
+  public Page<SystemEventLogResponse> getEventsByEntity(String entityType, Long entityId, Pageable pageable) {
+    if (entityType == null || entityType.isBlank()) {
+      throw new BadRequestException("Entity type is required");
+    }
+    if (entityId == null) {
+      throw new BadRequestException("Entity ID is required");
+    }
+    return systemEventLogRepository.findByEntityTypeAndEntityId(entityType.trim(), entityId, pageable)
+        .map(mapper::toResponse);
+  }
+
+  @Override
+  public Page<SystemEventLogResponse> getEventsBySourceComponent(String sourceComponent, Pageable pageable) {
+    if (sourceComponent == null || sourceComponent.isBlank()) {
+      throw new BadRequestException("Source component is required");
+    }
+    return systemEventLogRepository.findBySourceComponent(sourceComponent.trim(), pageable)
+        .map(mapper::toResponse);
+  }
+
+  @Override
+  public Page<SystemEventLogResponse> getEventsByOccurredAtBetween(LocalDateTime start, LocalDateTime end, Pageable pageable) {
+    if (start == null || end == null) {
+      throw new BadRequestException("Start and end dates are required");
+    }
+    if (start.isAfter(end)) {
+      throw new BadRequestException("Start date cannot be after end date");
+    }
+    return systemEventLogRepository.findByOccurredAtBetween(start, end, pageable)
+        .map(mapper::toResponse);
   }
 }

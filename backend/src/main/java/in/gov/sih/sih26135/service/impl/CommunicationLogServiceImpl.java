@@ -30,6 +30,8 @@ import in.gov.sih.sih26135.service.CommunicationLogService;
 import in.gov.sih.sih26135.service.TraineeConsentService;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -355,6 +357,84 @@ public class CommunicationLogServiceImpl implements CommunicationLogService {
     return communicationLogRepository.findByCommunicationDirectionId(directionId).stream()
         .map(communicationLogMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<CommunicationLogResponse> getAllCommunicationLogs(Pageable pageable) {
+    return communicationLogRepository.findAll(pageable)
+        .map(communicationLogMapper::toResponse);
+  }
+
+  @Override
+  public Page<CommunicationLogResponse> getCommunicationLogsByTrainee(Long traineeId, Pageable pageable) {
+    if (traineeId == null) {
+      throw new BadRequestException("Trainee ID is required");
+    }
+    return communicationLogRepository.findByTraineeId(traineeId, pageable)
+        .map(communicationLogMapper::toResponse);
+  }
+
+  @Override
+  public Page<CommunicationLogResponse> getCommunicationLogsByFollowupTask(Long followupTaskId, Pageable pageable) {
+    if (followupTaskId == null) {
+      throw new BadRequestException("Followup task ID is required");
+    }
+    return communicationLogRepository.findByFollowupTaskId(followupTaskId, pageable)
+        .map(communicationLogMapper::toResponse);
+  }
+
+  @Override
+  public Page<CommunicationLogResponse> getCommunicationLogsBySurvey(Long surveyId, Pageable pageable) {
+    if (surveyId == null) {
+      throw new BadRequestException("Survey ID is required");
+    }
+    return communicationLogRepository.findBySurveyId(surveyId, pageable)
+        .map(communicationLogMapper::toResponse);
+  }
+
+  @Override
+  public Page<CommunicationLogResponse> getCommunicationLogsBySurveyResponse(Long surveyResponseId, Pageable pageable) {
+    if (surveyResponseId == null) {
+      throw new BadRequestException("Survey response ID is required");
+    }
+    return communicationLogRepository.findBySurveyResponseId(surveyResponseId, pageable)
+        .map(communicationLogMapper::toResponse);
+  }
+
+  @Override
+  public Page<CommunicationLogResponse> getCommunicationLogsByChannel(Long channelId, Pageable pageable) {
+    if (channelId == null) {
+      throw new BadRequestException("Channel ID is required");
+    }
+    return communicationLogRepository.findByCommunicationChannelId(channelId, pageable)
+        .map(communicationLogMapper::toResponse);
+  }
+
+  @Override
+  public Page<CommunicationLogResponse> getCommunicationLogsByStatus(Long statusId, Pageable pageable) {
+    if (statusId == null) {
+      throw new BadRequestException("Status ID is required");
+    }
+    return communicationLogRepository.findByCommunicationStatusId(statusId, pageable)
+        .map(communicationLogMapper::toResponse);
+  }
+
+  @Override
+  public Page<CommunicationLogResponse> getCommunicationLogsByPurpose(Long purposeId, Pageable pageable) {
+    if (purposeId == null) {
+      throw new BadRequestException("Purpose ID is required");
+    }
+    return communicationLogRepository.findByCommunicationPurposeId(purposeId, pageable)
+        .map(communicationLogMapper::toResponse);
+  }
+
+  @Override
+  public Page<CommunicationLogResponse> getCommunicationLogsByDirection(Long directionId, Pageable pageable) {
+    if (directionId == null) {
+      throw new BadRequestException("Direction ID is required");
+    }
+    return communicationLogRepository.findByCommunicationDirectionId(directionId, pageable)
+        .map(communicationLogMapper::toResponse);
   }
 
   @Override

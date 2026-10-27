@@ -13,6 +13,8 @@ import in.gov.sih.sih26135.repository.UserRepository;
 import in.gov.sih.sih26135.service.AuditLogService;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -141,5 +143,68 @@ public class AuditLogServiceImpl implements AuditLogService {
     return auditLogRepository.findByOccurredAtBetween(start, end).stream()
         .map(mapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<AuditLogResponse> getAllAuditLogs(Pageable pageable) {
+    return auditLogRepository.findAll(pageable)
+        .map(mapper::toResponse);
+  }
+
+  @Override
+  public Page<AuditLogResponse> getAuditLogsByActorUserId(Long actorUserId, Pageable pageable) {
+    if (actorUserId == null) {
+      throw new BadRequestException("Actor user ID is required");
+    }
+    return auditLogRepository.findByActorUserId(actorUserId, pageable)
+        .map(mapper::toResponse);
+  }
+
+  @Override
+  public Page<AuditLogResponse> getAuditLogsByActionId(Long auditActionId, Pageable pageable) {
+    if (auditActionId == null) {
+      throw new BadRequestException("Audit action ID is required");
+    }
+    return auditLogRepository.findByAuditActionId(auditActionId, pageable)
+        .map(mapper::toResponse);
+  }
+
+  @Override
+  public Page<AuditLogResponse> getAuditLogsByEntityType(String entityType, Pageable pageable) {
+    if (entityType == null || entityType.isBlank()) {
+      throw new BadRequestException("Entity type is required");
+    }
+    return auditLogRepository.findByEntityType(entityType.trim(), pageable)
+        .map(mapper::toResponse);
+  }
+
+  @Override
+  public Page<AuditLogResponse> getAuditLogsByEntity(String entityType, Long entityId, Pageable pageable) {
+    if (entityType == null || entityType.isBlank()) {
+      throw new BadRequestException("Entity type is required");
+    }
+    if (entityId == null) {
+      throw new BadRequestException("Entity ID is required");
+    }
+    return auditLogRepository.findByEntityTypeAndEntityId(entityType.trim(), entityId, pageable)
+        .map(mapper::toResponse);
+  }
+
+  @Override
+  public Page<AuditLogResponse> getAuditLogsByCorrelationId(String correlationId, Pageable pageable) {
+    if (correlationId == null || correlationId.isBlank()) {
+      throw new BadRequestException("Correlation ID is required");
+    }
+    return auditLogRepository.findByCorrelationId(correlationId.trim(), pageable)
+        .map(mapper::toResponse);
+  }
+
+  @Override
+  public Page<AuditLogResponse> getAuditLogsByOccurredAtBetween(LocalDateTime start, LocalDateTime end, Pageable pageable) {
+    if (start == null || end == null) {
+      throw new BadRequestException("Start and end timestamps are required");
+    }
+    return auditLogRepository.findByOccurredAtBetween(start, end, pageable)
+        .map(mapper::toResponse);
   }
 }

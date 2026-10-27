@@ -5,9 +5,15 @@ import in.gov.sih.sih26135.dto.request.UpdateEmploymentVerificationRequestReques
 import in.gov.sih.sih26135.dto.response.EmploymentVerificationRequestResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.response.ApiResponse;
+import in.gov.sih.sih26135.response.PagedResponse;
+import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.service.EmploymentVerificationRequestService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
+import java.util.Set;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -64,78 +70,122 @@ public class EmploymentVerificationRequestController {
   public ResponseEntity<ApiResponse<EmploymentVerificationRequestResponse>> getByRequestNumber(
       @RequestParam("requestNumber") String requestNumber,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "requestNumber");
+    validateAllowedQueryParameters(httpRequest, Set.of("requestNumber"));
     EmploymentVerificationRequestResponse response =
         employmentVerificationRequestService.getVerificationRequestByNumber(requestNumber);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
 
   /**
-   * Retrieves all employment verification requests linked to a specific employment record.
+   * Retrieves paginated employment verification requests linked to a specific employment record.
    *
    * @param employmentId employment record identifier
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: createdAt)
+   * @param direction sort direction (ASC or DESC, default: DESC)
    * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with list of EmploymentVerificationRequestResponse enveloped in ApiResponse
+   * @return 200 OK with paginated EmploymentVerificationRequestResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"employmentId", "!requestNumber", "!traineeId", "!statusId", "!assignedVerifierUserId"})
-  public ResponseEntity<ApiResponse<List<EmploymentVerificationRequestResponse>>> getByEmploymentId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationRequestResponse>>> getByEmploymentId(
       @RequestParam("employmentId") Long employmentId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
+      @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "employmentId");
-    List<EmploymentVerificationRequestResponse> requests =
-        employmentVerificationRequestService.getRequestsByEmploymentId(employmentId);
-    return ResponseEntity.ok(ApiResponse.ok(requests));
+    validateAllowedQueryParameters(httpRequest, Set.of("employmentId", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.EMPLOYMENT_VERIFICATION_REQUEST_SORT_FIELDS, "createdAt", Sort.Direction.DESC
+    );
+    Page<EmploymentVerificationRequestResponse> requests =
+        employmentVerificationRequestService.getRequestsByEmploymentId(employmentId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(requests)));
   }
 
   /**
-   * Retrieves all employment verification requests for a specific trainee.
+   * Retrieves paginated employment verification requests for a specific trainee.
    *
    * @param traineeId trainee identifier
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: createdAt)
+   * @param direction sort direction (ASC or DESC, default: DESC)
    * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with list of EmploymentVerificationRequestResponse enveloped in ApiResponse
+   * @return 200 OK with paginated EmploymentVerificationRequestResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"traineeId", "!requestNumber", "!employmentId", "!statusId", "!assignedVerifierUserId"})
-  public ResponseEntity<ApiResponse<List<EmploymentVerificationRequestResponse>>> getByTraineeId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationRequestResponse>>> getByTraineeId(
       @RequestParam("traineeId") Long traineeId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
+      @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "traineeId");
-    List<EmploymentVerificationRequestResponse> requests =
-        employmentVerificationRequestService.getRequestsByTraineeId(traineeId);
-    return ResponseEntity.ok(ApiResponse.ok(requests));
+    validateAllowedQueryParameters(httpRequest, Set.of("traineeId", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.EMPLOYMENT_VERIFICATION_REQUEST_SORT_FIELDS, "createdAt", Sort.Direction.DESC
+    );
+    Page<EmploymentVerificationRequestResponse> requests =
+        employmentVerificationRequestService.getRequestsByTraineeId(traineeId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(requests)));
   }
 
   /**
-   * Retrieves all employment verification requests with a specific request status.
+   * Retrieves paginated employment verification requests with a specific request status.
    *
    * @param statusId verification request status reference identifier
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: createdAt)
+   * @param direction sort direction (ASC or DESC, default: DESC)
    * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with list of EmploymentVerificationRequestResponse enveloped in ApiResponse
+   * @return 200 OK with paginated EmploymentVerificationRequestResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"statusId", "!requestNumber", "!employmentId", "!traineeId", "!assignedVerifierUserId"})
-  public ResponseEntity<ApiResponse<List<EmploymentVerificationRequestResponse>>> getByStatusId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationRequestResponse>>> getByStatusId(
       @RequestParam("statusId") Long statusId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
+      @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "statusId");
-    List<EmploymentVerificationRequestResponse> requests =
-        employmentVerificationRequestService.getRequestsByStatusId(statusId);
-    return ResponseEntity.ok(ApiResponse.ok(requests));
+    validateAllowedQueryParameters(httpRequest, Set.of("statusId", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.EMPLOYMENT_VERIFICATION_REQUEST_SORT_FIELDS, "createdAt", Sort.Direction.DESC
+    );
+    Page<EmploymentVerificationRequestResponse> requests =
+        employmentVerificationRequestService.getRequestsByStatusId(statusId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(requests)));
   }
 
   /**
-   * Retrieves all employment verification requests assigned to a specific verifier user.
+   * Retrieves paginated employment verification requests assigned to a specific verifier user.
    *
    * @param assignedVerifierUserId assigned verifier user identifier
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: createdAt)
+   * @param direction sort direction (ASC or DESC, default: DESC)
    * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with list of EmploymentVerificationRequestResponse enveloped in ApiResponse
+   * @return 200 OK with paginated EmploymentVerificationRequestResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"assignedVerifierUserId", "!requestNumber", "!employmentId", "!traineeId", "!statusId"})
-  public ResponseEntity<ApiResponse<List<EmploymentVerificationRequestResponse>>> getByAssignedVerifierId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationRequestResponse>>> getByAssignedVerifierId(
       @RequestParam("assignedVerifierUserId") Long assignedVerifierUserId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
+      @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "assignedVerifierUserId");
-    List<EmploymentVerificationRequestResponse> requests =
-        employmentVerificationRequestService.getRequestsByAssignedVerifierId(assignedVerifierUserId);
-    return ResponseEntity.ok(ApiResponse.ok(requests));
+    validateAllowedQueryParameters(httpRequest, Set.of("assignedVerifierUserId", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.EMPLOYMENT_VERIFICATION_REQUEST_SORT_FIELDS, "createdAt", Sort.Direction.DESC
+    );
+    Page<EmploymentVerificationRequestResponse> requests =
+        employmentVerificationRequestService.getRequestsByAssignedVerifierId(assignedVerifierUserId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(requests)));
   }
 
   /**
@@ -188,9 +238,9 @@ public class EmploymentVerificationRequestController {
     return ResponseEntity.ok(ApiResponse.success("Employment verification request deleted successfully"));
   }
 
-  private void validateOnlyQueryParameter(HttpServletRequest request, String allowedParam) {
+  private void validateAllowedQueryParameters(HttpServletRequest request, Set<String> allowedParams) {
     for (String paramName : request.getParameterMap().keySet()) {
-      if (!paramName.equals(allowedParam)) {
+      if (!allowedParams.contains(paramName)) {
         throw new BadRequestException(
             "Unsupported query parameter: " + paramName,
             "UNSUPPORTED_PARAMETER"
