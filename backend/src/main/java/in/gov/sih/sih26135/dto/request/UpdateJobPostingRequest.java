@@ -4,6 +4,11 @@ import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
+import in.gov.sih.sih26135.validation.DateSequence;
+import in.gov.sih.sih26135.validation.NumberRange;
+
+@DateSequence(startField = "postedDate", endField = "closingDate")
+@NumberRange(minField = "minSalary", maxField = "maxSalary")
 public class UpdateJobPostingRequest {
 
   @Size(max = 200, message = "postingTitle cannot exceed 200 characters")

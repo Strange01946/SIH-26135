@@ -3,6 +3,9 @@ import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 
+import in.gov.sih.sih26135.validation.DateSequence;
+
+@DateSequence(startField = "identifiedOn", endField = "resolvedOn")
 public class CreateSkillGapRequest {
 
   @Size(max = 32, message = "skillGapNumber cannot exceed 32 characters")

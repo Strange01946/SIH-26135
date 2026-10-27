@@ -4,6 +4,9 @@ import jakarta.validation.constraints.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+import in.gov.sih.sih26135.validation.DateSequence;
+
+@DateSequence(startField = "startDate", endField = "endDate")
 public class CreateTraineeUnemploymentEventRequest {
 
   private Long traineeId;

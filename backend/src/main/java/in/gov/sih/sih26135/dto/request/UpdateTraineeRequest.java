@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.request;
+import in.gov.sih.sih26135.validation.ValidDateOfBirth;
 import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
@@ -11,6 +12,7 @@ public class UpdateTraineeRequest {
   private String middleName;
   @Size(max = 80, message = "lastName cannot exceed 80 characters")
   private String lastName;
+  @ValidDateOfBirth
   private LocalDate dateOfBirth;
   private Long genderId;
   @Email(message = "Email must be a valid email address")

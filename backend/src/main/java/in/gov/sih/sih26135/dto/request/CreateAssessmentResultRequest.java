@@ -4,6 +4,9 @@ import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+import in.gov.sih.sih26135.validation.NumberRange;
+
+@NumberRange(minField = "obtainedScore", maxField = "maximumScore", targetField = "obtainedScore")
 public class CreateAssessmentResultRequest {
 
   private Long traineeAssessmentId;

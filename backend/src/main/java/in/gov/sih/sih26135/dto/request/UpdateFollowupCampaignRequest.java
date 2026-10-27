@@ -3,6 +3,9 @@ import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 
+import in.gov.sih.sih26135.validation.DateSequence;
+
+@DateSequence(startField = "scheduledStartDate", endField = "scheduledEndDate")
 public class UpdateFollowupCampaignRequest {
 
   @Size(max = 200, message = "campaignName cannot exceed 200 characters")

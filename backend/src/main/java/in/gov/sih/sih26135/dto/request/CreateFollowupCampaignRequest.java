@@ -3,6 +3,9 @@ import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 
+import in.gov.sih.sih26135.validation.DateSequence;
+
+@DateSequence(startField = "scheduledStartDate", endField = "scheduledEndDate")
 public class CreateFollowupCampaignRequest {
 
   @NotBlank(message = "campaignCode is required")

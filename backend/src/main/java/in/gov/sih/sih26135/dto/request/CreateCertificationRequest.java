@@ -4,6 +4,9 @@ import jakarta.validation.constraints.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+import in.gov.sih.sih26135.validation.DateSequence;
+
+@DateSequence(startField = "issueDate", endField = "expiryDate")
 public class CreateCertificationRequest {
 
   @Size(max = 64, message = "certificateNumber cannot exceed 64 characters")

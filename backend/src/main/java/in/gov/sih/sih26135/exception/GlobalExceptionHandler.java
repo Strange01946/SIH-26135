@@ -85,6 +85,8 @@ public class GlobalExceptionHandler {
           + "|(size|length) must be between [0-9]+ and [0-9]+"
           + "|cannot exceed [0-9]+ characters"
           + "|numeric value out of bounds( \\(<[0-9]+ digits>\\.<[0-9]+ digits> expected\\))?"
+          + "|must be (greater than|less than)( or equal to)? (?:start date|minimum value)"
+          + "|must be at least [0-9]+ years old and not in the future"
           + "|is invalid"
           + "|invalid format"
           + "|size is out of allowed range"
@@ -229,6 +231,9 @@ public class GlobalExceptionHandler {
       case "Future", "FutureOrPresent" -> "must be a date in the future or present";
       case "AssertTrue" -> "must be true";
       case "AssertFalse" -> "must be false";
+      case "DateSequence" -> "must be greater than or equal to start date";
+      case "NumberRange" -> "must be greater than or equal to minimum value";
+      case "ValidDateOfBirth" -> "must be at least 15 years old and not in the future";
       default -> "is invalid";
     };
   }

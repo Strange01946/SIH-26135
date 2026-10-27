@@ -4,6 +4,9 @@ import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
+import in.gov.sih.sih26135.validation.DateSequence;
+
+@DateSequence(startField = "startDate", endField = "endDate")
 public class UpdateSchemeRequest {
 
   @Size(max = 200, message = "schemeName cannot exceed 200 characters")

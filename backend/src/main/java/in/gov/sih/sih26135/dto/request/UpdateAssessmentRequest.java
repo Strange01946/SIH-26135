@@ -4,6 +4,9 @@ import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
+import in.gov.sih.sih26135.validation.NumberRange;
+
+@NumberRange(minField = "passScore", maxField = "maximumScore", targetField = "passScore")
 public class UpdateAssessmentRequest {
 
   @Size(max = 200, message = "assessmentName cannot exceed 200 characters")

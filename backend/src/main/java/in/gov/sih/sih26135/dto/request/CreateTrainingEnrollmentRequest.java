@@ -3,6 +3,10 @@ import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 
+import in.gov.sih.sih26135.validation.DateSequence;
+
+@DateSequence(startField = "startDate", endField = "expectedCompletionDate")
+@DateSequence(startField = "startDate", endField = "actualCompletionDate")
 public class CreateTrainingEnrollmentRequest {
 
   @Size(max = 32, message = "enrollmentNumber cannot exceed 32 characters")

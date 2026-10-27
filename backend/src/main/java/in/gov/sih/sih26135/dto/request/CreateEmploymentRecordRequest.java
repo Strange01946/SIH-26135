@@ -5,6 +5,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+import in.gov.sih.sih26135.validation.DateSequence;
+
+@DateSequence(startField = "startDate", endField = "endDate")
 public class CreateEmploymentRecordRequest {
 
   @Size(max = 32, message = "employmentNumber cannot exceed 32 characters")

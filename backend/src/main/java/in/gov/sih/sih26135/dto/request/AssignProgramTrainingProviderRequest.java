@@ -3,6 +3,9 @@ import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 
+import in.gov.sih.sih26135.validation.DateSequence;
+
+@DateSequence(startField = "empanelledFrom", endField = "empanelledTo")
 public class AssignProgramTrainingProviderRequest {
 
   private Long programId;

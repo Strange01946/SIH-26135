@@ -5,6 +5,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+import in.gov.sih.sih26135.validation.DateSequence;
+
+@DateSequence(startField = "effectiveFrom", endField = "effectiveTo")
 public class CreateSalaryHistoryRequest {
 
   private Long employmentId;
