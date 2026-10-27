@@ -14,6 +14,8 @@ import in.gov.sih.sih26135.repository.TrainingProviderRepository;
 import in.gov.sih.sih26135.service.TrainingCenterService;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -76,6 +78,30 @@ public class TrainingCenterServiceImpl implements TrainingCenterService {
     return trainingCenterRepository.findByStateId(stateId).stream()
         .map(trainingCenterMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<TrainingCenterResponse> getAllTrainingCenters(Pageable pageable) {
+    return trainingCenterRepository.findByDeletedAtIsNull(pageable)
+        .map(trainingCenterMapper::toResponse);
+  }
+
+  @Override
+  public Page<TrainingCenterResponse> getTrainingCentersByProviderId(Long providerId, Pageable pageable) {
+    return trainingCenterRepository.findByTrainingProviderIdAndDeletedAtIsNull(providerId, pageable)
+        .map(trainingCenterMapper::toResponse);
+  }
+
+  @Override
+  public Page<TrainingCenterResponse> getTrainingCentersByDistrictId(Long districtId, Pageable pageable) {
+    return trainingCenterRepository.findByDistrictIdAndDeletedAtIsNull(districtId, pageable)
+        .map(trainingCenterMapper::toResponse);
+  }
+
+  @Override
+  public Page<TrainingCenterResponse> getTrainingCentersByStateId(Long stateId, Pageable pageable) {
+    return trainingCenterRepository.findByStateIdAndDeletedAtIsNull(stateId, pageable)
+        .map(trainingCenterMapper::toResponse);
   }
 
   @Override

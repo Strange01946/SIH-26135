@@ -25,6 +25,8 @@ import in.gov.sih.sih26135.service.TrainingEnrollmentService;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -149,6 +151,54 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
     return trainingEnrollmentRepository.findByEnrollmentStatusId(statusId).stream()
         .map(trainingEnrollmentMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<TrainingEnrollmentResponse> getAllEnrollments(Pageable pageable) {
+    return trainingEnrollmentRepository.findByDeletedAtIsNull(pageable)
+        .map(trainingEnrollmentMapper::toResponse);
+  }
+
+  @Override
+  public Page<TrainingEnrollmentResponse> getByTraineeId(Long traineeId, Pageable pageable) {
+    return trainingEnrollmentRepository.findByTraineeIdAndDeletedAtIsNull(traineeId, pageable)
+        .map(trainingEnrollmentMapper::toResponse);
+  }
+
+  @Override
+  public Page<TrainingEnrollmentResponse> getByBatchId(Long batchId, Pageable pageable) {
+    return trainingEnrollmentRepository.findByTrainingBatchIdAndDeletedAtIsNull(batchId, pageable)
+        .map(trainingEnrollmentMapper::toResponse);
+  }
+
+  @Override
+  public Page<TrainingEnrollmentResponse> getByProgramId(Long programId, Pageable pageable) {
+    return trainingEnrollmentRepository.findByProgramIdAndDeletedAtIsNull(programId, pageable)
+        .map(trainingEnrollmentMapper::toResponse);
+  }
+
+  @Override
+  public Page<TrainingEnrollmentResponse> getByCourseId(Long courseId, Pageable pageable) {
+    return trainingEnrollmentRepository.findByCourseIdAndDeletedAtIsNull(courseId, pageable)
+        .map(trainingEnrollmentMapper::toResponse);
+  }
+
+  @Override
+  public Page<TrainingEnrollmentResponse> getByProviderId(Long providerId, Pageable pageable) {
+    return trainingEnrollmentRepository.findByTrainingProviderIdAndDeletedAtIsNull(providerId, pageable)
+        .map(trainingEnrollmentMapper::toResponse);
+  }
+
+  @Override
+  public Page<TrainingEnrollmentResponse> getByCenterId(Long centerId, Pageable pageable) {
+    return trainingEnrollmentRepository.findByTrainingCenterIdAndDeletedAtIsNull(centerId, pageable)
+        .map(trainingEnrollmentMapper::toResponse);
+  }
+
+  @Override
+  public Page<TrainingEnrollmentResponse> getByStatusId(Long statusId, Pageable pageable) {
+    return trainingEnrollmentRepository.findByEnrollmentStatusIdAndDeletedAtIsNull(statusId, pageable)
+        .map(trainingEnrollmentMapper::toResponse);
   }
 
   @Override

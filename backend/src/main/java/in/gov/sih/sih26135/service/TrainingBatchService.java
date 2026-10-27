@@ -5,6 +5,8 @@ import in.gov.sih.sih26135.dto.request.CreateTrainingBatchRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTrainingBatchRequest;
 import in.gov.sih.sih26135.dto.response.TrainingBatchResponse;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 public interface TrainingBatchService {
 
@@ -23,6 +25,18 @@ public interface TrainingBatchService {
   List<TrainingBatchResponse> getBatchesByProgramId(Long programId);
 
   List<TrainingBatchResponse> getBatchesByStatusId(Long batchStatusId);
+
+  Page<TrainingBatchResponse> getAllBatches(Pageable pageable);
+
+  Page<TrainingBatchResponse> getBatchesByCourseId(Long courseId, Pageable pageable);
+
+  Page<TrainingBatchResponse> getBatchesByProviderId(Long providerId, Pageable pageable);
+
+  Page<TrainingBatchResponse> getBatchesByCenterId(Long centerId, Pageable pageable);
+
+  Page<TrainingBatchResponse> getBatchesByProgramId(Long programId, Pageable pageable);
+
+  Page<TrainingBatchResponse> getBatchesByStatusId(Long batchStatusId, Pageable pageable);
 
   TrainingBatchResponse createBatch(CreateTrainingBatchRequest request);
 

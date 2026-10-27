@@ -25,6 +25,8 @@ import in.gov.sih.sih26135.service.TrainingBatchService;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -114,6 +116,42 @@ public class TrainingBatchServiceImpl implements TrainingBatchService {
     return trainingBatchRepository.findByBatchStatusId(batchStatusId).stream()
         .map(trainingBatchMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<TrainingBatchResponse> getAllBatches(Pageable pageable) {
+    return trainingBatchRepository.findByDeletedAtIsNull(pageable)
+        .map(trainingBatchMapper::toResponse);
+  }
+
+  @Override
+  public Page<TrainingBatchResponse> getBatchesByCourseId(Long courseId, Pageable pageable) {
+    return trainingBatchRepository.findByCourseIdAndDeletedAtIsNull(courseId, pageable)
+        .map(trainingBatchMapper::toResponse);
+  }
+
+  @Override
+  public Page<TrainingBatchResponse> getBatchesByProviderId(Long providerId, Pageable pageable) {
+    return trainingBatchRepository.findByTrainingProviderIdAndDeletedAtIsNull(providerId, pageable)
+        .map(trainingBatchMapper::toResponse);
+  }
+
+  @Override
+  public Page<TrainingBatchResponse> getBatchesByCenterId(Long centerId, Pageable pageable) {
+    return trainingBatchRepository.findByTrainingCenterIdAndDeletedAtIsNull(centerId, pageable)
+        .map(trainingBatchMapper::toResponse);
+  }
+
+  @Override
+  public Page<TrainingBatchResponse> getBatchesByProgramId(Long programId, Pageable pageable) {
+    return trainingBatchRepository.findByProgramIdAndDeletedAtIsNull(programId, pageable)
+        .map(trainingBatchMapper::toResponse);
+  }
+
+  @Override
+  public Page<TrainingBatchResponse> getBatchesByStatusId(Long batchStatusId, Pageable pageable) {
+    return trainingBatchRepository.findByBatchStatusIdAndDeletedAtIsNull(batchStatusId, pageable)
+        .map(trainingBatchMapper::toResponse);
   }
 
   @Override

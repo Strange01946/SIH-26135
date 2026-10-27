@@ -4,6 +4,8 @@ import in.gov.sih.sih26135.dto.request.CreateEmployerRequest;
 import in.gov.sih.sih26135.dto.request.UpdateEmployerRequest;
 import in.gov.sih.sih26135.dto.response.EmployerResponse;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 public interface EmployerService {
 
@@ -22,6 +24,14 @@ public interface EmployerService {
   List<EmployerResponse> getEmployersByIndustry(Long industryId);
 
   List<EmployerResponse> getEmployersBySector(Long sectorId);
+
+  Page<EmployerResponse> getAllEmployers(boolean includeDeleted, Pageable pageable);
+
+  Page<EmployerResponse> getEmployersByDistrict(Long districtId, Pageable pageable);
+
+  Page<EmployerResponse> getEmployersByIndustry(Long industryId, Pageable pageable);
+
+  Page<EmployerResponse> getEmployersBySector(Long sectorId, Pageable pageable);
 
   void deleteEmployer(Long id);
 }

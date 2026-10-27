@@ -3,6 +3,8 @@ package in.gov.sih.sih26135.repository;
 import in.gov.sih.sih26135.entity.TrainingProvider;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -20,4 +22,10 @@ public interface TrainingProviderRepository extends JpaRepository<TrainingProvid
   List<TrainingProvider> findByStateId(Long stateId);
 
   List<TrainingProvider> findByDistrictId(Long districtId);
+
+  Page<TrainingProvider> findByDeletedAtIsNull(Pageable pageable);
+
+  Page<TrainingProvider> findByStateIdAndDeletedAtIsNull(Long stateId, Pageable pageable);
+
+  Page<TrainingProvider> findByDistrictIdAndDeletedAtIsNull(Long districtId, Pageable pageable);
 }

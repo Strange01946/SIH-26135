@@ -4,7 +4,11 @@ import in.gov.sih.sih26135.dto.request.CreateTrainingProviderRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTrainingProviderRequest;
 import in.gov.sih.sih26135.dto.response.TrainingProviderResponse;
 import in.gov.sih.sih26135.response.ApiResponse;
+import in.gov.sih.sih26135.response.PagedResponse;
+import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.service.TrainingProviderService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -64,7 +68,11 @@ public class TrainingProviderController {
       @RequestParam(value = "code", required = false) String code,
       @RequestParam(value = "registrationNumber", required = false) String registrationNumber,
       @RequestParam(value = "stateId", required = false) Long stateId,
-      @RequestParam(value = "districtId", required = false) Long districtId) {
+      @RequestParam(value = "districtId", required = false) Long districtId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "id") String sort,
+      @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
     if (code != null && !code.isBlank()) {
       TrainingProviderResponse response = trainingProviderService.getByCode(code.trim());
       return ResponseEntity.ok(ApiResponse.ok(response));
@@ -73,16 +81,19 @@ public class TrainingProviderController {
       TrainingProviderResponse response = trainingProviderService.getByRegistrationNumber(registrationNumber.trim());
       return ResponseEntity.ok(ApiResponse.ok(response));
     }
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.TRAINING_PROVIDER_SORT_FIELDS, "id"
+    );
     if (stateId != null) {
-      List<TrainingProviderResponse> providers = trainingProviderService.getTrainingProvidersByStateId(stateId);
-      return ResponseEntity.ok(ApiResponse.ok(providers));
+      Page<TrainingProviderResponse> providers = trainingProviderService.getTrainingProvidersByStateId(stateId, pageable);
+      return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(providers)));
     }
     if (districtId != null) {
-      List<TrainingProviderResponse> providers = trainingProviderService.getTrainingProvidersByDistrictId(districtId);
-      return ResponseEntity.ok(ApiResponse.ok(providers));
+      Page<TrainingProviderResponse> providers = trainingProviderService.getTrainingProvidersByDistrictId(districtId, pageable);
+      return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(providers)));
     }
-    List<TrainingProviderResponse> providers = trainingProviderService.getAllTrainingProviders();
-    return ResponseEntity.ok(ApiResponse.ok(providers));
+    Page<TrainingProviderResponse> providers = trainingProviderService.getAllTrainingProviders(pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(providers)));
   }
 
   /**

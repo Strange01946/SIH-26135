@@ -20,6 +20,8 @@ import in.gov.sih.sih26135.repository.SectorRepository;
 import in.gov.sih.sih26135.service.CourseService;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -89,6 +91,30 @@ public class CourseServiceImpl implements CourseService {
     return courseRepository.findByDeliveryModeId(deliveryModeId).stream()
         .map(courseMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<CourseResponse> getAllCourses(Pageable pageable) {
+    return courseRepository.findByDeletedAtIsNull(pageable)
+        .map(courseMapper::toResponse);
+  }
+
+  @Override
+  public Page<CourseResponse> getCoursesBySectorId(Long sectorId, Pageable pageable) {
+    return courseRepository.findBySectorIdAndDeletedAtIsNull(sectorId, pageable)
+        .map(courseMapper::toResponse);
+  }
+
+  @Override
+  public Page<CourseResponse> getCoursesByIndustryId(Long industryId, Pageable pageable) {
+    return courseRepository.findByIndustryIdAndDeletedAtIsNull(industryId, pageable)
+        .map(courseMapper::toResponse);
+  }
+
+  @Override
+  public Page<CourseResponse> getCoursesByDeliveryModeId(Long deliveryModeId, Pageable pageable) {
+    return courseRepository.findByDeliveryModeIdAndDeletedAtIsNull(deliveryModeId, pageable)
+        .map(courseMapper::toResponse);
   }
 
   @Override

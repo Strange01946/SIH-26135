@@ -4,9 +4,13 @@ import in.gov.sih.sih26135.dto.request.CreateTraineeRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTraineeRequest;
 import in.gov.sih.sih26135.dto.response.TraineeResponse;
 import in.gov.sih.sih26135.response.ApiResponse;
+import in.gov.sih.sih26135.response.PagedResponse;
+import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.service.TraineeService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -52,17 +56,26 @@ public class TraineeController {
   }
 
   /**
-   * Retrieves trainees with optional filtering by registration number or user ID.
+   * Retrieves trainees with optional filtering by registration number or user ID,
+   * or returns a paginated list of trainees.
    *
    * @param registrationNumber optional registration number filter
    * @param userId optional user ID filter
-   * @return 200 OK with list of trainees or single matched trainee enveloped in ApiResponse
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: id)
+   * @param direction sort direction (ASC or DESC, default: ASC)
+   * @return 200 OK with paginated trainees or single matched trainee enveloped in ApiResponse
    */
   @GetMapping
   @PreAuthorize("hasAuthority('trainee.read')")
   public ResponseEntity<ApiResponse<?>> getTrainees(
       @RequestParam(value = "registrationNumber", required = false) String registrationNumber,
-      @RequestParam(value = "userId", required = false) Long userId) {
+      @RequestParam(value = "userId", required = false) Long userId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "id") String sort,
+      @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
     if (registrationNumber != null && !registrationNumber.isBlank()) {
       TraineeResponse response = traineeService.getByRegistrationNumber(registrationNumber.trim());
       return ResponseEntity.ok(ApiResponse.ok(response));
@@ -71,8 +84,11 @@ public class TraineeController {
       TraineeResponse response = traineeService.getByUserId(userId);
       return ResponseEntity.ok(ApiResponse.ok(response));
     }
-    List<TraineeResponse> trainees = traineeService.getAllTrainees();
-    return ResponseEntity.ok(ApiResponse.ok(trainees));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.TRAINEE_SORT_FIELDS, "id"
+    );
+    Page<TraineeResponse> trainees = traineeService.getAllTrainees(pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(trainees)));
   }
 
   /**

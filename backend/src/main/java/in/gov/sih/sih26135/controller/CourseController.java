@@ -4,7 +4,11 @@ import in.gov.sih.sih26135.dto.request.CreateCourseRequest;
 import in.gov.sih.sih26135.dto.request.UpdateCourseRequest;
 import in.gov.sih.sih26135.dto.response.CourseResponse;
 import in.gov.sih.sih26135.response.ApiResponse;
+import in.gov.sih.sih26135.response.PagedResponse;
+import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.service.CourseService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -64,25 +68,32 @@ public class CourseController {
       @RequestParam(value = "code", required = false) String code,
       @RequestParam(value = "sectorId", required = false) Long sectorId,
       @RequestParam(value = "industryId", required = false) Long industryId,
-      @RequestParam(value = "deliveryModeId", required = false) Long deliveryModeId) {
+      @RequestParam(value = "deliveryModeId", required = false) Long deliveryModeId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "id") String sort,
+      @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
     if (code != null && !code.isBlank()) {
       CourseResponse response = courseService.getByCode(code.trim());
       return ResponseEntity.ok(ApiResponse.ok(response));
     }
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.COURSE_SORT_FIELDS, "id"
+    );
     if (sectorId != null) {
-      List<CourseResponse> courses = courseService.getCoursesBySectorId(sectorId);
-      return ResponseEntity.ok(ApiResponse.ok(courses));
+      Page<CourseResponse> courses = courseService.getCoursesBySectorId(sectorId, pageable);
+      return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(courses)));
     }
     if (industryId != null) {
-      List<CourseResponse> courses = courseService.getCoursesByIndustryId(industryId);
-      return ResponseEntity.ok(ApiResponse.ok(courses));
+      Page<CourseResponse> courses = courseService.getCoursesByIndustryId(industryId, pageable);
+      return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(courses)));
     }
     if (deliveryModeId != null) {
-      List<CourseResponse> courses = courseService.getCoursesByDeliveryModeId(deliveryModeId);
-      return ResponseEntity.ok(ApiResponse.ok(courses));
+      Page<CourseResponse> courses = courseService.getCoursesByDeliveryModeId(deliveryModeId, pageable);
+      return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(courses)));
     }
-    List<CourseResponse> courses = courseService.getAllCourses();
-    return ResponseEntity.ok(ApiResponse.ok(courses));
+    Page<CourseResponse> courses = courseService.getAllCourses(pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(courses)));
   }
 
   /**

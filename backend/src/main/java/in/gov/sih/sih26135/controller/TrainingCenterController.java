@@ -4,7 +4,11 @@ import in.gov.sih.sih26135.dto.request.CreateTrainingCenterRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTrainingCenterRequest;
 import in.gov.sih.sih26135.dto.response.TrainingCenterResponse;
 import in.gov.sih.sih26135.response.ApiResponse;
+import in.gov.sih.sih26135.response.PagedResponse;
+import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.service.TrainingCenterService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -64,25 +68,32 @@ public class TrainingCenterController {
       @RequestParam(value = "code", required = false) String code,
       @RequestParam(value = "providerId", required = false) Long providerId,
       @RequestParam(value = "districtId", required = false) Long districtId,
-      @RequestParam(value = "stateId", required = false) Long stateId) {
+      @RequestParam(value = "stateId", required = false) Long stateId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "id") String sort,
+      @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
     if (code != null && !code.isBlank()) {
       TrainingCenterResponse response = trainingCenterService.getByCode(code.trim());
       return ResponseEntity.ok(ApiResponse.ok(response));
     }
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.TRAINING_CENTER_SORT_FIELDS, "id"
+    );
     if (providerId != null) {
-      List<TrainingCenterResponse> centers = trainingCenterService.getTrainingCentersByProviderId(providerId);
-      return ResponseEntity.ok(ApiResponse.ok(centers));
+      Page<TrainingCenterResponse> centers = trainingCenterService.getTrainingCentersByProviderId(providerId, pageable);
+      return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(centers)));
     }
     if (districtId != null) {
-      List<TrainingCenterResponse> centers = trainingCenterService.getTrainingCentersByDistrictId(districtId);
-      return ResponseEntity.ok(ApiResponse.ok(centers));
+      Page<TrainingCenterResponse> centers = trainingCenterService.getTrainingCentersByDistrictId(districtId, pageable);
+      return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(centers)));
     }
     if (stateId != null) {
-      List<TrainingCenterResponse> centers = trainingCenterService.getTrainingCentersByStateId(stateId);
-      return ResponseEntity.ok(ApiResponse.ok(centers));
+      Page<TrainingCenterResponse> centers = trainingCenterService.getTrainingCentersByStateId(stateId, pageable);
+      return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(centers)));
     }
-    List<TrainingCenterResponse> centers = trainingCenterService.getAllTrainingCenters();
-    return ResponseEntity.ok(ApiResponse.ok(centers));
+    Page<TrainingCenterResponse> centers = trainingCenterService.getAllTrainingCenters(pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(centers)));
   }
 
   /**

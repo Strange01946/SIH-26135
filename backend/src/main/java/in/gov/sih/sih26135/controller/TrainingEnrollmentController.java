@@ -4,7 +4,11 @@ import in.gov.sih.sih26135.dto.request.CreateTrainingEnrollmentRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTrainingEnrollmentRequest;
 import in.gov.sih.sih26135.dto.response.TrainingEnrollmentResponse;
 import in.gov.sih.sih26135.response.ApiResponse;
+import in.gov.sih.sih26135.response.PagedResponse;
+import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.service.TrainingEnrollmentService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -70,99 +74,183 @@ public class TrainingEnrollmentController {
    * @return 200 OK with list of TrainingEnrollmentResponse enveloped in ApiResponse
    */
   @GetMapping(params = "traineeId")
-  public ResponseEntity<ApiResponse<List<TrainingEnrollmentResponse>>> getByTraineeId(
-      @RequestParam("traineeId") Long traineeId) {
-    List<TrainingEnrollmentResponse> enrollments = trainingEnrollmentService.getByTraineeId(traineeId);
-    return ResponseEntity.ok(ApiResponse.ok(enrollments));
+  public ResponseEntity<ApiResponse<PagedResponse<TrainingEnrollmentResponse>>> getByTraineeId(
+      @RequestParam("traineeId") Long traineeId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "id") String sort,
+      @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.TRAINING_ENROLLMENT_SORT_FIELDS, "id"
+    );
+    Page<TrainingEnrollmentResponse> enrollments = trainingEnrollmentService.getByTraineeId(traineeId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(enrollments)));
   }
 
   /**
-   * Retrieves all training enrollments for a specific batch.
+   * Retrieves paginated training enrollments for a specific batch.
    *
    * @param batchId training batch identifier
-   * @return 200 OK with list of TrainingEnrollmentResponse enveloped in ApiResponse
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: id)
+   * @param direction sort direction (ASC or DESC, default: ASC)
+   * @return 200 OK with paginated TrainingEnrollmentResponse enveloped in ApiResponse
    */
   @GetMapping(params = "batchId")
-  public ResponseEntity<ApiResponse<List<TrainingEnrollmentResponse>>> getByBatchId(
-      @RequestParam("batchId") Long batchId) {
-    List<TrainingEnrollmentResponse> enrollments = trainingEnrollmentService.getByBatchId(batchId);
-    return ResponseEntity.ok(ApiResponse.ok(enrollments));
+  public ResponseEntity<ApiResponse<PagedResponse<TrainingEnrollmentResponse>>> getByBatchId(
+      @RequestParam("batchId") Long batchId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "id") String sort,
+      @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.TRAINING_ENROLLMENT_SORT_FIELDS, "id"
+    );
+    Page<TrainingEnrollmentResponse> enrollments = trainingEnrollmentService.getByBatchId(batchId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(enrollments)));
   }
 
   /**
-   * Retrieves all training enrollments under a specific program.
+   * Retrieves paginated training enrollments under a specific program.
    *
    * @param programId program identifier
-   * @return 200 OK with list of TrainingEnrollmentResponse enveloped in ApiResponse
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: id)
+   * @param direction sort direction (ASC or DESC, default: ASC)
+   * @return 200 OK with paginated TrainingEnrollmentResponse enveloped in ApiResponse
    */
   @GetMapping(params = "programId")
-  public ResponseEntity<ApiResponse<List<TrainingEnrollmentResponse>>> getByProgramId(
-      @RequestParam("programId") Long programId) {
-    List<TrainingEnrollmentResponse> enrollments = trainingEnrollmentService.getByProgramId(programId);
-    return ResponseEntity.ok(ApiResponse.ok(enrollments));
+  public ResponseEntity<ApiResponse<PagedResponse<TrainingEnrollmentResponse>>> getByProgramId(
+      @RequestParam("programId") Long programId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "id") String sort,
+      @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.TRAINING_ENROLLMENT_SORT_FIELDS, "id"
+    );
+    Page<TrainingEnrollmentResponse> enrollments = trainingEnrollmentService.getByProgramId(programId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(enrollments)));
   }
 
   /**
-   * Retrieves all training enrollments for a specific course.
+   * Retrieves paginated training enrollments for a specific course.
    *
    * @param courseId course identifier
-   * @return 200 OK with list of TrainingEnrollmentResponse enveloped in ApiResponse
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: id)
+   * @param direction sort direction (ASC or DESC, default: ASC)
+   * @return 200 OK with paginated TrainingEnrollmentResponse enveloped in ApiResponse
    */
   @GetMapping(params = "courseId")
-  public ResponseEntity<ApiResponse<List<TrainingEnrollmentResponse>>> getByCourseId(
-      @RequestParam("courseId") Long courseId) {
-    List<TrainingEnrollmentResponse> enrollments = trainingEnrollmentService.getByCourseId(courseId);
-    return ResponseEntity.ok(ApiResponse.ok(enrollments));
+  public ResponseEntity<ApiResponse<PagedResponse<TrainingEnrollmentResponse>>> getByCourseId(
+      @RequestParam("courseId") Long courseId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "id") String sort,
+      @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.TRAINING_ENROLLMENT_SORT_FIELDS, "id"
+    );
+    Page<TrainingEnrollmentResponse> enrollments = trainingEnrollmentService.getByCourseId(courseId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(enrollments)));
   }
 
   /**
-   * Retrieves all training enrollments with a specific training provider.
+   * Retrieves paginated training enrollments with a specific training provider.
    *
    * @param providerId training provider identifier
-   * @return 200 OK with list of TrainingEnrollmentResponse enveloped in ApiResponse
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: id)
+   * @param direction sort direction (ASC or DESC, default: ASC)
+   * @return 200 OK with paginated TrainingEnrollmentResponse enveloped in ApiResponse
    */
   @GetMapping(params = "providerId")
-  public ResponseEntity<ApiResponse<List<TrainingEnrollmentResponse>>> getByProviderId(
-      @RequestParam("providerId") Long providerId) {
-    List<TrainingEnrollmentResponse> enrollments = trainingEnrollmentService.getByProviderId(providerId);
-    return ResponseEntity.ok(ApiResponse.ok(enrollments));
+  public ResponseEntity<ApiResponse<PagedResponse<TrainingEnrollmentResponse>>> getByProviderId(
+      @RequestParam("providerId") Long providerId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "id") String sort,
+      @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.TRAINING_ENROLLMENT_SORT_FIELDS, "id"
+    );
+    Page<TrainingEnrollmentResponse> enrollments = trainingEnrollmentService.getByProviderId(providerId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(enrollments)));
   }
 
   /**
-   * Retrieves all training enrollments at a specific training center.
+   * Retrieves paginated training enrollments at a specific training center.
    *
    * @param centerId training center identifier
-   * @return 200 OK with list of TrainingEnrollmentResponse enveloped in ApiResponse
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: id)
+   * @param direction sort direction (ASC or DESC, default: ASC)
+   * @return 200 OK with paginated TrainingEnrollmentResponse enveloped in ApiResponse
    */
   @GetMapping(params = "centerId")
-  public ResponseEntity<ApiResponse<List<TrainingEnrollmentResponse>>> getByCenterId(
-      @RequestParam("centerId") Long centerId) {
-    List<TrainingEnrollmentResponse> enrollments = trainingEnrollmentService.getByCenterId(centerId);
-    return ResponseEntity.ok(ApiResponse.ok(enrollments));
+  public ResponseEntity<ApiResponse<PagedResponse<TrainingEnrollmentResponse>>> getByCenterId(
+      @RequestParam("centerId") Long centerId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "id") String sort,
+      @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.TRAINING_ENROLLMENT_SORT_FIELDS, "id"
+    );
+    Page<TrainingEnrollmentResponse> enrollments = trainingEnrollmentService.getByCenterId(centerId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(enrollments)));
   }
 
   /**
-   * Retrieves all training enrollments with a specific enrollment status.
+   * Retrieves paginated training enrollments with a specific enrollment status.
    *
    * @param statusId enrollment status identifier
-   * @return 200 OK with list of TrainingEnrollmentResponse enveloped in ApiResponse
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: id)
+   * @param direction sort direction (ASC or DESC, default: ASC)
+   * @return 200 OK with paginated TrainingEnrollmentResponse enveloped in ApiResponse
    */
   @GetMapping(params = "statusId")
-  public ResponseEntity<ApiResponse<List<TrainingEnrollmentResponse>>> getByStatusId(
-      @RequestParam("statusId") Long statusId) {
-    List<TrainingEnrollmentResponse> enrollments = trainingEnrollmentService.getByStatusId(statusId);
-    return ResponseEntity.ok(ApiResponse.ok(enrollments));
+  public ResponseEntity<ApiResponse<PagedResponse<TrainingEnrollmentResponse>>> getByStatusId(
+      @RequestParam("statusId") Long statusId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "id") String sort,
+      @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.TRAINING_ENROLLMENT_SORT_FIELDS, "id"
+    );
+    Page<TrainingEnrollmentResponse> enrollments = trainingEnrollmentService.getByStatusId(statusId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(enrollments)));
   }
 
   /**
-   * Retrieves all training enrollments.
+   * Retrieves all training enrollments with pagination.
    *
-   * @return 200 OK with list of all TrainingEnrollmentResponse enveloped in ApiResponse
+   * @param page zero-based page index (default: 0)
+   * @param size page size (default: 20, max: 100)
+   * @param sort sort field (default: id)
+   * @param direction sort direction (ASC or DESC, default: ASC)
+   * @return 200 OK with paginated TrainingEnrollmentResponse enveloped in ApiResponse
    */
   @GetMapping
-  public ResponseEntity<ApiResponse<List<TrainingEnrollmentResponse>>> getAllEnrollments() {
-    List<TrainingEnrollmentResponse> enrollments = trainingEnrollmentService.getAllEnrollments();
-    return ResponseEntity.ok(ApiResponse.ok(enrollments));
+  public ResponseEntity<ApiResponse<PagedResponse<TrainingEnrollmentResponse>>> getAllEnrollments(
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "id") String sort,
+      @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.TRAINING_ENROLLMENT_SORT_FIELDS, "id"
+    );
+    Page<TrainingEnrollmentResponse> enrollments = trainingEnrollmentService.getAllEnrollments(pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(enrollments)));
   }
 
   /**

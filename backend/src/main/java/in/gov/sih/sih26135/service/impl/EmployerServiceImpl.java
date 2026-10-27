@@ -20,6 +20,8 @@ import in.gov.sih.sih26135.repository.SectorRepository;
 import in.gov.sih.sih26135.service.EmployerService;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -107,6 +109,41 @@ public class EmployerServiceImpl implements EmployerService {
     return employerRepository.findBySectorId(sectorId).stream()
         .map(employerMapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public Page<EmployerResponse> getAllEmployers(boolean includeDeleted, Pageable pageable) {
+    Page<Employer> employers = includeDeleted
+        ? employerRepository.findAll(pageable)
+        : employerRepository.findByDeletedAtIsNull(pageable);
+    return employers.map(employerMapper::toResponse);
+  }
+
+  @Override
+  public Page<EmployerResponse> getEmployersByDistrict(Long districtId, Pageable pageable) {
+    if (districtId == null) {
+      throw new BadRequestException("District ID is required");
+    }
+    return employerRepository.findByDistrictIdAndDeletedAtIsNull(districtId, pageable)
+        .map(employerMapper::toResponse);
+  }
+
+  @Override
+  public Page<EmployerResponse> getEmployersByIndustry(Long industryId, Pageable pageable) {
+    if (industryId == null) {
+      throw new BadRequestException("Industry ID is required");
+    }
+    return employerRepository.findByIndustryIdAndDeletedAtIsNull(industryId, pageable)
+        .map(employerMapper::toResponse);
+  }
+
+  @Override
+  public Page<EmployerResponse> getEmployersBySector(Long sectorId, Pageable pageable) {
+    if (sectorId == null) {
+      throw new BadRequestException("Sector ID is required");
+    }
+    return employerRepository.findBySectorIdAndDeletedAtIsNull(sectorId, pageable)
+        .map(employerMapper::toResponse);
   }
 
   @Override

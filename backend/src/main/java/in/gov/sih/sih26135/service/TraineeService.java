@@ -4,6 +4,8 @@ import in.gov.sih.sih26135.dto.request.CreateTraineeRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTraineeRequest;
 import in.gov.sih.sih26135.dto.response.TraineeResponse;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 public interface TraineeService {
 
@@ -14,6 +16,8 @@ public interface TraineeService {
   TraineeResponse getByUserId(Long userId);
 
   List<TraineeResponse> getAllTrainees();
+
+  Page<TraineeResponse> getAllTrainees(Pageable pageable);
 
   TraineeResponse createTrainee(CreateTraineeRequest request, Long actorUserId);
 

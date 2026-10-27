@@ -4,6 +4,8 @@ import in.gov.sih.sih26135.dto.request.CreateTrainingCenterRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTrainingCenterRequest;
 import in.gov.sih.sih26135.dto.response.TrainingCenterResponse;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 public interface TrainingCenterService {
 
@@ -18,6 +20,14 @@ public interface TrainingCenterService {
   List<TrainingCenterResponse> getTrainingCentersByDistrictId(Long districtId);
 
   List<TrainingCenterResponse> getTrainingCentersByStateId(Long stateId);
+
+  Page<TrainingCenterResponse> getAllTrainingCenters(Pageable pageable);
+
+  Page<TrainingCenterResponse> getTrainingCentersByProviderId(Long providerId, Pageable pageable);
+
+  Page<TrainingCenterResponse> getTrainingCentersByDistrictId(Long districtId, Pageable pageable);
+
+  Page<TrainingCenterResponse> getTrainingCentersByStateId(Long stateId, Pageable pageable);
 
   TrainingCenterResponse createTrainingCenter(CreateTrainingCenterRequest request);
 

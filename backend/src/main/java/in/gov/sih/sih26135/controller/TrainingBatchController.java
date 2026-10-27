@@ -5,7 +5,11 @@ import in.gov.sih.sih26135.dto.request.CreateTrainingBatchRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTrainingBatchRequest;
 import in.gov.sih.sih26135.dto.response.TrainingBatchResponse;
 import in.gov.sih.sih26135.response.ApiResponse;
+import in.gov.sih.sih26135.response.PagedResponse;
+import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.service.TrainingBatchService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -69,33 +73,40 @@ public class TrainingBatchController {
       @RequestParam(value = "providerId", required = false) Long providerId,
       @RequestParam(value = "centerId", required = false) Long centerId,
       @RequestParam(value = "programId", required = false) Long programId,
-      @RequestParam(value = "statusId", required = false) Long statusId) {
+      @RequestParam(value = "statusId", required = false) Long statusId,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "id") String sort,
+      @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
     if (code != null && !code.isBlank()) {
       TrainingBatchResponse response = trainingBatchService.getByCode(code.trim());
       return ResponseEntity.ok(ApiResponse.ok(response));
     }
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.TRAINING_BATCH_SORT_FIELDS, "id"
+    );
     if (courseId != null) {
-      List<TrainingBatchResponse> batches = trainingBatchService.getBatchesByCourseId(courseId);
-      return ResponseEntity.ok(ApiResponse.ok(batches));
+      Page<TrainingBatchResponse> batches = trainingBatchService.getBatchesByCourseId(courseId, pageable);
+      return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(batches)));
     }
     if (providerId != null) {
-      List<TrainingBatchResponse> batches = trainingBatchService.getBatchesByProviderId(providerId);
-      return ResponseEntity.ok(ApiResponse.ok(batches));
+      Page<TrainingBatchResponse> batches = trainingBatchService.getBatchesByProviderId(providerId, pageable);
+      return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(batches)));
     }
     if (centerId != null) {
-      List<TrainingBatchResponse> batches = trainingBatchService.getBatchesByCenterId(centerId);
-      return ResponseEntity.ok(ApiResponse.ok(batches));
+      Page<TrainingBatchResponse> batches = trainingBatchService.getBatchesByCenterId(centerId, pageable);
+      return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(batches)));
     }
     if (programId != null) {
-      List<TrainingBatchResponse> batches = trainingBatchService.getBatchesByProgramId(programId);
-      return ResponseEntity.ok(ApiResponse.ok(batches));
+      Page<TrainingBatchResponse> batches = trainingBatchService.getBatchesByProgramId(programId, pageable);
+      return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(batches)));
     }
     if (statusId != null) {
-      List<TrainingBatchResponse> batches = trainingBatchService.getBatchesByStatusId(statusId);
-      return ResponseEntity.ok(ApiResponse.ok(batches));
+      Page<TrainingBatchResponse> batches = trainingBatchService.getBatchesByStatusId(statusId, pageable);
+      return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(batches)));
     }
-    List<TrainingBatchResponse> batches = trainingBatchService.getAllBatches();
-    return ResponseEntity.ok(ApiResponse.ok(batches));
+    Page<TrainingBatchResponse> batches = trainingBatchService.getAllBatches(pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(batches)));
   }
 
   /**
