@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreatePlacementRecordRequest;
 import in.gov.sih.sih26135.dto.request.UpdatePlacementRecordRequest;
 import in.gov.sih.sih26135.dto.response.PlacementRecordResponse;
@@ -319,7 +320,7 @@ public class PlacementRecordController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<PlacementRecordResponse>> createPlacementRecord(
-      @RequestBody CreatePlacementRecordRequest request,
+      @Valid @RequestBody CreatePlacementRecordRequest request,
       HttpServletRequest httpRequest) {
     PlacementRecordResponse response = placementRecordService.createPlacementRecord(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -336,7 +337,7 @@ public class PlacementRecordController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<PlacementRecordResponse>> updatePlacementRecord(
       @PathVariable Long id,
-      @RequestBody UpdatePlacementRecordRequest request) {
+      @Valid @RequestBody UpdatePlacementRecordRequest request) {
     PlacementRecordResponse response = placementRecordService.updatePlacementRecord(id, request);
     return ResponseEntity.ok(ApiResponse.success("Placement record updated successfully", response));
   }

@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateTraineeUnemploymentEventRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTraineeUnemploymentEventRequest;
 import in.gov.sih.sih26135.dto.response.TraineeUnemploymentEventResponse;
@@ -412,7 +413,7 @@ public class TraineeUnemploymentEventController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<TraineeUnemploymentEventResponse>> createUnemploymentEvent(
-      @RequestBody CreateTraineeUnemploymentEventRequest request,
+      @Valid @RequestBody CreateTraineeUnemploymentEventRequest request,
       HttpServletRequest httpRequest) {
     TraineeUnemploymentEventResponse response =
         traineeUnemploymentEventService.createUnemploymentEvent(request);
@@ -433,7 +434,7 @@ public class TraineeUnemploymentEventController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<TraineeUnemploymentEventResponse>> updateUnemploymentEvent(
       @PathVariable Long id,
-      @RequestBody UpdateTraineeUnemploymentEventRequest request) {
+      @Valid @RequestBody UpdateTraineeUnemploymentEventRequest request) {
     TraineeUnemploymentEventResponse response =
         traineeUnemploymentEventService.updateUnemploymentEvent(id, request);
     return ResponseEntity.ok(ApiResponse.success(

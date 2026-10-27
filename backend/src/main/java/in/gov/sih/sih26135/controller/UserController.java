@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.AssignUserRoleRequest;
 import in.gov.sih.sih26135.dto.request.CreateUserRequest;
 import in.gov.sih.sih26135.dto.request.UpdateUserRequest;
@@ -86,7 +87,7 @@ public class UserController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<UserResponse>> createUser(
-      @RequestBody CreateUserRequest request,
+      @Valid @RequestBody CreateUserRequest request,
       @RequestHeader(value = "X-Actor-User-Id", required = false) Long actorUserId,
       HttpServletRequest httpRequest) {
     UserResponse response = userService.createUser(request, actorUserId);
@@ -105,7 +106,7 @@ public class UserController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<UserResponse>> updateUser(
       @PathVariable Long id,
-      @RequestBody UpdateUserRequest request,
+      @Valid @RequestBody UpdateUserRequest request,
       @RequestHeader(value = "X-Actor-User-Id", required = false) Long actorUserId) {
     UserResponse response = userService.updateUser(id, request, actorUserId);
     return ResponseEntity.ok(ApiResponse.success("User updated successfully", response));
@@ -150,7 +151,7 @@ public class UserController {
   @PostMapping("/{userId}/roles")
   public ResponseEntity<ApiResponse<UserRoleResponse>> assignRole(
       @PathVariable Long userId,
-      @RequestBody AssignUserRoleRequest request,
+      @Valid @RequestBody AssignUserRoleRequest request,
       @RequestHeader(value = "X-Actor-User-Id", required = false) Long actorUserId,
       HttpServletRequest httpRequest) {
     UserRoleResponse response = userService.assignRole(userId, request, actorUserId);

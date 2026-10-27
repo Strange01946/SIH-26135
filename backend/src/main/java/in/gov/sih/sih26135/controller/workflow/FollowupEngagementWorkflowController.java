@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller.workflow;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.RecordEngagementAttemptRequest;
 import in.gov.sih.sih26135.dto.request.RecordFollowupSurveyResponseRequest;
 import in.gov.sih.sih26135.dto.response.RecordEngagementAttemptResponse;
@@ -48,7 +49,7 @@ public class FollowupEngagementWorkflowController {
    */
   @PostMapping("/record-survey-response")
   public ResponseEntity<ApiResponse<RecordFollowupSurveyResponseResponse>> recordSurveyResponse(
-      @RequestBody RecordFollowupSurveyResponseRequest request,
+      @Valid @RequestBody RecordFollowupSurveyResponseRequest request,
       HttpServletRequest httpRequest) {
     if (!httpRequest.getParameterMap().isEmpty()) {
       throw new BadRequestException(
@@ -74,7 +75,7 @@ public class FollowupEngagementWorkflowController {
    */
   @PostMapping("/record-engagement-attempt")
   public ResponseEntity<ApiResponse<RecordEngagementAttemptResponse>> recordEngagementAttempt(
-      @RequestBody RecordEngagementAttemptRequest request,
+      @Valid @RequestBody RecordEngagementAttemptRequest request,
       HttpServletRequest httpRequest) {
     if (!httpRequest.getParameterMap().isEmpty()) {
       throw new BadRequestException(

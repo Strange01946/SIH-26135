@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateAttendanceRecordRequest;
 import in.gov.sih.sih26135.dto.request.UpdateAttendanceRecordRequest;
 import in.gov.sih.sih26135.dto.response.AttendanceRecordResponse;
@@ -141,7 +142,7 @@ public class AttendanceRecordController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<AttendanceRecordResponse>> createAttendanceRecord(
-      @RequestBody CreateAttendanceRecordRequest request,
+      @Valid @RequestBody CreateAttendanceRecordRequest request,
       HttpServletRequest httpRequest) {
     AttendanceRecordResponse response = attendanceRecordService.createAttendanceRecord(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -158,7 +159,7 @@ public class AttendanceRecordController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<AttendanceRecordResponse>> updateAttendanceRecord(
       @PathVariable Long id,
-      @RequestBody UpdateAttendanceRecordRequest request) {
+      @Valid @RequestBody UpdateAttendanceRecordRequest request) {
     AttendanceRecordResponse response = attendanceRecordService.updateAttendanceRecord(id, request);
     return ResponseEntity.ok(ApiResponse.success("Attendance record updated successfully", response));
   }

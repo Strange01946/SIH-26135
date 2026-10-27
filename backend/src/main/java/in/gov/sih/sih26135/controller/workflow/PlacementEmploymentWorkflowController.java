@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller.workflow;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.PlacementToEmploymentTransitionRequest;
 import in.gov.sih.sih26135.dto.response.PlacementToEmploymentTransitionResponse;
 import in.gov.sih.sih26135.dto.response.TraineePlacementEmploymentSummaryResponse;
@@ -46,7 +47,7 @@ public class PlacementEmploymentWorkflowController {
    */
   @PostMapping("/transition-placement-to-employment")
   public ResponseEntity<ApiResponse<PlacementToEmploymentTransitionResponse>> transitionPlacementToEmployment(
-      @RequestBody PlacementToEmploymentTransitionRequest request,
+      @Valid @RequestBody PlacementToEmploymentTransitionRequest request,
       HttpServletRequest httpRequest) {
     if (!httpRequest.getParameterMap().isEmpty()) {
       throw new BadRequestException(

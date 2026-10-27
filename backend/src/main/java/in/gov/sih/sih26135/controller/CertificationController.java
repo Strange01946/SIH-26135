@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateCertificationRequest;
 import in.gov.sih.sih26135.dto.request.UpdateCertificationRequest;
 import in.gov.sih.sih26135.dto.response.CertificationResponse;
@@ -189,7 +190,7 @@ public class CertificationController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<CertificationResponse>> createCertification(
-      @RequestBody CreateCertificationRequest request,
+      @Valid @RequestBody CreateCertificationRequest request,
       HttpServletRequest httpRequest) {
     CertificationResponse response = certificationService.createCertification(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -206,7 +207,7 @@ public class CertificationController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<CertificationResponse>> updateCertification(
       @PathVariable Long id,
-      @RequestBody UpdateCertificationRequest request) {
+      @Valid @RequestBody UpdateCertificationRequest request) {
     CertificationResponse response = certificationService.updateCertification(id, request);
     return ResponseEntity.ok(ApiResponse.success("Certification updated successfully", response));
   }

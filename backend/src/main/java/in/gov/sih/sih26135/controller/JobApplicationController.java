@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateJobApplicationRequest;
 import in.gov.sih.sih26135.dto.request.UpdateJobApplicationRequest;
 import in.gov.sih.sih26135.dto.response.JobApplicationResponse;
@@ -114,7 +115,7 @@ public class JobApplicationController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<JobApplicationResponse>> createJobApplication(
-      @RequestBody CreateJobApplicationRequest request,
+      @Valid @RequestBody CreateJobApplicationRequest request,
       HttpServletRequest httpRequest) {
     JobApplicationResponse response = jobApplicationService.createJobApplication(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -131,7 +132,7 @@ public class JobApplicationController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<JobApplicationResponse>> updateJobApplication(
       @PathVariable Long id,
-      @RequestBody UpdateJobApplicationRequest request) {
+      @Valid @RequestBody UpdateJobApplicationRequest request) {
     JobApplicationResponse response = jobApplicationService.updateJobApplication(id, request);
     return ResponseEntity.ok(ApiResponse.success("Job application updated successfully", response));
   }

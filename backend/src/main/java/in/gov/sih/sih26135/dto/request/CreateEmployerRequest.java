@@ -1,23 +1,37 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDateTime;
 
 public class CreateEmployerRequest {
 
+  @NotBlank(message = "employerCode is required")
+  @Size(max = 32, message = "employerCode cannot exceed 32 characters")
   private String employerCode;
+  @NotBlank(message = "employerName is required")
+  @Size(max = 200, message = "employerName cannot exceed 200 characters")
   private String employerName;
+  @Size(max = 32, message = "Registration number cannot exceed 32 characters")
   private String registrationNumber;
+  @Size(max = 15, message = "gstin cannot exceed 15 characters")
   private String gstin;
   private Long organizationTypeId;
   private Long organizationId;
   private Long industryId;
   private Long sectorId;
   private Long companySizeId;
+  @Size(max = 150, message = "contactPersonName cannot exceed 150 characters")
   private String contactPersonName;
+  @Email(message = "Email must be a valid email address")
+  @Size(max = 255, message = "Email cannot exceed 255 characters")
   private String contactEmail;
+  @Pattern(regexp = "^[0-9]{10,15}$", message = "Phone number must be between 10 and 15 digits")
   private String contactPhone;
+  @Size(max = 200, message = "addressLine1 cannot exceed 200 characters")
   private String addressLine1;
+  @Size(max = 200, message = "addressLine2 cannot exceed 200 characters")
   private String addressLine2;
+  @Pattern(regexp = "^[1-9][0-9]{5}$", message = "Pincode must be 6 digits and cannot start with 0")
   private String pincode;
   private Long locationId;
   private Long stateId;

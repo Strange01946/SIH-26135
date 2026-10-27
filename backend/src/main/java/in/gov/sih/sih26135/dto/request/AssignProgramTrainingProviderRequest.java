@@ -1,10 +1,12 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 
 public class AssignProgramTrainingProviderRequest {
 
   private Long programId;
+  @NotNull(message = "Provider ID is required")
   private Long providerId;
   private LocalDate empanelledFrom;
   private LocalDate empanelledTo;

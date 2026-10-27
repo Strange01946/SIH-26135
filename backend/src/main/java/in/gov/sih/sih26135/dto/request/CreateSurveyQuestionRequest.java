@@ -1,9 +1,13 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 public class CreateSurveyQuestionRequest {
 
   private Long surveyTemplateVersionId;
+  @NotBlank(message = "questionCode is required")
+  @Size(max = 32, message = "questionCode cannot exceed 32 characters")
   private String questionCode;
+  @Size(max = 500, message = "questionText cannot exceed 500 characters")
   private String questionText;
   private Long questionTypeId;
   private Integer displayOrder;

@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDateTime;
 
@@ -7,10 +8,13 @@ public class CreateTraineeConsentRequest {
   private Long traineeId;
   private Long consentTypeId;
   private Long consentStatusId;
+  @Size(max = 500, message = "purpose cannot exceed 500 characters")
   private String purpose;
+  @Size(max = 32, message = "policyVersion cannot exceed 32 characters")
   private String policyVersion;
   private LocalDateTime grantedAt;
   private LocalDateTime expiresAt;
+  @Size(max = 32, message = "capturedChannel cannot exceed 32 characters")
   private String capturedChannel;
 
   public CreateTraineeConsentRequest() {

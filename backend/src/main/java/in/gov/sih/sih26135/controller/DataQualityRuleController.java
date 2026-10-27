@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateDataQualityRuleRequest;
 import in.gov.sih.sih26135.dto.request.UpdateDataQualityRuleRequest;
 import in.gov.sih.sih26135.dto.response.DataQualityRuleResponse;
@@ -150,7 +151,7 @@ public class DataQualityRuleController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<DataQualityRuleResponse>> createRule(
-      @RequestBody CreateDataQualityRuleRequest request,
+      @Valid @RequestBody CreateDataQualityRuleRequest request,
       HttpServletRequest httpRequest) {
     DataQualityRuleResponse response = dataQualityRuleService.createRule(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -170,7 +171,7 @@ public class DataQualityRuleController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<DataQualityRuleResponse>> updateRule(
       @PathVariable Long id,
-      @RequestBody UpdateDataQualityRuleRequest request) {
+      @Valid @RequestBody UpdateDataQualityRuleRequest request) {
     DataQualityRuleResponse response = dataQualityRuleService.updateRule(id, request);
     return ResponseEntity.ok(ApiResponse.success(
         "Data quality rule updated successfully",

@@ -1,8 +1,11 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 public class UpdateSkillRequest {
 
+  @Size(max = 150, message = "skillName cannot exceed 150 characters")
   private String skillName;
+  @Size(max = 1000, message = "description cannot exceed 1000 characters")
   private String description;
   private Long skillCategoryId;
   private Long lifecycleStatusId;

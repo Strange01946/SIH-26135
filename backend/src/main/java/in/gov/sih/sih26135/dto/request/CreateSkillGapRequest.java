@@ -1,9 +1,11 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 
 public class CreateSkillGapRequest {
 
+  @Size(max = 32, message = "skillGapNumber cannot exceed 32 characters")
   private String skillGapNumber;
   private Long skillGapAssessmentId;
   private Long traineeId;
@@ -19,6 +21,7 @@ public class CreateSkillGapRequest {
   private Boolean isCurrent = true;
   private LocalDate identifiedOn;
   private LocalDate resolvedOn;
+  @Size(max = 500, message = "notes cannot exceed 500 characters")
   private String notes;
 
   public CreateSkillGapRequest() {}

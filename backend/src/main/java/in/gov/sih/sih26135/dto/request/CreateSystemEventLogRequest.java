@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDateTime;
 
@@ -6,11 +7,16 @@ public class CreateSystemEventLogRequest {
 
   private Long systemEventCategoryId;
   private Long systemEventSeverityId;
+  @NotBlank(message = "eventCode is required")
+  @Size(max = 64, message = "eventCode cannot exceed 64 characters")
   private String eventCode;
   private Long actorUserId;
+  @Size(max = 64, message = "entityType cannot exceed 64 characters")
   private String entityType;
   private Long entityId;
+  @Size(max = 64, message = "sourceComponent cannot exceed 64 characters")
   private String sourceComponent;
+  @Size(max = 500, message = "eventSummary cannot exceed 500 characters")
   private String eventSummary;
   private LocalDateTime occurredAt;
 

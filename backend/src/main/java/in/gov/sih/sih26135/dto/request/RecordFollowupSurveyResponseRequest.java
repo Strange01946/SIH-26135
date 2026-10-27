@@ -1,8 +1,10 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.Valid;
 
 public class RecordFollowupSurveyResponseRequest {
 
   private Long followupTaskId;
+  @Valid
   private CreateSurveyResponseRequest surveyResponseRequest;
   private Long followupTaskStatusId;
   private Long followupTaskOutcomeId;

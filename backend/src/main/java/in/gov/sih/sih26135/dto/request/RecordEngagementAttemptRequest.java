@@ -1,8 +1,10 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.Valid;
 
 public class RecordEngagementAttemptRequest {
 
   private Long followupTaskId;
+  @Valid
   private CreateCommunicationLogRequest communicationLogRequest;
   private Long followupTaskStatusId;
   private Long followupTaskOutcomeId;

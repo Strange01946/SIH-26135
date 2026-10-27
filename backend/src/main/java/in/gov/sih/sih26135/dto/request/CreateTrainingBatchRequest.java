@@ -1,9 +1,12 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 
 public class CreateTrainingBatchRequest {
 
+  @NotBlank(message = "batchCode is required")
+  @Size(max = 32, message = "batchCode cannot exceed 32 characters")
   private String batchCode;
   private Long courseId;
   private Long providerId;
@@ -11,6 +14,7 @@ public class CreateTrainingBatchRequest {
   private Long programId;
   private LocalDate startDate;
   private LocalDate endDate;
+  @Positive(message = "capacity must be greater than 0")
   private Integer capacity;
   private Long batchStatusId;
 

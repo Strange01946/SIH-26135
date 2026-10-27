@@ -1,16 +1,22 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
 public class UpdateSchemeRequest {
 
+  @Size(max = 200, message = "schemeName cannot exceed 200 characters")
   private String schemeName;
+  @Size(max = 65535, message = "description cannot exceed 65535 characters")
   private String description;
   private Long departmentId;
   private LocalDate startDate;
   private LocalDate endDate;
+  @PositiveOrZero(message = "budget must be greater than or equal to 0")
+  @Digits(integer = 16, fraction = 2, message = "budget numeric value out of bounds (<16 digits>.<2 digits> expected)")
   private BigDecimal budget;
+  @Size(max = 3, message = "currencyCode cannot exceed 3 characters")
   private String currencyCode;
   private Integer targetBeneficiaries;
   private Long lifecycleStatusId;

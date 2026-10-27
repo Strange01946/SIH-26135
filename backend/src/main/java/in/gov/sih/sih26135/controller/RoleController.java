@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.AssignRolePermissionRequest;
 import in.gov.sih.sih26135.dto.request.CreateRoleRequest;
 import in.gov.sih.sih26135.dto.request.UpdateRoleRequest;
@@ -78,7 +79,7 @@ public class RoleController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<RoleResponse>> createRole(
-      @RequestBody CreateRoleRequest request,
+      @Valid @RequestBody CreateRoleRequest request,
       HttpServletRequest httpRequest) {
     RoleResponse response = roleService.createRole(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -95,7 +96,7 @@ public class RoleController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<RoleResponse>> updateRole(
       @PathVariable Long id,
-      @RequestBody UpdateRoleRequest request) {
+      @Valid @RequestBody UpdateRoleRequest request) {
     RoleResponse response = roleService.updateRole(id, request);
     return ResponseEntity.ok(ApiResponse.success("Role updated successfully", response));
   }
@@ -124,7 +125,7 @@ public class RoleController {
   @PostMapping("/{roleId}/permissions")
   public ResponseEntity<ApiResponse<RolePermissionResponse>> assignPermission(
       @PathVariable Long roleId,
-      @RequestBody AssignRolePermissionRequest request,
+      @Valid @RequestBody AssignRolePermissionRequest request,
       HttpServletRequest httpRequest) {
     RolePermissionResponse response = roleService.assignPermission(roleId, request);
     return ResponseEntity.status(HttpStatus.CREATED)

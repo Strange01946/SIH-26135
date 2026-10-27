@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateSalaryHistoryRequest;
 import in.gov.sih.sih26135.dto.request.UpdateSalaryHistoryRequest;
 import in.gov.sih.sih26135.dto.response.SalaryHistoryResponse;
@@ -126,7 +127,7 @@ public class SalaryHistoryController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<SalaryHistoryResponse>> createSalaryHistory(
-      @RequestBody CreateSalaryHistoryRequest request,
+      @Valid @RequestBody CreateSalaryHistoryRequest request,
       HttpServletRequest httpRequest) {
     SalaryHistoryResponse response = salaryHistoryService.createSalaryHistory(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -143,7 +144,7 @@ public class SalaryHistoryController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<SalaryHistoryResponse>> updateSalaryHistory(
       @PathVariable Long id,
-      @RequestBody UpdateSalaryHistoryRequest request) {
+      @Valid @RequestBody UpdateSalaryHistoryRequest request) {
     SalaryHistoryResponse response = salaryHistoryService.updateSalaryHistory(id, request);
     return ResponseEntity.ok(ApiResponse.success("Salary history updated successfully", response));
   }

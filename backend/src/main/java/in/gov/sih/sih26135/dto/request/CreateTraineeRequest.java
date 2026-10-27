@@ -1,20 +1,33 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 
 public class CreateTraineeRequest {
 
   private Long userId;
+  @NotBlank(message = "Registration number is required")
+  @Size(max = 32, message = "Registration number cannot exceed 32 characters")
   private String registrationNumber;
+  @NotBlank(message = "firstName is required")
+  @Size(max = 80, message = "firstName cannot exceed 80 characters")
   private String firstName;
+  @Size(max = 80, message = "middleName cannot exceed 80 characters")
   private String middleName;
+  @Size(max = 80, message = "lastName cannot exceed 80 characters")
   private String lastName;
   private LocalDate dateOfBirth;
   private Long genderId;
+  @Email(message = "Email must be a valid email address")
+  @Size(max = 255, message = "Email cannot exceed 255 characters")
   private String email;
+  @Pattern(regexp = "^[0-9]{10,15}$", message = "Phone number must be between 10 and 15 digits")
   private String phone;
+  @Size(max = 200, message = "addressLine1 cannot exceed 200 characters")
   private String addressLine1;
+  @Size(max = 200, message = "addressLine2 cannot exceed 200 characters")
   private String addressLine2;
+  @Pattern(regexp = "^[1-9][0-9]{5}$", message = "Pincode must be 6 digits and cannot start with 0")
   private String pincode;
   private Long locationId;
   private Long stateId;

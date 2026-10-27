@@ -1,10 +1,15 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 public class UpdateTrainingCenterRequest {
 
+  @Size(max = 200, message = "centerName cannot exceed 200 characters")
   private String centerName;
+  @Size(max = 200, message = "addressLine1 cannot exceed 200 characters")
   private String addressLine1;
+  @Size(max = 200, message = "addressLine2 cannot exceed 200 characters")
   private String addressLine2;
+  @Pattern(regexp = "^[1-9][0-9]{5}$", message = "Pincode must be 6 digits and cannot start with 0")
   private String pincode;
   private Long locationId;
   private Long stateId;

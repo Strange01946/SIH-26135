@@ -1,13 +1,17 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 public class CreateImportRecordRequest {
 
   private Long importBatchId;
   private Integer sourceRowNumber;
+  @Size(max = 64, message = "entityType cannot exceed 64 characters")
   private String entityType;
   private Long entityId;
   private Long importRecordStatusId;
+  @Size(max = 64, message = "errorCode cannot exceed 64 characters")
   private String errorCode;
+  @Size(max = 500, message = "errorMessage cannot exceed 500 characters")
   private String errorMessage;
 
   public CreateImportRecordRequest() {}

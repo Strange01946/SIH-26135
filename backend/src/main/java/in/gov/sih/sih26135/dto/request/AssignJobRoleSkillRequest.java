@@ -1,8 +1,10 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 public class AssignJobRoleSkillRequest {
 
   private Long jobRoleId;
+  @NotNull(message = "Skill ID is required")
   private Long skillId;
   private Long requiredSkillLevelId;
   private Long skillImportanceId;

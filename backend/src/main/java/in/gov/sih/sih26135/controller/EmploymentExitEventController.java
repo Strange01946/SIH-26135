@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateEmploymentExitEventRequest;
 import in.gov.sih.sih26135.dto.request.UpdateEmploymentExitEventRequest;
 import in.gov.sih.sih26135.dto.response.EmploymentExitEventResponse;
@@ -195,7 +196,7 @@ public class EmploymentExitEventController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<EmploymentExitEventResponse>> createExitEvent(
-      @RequestBody CreateEmploymentExitEventRequest request,
+      @Valid @RequestBody CreateEmploymentExitEventRequest request,
       HttpServletRequest httpRequest) {
     EmploymentExitEventResponse response = employmentExitEventService.createExitEvent(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -215,7 +216,7 @@ public class EmploymentExitEventController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<EmploymentExitEventResponse>> updateExitEvent(
       @PathVariable Long id,
-      @RequestBody UpdateEmploymentExitEventRequest request) {
+      @Valid @RequestBody UpdateEmploymentExitEventRequest request) {
     EmploymentExitEventResponse response = employmentExitEventService.updateExitEvent(id, request);
     return ResponseEntity.ok(ApiResponse.success(
         "Employment exit event updated successfully",

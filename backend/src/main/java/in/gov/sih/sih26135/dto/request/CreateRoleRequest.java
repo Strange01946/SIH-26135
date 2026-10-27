@@ -1,9 +1,15 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 public class CreateRoleRequest {
 
+  @NotBlank(message = "roleCode is required")
+  @Size(max = 64, message = "roleCode cannot exceed 64 characters")
   private String roleCode;
+  @NotBlank(message = "roleName is required")
+  @Size(max = 100, message = "roleName cannot exceed 100 characters")
   private String roleName;
+  @Size(max = 500, message = "description cannot exceed 500 characters")
   private String description;
   private Boolean isSystemRole = true;
   private Long lifecycleStatusId;

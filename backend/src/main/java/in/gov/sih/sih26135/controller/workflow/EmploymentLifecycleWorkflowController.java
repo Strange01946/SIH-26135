@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller.workflow;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.EmploymentExitAndUnemploymentRequest;
 import in.gov.sih.sih26135.dto.request.UnemploymentToEmploymentTransitionRequest;
 import in.gov.sih.sih26135.dto.response.EmploymentExitAndUnemploymentResponse;
@@ -48,7 +49,7 @@ public class EmploymentLifecycleWorkflowController {
    */
   @PostMapping("/record-exit-and-initiate-unemployment")
   public ResponseEntity<ApiResponse<EmploymentExitAndUnemploymentResponse>> recordExitAndInitiateUnemployment(
-      @RequestBody EmploymentExitAndUnemploymentRequest request,
+      @Valid @RequestBody EmploymentExitAndUnemploymentRequest request,
       HttpServletRequest httpRequest) {
     if (!httpRequest.getParameterMap().isEmpty()) {
       throw new BadRequestException(
@@ -74,7 +75,7 @@ public class EmploymentLifecycleWorkflowController {
    */
   @PostMapping("/transition-unemployment-to-employment")
   public ResponseEntity<ApiResponse<UnemploymentToEmploymentTransitionResponse>> transitionUnemploymentToEmployment(
-      @RequestBody UnemploymentToEmploymentTransitionRequest request,
+      @Valid @RequestBody UnemploymentToEmploymentTransitionRequest request,
       HttpServletRequest httpRequest) {
     if (!httpRequest.getParameterMap().isEmpty()) {
       throw new BadRequestException(

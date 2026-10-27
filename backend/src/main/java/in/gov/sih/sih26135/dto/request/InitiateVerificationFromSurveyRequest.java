@@ -1,8 +1,10 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.Valid;
 
 public class InitiateVerificationFromSurveyRequest {
 
   private Long surveyResponseId;
+  @Valid
   private CreateEmploymentVerificationRequestRequest verificationRequestDetails;
 
   public InitiateVerificationFromSurveyRequest() {

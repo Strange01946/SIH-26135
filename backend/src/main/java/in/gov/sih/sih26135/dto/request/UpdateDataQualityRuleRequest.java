@@ -1,9 +1,13 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 public class UpdateDataQualityRuleRequest {
 
+  @Size(max = 200, message = "ruleName cannot exceed 200 characters")
   private String ruleName;
+  @Size(max = 1000, message = "description cannot exceed 1000 characters")
   private String description;
+  @Size(max = 64, message = "targetEntityType cannot exceed 64 characters")
   private String targetEntityType;
   private Long dataQualityCategoryId;
   private Long dataQualitySeverityId;

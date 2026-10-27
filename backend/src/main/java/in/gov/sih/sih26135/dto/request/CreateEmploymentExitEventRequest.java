@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -15,6 +16,7 @@ public class CreateEmploymentExitEventRequest {
   private Long recordVerificationStatusId;
   private LocalDateTime verifiedAt;
   private Long verifiedByUserId;
+  @Size(max = 500, message = "remarks cannot exceed 500 characters")
   private String remarks;
 
   public CreateEmploymentExitEventRequest() {}

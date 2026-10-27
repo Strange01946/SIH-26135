@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDateTime;
 
@@ -6,10 +7,13 @@ public class CreateAuditLogRequest {
 
   private Long actorUserId;
   private Long auditActionId;
+  @Size(max = 64, message = "entityType cannot exceed 64 characters")
   private String entityType;
   private Long entityId;
   private LocalDateTime occurredAt;
+  @Size(max = 64, message = "correlationId cannot exceed 64 characters")
   private String correlationId;
+  @Size(max = 1000, message = "changeSummary cannot exceed 1000 characters")
   private String changeSummary;
 
   public CreateAuditLogRequest() {}

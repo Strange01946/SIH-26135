@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateSchemeRequest;
 import in.gov.sih.sih26135.dto.request.UpdateSchemeRequest;
 import in.gov.sih.sih26135.dto.response.SchemeResponse;
@@ -82,7 +83,7 @@ public class SchemeController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<SchemeResponse>> createScheme(
-      @RequestBody CreateSchemeRequest request,
+      @Valid @RequestBody CreateSchemeRequest request,
       HttpServletRequest httpRequest) {
     SchemeResponse response = schemeService.createScheme(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -99,7 +100,7 @@ public class SchemeController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<SchemeResponse>> updateScheme(
       @PathVariable Long id,
-      @RequestBody UpdateSchemeRequest request) {
+      @Valid @RequestBody UpdateSchemeRequest request) {
     SchemeResponse response = schemeService.updateScheme(id, request);
     return ResponseEntity.ok(ApiResponse.success("Scheme updated successfully", response));
   }

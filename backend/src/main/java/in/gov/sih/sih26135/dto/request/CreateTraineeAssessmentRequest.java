@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 
@@ -11,6 +12,7 @@ public class CreateTraineeAssessmentRequest {
   private Boolean appearedFlag = true;
   private LocalDate assessmentDate;
   private Long evaluatorUserId;
+  @Size(max = 150, message = "evaluatorName cannot exceed 150 characters")
   private String evaluatorName;
 
   public CreateTraineeAssessmentRequest() {

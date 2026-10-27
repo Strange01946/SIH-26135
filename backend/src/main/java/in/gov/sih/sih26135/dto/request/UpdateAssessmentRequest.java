@@ -1,16 +1,23 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
 public class UpdateAssessmentRequest {
 
+  @Size(max = 200, message = "assessmentName cannot exceed 200 characters")
   private String assessmentName;
   private Long assessmentTypeId;
   private LocalDate assessmentDate;
+  @PositiveOrZero(message = "maximumScore must be greater than or equal to 0")
+  @Digits(integer = 6, fraction = 2, message = "maximumScore numeric value out of bounds (<6 digits>.<2 digits> expected)")
   private BigDecimal maximumScore;
+  @PositiveOrZero(message = "passScore must be greater than or equal to 0")
+  @Digits(integer = 6, fraction = 2, message = "passScore numeric value out of bounds (<6 digits>.<2 digits> expected)")
   private BigDecimal passScore;
   private Long evaluatorUserId;
+  @Size(max = 150, message = "evaluatorName cannot exceed 150 characters")
   private String evaluatorName;
   private Long lifecycleStatusId;
 

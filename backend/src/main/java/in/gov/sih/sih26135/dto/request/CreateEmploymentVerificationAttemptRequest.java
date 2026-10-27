@@ -1,10 +1,12 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDateTime;
 
 public class CreateEmploymentVerificationAttemptRequest {
 
   private Long employmentVerificationRequestId;
+  @PositiveOrZero(message = "attemptNumber must be greater than or equal to 0")
   private Integer attemptNumber;
   private Long employmentVerificationMethodId;
   private Long employmentVerificationAttemptStatusId;
@@ -13,6 +15,7 @@ public class CreateEmploymentVerificationAttemptRequest {
   private Long communicationLogId;
   private LocalDateTime attemptedAt;
   private LocalDateTime completedAt;
+  @Size(max = 500, message = "notes cannot exceed 500 characters")
   private String notes;
 
   public CreateEmploymentVerificationAttemptRequest() {}

@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDateTime;
 
@@ -8,10 +9,12 @@ public class UpdateDataQualityIssueRequest {
   private Long dataQualitySeverityId;
   private Long dataQualityIssueStatusId;
   private Long dataQualityDetectionSourceId;
+  @Size(max = 500, message = "issueSummary cannot exceed 500 characters")
   private String issueSummary;
   private Long assignedUserId;
   private LocalDateTime resolvedAt;
   private Long resolvedByUserId;
+  @Size(max = 500, message = "resolutionNotes cannot exceed 500 characters")
   private String resolutionNotes;
 
   public UpdateDataQualityIssueRequest() {}

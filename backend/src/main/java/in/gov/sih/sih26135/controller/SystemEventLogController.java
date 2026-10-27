@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateSystemEventLogRequest;
 import in.gov.sih.sih26135.dto.response.SystemEventLogResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
@@ -338,7 +339,7 @@ public class SystemEventLogController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<SystemEventLogResponse>> recordSystemEvent(
-      @RequestBody CreateSystemEventLogRequest request,
+      @Valid @RequestBody CreateSystemEventLogRequest request,
       HttpServletRequest httpRequest) {
     SystemEventLogResponse response = systemEventLogService.recordSystemEvent(request);
     return ResponseEntity.status(HttpStatus.CREATED)

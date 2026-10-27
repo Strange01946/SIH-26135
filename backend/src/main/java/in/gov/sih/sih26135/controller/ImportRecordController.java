@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateImportRecordRequest;
 import in.gov.sih.sih26135.dto.request.UpdateImportRecordRequest;
 import in.gov.sih.sih26135.dto.response.ImportRecordResponse;
@@ -137,7 +138,7 @@ public class ImportRecordController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<ImportRecordResponse>> createImportRecord(
-      @RequestBody CreateImportRecordRequest request,
+      @Valid @RequestBody CreateImportRecordRequest request,
       HttpServletRequest httpRequest) {
     ImportRecordResponse response = importRecordService.createImportRecord(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -157,7 +158,7 @@ public class ImportRecordController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<ImportRecordResponse>> updateImportRecord(
       @PathVariable Long id,
-      @RequestBody UpdateImportRecordRequest request) {
+      @Valid @RequestBody UpdateImportRecordRequest request) {
     ImportRecordResponse response = importRecordService.updateImportRecord(id, request);
     return ResponseEntity.ok(ApiResponse.success(
         "Import record updated successfully",

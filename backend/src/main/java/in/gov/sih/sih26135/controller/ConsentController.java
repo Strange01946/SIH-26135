@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateTraineeConsentRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTraineeConsentStatusRequest;
 import in.gov.sih.sih26135.dto.response.TraineeConsentResponse;
@@ -89,7 +90,7 @@ public class ConsentController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<TraineeConsentResponse>> createConsent(
-      @RequestBody CreateTraineeConsentRequest request,
+      @Valid @RequestBody CreateTraineeConsentRequest request,
       @RequestHeader(value = "X-Actor-User-Id", required = false) Long actorUserId,
       HttpServletRequest httpRequest) {
     TraineeConsentResponse response = traineeConsentService.createConsent(request, actorUserId);
@@ -108,7 +109,7 @@ public class ConsentController {
   @PutMapping(path = {"/{id}", "/{id}/status"})
   public ResponseEntity<ApiResponse<TraineeConsentResponse>> updateConsentStatus(
       @PathVariable Long id,
-      @RequestBody UpdateTraineeConsentStatusRequest request,
+      @Valid @RequestBody UpdateTraineeConsentStatusRequest request,
       @RequestHeader(value = "X-Actor-User-Id", required = false) Long actorUserId) {
     TraineeConsentResponse response = traineeConsentService.updateConsentStatus(id, request, actorUserId);
     return ResponseEntity.ok(ApiResponse.success("Consent status updated successfully", response));

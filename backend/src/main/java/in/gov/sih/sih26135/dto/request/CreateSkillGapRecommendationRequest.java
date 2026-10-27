@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 
@@ -11,6 +12,7 @@ public class CreateSkillGapRecommendationRequest {
   private Long recommendedSkillId;
   private Boolean isAcceptedFlag = false;
   private LocalDate acceptedOn;
+  @Size(max = 500, message = "remarks cannot exceed 500 characters")
   private String remarks;
   private Long createdByUserId;
 

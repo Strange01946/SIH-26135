@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateAuditLogRequest;
 import in.gov.sih.sih26135.dto.response.AuditLogResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
@@ -278,7 +279,7 @@ public class AuditLogController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<AuditLogResponse>> recordAuditLog(
-      @RequestBody CreateAuditLogRequest request,
+      @Valid @RequestBody CreateAuditLogRequest request,
       HttpServletRequest httpRequest) {
     AuditLogResponse response = auditLogService.recordAuditLog(request);
     return ResponseEntity.status(HttpStatus.CREATED)

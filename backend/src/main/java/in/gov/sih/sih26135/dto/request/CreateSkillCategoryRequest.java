@@ -1,9 +1,15 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 public class CreateSkillCategoryRequest {
 
+  @NotBlank(message = "categoryCode is required")
+  @Size(max = 32, message = "categoryCode cannot exceed 32 characters")
   private String categoryCode;
+  @NotBlank(message = "categoryName is required")
+  @Size(max = 150, message = "categoryName cannot exceed 150 characters")
   private String categoryName;
+  @Size(max = 500, message = "description cannot exceed 500 characters")
   private String description;
   private Long parentCategoryId;
   private Long lifecycleStatusId;

@@ -1,13 +1,20 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 public class CreateCourseRequest {
 
+  @NotBlank(message = "courseCode is required")
+  @Size(max = 32, message = "courseCode cannot exceed 32 characters")
   private String courseCode;
+  @NotBlank(message = "courseName is required")
+  @Size(max = 200, message = "courseName cannot exceed 200 characters")
   private String courseName;
+  @Size(max = 65535, message = "description cannot exceed 65535 characters")
   private String description;
   private Long sectorId;
   private Long industryId;
   private Long qualificationLevelId;
+  @PositiveOrZero(message = "durationHours must be greater than or equal to 0")
   private Integer durationHours;
   private Integer durationDays;
   private Long deliveryModeId;

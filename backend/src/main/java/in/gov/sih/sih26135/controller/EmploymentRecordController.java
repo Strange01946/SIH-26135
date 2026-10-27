@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateEmploymentRecordRequest;
 import in.gov.sih.sih26135.dto.request.UpdateEmploymentRecordRequest;
 import in.gov.sih.sih26135.dto.response.EmploymentRecordResponse;
@@ -263,7 +264,7 @@ public class EmploymentRecordController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<EmploymentRecordResponse>> createEmploymentRecord(
-      @RequestBody CreateEmploymentRecordRequest request,
+      @Valid @RequestBody CreateEmploymentRecordRequest request,
       HttpServletRequest httpRequest) {
     EmploymentRecordResponse response = employmentRecordService.createEmploymentRecord(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -280,7 +281,7 @@ public class EmploymentRecordController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<EmploymentRecordResponse>> updateEmploymentRecord(
       @PathVariable Long id,
-      @RequestBody UpdateEmploymentRecordRequest request) {
+      @Valid @RequestBody UpdateEmploymentRecordRequest request) {
     EmploymentRecordResponse response = employmentRecordService.updateEmploymentRecord(id, request);
     return ResponseEntity.ok(ApiResponse.success("Employment record updated successfully", response));
   }

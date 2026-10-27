@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateSurveyResponseAnswerRequest;
 import in.gov.sih.sih26135.dto.request.UpdateSurveyResponseAnswerRequest;
 import in.gov.sih.sih26135.dto.response.SurveyResponseAnswerResponse;
@@ -111,7 +112,7 @@ public class SurveyResponseAnswerController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<SurveyResponseAnswerResponse>> createSurveyResponseAnswer(
-      @RequestBody CreateSurveyResponseAnswerRequest request,
+      @Valid @RequestBody CreateSurveyResponseAnswerRequest request,
       HttpServletRequest httpRequest) {
     SurveyResponseAnswerResponse response = surveyResponseAnswerService.createSurveyResponseAnswer(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -128,7 +129,7 @@ public class SurveyResponseAnswerController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<SurveyResponseAnswerResponse>> updateSurveyResponseAnswer(
       @PathVariable Long id,
-      @RequestBody UpdateSurveyResponseAnswerRequest request) {
+      @Valid @RequestBody UpdateSurveyResponseAnswerRequest request) {
     SurveyResponseAnswerResponse response = surveyResponseAnswerService.updateSurveyResponseAnswer(id, request);
     return ResponseEntity.ok(ApiResponse.success("Survey response answer updated successfully", response));
   }

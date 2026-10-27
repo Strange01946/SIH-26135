@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateImportBatchRequest;
 import in.gov.sih.sih26135.dto.request.UpdateImportBatchRequest;
 import in.gov.sih.sih26135.dto.response.ImportBatchResponse;
@@ -150,7 +151,7 @@ public class ImportBatchController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<ImportBatchResponse>> createImportBatch(
-      @RequestBody CreateImportBatchRequest request,
+      @Valid @RequestBody CreateImportBatchRequest request,
       HttpServletRequest httpRequest) {
     ImportBatchResponse response = importBatchService.createImportBatch(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -170,7 +171,7 @@ public class ImportBatchController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<ImportBatchResponse>> updateImportBatch(
       @PathVariable Long id,
-      @RequestBody UpdateImportBatchRequest request) {
+      @Valid @RequestBody UpdateImportBatchRequest request) {
     ImportBatchResponse response = importBatchService.updateImportBatch(id, request);
     return ResponseEntity.ok(ApiResponse.success(
         "Import batch updated successfully",

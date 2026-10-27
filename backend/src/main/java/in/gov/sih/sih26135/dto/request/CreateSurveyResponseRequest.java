@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDateTime;
 
@@ -9,6 +10,7 @@ public class CreateSurveyResponseRequest {
   private Long traineeId;
   private Long enrollmentId;
   private Long followupTaskId;
+  @PositiveOrZero(message = "attemptNumber must be greater than or equal to 0")
   private Integer attemptNumber;
   private Long surveyResponseStatusId;
   private LocalDateTime startedAt;

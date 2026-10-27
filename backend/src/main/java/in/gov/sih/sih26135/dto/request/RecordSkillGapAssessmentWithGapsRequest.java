@@ -1,10 +1,12 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.Valid;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class RecordSkillGapAssessmentWithGapsRequest {
 
+  @Valid
   private CreateSkillGapAssessmentRequest assessmentRequest;
   private List<CreateSkillGapRequest> gapRequests = new ArrayList<>();
   private List<CreateSkillGapRecommendationRequest> recommendationRequests = new ArrayList<>();

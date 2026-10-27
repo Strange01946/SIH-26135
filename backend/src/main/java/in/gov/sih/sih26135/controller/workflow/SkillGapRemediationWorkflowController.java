@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller.workflow;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.RecordSkillGapAssessmentWithGapsRequest;
 import in.gov.sih.sih26135.dto.request.SkillGapRemediationEnrollmentRequest;
 import in.gov.sih.sih26135.dto.request.TraineeRecommendationDecisionRequest;
@@ -51,7 +52,7 @@ public class SkillGapRemediationWorkflowController {
    */
   @PostMapping("/record-assessment-with-gaps")
   public ResponseEntity<ApiResponse<RecordSkillGapAssessmentWithGapsResponse>> recordAssessmentWithGaps(
-      @RequestBody RecordSkillGapAssessmentWithGapsRequest request,
+      @Valid @RequestBody RecordSkillGapAssessmentWithGapsRequest request,
       HttpServletRequest httpRequest) {
     if (!httpRequest.getParameterMap().isEmpty()) {
       throw new BadRequestException(
@@ -77,7 +78,7 @@ public class SkillGapRemediationWorkflowController {
    */
   @PostMapping("/enroll-remediation-course")
   public ResponseEntity<ApiResponse<SkillGapRemediationEnrollmentResponse>> enrollRemediationCourse(
-      @RequestBody SkillGapRemediationEnrollmentRequest request,
+      @Valid @RequestBody SkillGapRemediationEnrollmentRequest request,
       HttpServletRequest httpRequest) {
     if (!httpRequest.getParameterMap().isEmpty()) {
       throw new BadRequestException(
@@ -106,7 +107,7 @@ public class SkillGapRemediationWorkflowController {
   @PreAuthorize("hasAnyAuthority('assessment.manage', 'enrollment.manage') or hasRole('trainee')")
   public ResponseEntity<ApiResponse<SkillGapRecommendationResponse>> acceptRecommendation(
       @PathVariable("id") Long id,
-      @RequestBody(required = false) TraineeRecommendationDecisionRequest request,
+      @Valid @RequestBody(required = false) TraineeRecommendationDecisionRequest request,
       HttpServletRequest httpRequest) {
     if (!httpRequest.getParameterMap().isEmpty()) {
       throw new BadRequestException(
@@ -134,7 +135,7 @@ public class SkillGapRemediationWorkflowController {
   @PreAuthorize("hasAnyAuthority('assessment.manage', 'enrollment.manage') or hasRole('trainee')")
   public ResponseEntity<ApiResponse<SkillGapRecommendationResponse>> rejectRecommendation(
       @PathVariable("id") Long id,
-      @RequestBody(required = false) TraineeRecommendationDecisionRequest request,
+      @Valid @RequestBody(required = false) TraineeRecommendationDecisionRequest request,
       HttpServletRequest httpRequest) {
     if (!httpRequest.getParameterMap().isEmpty()) {
       throw new BadRequestException(

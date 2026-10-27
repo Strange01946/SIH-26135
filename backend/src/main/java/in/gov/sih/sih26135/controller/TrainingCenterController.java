@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateTrainingCenterRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTrainingCenterRequest;
 import in.gov.sih.sih26135.dto.response.TrainingCenterResponse;
@@ -105,7 +106,7 @@ public class TrainingCenterController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<TrainingCenterResponse>> createTrainingCenter(
-      @RequestBody CreateTrainingCenterRequest request,
+      @Valid @RequestBody CreateTrainingCenterRequest request,
       HttpServletRequest httpRequest) {
     TrainingCenterResponse response = trainingCenterService.createTrainingCenter(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -122,7 +123,7 @@ public class TrainingCenterController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<TrainingCenterResponse>> updateTrainingCenter(
       @PathVariable Long id,
-      @RequestBody UpdateTrainingCenterRequest request) {
+      @Valid @RequestBody UpdateTrainingCenterRequest request) {
     TrainingCenterResponse response = trainingCenterService.updateTrainingCenter(id, request);
     return ResponseEntity.ok(ApiResponse.success("Training center updated successfully", response));
   }

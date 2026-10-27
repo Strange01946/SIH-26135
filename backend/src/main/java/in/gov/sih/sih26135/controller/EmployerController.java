@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateEmployerRequest;
 import in.gov.sih.sih26135.dto.request.UpdateEmployerRequest;
 import in.gov.sih.sih26135.dto.response.EmployerResponse;
@@ -222,7 +223,7 @@ public class EmployerController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<EmployerResponse>> createEmployer(
-      @RequestBody CreateEmployerRequest request,
+      @Valid @RequestBody CreateEmployerRequest request,
       HttpServletRequest httpRequest) {
     EmployerResponse response = employerService.createEmployer(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -239,7 +240,7 @@ public class EmployerController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<EmployerResponse>> updateEmployer(
       @PathVariable Long id,
-      @RequestBody UpdateEmployerRequest request) {
+      @Valid @RequestBody UpdateEmployerRequest request) {
     EmployerResponse response = employerService.updateEmployer(id, request);
     return ResponseEntity.ok(ApiResponse.success("Employer updated successfully", response));
   }

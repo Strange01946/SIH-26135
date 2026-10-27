@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -16,6 +17,7 @@ public class CreateAttendanceRecordRequest {
   private Long attendanceStatusId;
   private LocalDateTime markedAt;
   private Long markedByUserId;
+  @Size(max = 255, message = "remarks cannot exceed 255 characters")
   private String remarks;
 
   public CreateAttendanceRecordRequest() {

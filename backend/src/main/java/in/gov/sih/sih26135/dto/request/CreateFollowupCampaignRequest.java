@@ -1,10 +1,15 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 
 public class CreateFollowupCampaignRequest {
 
+  @NotBlank(message = "campaignCode is required")
+  @Size(max = 32, message = "campaignCode cannot exceed 32 characters")
   private String campaignCode;
+  @NotBlank(message = "campaignName is required")
+  @Size(max = 200, message = "campaignName cannot exceed 200 characters")
   private String campaignName;
   private Long followupTypeId;
   private Long surveyId;

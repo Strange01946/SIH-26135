@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDateTime;
 
@@ -13,7 +14,9 @@ public class UpdateEmploymentVerificationRequest {
   private Boolean traineeAttestedFlag;
   private Boolean employerConfirmedFlag;
   private LocalDateTime verifiedAt;
+  @Size(max = 500, message = "notes cannot exceed 500 characters")
   private String notes;
+  @Size(max = 500, message = "rejectionNotes cannot exceed 500 characters")
   private String rejectionNotes;
   private Boolean isCurrent;
 

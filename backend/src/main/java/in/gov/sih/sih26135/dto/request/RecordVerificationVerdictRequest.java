@@ -1,10 +1,12 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.Valid;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class RecordVerificationVerdictRequest {
 
+  @Valid
   private CreateEmploymentVerificationRequest verificationRequest;
   private List<CreateEmploymentVerificationEvidenceRequest> evidenceRequests = new ArrayList<>();
   private Long requestStatusId;

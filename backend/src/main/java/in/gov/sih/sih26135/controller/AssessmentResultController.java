@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateAssessmentResultRequest;
 import in.gov.sih.sih26135.dto.request.UpdateAssessmentResultRequest;
 import in.gov.sih.sih26135.dto.response.AssessmentResultResponse;
@@ -109,7 +110,7 @@ public class AssessmentResultController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<AssessmentResultResponse>> createAssessmentResult(
-      @RequestBody CreateAssessmentResultRequest request,
+      @Valid @RequestBody CreateAssessmentResultRequest request,
       HttpServletRequest httpRequest) {
     AssessmentResultResponse response = assessmentResultService.createAssessmentResult(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -126,7 +127,7 @@ public class AssessmentResultController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<AssessmentResultResponse>> updateAssessmentResult(
       @PathVariable Long id,
-      @RequestBody UpdateAssessmentResultRequest request) {
+      @Valid @RequestBody UpdateAssessmentResultRequest request) {
     AssessmentResultResponse response = assessmentResultService.updateAssessmentResult(id, request);
     return ResponseEntity.ok(ApiResponse.success("Assessment result updated successfully", response));
   }

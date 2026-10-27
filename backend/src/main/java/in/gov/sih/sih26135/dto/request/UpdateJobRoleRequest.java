@@ -1,12 +1,16 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 public class UpdateJobRoleRequest {
 
+  @Size(max = 200, message = "jobRoleName cannot exceed 200 characters")
   private String jobRoleName;
+  @Size(max = 65535, message = "description cannot exceed 65535 characters")
   private String description;
   private Long sectorId;
   private Long industryId;
   private Long qualificationLevelId;
+  @Size(max = 16, message = "ncoCode cannot exceed 16 characters")
   private String ncoCode;
   private Long lifecycleStatusId;
 

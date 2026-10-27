@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateSkillGapRecommendationRequest;
 import in.gov.sih.sih26135.dto.request.UpdateSkillGapRecommendationRequest;
 import in.gov.sih.sih26135.dto.response.SkillGapRecommendationResponse;
@@ -190,7 +191,7 @@ public class SkillGapRecommendationController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<SkillGapRecommendationResponse>> createRecommendation(
-      @RequestBody CreateSkillGapRecommendationRequest request,
+      @Valid @RequestBody CreateSkillGapRecommendationRequest request,
       HttpServletRequest httpRequest) {
     SkillGapRecommendationResponse response = skillGapRecommendationService.createRecommendation(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -210,7 +211,7 @@ public class SkillGapRecommendationController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<SkillGapRecommendationResponse>> updateRecommendation(
       @PathVariable Long id,
-      @RequestBody UpdateSkillGapRecommendationRequest request) {
+      @Valid @RequestBody UpdateSkillGapRecommendationRequest request) {
     SkillGapRecommendationResponse response = skillGapRecommendationService.updateRecommendation(id, request);
     return ResponseEntity.ok(ApiResponse.success(
         "Skill gap recommendation updated successfully",

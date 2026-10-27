@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateFollowupTaskRequest;
 import in.gov.sih.sih26135.dto.request.UpdateFollowupTaskRequest;
 import in.gov.sih.sih26135.dto.response.FollowupTaskResponse;
@@ -356,7 +357,7 @@ public class FollowupTaskController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<FollowupTaskResponse>> createFollowupTask(
-      @RequestBody CreateFollowupTaskRequest request,
+      @Valid @RequestBody CreateFollowupTaskRequest request,
       HttpServletRequest httpRequest) {
     FollowupTaskResponse response = followupTaskService.createFollowupTask(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -373,7 +374,7 @@ public class FollowupTaskController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<FollowupTaskResponse>> updateFollowupTask(
       @PathVariable Long id,
-      @RequestBody UpdateFollowupTaskRequest request) {
+      @Valid @RequestBody UpdateFollowupTaskRequest request) {
     FollowupTaskResponse response = followupTaskService.updateFollowupTask(id, request);
     return ResponseEntity.ok(ApiResponse.success("Follow-up task updated successfully", response));
   }

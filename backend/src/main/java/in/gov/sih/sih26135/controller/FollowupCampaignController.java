@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateFollowupCampaignRequest;
 import in.gov.sih.sih26135.dto.request.UpdateFollowupCampaignRequest;
 import in.gov.sih.sih26135.dto.response.FollowupCampaignResponse;
@@ -192,7 +193,7 @@ public class FollowupCampaignController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<FollowupCampaignResponse>> createFollowupCampaign(
-      @RequestBody CreateFollowupCampaignRequest request,
+      @Valid @RequestBody CreateFollowupCampaignRequest request,
       HttpServletRequest httpRequest) {
     FollowupCampaignResponse response = followupCampaignService.createFollowupCampaign(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -209,7 +210,7 @@ public class FollowupCampaignController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<FollowupCampaignResponse>> updateFollowupCampaign(
       @PathVariable Long id,
-      @RequestBody UpdateFollowupCampaignRequest request) {
+      @Valid @RequestBody UpdateFollowupCampaignRequest request) {
     FollowupCampaignResponse response = followupCampaignService.updateFollowupCampaign(id, request);
     return ResponseEntity.ok(ApiResponse.success("Follow-up campaign updated successfully", response));
   }

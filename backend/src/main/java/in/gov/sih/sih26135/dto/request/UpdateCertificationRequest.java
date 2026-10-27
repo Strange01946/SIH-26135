@@ -1,10 +1,12 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 public class UpdateCertificationRequest {
 
+  @Size(max = 200, message = "issuingBody cannot exceed 200 characters")
   private String issuingBody;
   private LocalDate expiryDate;
   private Long certificateStatusId;

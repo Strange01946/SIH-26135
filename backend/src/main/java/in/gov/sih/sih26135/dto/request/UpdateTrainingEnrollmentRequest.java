@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 
@@ -9,6 +10,7 @@ public class UpdateTrainingEnrollmentRequest {
   private LocalDate actualCompletionDate;
   private Long enrollmentStatusId;
   private Long dropoutReasonId;
+  @Size(max = 500, message = "dropoutRemarks cannot exceed 500 characters")
   private String dropoutRemarks;
 
   public UpdateTrainingEnrollmentRequest() {

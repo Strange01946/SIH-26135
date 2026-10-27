@@ -1,8 +1,11 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 public class UpdateSkillCategoryRequest {
 
+  @Size(max = 150, message = "categoryName cannot exceed 150 characters")
   private String categoryName;
+  @Size(max = 500, message = "description cannot exceed 500 characters")
   private String description;
   private Long parentCategoryId;
   private Long lifecycleStatusId;

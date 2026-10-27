@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 
@@ -15,6 +16,7 @@ public class CreateSkillGapObservationRequest {
   private Long skillGapSourceId;
   private LocalDate observedOn;
   private Long observedByUserId;
+  @Size(max = 500, message = "notes cannot exceed 500 characters")
   private String notes;
 
   public CreateSkillGapObservationRequest() {}

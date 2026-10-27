@@ -1,7 +1,9 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 public class AssignRolePermissionRequest {
 
+  @NotNull(message = "Permission ID is required")
   private Long permissionId;
 
   public AssignRolePermissionRequest() {

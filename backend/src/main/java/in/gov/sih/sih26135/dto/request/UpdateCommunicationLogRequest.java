@@ -1,10 +1,12 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDateTime;
 
 public class UpdateCommunicationLogRequest {
 
   private Long communicationStatusId;
+  @Size(max = 255, message = "failureReason cannot exceed 255 characters")
   private String failureReason;
   private LocalDateTime queuedAt;
   private LocalDateTime sentAt;

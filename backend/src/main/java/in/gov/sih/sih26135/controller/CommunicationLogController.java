@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateCommunicationLogRequest;
 import in.gov.sih.sih26135.dto.request.UpdateCommunicationLogRequest;
 import in.gov.sih.sih26135.dto.response.CommunicationLogResponse;
@@ -352,7 +353,7 @@ public class CommunicationLogController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<CommunicationLogResponse>> logCommunication(
-      @RequestBody CreateCommunicationLogRequest request,
+      @Valid @RequestBody CreateCommunicationLogRequest request,
       HttpServletRequest httpRequest) {
     CommunicationLogResponse response = communicationLogService.logCommunication(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -369,7 +370,7 @@ public class CommunicationLogController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<CommunicationLogResponse>> updateCommunicationLog(
       @PathVariable Long id,
-      @RequestBody UpdateCommunicationLogRequest request) {
+      @Valid @RequestBody UpdateCommunicationLogRequest request) {
     CommunicationLogResponse response = communicationLogService.updateCommunicationLog(id, request);
     return ResponseEntity.ok(ApiResponse.success("Communication log updated successfully", response));
   }

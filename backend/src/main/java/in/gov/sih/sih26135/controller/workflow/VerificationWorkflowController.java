@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller.workflow;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.InitiateVerificationFromSurveyRequest;
 import in.gov.sih.sih26135.dto.request.RecordVerificationVerdictRequest;
 import in.gov.sih.sih26135.dto.response.EmploymentVerificationRequestResponse;
@@ -47,7 +48,7 @@ public class VerificationWorkflowController {
    */
   @PostMapping("/initiate-from-survey")
   public ResponseEntity<ApiResponse<EmploymentVerificationRequestResponse>> initiateVerificationFromSurvey(
-      @RequestBody InitiateVerificationFromSurveyRequest request,
+      @Valid @RequestBody InitiateVerificationFromSurveyRequest request,
       HttpServletRequest httpRequest) {
     if (!httpRequest.getParameterMap().isEmpty()) {
       throw new BadRequestException(
@@ -73,7 +74,7 @@ public class VerificationWorkflowController {
    */
   @PostMapping("/record-verdict")
   public ResponseEntity<ApiResponse<RecordVerificationVerdictResponse>> recordVerificationVerdict(
-      @RequestBody RecordVerificationVerdictRequest request,
+      @Valid @RequestBody RecordVerificationVerdictRequest request,
       HttpServletRequest httpRequest) {
     if (!httpRequest.getParameterMap().isEmpty()) {
       throw new BadRequestException(

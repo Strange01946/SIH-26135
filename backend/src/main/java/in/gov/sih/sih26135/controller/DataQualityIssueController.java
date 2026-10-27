@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateDataQualityIssueRequest;
 import in.gov.sih.sih26135.dto.request.ResolveDataQualityIssueRequest;
 import in.gov.sih.sih26135.dto.request.UpdateDataQualityIssueRequest;
@@ -236,7 +237,7 @@ public class DataQualityIssueController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<DataQualityIssueResponse>> reportIssue(
-      @RequestBody CreateDataQualityIssueRequest request,
+      @Valid @RequestBody CreateDataQualityIssueRequest request,
       HttpServletRequest httpRequest) {
     DataQualityIssueResponse response = dataQualityIssueService.reportIssue(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -256,7 +257,7 @@ public class DataQualityIssueController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<DataQualityIssueResponse>> updateIssue(
       @PathVariable Long id,
-      @RequestBody UpdateDataQualityIssueRequest request) {
+      @Valid @RequestBody UpdateDataQualityIssueRequest request) {
     DataQualityIssueResponse response = dataQualityIssueService.updateIssue(id, request);
     return ResponseEntity.ok(ApiResponse.success(
         "Data quality issue updated successfully",
@@ -294,7 +295,7 @@ public class DataQualityIssueController {
   @PostMapping("/{id}/resolve")
   public ResponseEntity<ApiResponse<DataQualityIssueResponse>> resolveIssue(
       @PathVariable Long id,
-      @RequestBody ResolveDataQualityIssueRequest request) {
+      @Valid @RequestBody ResolveDataQualityIssueRequest request) {
     DataQualityIssueResponse response = dataQualityIssueService.resolveIssue(id, request);
     return ResponseEntity.ok(ApiResponse.success(
         "Data quality issue resolved successfully",

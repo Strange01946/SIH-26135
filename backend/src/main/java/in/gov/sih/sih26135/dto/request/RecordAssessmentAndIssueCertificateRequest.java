@@ -1,8 +1,11 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.Valid;
 
 public class RecordAssessmentAndIssueCertificateRequest {
 
+  @Valid
   private CreateAssessmentResultRequest assessmentResultRequest;
+  @Valid
   private CreateCertificationRequest certificationRequest;
   private Long enrollmentId;
   private Long completionEnrollmentStatusId;

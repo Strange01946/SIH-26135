@@ -1,10 +1,12 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 public class UpdateTraineeUnemploymentEventRequest {
 
+  @PositiveOrZero(message = "periodNumber must be greater than or equal to 0")
   private Integer periodNumber;
   private LocalDate startDate;
   private LocalDate endDate;
@@ -22,6 +24,7 @@ public class UpdateTraineeUnemploymentEventRequest {
   private Long recordVerificationStatusId;
   private LocalDateTime verifiedAt;
   private Long verifiedByUserId;
+  @Size(max = 500, message = "remarks cannot exceed 500 characters")
   private String remarks;
 
   public UpdateTraineeUnemploymentEventRequest() {}

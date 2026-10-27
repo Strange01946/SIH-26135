@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.ChangeBatchStatusRequest;
 import in.gov.sih.sih26135.dto.request.CreateTrainingBatchRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTrainingBatchRequest;
@@ -118,7 +119,7 @@ public class TrainingBatchController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<TrainingBatchResponse>> createBatch(
-      @RequestBody CreateTrainingBatchRequest request,
+      @Valid @RequestBody CreateTrainingBatchRequest request,
       HttpServletRequest httpRequest) {
     TrainingBatchResponse response = trainingBatchService.createBatch(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -135,7 +136,7 @@ public class TrainingBatchController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<TrainingBatchResponse>> updateBatch(
       @PathVariable Long id,
-      @RequestBody UpdateTrainingBatchRequest request) {
+      @Valid @RequestBody UpdateTrainingBatchRequest request) {
     TrainingBatchResponse response = trainingBatchService.updateBatch(id, request);
     return ResponseEntity.ok(ApiResponse.success("Training batch updated successfully", response));
   }
@@ -150,7 +151,7 @@ public class TrainingBatchController {
   @PutMapping("/{id}/status")
   public ResponseEntity<ApiResponse<TrainingBatchResponse>> updateBatchStatus(
       @PathVariable Long id,
-      @RequestBody ChangeBatchStatusRequest request) {
+      @Valid @RequestBody ChangeBatchStatusRequest request) {
     TrainingBatchResponse response = trainingBatchService.updateBatchStatus(id, request);
     return ResponseEntity.ok(ApiResponse.success("Training batch status updated successfully", response));
   }

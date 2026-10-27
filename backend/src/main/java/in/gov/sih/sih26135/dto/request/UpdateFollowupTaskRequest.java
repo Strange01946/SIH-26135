@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -16,6 +17,7 @@ public class UpdateFollowupTaskRequest {
   private Long nonResponseReasonId;
   private Long assignedUserId;
   private Long lastChannelId;
+  @Size(max = 500, message = "remarks cannot exceed 500 characters")
   private String remarks;
   private LocalDateTime completedAt;
 

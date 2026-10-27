@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller.auth;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.auth.AuthResponse;
 import in.gov.sih.sih26135.dto.auth.AuthenticatedUserResponse;
 import in.gov.sih.sih26135.dto.auth.LoginRequest;

@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller.workflow;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.RecordAssessmentAndIssueCertificateRequest;
 import in.gov.sih.sih26135.dto.response.RecordAssessmentAndIssueCertificateResponse;
 import in.gov.sih.sih26135.dto.response.TraineeTrainingOutcomeSummaryResponse;
@@ -47,7 +48,7 @@ public class TrainingOutcomeWorkflowController {
    */
   @PostMapping("/record-assessment-and-issue-certificate")
   public ResponseEntity<ApiResponse<RecordAssessmentAndIssueCertificateResponse>> recordAssessmentResultAndIssueCertificate(
-      @RequestBody RecordAssessmentAndIssueCertificateRequest request,
+      @Valid @RequestBody RecordAssessmentAndIssueCertificateRequest request,
       HttpServletRequest httpRequest) {
     if (!httpRequest.getParameterMap().isEmpty()) {
       throw new BadRequestException(

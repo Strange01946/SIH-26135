@@ -1,9 +1,11 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 public class UpdateJobApplicationRequest {
 
   private Long applicationStatusId;
   private Long nonSelectionReasonId;
+  @Size(max = 500, message = "remarks cannot exceed 500 characters")
   private String remarks;
 
   public UpdateJobApplicationRequest() {

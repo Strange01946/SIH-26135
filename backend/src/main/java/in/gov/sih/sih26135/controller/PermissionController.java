@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreatePermissionRequest;
 import in.gov.sih.sih26135.dto.response.PermissionResponse;
 import in.gov.sih.sih26135.response.ApiResponse;
@@ -79,7 +80,7 @@ public class PermissionController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<PermissionResponse>> createPermission(
-      @RequestBody CreatePermissionRequest request,
+      @Valid @RequestBody CreatePermissionRequest request,
       HttpServletRequest httpRequest) {
     PermissionResponse response = permissionService.createPermission(request);
     return ResponseEntity.status(HttpStatus.CREATED)

@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDateTime;
 
@@ -7,11 +8,16 @@ public class CreateEmploymentVerificationEvidenceRequest {
   private Long employmentVerificationId;
   private Long employmentVerificationAttemptId;
   private Long employmentVerificationEvidenceTypeId;
+  @NotBlank(message = "documentReferenceCode is required")
+  @Size(max = 64, message = "documentReferenceCode cannot exceed 64 characters")
   private String documentReferenceCode;
+  @Size(max = 64, message = "contentSha256 cannot exceed 64 characters")
   private String contentSha256;
+  @Size(max = 200, message = "originalFilename cannot exceed 200 characters")
   private String originalFilename;
   private LocalDateTime capturedAt;
   private Long uploadedByUserId;
+  @Size(max = 500, message = "notes cannot exceed 500 characters")
   private String notes;
 
   public CreateEmploymentVerificationEvidenceRequest() {}

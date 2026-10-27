@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateEmploymentVerificationRequestRequest;
 import in.gov.sih.sih26135.dto.request.UpdateEmploymentVerificationRequestRequest;
 import in.gov.sih.sih26135.dto.response.EmploymentVerificationRequestResponse;
@@ -197,7 +198,7 @@ public class EmploymentVerificationRequestController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<EmploymentVerificationRequestResponse>> createVerificationRequest(
-      @RequestBody CreateEmploymentVerificationRequestRequest request,
+      @Valid @RequestBody CreateEmploymentVerificationRequestRequest request,
       HttpServletRequest httpRequest) {
     EmploymentVerificationRequestResponse response =
         employmentVerificationRequestService.createVerificationRequest(request);
@@ -218,7 +219,7 @@ public class EmploymentVerificationRequestController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<EmploymentVerificationRequestResponse>> updateVerificationRequest(
       @PathVariable Long id,
-      @RequestBody UpdateEmploymentVerificationRequestRequest request) {
+      @Valid @RequestBody UpdateEmploymentVerificationRequestRequest request) {
     EmploymentVerificationRequestResponse response =
         employmentVerificationRequestService.updateVerificationRequest(id, request);
     return ResponseEntity.ok(ApiResponse.success(

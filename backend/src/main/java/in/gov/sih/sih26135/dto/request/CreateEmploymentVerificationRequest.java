@@ -1,15 +1,18 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDateTime;
 
 public class CreateEmploymentVerificationRequest {
 
+  @Size(max = 32, message = "verificationNumber cannot exceed 32 characters")
   private String verificationNumber;
   private Long employmentVerificationRequestId;
   private Long employmentRecordId;
   private Long traineeId;
   private Long placementRecordId;
   private Long employerId;
+  @PositiveOrZero(message = "cycleNumber must be greater than or equal to 0")
   private Integer cycleNumber;
   private Boolean isReverification;
   private Boolean isCurrent;
@@ -24,7 +27,9 @@ public class CreateEmploymentVerificationRequest {
   private LocalDateTime requestedAt;
   private LocalDateTime verifiedAt;
   private LocalDateTime outcomeRecordedAt;
+  @Size(max = 500, message = "notes cannot exceed 500 characters")
   private String notes;
+  @Size(max = 500, message = "rejectionNotes cannot exceed 500 characters")
   private String rejectionNotes;
 
   public CreateEmploymentVerificationRequest() {}

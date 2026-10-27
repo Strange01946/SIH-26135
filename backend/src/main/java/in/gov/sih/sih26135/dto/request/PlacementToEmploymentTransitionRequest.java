@@ -1,9 +1,12 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.Valid;
 
 public class PlacementToEmploymentTransitionRequest {
 
   private Long placementId;
+  @Valid
   private CreateEmploymentRecordRequest employmentRecordRequest;
+  @Valid
   private CreateSalaryHistoryRequest initialSalaryRequest;
   private Long placementJoiningStatusId;
   private Long placementStatusId;

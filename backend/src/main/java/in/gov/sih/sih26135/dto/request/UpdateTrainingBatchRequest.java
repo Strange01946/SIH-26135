@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 
@@ -6,6 +7,7 @@ public class UpdateTrainingBatchRequest {
 
   private LocalDate startDate;
   private LocalDate endDate;
+  @Positive(message = "capacity must be greater than 0")
   private Integer capacity;
   private Long batchStatusId;
 

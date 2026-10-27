@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateTraineeRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTraineeRequest;
 import in.gov.sih.sih26135.dto.response.TraineeResponse;
@@ -102,7 +103,7 @@ public class TraineeController {
   @PostMapping
   @PreAuthorize("hasAuthority('trainee.write')")
   public ResponseEntity<ApiResponse<TraineeResponse>> createTrainee(
-      @RequestBody CreateTraineeRequest request,
+      @Valid @RequestBody CreateTraineeRequest request,
       @RequestHeader(value = "X-Actor-User-Id", required = false) Long actorUserId,
       HttpServletRequest httpRequest) {
     TraineeResponse response = traineeService.createTrainee(request, actorUserId);
@@ -122,7 +123,7 @@ public class TraineeController {
   @PreAuthorize("hasAuthority('trainee.write')")
   public ResponseEntity<ApiResponse<TraineeResponse>> updateTrainee(
       @PathVariable Long id,
-      @RequestBody UpdateTraineeRequest request,
+      @Valid @RequestBody UpdateTraineeRequest request,
       @RequestHeader(value = "X-Actor-User-Id", required = false) Long actorUserId) {
     TraineeResponse response = traineeService.updateTrainee(id, request, actorUserId);
     return ResponseEntity.ok(ApiResponse.success("Trainee updated successfully", response));

@@ -1,12 +1,16 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDateTime;
 
 public class UpdateImportBatchRequest {
 
   private Long importBatchStatusId;
+  @PositiveOrZero(message = "rowCount must be greater than or equal to 0")
   private Integer rowCount;
+  @PositiveOrZero(message = "successCount must be greater than or equal to 0")
   private Integer successCount;
+  @PositiveOrZero(message = "failureCount must be greater than or equal to 0")
   private Integer failureCount;
   private LocalDateTime startedAt;
   private LocalDateTime completedAt;

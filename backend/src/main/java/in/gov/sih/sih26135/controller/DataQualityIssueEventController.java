@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateDataQualityIssueEventRequest;
 import in.gov.sih.sih26135.dto.response.DataQualityIssueEventResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
@@ -113,7 +114,7 @@ public class DataQualityIssueEventController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<DataQualityIssueEventResponse>> recordIssueEvent(
-      @RequestBody CreateDataQualityIssueEventRequest request,
+      @Valid @RequestBody CreateDataQualityIssueEventRequest request,
       HttpServletRequest httpRequest) {
     DataQualityIssueEventResponse response = dataQualityIssueEventService.recordIssueEvent(request);
     return ResponseEntity.status(HttpStatus.CREATED)

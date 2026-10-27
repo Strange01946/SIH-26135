@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -6,6 +7,7 @@ import java.time.LocalDateTime;
 
 public class CreateEmploymentRecordRequest {
 
+  @Size(max = 32, message = "employmentNumber cannot exceed 32 characters")
   private String employmentNumber;
   private Long traineeId;
   private Long enrollmentId;
@@ -18,8 +20,11 @@ public class CreateEmploymentRecordRequest {
   private LocalDate startDate;
   private LocalDate endDate;
   private Boolean isCurrent;
+  @PositiveOrZero(message = "startingSalary must be greater than or equal to 0")
+  @Digits(integer = 10, fraction = 2, message = "startingSalary numeric value out of bounds (<10 digits>.<2 digits> expected)")
   private BigDecimal startingSalary;
   private Long salaryFrequencyId;
+  @Size(max = 3, message = "currencyCode cannot exceed 3 characters")
   private String currencyCode;
   private Long workLocationId;
   private Long workStateId;
@@ -29,6 +34,7 @@ public class CreateEmploymentRecordRequest {
   private LocalDateTime verifiedAt;
   private Long verifiedByUserId;
   private Long employmentExitReasonId;
+  @Size(max = 500, message = "exitRemarks cannot exceed 500 characters")
   private String exitRemarks;
 
   public CreateEmploymentRecordRequest() {

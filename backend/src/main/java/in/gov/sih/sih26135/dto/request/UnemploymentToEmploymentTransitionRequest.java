@@ -1,9 +1,12 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.Valid;
 
 public class UnemploymentToEmploymentTransitionRequest {
 
   private Long unemploymentEventId;
+  @Valid
   private CreateEmploymentRecordRequest newEmploymentRequest;
+  @Valid
   private CreateSalaryHistoryRequest initialSalaryRequest;
 
   public UnemploymentToEmploymentTransitionRequest() {

@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateSkillGapAssessmentRequest;
 import in.gov.sih.sih26135.dto.request.UpdateSkillGapAssessmentRequest;
 import in.gov.sih.sih26135.dto.response.SkillGapAssessmentResponse;
@@ -473,7 +474,7 @@ public class SkillGapAssessmentController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<SkillGapAssessmentResponse>> createAssessment(
-      @RequestBody CreateSkillGapAssessmentRequest request,
+      @Valid @RequestBody CreateSkillGapAssessmentRequest request,
       HttpServletRequest httpRequest) {
     SkillGapAssessmentResponse response = skillGapAssessmentService.createAssessment(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -493,7 +494,7 @@ public class SkillGapAssessmentController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<SkillGapAssessmentResponse>> updateAssessment(
       @PathVariable Long id,
-      @RequestBody UpdateSkillGapAssessmentRequest request) {
+      @Valid @RequestBody UpdateSkillGapAssessmentRequest request) {
     SkillGapAssessmentResponse response = skillGapAssessmentService.updateAssessment(id, request);
     return ResponseEntity.ok(ApiResponse.success(
         "Skill gap assessment updated successfully",

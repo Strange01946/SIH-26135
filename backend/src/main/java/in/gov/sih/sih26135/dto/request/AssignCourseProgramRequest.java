@@ -1,7 +1,9 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 public class AssignCourseProgramRequest {
 
+  @NotNull(message = "Course ID is required")
   private Long courseId;
   private Long programId;
 

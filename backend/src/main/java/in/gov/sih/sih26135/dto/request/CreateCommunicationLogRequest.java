@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDateTime;
 
@@ -15,8 +16,11 @@ public class CreateCommunicationLogRequest {
   private Long consentTypeId;
   private LocalDateTime consentCheckedAt;
   private Long initiatedByUserId;
+  @Size(max = 64, message = "providerMessageId cannot exceed 64 characters")
   private String providerMessageId;
+  @Size(max = 64, message = "messageTemplateCode cannot exceed 64 characters")
   private String messageTemplateCode;
+  @Size(max = 255, message = "failureReason cannot exceed 255 characters")
   private String failureReason;
   private LocalDateTime queuedAt;
   private LocalDateTime sentAt;

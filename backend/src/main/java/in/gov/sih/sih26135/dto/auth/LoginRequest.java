@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.auth;
+import jakarta.validation.constraints.*;
 
 /**
  * Request payload for user authentication.
@@ -8,7 +9,11 @@ package in.gov.sih.sih26135.dto.auth;
  */
 public class LoginRequest {
 
+  @NotBlank(message = "Username or email is required")
+  @Size(max = 255, message = "Username or email cannot exceed 255 characters")
   private String usernameOrEmail;
+  @NotBlank(message = "Password is required")
+  @Size(max = 128, message = "Password cannot exceed 128 characters")
   private String password;
 
   public LoginRequest() {

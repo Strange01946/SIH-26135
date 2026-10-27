@@ -1,9 +1,11 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 
 public class CreateTrainingEnrollmentRequest {
 
+  @Size(max = 32, message = "enrollmentNumber cannot exceed 32 characters")
   private String enrollmentNumber;
   private Long traineeId;
   private Long programId;
@@ -17,6 +19,7 @@ public class CreateTrainingEnrollmentRequest {
   private LocalDate actualCompletionDate;
   private Long enrollmentStatusId;
   private Long dropoutReasonId;
+  @Size(max = 500, message = "dropoutRemarks cannot exceed 500 characters")
   private String dropoutRemarks;
 
   public CreateTrainingEnrollmentRequest() {

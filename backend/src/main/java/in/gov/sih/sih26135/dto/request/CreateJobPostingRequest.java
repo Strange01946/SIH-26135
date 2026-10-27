@@ -1,12 +1,17 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
 public class CreateJobPostingRequest {
 
+  @NotBlank(message = "postingCode is required")
+  @Size(max = 32, message = "postingCode cannot exceed 32 characters")
   private String postingCode;
+  @Size(max = 200, message = "postingTitle cannot exceed 200 characters")
   private String postingTitle;
+  @Size(max = 65535, message = "description cannot exceed 65535 characters")
   private String description;
   private Long employerId;
   private Long employerBranchId;
@@ -14,9 +19,14 @@ public class CreateJobPostingRequest {
   private Long engagementTypeId;
   private Long qualificationLevelId;
   private Integer vacancies;
+  @PositiveOrZero(message = "minSalary must be greater than or equal to 0")
+  @Digits(integer = 10, fraction = 2, message = "minSalary numeric value out of bounds (<10 digits>.<2 digits> expected)")
   private BigDecimal minSalary;
+  @PositiveOrZero(message = "maxSalary must be greater than or equal to 0")
+  @Digits(integer = 10, fraction = 2, message = "maxSalary numeric value out of bounds (<10 digits>.<2 digits> expected)")
   private BigDecimal maxSalary;
   private Long salaryFrequencyId;
+  @Size(max = 3, message = "currencyCode cannot exceed 3 characters")
   private String currencyCode;
   private Long stateId;
   private Long districtId;

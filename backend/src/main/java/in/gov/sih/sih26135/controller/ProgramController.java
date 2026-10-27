@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.AssignProgramTrainingProviderRequest;
 import in.gov.sih.sih26135.dto.request.CreateProgramRequest;
 import in.gov.sih.sih26135.dto.request.TerminateEmpanelmentRequest;
@@ -91,7 +92,7 @@ public class ProgramController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<ProgramResponse>> createProgram(
-      @RequestBody CreateProgramRequest request,
+      @Valid @RequestBody CreateProgramRequest request,
       HttpServletRequest httpRequest) {
     ProgramResponse response = programService.createProgram(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -108,7 +109,7 @@ public class ProgramController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<ProgramResponse>> updateProgram(
       @PathVariable Long id,
-      @RequestBody UpdateProgramRequest request) {
+      @Valid @RequestBody UpdateProgramRequest request) {
     ProgramResponse response = programService.updateProgram(id, request);
     return ResponseEntity.ok(ApiResponse.success("Program updated successfully", response));
   }
@@ -149,7 +150,7 @@ public class ProgramController {
   @PostMapping("/{programId}/training-providers")
   public ResponseEntity<ApiResponse<ProgramTrainingProviderResponse>> assignTrainingProvider(
       @PathVariable Long programId,
-      @RequestBody AssignProgramTrainingProviderRequest request,
+      @Valid @RequestBody AssignProgramTrainingProviderRequest request,
       HttpServletRequest httpRequest) {
     request.setProgramId(programId);
     ProgramTrainingProviderResponse response = programService.assignTrainingProvider(request);
@@ -169,7 +170,7 @@ public class ProgramController {
   public ResponseEntity<ApiResponse<ProgramTrainingProviderResponse>> terminateEmpanelment(
       @PathVariable Long programId,
       @PathVariable Long assignmentId,
-      @RequestBody(required = false) TerminateEmpanelmentRequest request) {
+      @Valid @RequestBody(required = false) TerminateEmpanelmentRequest request) {
     ProgramTrainingProviderResponse response = programService.terminateEmpanelment(assignmentId, request);
     return ResponseEntity.ok(ApiResponse.success("Empanelment terminated successfully", response));
   }

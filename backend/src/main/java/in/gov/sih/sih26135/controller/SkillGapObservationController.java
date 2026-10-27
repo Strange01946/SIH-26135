@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateSkillGapObservationRequest;
 import in.gov.sih.sih26135.dto.request.UpdateSkillGapObservationRequest;
 import in.gov.sih.sih26135.dto.response.SkillGapObservationResponse;
@@ -185,7 +186,7 @@ public class SkillGapObservationController {
    */
   @PostMapping
   public ResponseEntity<ApiResponse<SkillGapObservationResponse>> createObservation(
-      @RequestBody CreateSkillGapObservationRequest request,
+      @Valid @RequestBody CreateSkillGapObservationRequest request,
       HttpServletRequest httpRequest) {
     SkillGapObservationResponse response = skillGapObservationService.createObservation(request);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -205,7 +206,7 @@ public class SkillGapObservationController {
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<SkillGapObservationResponse>> updateObservation(
       @PathVariable Long id,
-      @RequestBody UpdateSkillGapObservationRequest request) {
+      @Valid @RequestBody UpdateSkillGapObservationRequest request) {
     SkillGapObservationResponse response = skillGapObservationService.updateObservation(id, request);
     return ResponseEntity.ok(ApiResponse.success(
         "Skill gap observation updated successfully",

@@ -1,9 +1,12 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.Valid;
 
 public class SkillGapRemediationEnrollmentRequest {
 
   private Long recommendationId;
+  @Valid
   private CreateTrainingEnrollmentRequest enrollmentRequest;
+  @Valid
   private UpdateSkillGapRecommendationRequest recommendationStatusUpdate;
 
   public SkillGapRemediationEnrollmentRequest() {

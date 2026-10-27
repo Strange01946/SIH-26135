@@ -1,7 +1,10 @@
 package in.gov.sih.sih26135.dto.request;
+import jakarta.validation.constraints.*;
 
 public class UpdateUserRequest {
 
+  @Email(message = "Email must be a valid email address")
+  @Size(max = 255, message = "Email cannot exceed 255 characters")
   private String email;
   private Long userStatusId;
   private Long organizationId;
