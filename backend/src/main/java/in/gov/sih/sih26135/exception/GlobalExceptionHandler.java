@@ -19,6 +19,11 @@ import org.springframework.web.method.annotation.HandlerMethodValidationExceptio
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.exc.InvalidFormatException;
+import com.fasterxml.jackson.databind.exc.MismatchedInputException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -35,6 +40,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingPathVariableException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.ServletRequestBindingException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -850,12 +856,74 @@ public class GlobalExceptionHandler {
     return false;
   }
 
+  private String resolveSafeTypeName(Class<?> requiredType) {
+    if (requiredType == null) {
+      return "valid type";
+    }
+    if (requiredType.isEnum()) {
+      return "valid enum value";
+    }
+    String name = requiredType.getSimpleName();
+    if (containsSensitiveData(name)) {
+      return "valid type";
+    }
+    return name;
+  }
+
+  private boolean isDateTimeType(Class<?> type) {
+    if (type == null) {
+      return false;
+    }
+    return java.time.temporal.TemporalAccessor.class.isAssignableFrom(type)
+        || java.util.Date.class.isAssignableFrom(type)
+        || java.util.Calendar.class.isAssignableFrom(type);
+  }
+
+  private boolean hasCauseOfType(Throwable ex, Class<?> targetClass) {
+    Throwable current = ex;
+    while (current != null) {
+      if (targetClass.isInstance(current)) {
+        return true;
+      }
+      current = current.getCause();
+    }
+    return false;
+  }
+
+  private String extractJacksonFieldPath(List<JsonMappingException.Reference> path) {
+    if (path == null || path.isEmpty()) {
+      return null;
+    }
+    StringBuilder sb = new StringBuilder();
+    for (JsonMappingException.Reference ref : path) {
+      if (ref == null) {
+        continue;
+      }
+      if (ref.getFieldName() != null && !ref.getFieldName().isBlank()) {
+        if (sb.length() > 0) {
+          sb.append(".");
+        }
+        sb.append(ref.getFieldName());
+      } else if (ref.getIndex() >= 0) {
+        sb.append("[").append(ref.getIndex()).append("]");
+      }
+    }
+    String result = sb.toString();
+    if (result.isBlank() || containsSensitiveData(result)) {
+      return null;
+    }
+    return result;
+  }
+
   @ExceptionHandler(MethodArgumentTypeMismatchException.class)
   public ResponseEntity<ErrorResponse> handleMethodArgumentTypeMismatch(
       MethodArgumentTypeMismatchException ex,
       HttpServletRequest request) {
-    String paramName = ex.getName();
-    String requiredType = ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "valid type";
+    String paramName = ex.getName() != null ? ex.getName() : "parameter";
+    if (containsSensitiveData(paramName)) {
+      paramName = "parameter";
+    }
+    String requiredType = resolveSafeTypeName(ex.getRequiredType());
     String message = String.format("Invalid parameter value for '%s'. Expected type: %s", paramName, requiredType);
 
     log.warn("Parameter type mismatch on {} for parameter '{}': status={}, code={}, expectedType={}",
@@ -874,10 +942,14 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ErrorResponse> handleMissingServletRequestParameter(
       MissingServletRequestParameterException ex,
       HttpServletRequest request) {
-    String message = String.format("Required parameter '%s' is missing", ex.getParameterName());
+    String paramName = ex.getParameterName() != null ? ex.getParameterName() : "parameter";
+    if (containsSensitiveData(paramName)) {
+      paramName = "parameter";
+    }
+    String message = String.format("Required parameter '%s' is missing", paramName);
 
     log.warn("Missing request parameter on {}: status={}, code={}, parameter='{}'",
-        request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "MISSING_PARAMETER", ex.getParameterName());
+        request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "MISSING_PARAMETER", paramName);
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.BAD_REQUEST.value(),
         HttpStatus.BAD_REQUEST.getReasonPhrase(),
@@ -892,15 +964,35 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ErrorResponse> handleMissingRequestHeader(
       MissingRequestHeaderException ex,
       HttpServletRequest request) {
-    String message = String.format("Required header '%s' is missing", ex.getHeaderName());
+    String headerName = ex.getHeaderName() != null ? ex.getHeaderName() : "header";
+    if (containsSensitiveData(headerName)) {
+      headerName = "header";
+    }
+    String message = String.format("Required header '%s' is missing", headerName);
 
     log.warn("Missing request header on {}: status={}, code={}, header='{}'",
-        request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "MISSING_HEADER", ex.getHeaderName());
+        request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "MISSING_HEADER", headerName);
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.BAD_REQUEST.value(),
         HttpStatus.BAD_REQUEST.getReasonPhrase(),
         "MISSING_HEADER",
         message,
+        request.getRequestURI()
+    );
+    return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+  }
+
+  @ExceptionHandler(ServletRequestBindingException.class)
+  public ResponseEntity<ErrorResponse> handleServletRequestBinding(
+      ServletRequestBindingException ex,
+      HttpServletRequest request) {
+    log.warn("Servlet request binding error on {}: status={}, code={}, exception={}",
+        request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "BAD_REQUEST", ex.getClass().getSimpleName());
+    ErrorResponse errorResponse = new ErrorResponse(
+        HttpStatus.BAD_REQUEST.value(),
+        HttpStatus.BAD_REQUEST.getReasonPhrase(),
+        "BAD_REQUEST",
+        "Invalid request binding or missing parameter/header",
         request.getRequestURI()
     );
     return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
@@ -927,30 +1019,92 @@ public class GlobalExceptionHandler {
 
   @ExceptionHandler(HttpMessageNotReadableException.class)
   public ResponseEntity<ErrorResponse> handleMessageNotReadable(HttpMessageNotReadableException ex, HttpServletRequest request) {
-    log.warn("Malformed HTTP message on {}: status={}, code={}",
-        request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "MALFORMED_JSON");
+    String clientMessage = "Malformed or unreadable request body";
+    List<String> details = null;
+
+    Throwable cause = ex.getCause();
+    if (cause instanceof InvalidFormatException ife) {
+      Class<?> targetType = ife.getTargetType();
+      String fieldName = extractJacksonFieldPath(ife.getPath());
+      if (targetType != null && targetType.isEnum()) {
+        clientMessage = fieldName != null
+            ? "Invalid enum value for field '" + fieldName + "'"
+            : "Invalid enum value in request body";
+        if (fieldName != null) {
+          details = List.of(fieldName + ": invalid enum value");
+        }
+      } else if (targetType != null && isDateTimeType(targetType)) {
+        clientMessage = fieldName != null
+            ? "Invalid date/time format for field '" + fieldName + "'"
+            : "Invalid date/time format in request body";
+        if (fieldName != null) {
+          details = List.of(fieldName + ": invalid date/time format");
+        }
+      } else {
+        clientMessage = fieldName != null
+            ? "Invalid value format for field '" + fieldName + "'"
+            : "Invalid value format in request body";
+        if (fieldName != null) {
+          details = List.of(fieldName + ": invalid format");
+        }
+      }
+    } else if (cause instanceof MismatchedInputException mie) {
+      Class<?> targetType = mie.getTargetType();
+      String fieldName = extractJacksonFieldPath(mie.getPath());
+      if (targetType != null && isDateTimeType(targetType)) {
+        clientMessage = fieldName != null
+            ? "Invalid date/time format for field '" + fieldName + "'"
+            : "Invalid date/time format in request body";
+        if (fieldName != null) {
+          details = List.of(fieldName + ": invalid date/time format");
+        }
+      } else {
+        clientMessage = fieldName != null
+            ? "Invalid value format for field '" + fieldName + "'"
+            : "Invalid value format in request body";
+        if (fieldName != null) {
+          details = List.of(fieldName + ": invalid format");
+        }
+      }
+    } else if (hasCauseOfType(ex, java.time.format.DateTimeParseException.class)) {
+      clientMessage = "Invalid date/time format in request body";
+    } else if (ex.getMessage() != null && ex.getMessage().contains("Required request body is missing")) {
+      clientMessage = "Required request body is missing";
+    }
+
+    log.warn("Malformed or unreadable HTTP message on {}: status={}, code={}, reason={}",
+        request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "MALFORMED_JSON", clientMessage);
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.BAD_REQUEST.value(),
         HttpStatus.BAD_REQUEST.getReasonPhrase(),
         "MALFORMED_JSON",
-        "Malformed or unreadable request body",
-        request.getRequestURI()
+        clientMessage,
+        request.getRequestURI(),
+        details
     );
     return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
   }
 
   @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
   public ResponseEntity<ErrorResponse> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex, HttpServletRequest request) {
+    String method = ex.getMethod() != null ? ex.getMethod() : "UNKNOWN";
+    if (containsSensitiveData(method)) {
+      method = "UNKNOWN";
+    }
     log.warn("Method not supported on {}: status={}, code={}, method={}",
-        request.getRequestURI(), HttpStatus.METHOD_NOT_ALLOWED.value(), "METHOD_NOT_ALLOWED", ex.getMethod());
+        request.getRequestURI(), HttpStatus.METHOD_NOT_ALLOWED.value(), "METHOD_NOT_ALLOWED", method);
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.METHOD_NOT_ALLOWED.value(),
         HttpStatus.METHOD_NOT_ALLOWED.getReasonPhrase(),
         "METHOD_NOT_ALLOWED",
-        "HTTP method '" + ex.getMethod() + "' is not supported for this endpoint",
+        "HTTP method '" + method + "' is not supported for this endpoint",
         request.getRequestURI()
     );
-    return new ResponseEntity<>(errorResponse, HttpStatus.METHOD_NOT_ALLOWED);
+    HttpHeaders headers = new HttpHeaders();
+    if (ex.getSupportedHttpMethods() != null && !ex.getSupportedHttpMethods().isEmpty()) {
+      headers.setAllow(ex.getSupportedHttpMethods());
+    }
+    return new ResponseEntity<>(errorResponse, headers, HttpStatus.METHOD_NOT_ALLOWED);
   }
 
   @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
@@ -958,16 +1112,23 @@ public class GlobalExceptionHandler {
       HttpMediaTypeNotSupportedException ex,
       HttpServletRequest request) {
     String contentType = ex.getContentType() != null ? ex.getContentType().toString() : "unknown";
+    if (containsSensitiveData(contentType)) {
+      contentType = "unsupported";
+    }
     log.warn("Media type not supported on {}: status={}, code={}, contentType={}",
         request.getRequestURI(), HttpStatus.UNSUPPORTED_MEDIA_TYPE.value(), "UNSUPPORTED_MEDIA_TYPE", contentType);
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.UNSUPPORTED_MEDIA_TYPE.value(),
         HttpStatus.UNSUPPORTED_MEDIA_TYPE.getReasonPhrase(),
         "UNSUPPORTED_MEDIA_TYPE",
-        "Content type '" + ex.getContentType() + "' is not supported",
+        "Content type '" + contentType + "' is not supported",
         request.getRequestURI()
     );
-    return new ResponseEntity<>(errorResponse, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+    HttpHeaders headers = new HttpHeaders();
+    if (ex.getSupportedMediaTypes() != null && !ex.getSupportedMediaTypes().isEmpty()) {
+      headers.setAccept(ex.getSupportedMediaTypes());
+    }
+    return new ResponseEntity<>(errorResponse, headers, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
   }
 
   @ExceptionHandler(HttpMediaTypeNotAcceptableException.class)

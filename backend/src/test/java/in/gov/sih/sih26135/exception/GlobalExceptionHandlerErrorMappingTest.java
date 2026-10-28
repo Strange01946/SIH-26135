@@ -36,16 +36,24 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
+import org.springframework.http.HttpMethod;
 import org.springframework.web.HttpMediaTypeNotAcceptableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingPathVariableException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.ServletRequestBindingException;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.exc.InvalidFormatException;
+import com.fasterxml.jackson.databind.exc.MismatchedInputException;
+import java.time.LocalDate;
+import java.util.List;
 import com.external.vendor.controller.UnverifiedThirdPartyVendorController;
 import in.gov.sih.sih26135.controller.analytics.AnalyticsSummaryController;
 import in.gov.sih.sih26135.controller.auth.AuthController;
@@ -75,6 +83,11 @@ class GlobalExceptionHandlerErrorMappingTest {
    */
   static class ArbitraryProjectRequest {
     private String customField;
+  }
+
+  enum SampleTestStatus {
+    ACTIVE,
+    INACTIVE
   }
 
   /**
@@ -194,6 +207,119 @@ class GlobalExceptionHandlerErrorMappingTest {
       assertThat(response.getBody().getMessage()).isEqualTo("Malformed or unreadable request body");
       assertThat(response.getBody().getMessage()).doesNotContain("SecretPassword123!");
       assertThat(response.getBody().getMessage()).doesNotContain("90000");
+    }
+
+    @Test
+    @DisplayName("HttpMessageNotReadableException with invalid enum value maps to HTTP 400 MALFORMED_JSON with field message and details")
+    void testHttpMessageNotReadable_invalidEnum_mapsTo400WithSafeMessage() {
+      JsonMappingException.Reference ref = new JsonMappingException.Reference(null, "status");
+      InvalidFormatException cause = new InvalidFormatException(
+          null, "Cannot deserialize value", "INVALID_STATUS", SampleTestStatus.class);
+      cause.prependPath(ref);
+
+      HttpMessageNotReadableException ex = new HttpMessageNotReadableException("JSON parse error", cause, mock(HttpInputMessage.class));
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleMessageNotReadable(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getStatus()).isEqualTo(400);
+      assertThat(response.getBody().getCode()).isEqualTo("MALFORMED_JSON");
+      assertThat(response.getBody().getMessage()).isEqualTo("Invalid enum value for field 'status'");
+      assertThat(response.getBody().getDetails()).containsExactly("status: invalid enum value");
+      // Zero leakage of target Enum class name or raw value
+      assertThat(response.getBody().getMessage()).doesNotContain("SampleTestStatus");
+      assertThat(response.getBody().getMessage()).doesNotContain("INVALID_STATUS");
+    }
+
+    @Test
+    @DisplayName("HttpMessageNotReadableException with invalid date format maps to HTTP 400 MALFORMED_JSON with field message and details")
+    void testHttpMessageNotReadable_invalidDate_mapsTo400WithSafeMessage() {
+      JsonMappingException.Reference ref = new JsonMappingException.Reference(null, "startDate");
+      InvalidFormatException cause = new InvalidFormatException(
+          null, "Cannot deserialize value", "not-a-date", LocalDate.class);
+      cause.prependPath(ref);
+
+      HttpMessageNotReadableException ex = new HttpMessageNotReadableException("JSON parse error", cause, mock(HttpInputMessage.class));
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleMessageNotReadable(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getStatus()).isEqualTo(400);
+      assertThat(response.getBody().getCode()).isEqualTo("MALFORMED_JSON");
+      assertThat(response.getBody().getMessage()).isEqualTo("Invalid date/time format for field 'startDate'");
+      assertThat(response.getBody().getDetails()).containsExactly("startDate: invalid date/time format");
+      assertThat(response.getBody().getMessage()).doesNotContain("not-a-date");
+    }
+
+    @Test
+    @DisplayName("HttpMessageNotReadableException with incompatible type maps to HTTP 400 MALFORMED_JSON with field message and details")
+    void testHttpMessageNotReadable_incompatibleType_mapsTo400WithSafeMessage() {
+      JsonMappingException.Reference ref = new JsonMappingException.Reference(null, "capacity");
+      InvalidFormatException cause = new InvalidFormatException(
+          null, "Cannot deserialize value", "text-instead-of-int", Integer.class);
+      cause.prependPath(ref);
+
+      HttpMessageNotReadableException ex = new HttpMessageNotReadableException("JSON parse error", cause, mock(HttpInputMessage.class));
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleMessageNotReadable(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getStatus()).isEqualTo(400);
+      assertThat(response.getBody().getCode()).isEqualTo("MALFORMED_JSON");
+      assertThat(response.getBody().getMessage()).isEqualTo("Invalid value format for field 'capacity'");
+      assertThat(response.getBody().getDetails()).containsExactly("capacity: invalid format");
+    }
+
+    @Test
+    @DisplayName("HttpMessageNotReadableException for missing body maps to HTTP 400 MALFORMED_JSON")
+    void testHttpMessageNotReadable_missingBody_mapsTo400() {
+      HttpMessageNotReadableException ex = new HttpMessageNotReadableException(
+          "Required request body is missing: public ResponseEntity<CourseResponse> in.gov.sih.sih26135.controller.CourseController.createCourse(CourseRequest)");
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleMessageNotReadable(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getStatus()).isEqualTo(400);
+      assertThat(response.getBody().getCode()).isEqualTo("MALFORMED_JSON");
+      assertThat(response.getBody().getMessage()).isEqualTo("Required request body is missing");
+      // Zero disclosure of controller or class signatures
+      assertThat(response.getBody().getMessage()).doesNotContain("CourseController");
+    }
+
+    @Test
+    @DisplayName("ServletRequestBindingException maps to HTTP 400 BAD_REQUEST")
+    void testServletRequestBinding_mapsTo400() {
+      ServletRequestBindingException ex =
+          new ServletRequestBindingException("Binding failure");
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleServletRequestBinding(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getStatus()).isEqualTo(400);
+      assertThat(response.getBody().getError()).isEqualTo("Bad Request");
+      assertThat(response.getBody().getCode()).isEqualTo("BAD_REQUEST");
+      assertThat(response.getBody().getMessage()).isEqualTo("Invalid request binding or missing parameter/header");
+      assertThat(response.getBody().getPath()).isEqualTo("/api/v1/test-endpoint");
+    }
+
+    @Test
+    @DisplayName("MethodArgumentTypeMismatchException with Enum type simplifies expected type without leaking internal Enum name")
+    void testMethodArgumentTypeMismatch_withEnum_sanitizesType() {
+      MethodArgumentTypeMismatchException ex = new MethodArgumentTypeMismatchException(
+          "INVALID", SampleTestStatus.class, "status", mock(MethodParameter.class), new IllegalArgumentException());
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleMethodArgumentTypeMismatch(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("TYPE_MISMATCH");
+      assertThat(response.getBody().getMessage()).isEqualTo("Invalid parameter value for 'status'. Expected type: valid enum value");
+      assertThat(response.getBody().getMessage()).doesNotContain("SampleTestStatus");
     }
 
     @Test
@@ -727,7 +853,7 @@ class GlobalExceptionHandlerErrorMappingTest {
     }
 
     @Test
-    @DisplayName("HttpMediaTypeNotSupportedException maps to HTTP 415 UNSUPPORTED_MEDIA_TYPE")
+    @DisplayName("HttpMediaTypeNotSupportedException maps to HTTP 415 UNSUPPORTED_MEDIA_TYPE and preserves Accept header")
     void testHttpMediaTypeNotSupported_mapsTo415() {
       HttpMediaTypeNotSupportedException ex = new HttpMediaTypeNotSupportedException(
           MediaType.TEXT_PLAIN, Collections.singletonList(MediaType.APPLICATION_JSON));
@@ -738,6 +864,7 @@ class GlobalExceptionHandlerErrorMappingTest {
       assertThat(response.getBody()).isNotNull();
       assertThat(response.getBody().getCode()).isEqualTo("UNSUPPORTED_MEDIA_TYPE");
       assertThat(response.getBody().getMessage()).contains("text/plain");
+      assertThat(response.getHeaders().getAccept()).contains(MediaType.APPLICATION_JSON);
     }
 
     @Test
@@ -753,9 +880,10 @@ class GlobalExceptionHandlerErrorMappingTest {
     }
 
     @Test
-    @DisplayName("HttpRequestMethodNotSupportedException maps to HTTP 405 METHOD_NOT_ALLOWED")
+    @DisplayName("HttpRequestMethodNotSupportedException maps to HTTP 405 METHOD_NOT_ALLOWED and preserves Allow header")
     void testHttpRequestMethodNotSupported_mapsTo405() {
-      HttpRequestMethodNotSupportedException ex = new HttpRequestMethodNotSupportedException("DELETE");
+      HttpRequestMethodNotSupportedException ex =
+          new HttpRequestMethodNotSupportedException("DELETE", List.of("GET", "POST"));
 
       ResponseEntity<ErrorResponse> response = exceptionHandler.handleMethodNotSupported(ex, request);
 
@@ -763,6 +891,7 @@ class GlobalExceptionHandlerErrorMappingTest {
       assertThat(response.getBody()).isNotNull();
       assertThat(response.getBody().getCode()).isEqualTo("METHOD_NOT_ALLOWED");
       assertThat(response.getBody().getMessage()).contains("DELETE");
+      assertThat(response.getHeaders().getAllow()).contains(HttpMethod.GET, HttpMethod.POST);
     }
 
     @Test

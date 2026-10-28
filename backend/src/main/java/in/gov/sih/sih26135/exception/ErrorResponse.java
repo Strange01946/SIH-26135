@@ -11,6 +11,7 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ErrorResponse {
 
+  private String type;
   private LocalDateTime timestamp;
   private int status;
   private String error;
@@ -35,6 +36,14 @@ public class ErrorResponse {
   public ErrorResponse(int status, String error, String code, String message, String path, List<String> details) {
     this(status, error, code, message, path);
     this.details = details;
+  }
+
+  public String getType() {
+    return type;
+  }
+
+  public void setType(String type) {
+    this.type = type;
   }
 
   public LocalDateTime getTimestamp() {
