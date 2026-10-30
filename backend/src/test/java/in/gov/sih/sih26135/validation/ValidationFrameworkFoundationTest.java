@@ -334,6 +334,10 @@ class ValidationFrameworkFoundationTest {
   @DisplayName("6. HandlerMethodValidationException maps to HTTP 400 VALIDATION_ERROR with sanitized param details")
   void testHandlerMethodValidationException_mapsToHttp400() throws Exception {
     MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/trainees/-1");
+    request.setAttribute(
+        org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE,
+        "/api/v1/trainees/{id}"
+    );
 
     MethodParameter methodParam = new MethodParameter(
         FoundationTestController.class.getMethod("getItem", Long.class), 0
@@ -364,7 +368,7 @@ class ValidationFrameworkFoundationTest {
     assertThat(response.getBody().getError()).isEqualTo("Bad Request");
     assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
     assertThat(response.getBody().getMessage()).isEqualTo("Request validation failed");
-    assertThat(response.getBody().getPath()).isEqualTo("/api/v1/trainees/-1");
+    assertThat(response.getBody().getPath()).isEqualTo("/api/v1/trainees/{id}");
     assertThat(response.getBody().getDetails()).containsExactly("id: must be greater than 0");
   }
 

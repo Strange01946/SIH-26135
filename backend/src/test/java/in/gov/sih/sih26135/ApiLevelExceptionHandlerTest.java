@@ -133,7 +133,7 @@ class ApiLevelExceptionHandlerTest {
         .andExpect(jsonPath("$.error").value("Method Not Allowed"))
         .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"))
         .andExpect(jsonPath("$.message").value("HTTP method 'PATCH' is not supported for this endpoint"))
-        .andExpect(jsonPath("$.path").value("/api/v1/auth/login"));
+        .andExpect(jsonPath("$.path").value("/sanitized-path"));
   }
 
   @Test
@@ -160,7 +160,7 @@ class ApiLevelExceptionHandlerTest {
         .andExpect(jsonPath("$.status").value(404))
         .andExpect(jsonPath("$.error").value("Not Found"))
         .andExpect(jsonPath("$.code").value("ENDPOINT_NOT_FOUND"))
-        .andExpect(jsonPath("$.path").value("/api/v1/nonexistent-endpoint-404"));
+        .andExpect(jsonPath("$.path").value("/sanitized-path"));
   }
 
   @Test

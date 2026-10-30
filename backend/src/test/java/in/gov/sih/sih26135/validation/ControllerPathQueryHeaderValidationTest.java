@@ -313,7 +313,7 @@ public class ControllerPathQueryHeaderValidationTest {
           .andExpect(jsonPath("$.error").value("Bad Request"))
           .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
           .andExpect(jsonPath("$.message").value("Request validation failed"))
-          .andExpect(jsonPath("$.path").value("/api/v1/job-postings/0"))
+          .andExpect(jsonPath("$.path").value("/api/v1/job-postings/{id}"))
           .andExpect(jsonPath("$.details[0]").value(endsWith("id: must be greater than 0")));
     }
 

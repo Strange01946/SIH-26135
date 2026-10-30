@@ -7,7 +7,10 @@ import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.ElementKind;
 import jakarta.validation.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -50,20 +53,74 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 /**
  * Centralized exception handler for REST APIs.
  * Ensures consistent, sanitized error responses without leaking sensitive internal details.
+ * <p>
+ * Employs safe-by-construction design: client-facing messages and validation details
+ * are derived strictly from code allowlists, verified domain messages, and safe templates.
+ * Arbitrary exception messages and rejected user inputs are never exposed directly.
+ * Regular expression scanning acts as an additional defense-in-depth boundary layer.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
   private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+  /**
+   * Defense-in-depth regex pattern for detecting potential sensitive data patterns.
+   * Note: This is an additional validation safeguard, not a substitute for safe-by-construction design.
+   */
   private static final Pattern SENSITIVE_DATA_PATTERN = Pattern.compile(
-      "(?i)(?:"
-          + "SENTINEL_[A-Za-z0-9_]+"
-          + "|\\b[0-9]{4}[ -]?[0-9]{4}[ -]?[0-9]{4}\\b"
-          + "|\\b[A-Z]{5}[0-9]{4}[A-Z]\\b"
-          + "|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}"
-          + "|\\b(?:password|secret|credential|token|apikey)[\\s:=]+[^\\s,;]+"
-          + "|\\b(?:SELECT|INSERT|UPDATE|DELETE|DROP)\\b.*\\b(?:FROM|INTO|SET|TABLE|WHERE)\\b"
+      "(?i)(?s)(?:"
+          // 1. Sentinels & Test Markers
+          + "SENTINEL[A-Za-z0-9_]*"
+
+          // 2. Aadhaar: 12 contiguous digits or 4-4-4 formatted with space or hyphen
+          + "|(?<!\\d)(?:\\d{12}|\\d{4}[\\s-]\\d{4}[\\s-]\\d{4})(?!\\d)"
+
+          // 3. Indian PAN: 5 letters, 4 digits, 1 letter
+          + "|(?<![A-Za-z0-9])[A-Za-z]{5}[0-9]{4}[A-Za-z](?![A-Za-z0-9])"
+
+          // 4. JWT & Bearer Tokens
+          + "|\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}(?:\\.[A-Za-z0-9_-]*)?\\b"
+          + "|\\bBearer\\s+[A-Za-z0-9_.-]{10,}\\b"
+
+          // 5. Passwords, Secrets, API Keys & Credentials
+          + "|\\b(?:password|passwd|pwd|secret|api_?key|access_token|refresh_token|client_secret|auth_token|private_key)\\s*[:=]\\s*[^\\s,;]+"
+          + "|\\b(?:password|passwd|pwd|secret|credential|token)\\s*[:=]?\\s*['\"][^'\"]+['\"]"
+
+          // 6. Database Connection URLs & Credentials
+          + "|jdbc:[^\\s,;]+"
+          + "|(?:mysql|postgresql|oracle|sqlserver)://[^\\s,;]+"
+          + "|\\b(?:user|username|password)=[^\\s,;]+"
+
+          // 7. SQL Statements, Fragments & DB Integrity Details
+          + "|\\b(?:SELECT|INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE)\\b[^;]{1,250}?\\b(?:FROM|INTO|SET|TABLE|WHERE|VALUES)\\b"
+          + "|\\b(?:Duplicate\\s+entry|foreign\\s+key\\s+constraint|Column\\s+'.*'\\s+cannot\\s+be\\s+null)\\b"
+          + "|\\b(?:uk_[a-z0-9_]+|fk_[a-z0-9_]+|pk_[a-z0-9_]+)\\b"
+
+          // 8. Hibernate / JPA Internals
+          + "|\\borg\\.hibernate\\b"
+          + "|\\bHHH\\d+\\b"
+          + "|\\bcould\\s+not\\s+execute\\s+statement\\b"
+
+          // 9. Filesystem Paths (Windows & Unix)
+          + "|[A-Za-z]:\\\\[^\\s,;]+"
+          + "|/(?:etc|var|usr|opt|home|app|bin|tmp)/[^\\s,;]+"
+
+          // 10. Java Package & Class Names
+          + "|\\b(?:in\\.gov\\.sih|org\\.springframework|com\\.fasterxml\\.jackson|com\\.mysql|org\\.apache)[a-zA-Z0-9_.]*"
+
+          // 11. Stack Traces & Source Locations
+          + "|\\bat\\s+[a-zA-Z0-9_$.]+\\([a-zA-Z0-9_$]+\\.java:\\d+\\)"
+          + "|\\bCaused\\s+by:\\s+"
+          + "|\\b[a-zA-Z0-9_$]+\\.java:\\d+\\b"
+
+          // 12. IP Addresses & Internal Hostnames
+          + "|\\blocalhost:\\d+\\b"
+          + "|\\b127\\.0\\.0\\.1\\b"
+          + "|\\b10\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\b"
+          + "|\\b172\\.(?:1[6-9]|2\\d|3[01])\\.\\d{1,3}\\.\\d{1,3}\\b"
+          + "|\\b192\\.168\\.\\d{1,3}\\.\\d{1,3}\\b"
+          + "|\\b[a-zA-Z0-9-]+\\.internal\\b"
           + ")"
   );
 
@@ -75,6 +132,52 @@ public class GlobalExceptionHandler {
       return true;
     }
     return SENSITIVE_DATA_PATTERN.matcher(text).find();
+  }
+
+  private boolean isTrustedApiPrefix(String uri) {
+    if (uri == null || uri.isBlank()) {
+      return false;
+    }
+    return uri.startsWith("/api/v1/")
+        || uri.startsWith("/api/auth/")
+        || uri.startsWith("/api/test/")
+        || uri.equals("/api/v1")
+        || uri.equals("/api/auth")
+        || uri.equals("/api/test");
+  }
+
+  private String sanitizeUri(HttpServletRequest request) {
+    if (request == null) {
+      return "/sanitized-path";
+    }
+    return sanitizeUri(request.getRequestURI(), request);
+  }
+
+  private String sanitizeUri(String rawUri) {
+    return sanitizeUri(rawUri, null);
+  }
+
+  private String sanitizeUri(String rawUri, HttpServletRequest request) {
+    // 1. If request is provided, resolve HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE
+    if (request != null) {
+      Object patternAttr = request.getAttribute(
+          org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
+      if (patternAttr instanceof String template && !template.isBlank()) {
+        String cleanTemplate = template.trim();
+        // Strip query parameters by default
+        int queryIdx = cleanTemplate.indexOf('?');
+        if (queryIdx >= 0) {
+          cleanTemplate = cleanTemplate.substring(0, queryIdx).trim();
+        }
+        // Validate trusted API prefix and reject templates containing sensitive data
+        if (isTrustedApiPrefix(cleanTemplate) && !containsSensitiveData(cleanTemplate)) {
+          return cleanTemplate;
+        }
+      }
+    }
+
+    // 2. If no trusted route template is available, return "/sanitized-path" by default.
+    return "/sanitized-path";
   }
 
   private static final Pattern SAFE_STANDARD_VALIDATION_PATTERN = Pattern.compile(
@@ -101,18 +204,53 @@ public class GlobalExceptionHandler {
       Pattern.CASE_INSENSITIVE
   );
 
+  private static final int MAX_COLLECTION_DEPTH = 3;
+
   private boolean containsRejectedValue(String message, Object rejectedValue) {
+    return containsRejectedValue(message, rejectedValue, 0, Collections.newSetFromMap(new IdentityHashMap<>()));
+  }
+
+  private boolean containsRejectedValue(String message, Object rejectedValue, int depth, Set<Object> visited) {
     if (message == null || message.isBlank() || rejectedValue == null) {
       return false;
     }
+
+    if (rejectedValue.getClass().isArray()) {
+      if (depth >= MAX_COLLECTION_DEPTH) {
+        // Fail closed: cannot guarantee unexamined branches nested beyond the depth limit are safe
+        return true;
+      }
+      if (!visited.add(rejectedValue)) {
+        return false; // Cycle detected: avoid infinite recursion on already examined collection
+      }
+      int len = java.lang.reflect.Array.getLength(rejectedValue);
+      for (int i = 0; i < len; i++) {
+        Object elem = java.lang.reflect.Array.get(rejectedValue, i);
+        if (containsRejectedValue(message, elem, depth + 1, visited)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    if (rejectedValue instanceof Iterable<?> iter) {
+      if (depth >= MAX_COLLECTION_DEPTH) {
+        // Fail closed: cannot guarantee unexamined branches nested beyond the depth limit are safe
+        return true;
+      }
+      if (!visited.add(rejectedValue)) {
+        return false; // Cycle detected: avoid infinite recursion on already examined collection
+      }
+      for (Object elem : iter) {
+        if (containsRejectedValue(message, elem, depth + 1, visited)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
     String rejectedStr = String.valueOf(rejectedValue).trim();
     if (rejectedStr.isBlank()) {
-      return false;
-    }
-    if (rejectedStr.length() == 1 && Character.isDigit(rejectedStr.charAt(0))) {
-      return false;
-    }
-    if ("true".equalsIgnoreCase(rejectedStr) || "false".equalsIgnoreCase(rejectedStr)) {
       return false;
     }
     return message.toLowerCase().contains(rejectedStr.toLowerCase());
@@ -173,6 +311,9 @@ public class GlobalExceptionHandler {
       return "field: is invalid";
     }
     String field = fieldError.getField() != null ? fieldError.getField() : "field";
+    if (containsSensitiveData(field)) {
+      field = "field";
+    }
     String defaultMessage = fieldError.getDefaultMessage();
     Object rejectedValue = getSafeRejectedValue(fieldError);
     if (!isSafeStandardValidationMessage(field, defaultMessage, rejectedValue)) {
@@ -189,6 +330,9 @@ public class GlobalExceptionHandler {
       return "object: is invalid";
     }
     String name = objectError.getObjectName() != null ? objectError.getObjectName() : "object";
+    if (containsSensitiveData(name)) {
+      name = "object";
+    }
     String defaultMessage = objectError.getDefaultMessage();
     if (!isSafeStandardValidationMessage(name, defaultMessage, null)) {
       return name + ": " + getSafeValidationMessage(objectError.getCode());
@@ -197,6 +341,9 @@ public class GlobalExceptionHandler {
   }
 
   private String sanitizeParameterError(String paramName, MessageSourceResolvable resolvable, Object rejectedValue) {
+    if (paramName == null || containsSensitiveData(paramName)) {
+      paramName = "parameter";
+    }
     if (resolvable == null) {
       return paramName + ": is invalid";
     }
@@ -271,6 +418,9 @@ public class GlobalExceptionHandler {
       return "property: is invalid";
     }
     String property = violation.getPropertyPath() != null ? violation.getPropertyPath().toString() : "property";
+    if (containsSensitiveData(property)) {
+      property = "property";
+    }
     String message = violation.getMessage();
     Object invalidValue = getSafeInvalidValue(violation);
     if (!isSafeStandardValidationMessage(property, message, invalidValue)) {
@@ -293,9 +443,191 @@ public class GlobalExceptionHandler {
     return "is invalid";
   }
 
+  private static final Pattern SAFE_RESOURCE_NOT_FOUND_PATTERN = Pattern.compile(
+      "^[A-Za-z0-9_]+ not found(?: with [a-zA-Z0-9_: ]+)?$"
+  );
+
+  private static final Pattern SAFE_SORT_DIRECTION_PATTERN = Pattern.compile(
+      "^Invalid sort direction '[A-Za-z0-9_ -]+'\\. Must be ASC or DESC$"
+  );
+
+  private static final Pattern SAFE_SORT_FIELD_PATTERN = Pattern.compile(
+      "^Unsupported sort field '[A-Za-z0-9_ -]+'\\. Supported fields: \\[.*\\]$"
+  );
+
+  private static final Pattern SAFE_PAGE_SIZE_PATTERN = Pattern.compile(
+      "^Page size must not exceed [0-9]+$"
+  );
+
+  private static final Pattern SAFE_ALREADY_EXISTS_PATTERN = Pattern.compile(
+      "^[A-Za-z ]+ already exists(?:: [A-Za-z0-9_ -]+)?$"
+  );
+
+  private static final Pattern SAFE_ROW_EXISTS_PATTERN = Pattern.compile(
+      "^Row number [0-9]+ already exists in import batch$"
+  );
+
+  private static final Set<String> APPROVED_DOMAIN_MESSAGES = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+      // 1. Entity Lifecycle & Deletion Constraints
+      "Cannot create job application for soft-deleted trainee",
+      "Cannot create training enrollment for soft-deleted trainee",
+      "Cannot create training enrollment for soft-deleted training batch",
+      "Cannot create unemployment event for soft-deleted trainee",
+      "Cannot issue certification for soft-deleted trainee",
+      "Cannot record exit event for soft-deleted trainee",
+      "Cannot update a deleted assessment",
+      "Cannot update a deleted certification",
+      "Cannot update a deleted training batch",
+      "Cannot update a deleted training enrollment",
+      "Cannot update status of a deleted training batch",
+      "Cannot verify a revoked or expired certification",
+      "Trainee is soft-deleted",
+      "User account has been deleted",
+      "User account is locked",
+      "User account is not active",
+      "User account status record not found",
+      "User account status reference is missing",
+
+      // 2. Workflow & Survey Invariants
+      "Cannot update an already submitted survey response; create a new attempt",
+      "Cannot delete answer of an already submitted survey response",
+      "Cannot delete a submitted survey response",
+      "Cannot delete a completed or terminal verification attempt",
+      "Cannot modify an attempt that is in a terminal status",
+      "Cannot delete a running import batch",
+      "Terminal import batch cannot be updated",
+      "Cannot delete assessment with existing skill gaps",
+      "Cannot delete assessment result because certifications exist",
+      "Cannot delete trainee assessment because assessment results exist",
+      "Cannot delete import batch with existing records",
+      "Cannot delete verification attempt with associated evidence",
+      "Cannot delete employment verification with associated evidence records",
+      "Cannot delete followup task with associated communication logs",
+      "Cannot delete followup task with associated survey responses",
+      "Cannot update soft-deleted followup campaign",
+      "Followup campaign is already deleted",
+      "Cannot create followup task for a soft-deleted campaign",
+      "Cannot update followup task for a soft-deleted campaign",
+      "Cannot delete communication log that has already been dispatched or delivered",
+      "Cannot delete data quality rule with existing issues",
+      "Cannot delete job application referenced by a placement record",
+      "Cannot delete skill gap with existing observations",
+      "Cannot delete skill gap with existing recommendations",
+      "Cannot delete survey question with associated response answers",
+      "Cannot delete survey response with associated answers",
+      "Cannot delete the current active verification for an employment record",
+      "Cannot delete verification request with existing verification records",
+      "Cannot add answers to an already submitted survey response",
+      "Cannot add salary history to a deleted employment record",
+      "Cannot apply to a deleted job posting",
+      "Cannot assign an issue that is already in terminal state",
+      "Cannot associate deleted enrollment with job application",
+      "Cannot create placement record for a deleted enrollment",
+      "Cannot create verification request for a deleted employment record",
+
+      // 3. Authorization & Tenant Isolation Boundaries
+      "Target employer is missing required organization affiliation",
+      "Target employer record not found for scope validation",
+      "Authenticated employer is not authorized to act on records of another employer",
+      "Authenticated organization is not authorized to act on records of another organization",
+      "Authenticated trainee is not authorized to act on records of another trainee",
+      "Authenticated training provider is not authorized to act on records of another training provider",
+      "Authenticated user is not assigned to an employer",
+      "User is not authenticated",
+      "Unable to resolve authenticated user identity",
+
+      // 4. Core Domain Invariants & Validations
+      "Invalid date range",
+      "Enrollment already exists",
+      "Invalid username/email or password",
+      "Invalid token signature",
+      "Trainee ID is required to query consents",
+      "Only isCurrent=true is supported for current employment records filter",
+      "Only isCurrent=true is supported for current employments filter",
+      "Only isCurrent=true is supported for current employment retentions filter",
+      "Only isCurrent=true is supported for current employment verifications filter",
+      "Only isCurrent=true is supported for current skill gaps filter",
+      "Only isCurrent=true is supported for current unemployments filter",
+      "Username or email is required",
+      "Identity verification failed. Please verify the provided identity details.",
+      "Invalid PAN format",
+      "Invalid Aadhaar number format",
+      "Invalid or expired authentication token",
+      "Trainee consent is required to perform this action",
+      "Role already assigned to user",
+      "The request is invalid",
+      "Request validation failed",
+      "Malformed or unreadable request body",
+      "Required request body is missing",
+      "The requested resource was not found",
+      "A resource with the specified unique attributes already exists",
+
+      // 5. Business Validation Rules
+      "Start date cannot precede enrollment date",
+      "Expected completion date cannot precede start date",
+      "Actual completion date cannot precede start date",
+      "Maximum score must be greater than 0",
+      "Pass score cannot be negative",
+      "Pass score cannot exceed maximum score",
+      "Obtained score cannot be negative",
+      "Obtained score cannot exceed maximum score",
+      "Score percentage must be between 0 and 100",
+      "Session sequence must be greater than or equal to 1",
+      "Session end time cannot precede session start time",
+      "Actual joining date cannot be before offer date",
+      "Submitted timestamp cannot be before started timestamp",
+      "Verified timestamp cannot be before requested timestamp",
+      "Action type requires a recommended course",
+      "At least one answer value must be provided",
+      "At least one skill gap is required",
+      "Rating must be between 0.00 and 5.00",
+      "Invalid pincode format. Must be 6 digits starting with 1-9",
+      "Certification requires a passing assessment outcome",
+      "Course code already exists",
+      "Batch code already exists",
+      "Center code already exists",
+      "Provider code already exists",
+      "Registration number already exists",
+      "Username already exists",
+      "Email already exists",
+      "Trainee registration number already exists",
+      "Trainee already linked to this user ID",
+      "Placement number already exists",
+      "Job posting code already exists",
+      "Campaign code already exists",
+      "Assessment code already exists",
+      "Certificate number already exists",
+      "Employer code already exists",
+      "GSTIN already exists",
+      "Role code already exists",
+      "Permission code already exists",
+      "Job role code already exists",
+      "Skill code already exists",
+      "Skill name already exists",
+      "Program code already exists",
+      "Scheme code already exists",
+      "Rule code already exists",
+      "Batch code exists",
+      "Verification attempt number already exists",
+      "Verification evidence reference already exists",
+      "Employer branch code already exists",
+      "Skill gap observation number already exists",
+      "Survey question already exists for this survey, version, and question code",
+      "Survey question order already exists for this survey, version, and order number",
+      "Employment number already exists",
+      "Request number already exists",
+      "Verification number already exists",
+      "Skill gap number already exists",
+      "Skill gap assessment number already exists",
+      "Skill gap recommendation number already exists",
+      "Training enrollment number already exists"
+  )));
+
   private String getSafeMessageForErrorCode(String errorCode, HttpStatus status) {
     if (errorCode == null) {
-      return status != null ? status.getReasonPhrase() : "Request processing failed";
+      return status != null && status.is5xxServerError()
+          ? "An unexpected error occurred. Please try again later."
+          : (status != null ? status.getReasonPhrase() : "The request is invalid");
     }
     return switch (errorCode) {
       case "INVALID_IDENTITY" -> "Identity verification failed. Please verify the provided identity details.";
@@ -308,7 +640,7 @@ public class GlobalExceptionHandler {
       case "BAD_REQUEST" -> "The request is invalid";
       case "MALFORMED_REQUEST", "MALFORMED_JSON" -> "Malformed or unreadable request body";
       case "TYPE_MISMATCH" -> "Invalid parameter value provided";
-      case "MISSING_PARAMETER" -> "Required parameter is missing";
+      case "MISSING_PARAMETER", "MISSING_REQUIRED_PARAMETER" -> "Required parameter is missing";
       case "MISSING_HEADER" -> "Required header is missing";
       case "INVALID_PAGE" -> "Page index must not be less than zero";
       case "INVALID_PAGE_SIZE" -> "Invalid page size provided";
@@ -326,36 +658,177 @@ public class GlobalExceptionHandler {
       case "ACTIVE_SKILL_GAP_ALREADY_EXISTS" -> "Trainee already has an active current skill gap for this skill";
       case "ASSESSMENT_RESULT_ALREADY_EXISTS" -> "Assessment result already exists for this trainee assessment";
       case "CERTIFICATE_NUMBER_ALREADY_EXISTS" -> "Certificate number already exists";
+      case "INVALID_AADHAAR" -> "Invalid Aadhaar number format";
+      case "INVALID_PAN" -> "Invalid PAN format";
+      case "INVALID_TOKEN" -> "Invalid or expired authentication token";
+      case "INVALID_DATE_RANGE" -> "Invalid date range";
+      case "UNSUPPORTED_PARAMETER" -> "The request contains unsupported parameters";
+      case "INVALID_FILTER_PARAMETER" -> "Invalid filter parameter provided";
+      case "ENDPOINT_NOT_FOUND" -> "The requested resource was not found";
+      case "METHOD_NOT_ALLOWED" -> "HTTP method is not supported for this endpoint";
+      case "UNSUPPORTED_MEDIA_TYPE" -> "Content type is not supported";
+      case "NOT_ACCEPTABLE" -> "Requested media type is not acceptable";
+      case "DATABASE_ERROR" -> "An unexpected database error occurred. Please try again later.";
+      case "INTERNAL_SERVER_ERROR" -> "An unexpected error occurred. Please try again later.";
       default -> {
-        String readable = errorCode.replace('_', ' ').toLowerCase();
-        yield "Request validation failed: " + readable;
+        if (status == null || status.is5xxServerError()) {
+          yield "An unexpected error occurred. Please try again later.";
+        }
+        yield switch (status) {
+          case BAD_REQUEST -> "The request is invalid";
+          case NOT_FOUND -> "The requested resource was not found";
+          case CONFLICT -> "A resource with the specified unique attributes already exists";
+          case UNAUTHORIZED -> "Full authentication is required to access this resource";
+          case FORBIDDEN -> "Access is denied";
+          case METHOD_NOT_ALLOWED -> "HTTP method is not supported for this endpoint";
+          case UNSUPPORTED_MEDIA_TYPE -> "Content type is not supported";
+          case NOT_ACCEPTABLE -> "Requested media type is not acceptable";
+          default -> status.getReasonPhrase();
+        };
       }
     };
   }
 
+  private boolean isApprovedSafeDomainMessage(String errorCode, String candidateMessage) {
+    if (candidateMessage == null || candidateMessage.isBlank() || containsSensitiveData(candidateMessage)) {
+      return false;
+    }
+    String trimmed = candidateMessage.trim();
+    if (APPROVED_DOMAIN_MESSAGES.contains(trimmed)) {
+      return true;
+    }
+    if (SAFE_RESOURCE_NOT_FOUND_PATTERN.matcher(trimmed).matches()) {
+      return true;
+    }
+    if ("INVALID_SORT_DIRECTION".equals(errorCode) && SAFE_SORT_DIRECTION_PATTERN.matcher(trimmed).matches()) {
+      return true;
+    }
+    if ("INVALID_SORT_FIELD".equals(errorCode) && SAFE_SORT_FIELD_PATTERN.matcher(trimmed).matches()) {
+      return true;
+    }
+    if ("INVALID_PAGE_SIZE".equals(errorCode) && SAFE_PAGE_SIZE_PATTERN.matcher(trimmed).matches()) {
+      return true;
+    }
+    if (SAFE_ALREADY_EXISTS_PATTERN.matcher(trimmed).matches()) {
+      return true;
+    }
+    if ("IMPORT_RECORD_ROW_EXISTS".equals(errorCode) && SAFE_ROW_EXISTS_PATTERN.matcher(trimmed).matches()) {
+      return true;
+    }
+    return false;
+  }
+
+  private String resolveSafeClientMessage(BaseException ex) {
+    if (ex.getStatus() == null || ex.getStatus().is5xxServerError()) {
+      return "An unexpected error occurred. Please try again later.";
+    }
+
+    String candidateMessage = ex.getMessage();
+    String errorCode = ex.getErrorCode();
+
+    if (candidateMessage != null && !candidateMessage.isBlank()) {
+      // 1. If candidate message contains any sensitive data, immediately fail closed to code-derived safe message
+      if (containsSensitiveData(candidateMessage)) {
+        return getSafeMessageForErrorCode(errorCode, ex.getStatus());
+      }
+
+      // 2. Check against explicit allowlist of known-safe application domain messages and approved templates
+      if (isApprovedSafeDomainMessage(errorCode, candidateMessage.trim())) {
+        return candidateMessage.trim();
+      }
+    }
+
+    // 3. If not explicitly approved or if message is empty/null, derive safe message strictly from error code
+    return getSafeMessageForErrorCode(errorCode, ex.getStatus());
+  }
+
+  private ErrorResponse sanitizeErrorResponse(ErrorResponse response, HttpStatus status) {
+    if (response == null) {
+      return null;
+    }
+    HttpStatus effectiveStatus = status != null ? status : HttpStatus.resolve(response.getStatus());
+    if (effectiveStatus == null) {
+      effectiveStatus = HttpStatus.INTERNAL_SERVER_ERROR;
+    }
+
+    if (response.getPath() != null && containsSensitiveData(response.getPath())) {
+      response.setPath("/sanitized-path");
+    }
+
+    if (response.getCode() != null && containsSensitiveData(response.getCode())) {
+      response.setCode(effectiveStatus.is5xxServerError() ? "INTERNAL_SERVER_ERROR" : "BAD_REQUEST");
+    }
+
+    if (response.getError() != null && containsSensitiveData(response.getError())) {
+      response.setError(effectiveStatus.getReasonPhrase());
+    }
+
+    if (response.getMessage() != null && containsSensitiveData(response.getMessage())) {
+      String safeMsg = getSafeMessageForErrorCode(response.getCode(), effectiveStatus);
+      if (containsSensitiveData(safeMsg)) {
+        safeMsg = effectiveStatus.is5xxServerError()
+            ? "An unexpected error occurred. Please try again later."
+            : effectiveStatus.getReasonPhrase();
+      }
+      response.setMessage(safeMsg);
+    }
+
+    if (response.getDetails() != null && !response.getDetails().isEmpty()) {
+      List<String> sanitizedDetails = new ArrayList<>();
+      for (String detail : response.getDetails()) {
+        if (detail == null || detail.isBlank()) {
+          continue;
+        }
+        if (containsSensitiveData(detail)) {
+          int colonIdx = detail.indexOf(':');
+          if (colonIdx > 0) {
+            String field = detail.substring(0, colonIdx).trim();
+            if (containsSensitiveData(field)) {
+              field = "field";
+            }
+            sanitizedDetails.add(field + ": is invalid");
+          } else {
+            sanitizedDetails.add("field: is invalid");
+          }
+        } else {
+          sanitizedDetails.add(detail);
+        }
+      }
+      response.setDetails(sanitizedDetails);
+    }
+
+    return response;
+  }
+
+  private ResponseEntity<ErrorResponse> buildSanitizedResponse(ErrorResponse response, HttpStatus status) {
+    return buildSanitizedResponse(response, null, status);
+  }
+
+  private ResponseEntity<ErrorResponse> buildSanitizedResponse(ErrorResponse response, HttpHeaders headers, HttpStatus status) {
+    sanitizeErrorResponse(response, status);
+    if (headers != null) {
+      return new ResponseEntity<>(response, headers, status);
+    }
+    return new ResponseEntity<>(response, status);
+  }
+
   @ExceptionHandler(BaseException.class)
   public ResponseEntity<ErrorResponse> handleBaseException(BaseException ex, HttpServletRequest request) {
-    String clientMessage = ex.getMessage();
-    if (clientMessage == null || clientMessage.isBlank()) {
-      clientMessage = ex.getStatus().getReasonPhrase();
-    } else if (ex.getStatus() == HttpStatus.INTERNAL_SERVER_ERROR) {
-      clientMessage = "An unexpected error occurred. Please try again later.";
-    } else if (containsSensitiveData(clientMessage)) {
-      clientMessage = getSafeMessageForErrorCode(ex.getErrorCode(), ex.getStatus());
-    }
+    String clientMessage = resolveSafeClientMessage(ex);
     String exceptionType = !ex.getClass().getSimpleName().isEmpty()
         ? ex.getClass().getSimpleName()
         : ex.getClass().getName();
+    String uri = sanitizeUri(request);
     log.warn("Application exception on {}: status={}, code={}, exception={}",
-        request.getRequestURI(), ex.getStatus().value(), ex.getErrorCode(), exceptionType);
+        uri, ex.getStatus().value(), ex.getErrorCode(), exceptionType);
     ErrorResponse errorResponse = new ErrorResponse(
         ex.getStatus().value(),
         ex.getStatus().getReasonPhrase(),
         ex.getErrorCode(),
         clientMessage,
-        request.getRequestURI()
+        uri
     );
-    return new ResponseEntity<>(errorResponse, ex.getStatus());
+    return buildSanitizedResponse(errorResponse, ex.getStatus());
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -367,22 +840,26 @@ public class GlobalExceptionHandler {
         .sorted()
         .toList();
     List<String> invalidFields = ex.getBindingResult().getFieldErrors().stream()
-        .map(FieldError::getField)
+        .map(fe -> {
+          String f = fe.getField() != null ? fe.getField() : "field";
+          return containsSensitiveData(f) ? "field" : f;
+        })
         .distinct()
         .sorted()
         .toList();
 
+    String uri = sanitizeUri(request);
     log.warn("Validation error on {}: status={}, code={}, invalidFields={}",
-        request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "VALIDATION_ERROR", invalidFields);
+        uri, HttpStatus.BAD_REQUEST.value(), "VALIDATION_ERROR", invalidFields);
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.BAD_REQUEST.value(),
         HttpStatus.BAD_REQUEST.getReasonPhrase(),
         "VALIDATION_ERROR",
         "Request validation failed",
-        request.getRequestURI(),
+        uri,
         validationErrors
     );
-    return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    return buildSanitizedResponse(errorResponse, HttpStatus.BAD_REQUEST);
   }
 
   @ExceptionHandler(HandlerMethodValidationException.class)
@@ -413,7 +890,7 @@ public class GlobalExceptionHandler {
             paramName = result.getMethodParameter().getParameterName();
           }
         }
-        invalidParams.add(paramName);
+        invalidParams.add(containsSensitiveData(paramName) ? "parameter" : paramName);
 
         if (result.getResolvableErrors() != null) {
           for (MessageSourceResolvable resolvable : result.getResolvableErrors()) {
@@ -431,6 +908,8 @@ public class GlobalExceptionHandler {
     Collections.sort(validationErrors);
     Collections.sort(invalidParams);
 
+    String uri = sanitizeUri(request);
+
     // Preserve established Phase 26.3 / 26.4 pagination bounds contract (INVALID_PAGE, INVALID_PAGE_SIZE)
     if (results.size() == 1) {
       ParameterValidationResult singleResult = results.get(0);
@@ -447,9 +926,9 @@ public class GlobalExceptionHandler {
             HttpStatus.BAD_REQUEST.getReasonPhrase(),
             "INVALID_PAGE",
             "Page index must not be less than zero",
-            request.getRequestURI()
+            uri
         );
-        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        return buildSanitizedResponse(errorResponse, HttpStatus.BAD_REQUEST);
       } else if ("size".equals(pName) && singleResult.getResolvableErrors() != null && !singleResult.getResolvableErrors().isEmpty()) {
         MessageSourceResolvable resolvable = singleResult.getResolvableErrors().iterator().next();
         String code = "";
@@ -467,24 +946,24 @@ public class GlobalExceptionHandler {
             HttpStatus.BAD_REQUEST.getReasonPhrase(),
             "INVALID_PAGE_SIZE",
             message,
-            request.getRequestURI()
+            uri
         );
-        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        return buildSanitizedResponse(errorResponse, HttpStatus.BAD_REQUEST);
       }
     }
 
     log.warn("Handler method validation error on {}: status={}, code={}, invalidParams={}",
-        request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "VALIDATION_ERROR", invalidParams);
+        uri, HttpStatus.BAD_REQUEST.value(), "VALIDATION_ERROR", invalidParams);
 
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.BAD_REQUEST.value(),
         HttpStatus.BAD_REQUEST.getReasonPhrase(),
         "VALIDATION_ERROR",
         "Request validation failed",
-        request.getRequestURI(),
+        uri,
         validationErrors
     );
-    return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    return buildSanitizedResponse(errorResponse, HttpStatus.BAD_REQUEST);
   }
 
   @ExceptionHandler(ConstraintViolationException.class)
@@ -492,20 +971,22 @@ public class GlobalExceptionHandler {
       ConstraintViolationException ex,
       HttpServletRequest request) {
 
+    String uri = sanitizeUri(request);
+
     // Evaluate all violations: classify as HTTP 400 only when origin is positively identifiable
     // as supported client request validation (controller method parameter or request DTO).
     // Any entity/persistence, internal service/repository, unknown origin, or null root bean fails closed as HTTP 500.
     if (!isSupportedClientRequestValidation(ex)) {
       log.error("Internal or unverified constraint violation on {}: status={}, code={}, failing closed",
-          request.getRequestURI(), HttpStatus.INTERNAL_SERVER_ERROR.value(), "INTERNAL_SERVER_ERROR");
+          uri, HttpStatus.INTERNAL_SERVER_ERROR.value(), "INTERNAL_SERVER_ERROR");
       ErrorResponse errorResponse = new ErrorResponse(
           HttpStatus.INTERNAL_SERVER_ERROR.value(),
           HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase(),
           "INTERNAL_SERVER_ERROR",
           "An unexpected error occurred. Please try again later.",
-          request.getRequestURI()
+          uri
       );
-      return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+      return buildSanitizedResponse(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     // Preserve established Phase 26.3 / 26.4 pagination bounds contract (INVALID_PAGE, INVALID_PAGE_SIZE)
@@ -519,39 +1000,39 @@ public class GlobalExceptionHandler {
       if (property.endsWith(".page") || property.equals("page")) {
         if ("Min".equals(annotation)) {
           log.warn("Pagination bounds violation on {}: status={}, code={}, property='{}'",
-              request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "INVALID_PAGE", property);
+              uri, HttpStatus.BAD_REQUEST.value(), "INVALID_PAGE", property);
           ErrorResponse errorResponse = new ErrorResponse(
               HttpStatus.BAD_REQUEST.value(),
               HttpStatus.BAD_REQUEST.getReasonPhrase(),
               "INVALID_PAGE",
               "Page index must not be less than zero",
-              request.getRequestURI()
+              uri
           );
-          return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+          return buildSanitizedResponse(errorResponse, HttpStatus.BAD_REQUEST);
         }
       } else if (property.endsWith(".size") || property.equals("size")) {
         if ("Min".equals(annotation)) {
           log.warn("Pagination bounds violation on {}: status={}, code={}, property='{}'",
-              request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "INVALID_PAGE_SIZE", property);
+              uri, HttpStatus.BAD_REQUEST.value(), "INVALID_PAGE_SIZE", property);
           ErrorResponse errorResponse = new ErrorResponse(
               HttpStatus.BAD_REQUEST.value(),
               HttpStatus.BAD_REQUEST.getReasonPhrase(),
               "INVALID_PAGE_SIZE",
               "Page size must be at least 1",
-              request.getRequestURI()
+              uri
           );
-          return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+          return buildSanitizedResponse(errorResponse, HttpStatus.BAD_REQUEST);
         } else if ("Max".equals(annotation)) {
           log.warn("Pagination bounds violation on {}: status={}, code={}, property='{}'",
-              request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "INVALID_PAGE_SIZE", property);
+              uri, HttpStatus.BAD_REQUEST.value(), "INVALID_PAGE_SIZE", property);
           ErrorResponse errorResponse = new ErrorResponse(
               HttpStatus.BAD_REQUEST.value(),
               HttpStatus.BAD_REQUEST.getReasonPhrase(),
               "INVALID_PAGE_SIZE",
               "Page size must not exceed " + in.gov.sih.sih26135.response.PaginationUtils.MAX_SIZE,
-              request.getRequestURI()
+              uri
           );
-          return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+          return buildSanitizedResponse(errorResponse, HttpStatus.BAD_REQUEST);
         }
       }
     }
@@ -562,22 +1043,25 @@ public class GlobalExceptionHandler {
         .sorted()
         .toList();
     List<String> invalidProperties = ex.getConstraintViolations().stream()
-        .map(v -> v.getPropertyPath() != null ? v.getPropertyPath().toString() : "unknown")
+        .map(v -> {
+          String p = v.getPropertyPath() != null ? v.getPropertyPath().toString() : "unknown";
+          return containsSensitiveData(p) ? "property" : p;
+        })
         .distinct()
         .sorted()
         .toList();
 
     log.warn("Request constraint violation on {}: status={}, code={}, invalidProperties={}",
-        request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "VALIDATION_ERROR", invalidProperties);
+        uri, HttpStatus.BAD_REQUEST.value(), "VALIDATION_ERROR", invalidProperties);
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.BAD_REQUEST.value(),
         HttpStatus.BAD_REQUEST.getReasonPhrase(),
         "VALIDATION_ERROR",
         "Request validation failed",
-        request.getRequestURI(),
+        uri,
         validationErrors
     );
-    return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    return buildSanitizedResponse(errorResponse, HttpStatus.BAD_REQUEST);
   }
 
   private boolean isSupportedClientRequestValidation(ConstraintViolationException ex) {
@@ -919,6 +1403,7 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ErrorResponse> handleMethodArgumentTypeMismatch(
       MethodArgumentTypeMismatchException ex,
       HttpServletRequest request) {
+    String uri = sanitizeUri(request);
     String paramName = ex.getName() != null ? ex.getName() : "parameter";
     if (containsSensitiveData(paramName)) {
       paramName = "parameter";
@@ -927,21 +1412,22 @@ public class GlobalExceptionHandler {
     String message = String.format("Invalid parameter value for '%s'. Expected type: %s", paramName, requiredType);
 
     log.warn("Parameter type mismatch on {} for parameter '{}': status={}, code={}, expectedType={}",
-        request.getRequestURI(), paramName, HttpStatus.BAD_REQUEST.value(), "TYPE_MISMATCH", requiredType);
+        uri, paramName, HttpStatus.BAD_REQUEST.value(), "TYPE_MISMATCH", requiredType);
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.BAD_REQUEST.value(),
         HttpStatus.BAD_REQUEST.getReasonPhrase(),
         "TYPE_MISMATCH",
         message,
-        request.getRequestURI()
+        uri
     );
-    return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    return buildSanitizedResponse(errorResponse, HttpStatus.BAD_REQUEST);
   }
 
   @ExceptionHandler(MissingServletRequestParameterException.class)
   public ResponseEntity<ErrorResponse> handleMissingServletRequestParameter(
       MissingServletRequestParameterException ex,
       HttpServletRequest request) {
+    String uri = sanitizeUri(request);
     String paramName = ex.getParameterName() != null ? ex.getParameterName() : "parameter";
     if (containsSensitiveData(paramName)) {
       paramName = "parameter";
@@ -949,21 +1435,22 @@ public class GlobalExceptionHandler {
     String message = String.format("Required parameter '%s' is missing", paramName);
 
     log.warn("Missing request parameter on {}: status={}, code={}, parameter='{}'",
-        request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "MISSING_PARAMETER", paramName);
+        uri, HttpStatus.BAD_REQUEST.value(), "MISSING_PARAMETER", paramName);
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.BAD_REQUEST.value(),
         HttpStatus.BAD_REQUEST.getReasonPhrase(),
         "MISSING_PARAMETER",
         message,
-        request.getRequestURI()
+        uri
     );
-    return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    return buildSanitizedResponse(errorResponse, HttpStatus.BAD_REQUEST);
   }
 
   @ExceptionHandler(MissingRequestHeaderException.class)
   public ResponseEntity<ErrorResponse> handleMissingRequestHeader(
       MissingRequestHeaderException ex,
       HttpServletRequest request) {
+    String uri = sanitizeUri(request);
     String headerName = ex.getHeaderName() != null ? ex.getHeaderName() : "header";
     if (containsSensitiveData(headerName)) {
       headerName = "header";
@@ -971,54 +1458,57 @@ public class GlobalExceptionHandler {
     String message = String.format("Required header '%s' is missing", headerName);
 
     log.warn("Missing request header on {}: status={}, code={}, header='{}'",
-        request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "MISSING_HEADER", headerName);
+        uri, HttpStatus.BAD_REQUEST.value(), "MISSING_HEADER", headerName);
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.BAD_REQUEST.value(),
         HttpStatus.BAD_REQUEST.getReasonPhrase(),
         "MISSING_HEADER",
         message,
-        request.getRequestURI()
+        uri
     );
-    return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    return buildSanitizedResponse(errorResponse, HttpStatus.BAD_REQUEST);
   }
 
   @ExceptionHandler(ServletRequestBindingException.class)
   public ResponseEntity<ErrorResponse> handleServletRequestBinding(
       ServletRequestBindingException ex,
       HttpServletRequest request) {
+    String uri = sanitizeUri(request);
     log.warn("Servlet request binding error on {}: status={}, code={}, exception={}",
-        request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "BAD_REQUEST", ex.getClass().getSimpleName());
+        uri, HttpStatus.BAD_REQUEST.value(), "BAD_REQUEST", ex.getClass().getSimpleName());
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.BAD_REQUEST.value(),
         HttpStatus.BAD_REQUEST.getReasonPhrase(),
         "BAD_REQUEST",
         "Invalid request binding or missing parameter/header",
-        request.getRequestURI()
+        uri
     );
-    return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    return buildSanitizedResponse(errorResponse, HttpStatus.BAD_REQUEST);
   }
 
   @ExceptionHandler(MissingPathVariableException.class)
   public ResponseEntity<ErrorResponse> handleMissingPathVariable(
       MissingPathVariableException ex,
       HttpServletRequest request) {
+    String uri = sanitizeUri(request);
     // MissingPathVariableException indicates a server-side route/controller parameter mismatch
     // (a controller method expects a URI variable not defined in its @RequestMapping pattern).
     // This is an internal configuration/server error (HTTP 500), not an invalid client request.
     log.error("Server-side path variable configuration mismatch on {}: status={}, code={}, variable='{}', exception={}",
-        request.getRequestURI(), HttpStatus.INTERNAL_SERVER_ERROR.value(), "INTERNAL_SERVER_ERROR", ex.getVariableName(), ex.getClass().getSimpleName());
+        uri, HttpStatus.INTERNAL_SERVER_ERROR.value(), "INTERNAL_SERVER_ERROR", ex.getVariableName(), ex.getClass().getSimpleName());
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.INTERNAL_SERVER_ERROR.value(),
         HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase(),
         "INTERNAL_SERVER_ERROR",
         "An unexpected error occurred. Please try again later.",
-        request.getRequestURI()
+        uri
     );
-    return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+    return buildSanitizedResponse(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
   }
 
   @ExceptionHandler(HttpMessageNotReadableException.class)
   public ResponseEntity<ErrorResponse> handleMessageNotReadable(HttpMessageNotReadableException ex, HttpServletRequest request) {
+    String uri = sanitizeUri(request);
     String clientMessage = "Malformed or unreadable request body";
     List<String> details = null;
 
@@ -1073,92 +1563,102 @@ public class GlobalExceptionHandler {
     }
 
     log.warn("Malformed or unreadable HTTP message on {}: status={}, code={}, reason={}",
-        request.getRequestURI(), HttpStatus.BAD_REQUEST.value(), "MALFORMED_JSON", clientMessage);
+        uri, HttpStatus.BAD_REQUEST.value(), "MALFORMED_JSON", clientMessage);
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.BAD_REQUEST.value(),
         HttpStatus.BAD_REQUEST.getReasonPhrase(),
         "MALFORMED_JSON",
         clientMessage,
-        request.getRequestURI(),
+        uri,
         details
     );
-    return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    return buildSanitizedResponse(errorResponse, HttpStatus.BAD_REQUEST);
   }
 
   @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
   public ResponseEntity<ErrorResponse> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex, HttpServletRequest request) {
+    String uri = sanitizeUri(request);
     String method = ex.getMethod() != null ? ex.getMethod() : "UNKNOWN";
     if (containsSensitiveData(method)) {
       method = "UNKNOWN";
     }
     log.warn("Method not supported on {}: status={}, code={}, method={}",
-        request.getRequestURI(), HttpStatus.METHOD_NOT_ALLOWED.value(), "METHOD_NOT_ALLOWED", method);
+        uri, HttpStatus.METHOD_NOT_ALLOWED.value(), "METHOD_NOT_ALLOWED", method);
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.METHOD_NOT_ALLOWED.value(),
         HttpStatus.METHOD_NOT_ALLOWED.getReasonPhrase(),
         "METHOD_NOT_ALLOWED",
         "HTTP method '" + method + "' is not supported for this endpoint",
-        request.getRequestURI()
+        uri
     );
     HttpHeaders headers = new HttpHeaders();
     if (ex.getSupportedHttpMethods() != null && !ex.getSupportedHttpMethods().isEmpty()) {
       headers.setAllow(ex.getSupportedHttpMethods());
     }
-    return new ResponseEntity<>(errorResponse, headers, HttpStatus.METHOD_NOT_ALLOWED);
+    return buildSanitizedResponse(errorResponse, headers, HttpStatus.METHOD_NOT_ALLOWED);
   }
 
   @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
   public ResponseEntity<ErrorResponse> handleHttpMediaTypeNotSupported(
       HttpMediaTypeNotSupportedException ex,
       HttpServletRequest request) {
+    String uri = sanitizeUri(request);
     String contentType = ex.getContentType() != null ? ex.getContentType().toString() : "unknown";
     if (containsSensitiveData(contentType)) {
       contentType = "unsupported";
     }
     log.warn("Media type not supported on {}: status={}, code={}, contentType={}",
-        request.getRequestURI(), HttpStatus.UNSUPPORTED_MEDIA_TYPE.value(), "UNSUPPORTED_MEDIA_TYPE", contentType);
+        uri, HttpStatus.UNSUPPORTED_MEDIA_TYPE.value(), "UNSUPPORTED_MEDIA_TYPE", contentType);
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.UNSUPPORTED_MEDIA_TYPE.value(),
         HttpStatus.UNSUPPORTED_MEDIA_TYPE.getReasonPhrase(),
         "UNSUPPORTED_MEDIA_TYPE",
         "Content type '" + contentType + "' is not supported",
-        request.getRequestURI()
+        uri
     );
     HttpHeaders headers = new HttpHeaders();
     if (ex.getSupportedMediaTypes() != null && !ex.getSupportedMediaTypes().isEmpty()) {
       headers.setAccept(ex.getSupportedMediaTypes());
     }
-    return new ResponseEntity<>(errorResponse, headers, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+    return buildSanitizedResponse(errorResponse, headers, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
   }
 
   @ExceptionHandler(HttpMediaTypeNotAcceptableException.class)
   public ResponseEntity<ErrorResponse> handleHttpMediaTypeNotAcceptable(
       HttpMediaTypeNotAcceptableException ex,
       HttpServletRequest request) {
+    String uri = sanitizeUri(request);
     log.warn("Media type not acceptable on {}: status={}, code={}",
-        request.getRequestURI(), HttpStatus.NOT_ACCEPTABLE.value(), "NOT_ACCEPTABLE");
+        uri, HttpStatus.NOT_ACCEPTABLE.value(), "NOT_ACCEPTABLE");
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.NOT_ACCEPTABLE.value(),
         HttpStatus.NOT_ACCEPTABLE.getReasonPhrase(),
         "NOT_ACCEPTABLE",
         "Requested media type is not acceptable",
-        request.getRequestURI()
+        uri
     );
-    return new ResponseEntity<>(errorResponse, HttpStatus.NOT_ACCEPTABLE);
+    return buildSanitizedResponse(errorResponse, HttpStatus.NOT_ACCEPTABLE);
   }
 
-  @ExceptionHandler(NoResourceFoundException.class)
-  public ResponseEntity<ErrorResponse> handleNoResourceFound(NoResourceFoundException ex, HttpServletRequest request) {
+  @ExceptionHandler({NoResourceFoundException.class, org.springframework.web.servlet.NoHandlerFoundException.class})
+  public ResponseEntity<ErrorResponse> handleNoResourceFound(Exception ex, HttpServletRequest request) {
+    String sanitizedUri = sanitizeUri(request);
+    if (sanitizedUri.isBlank()) {
+      sanitizedUri = "/sanitized-path";
+    }
     log.warn("Resource not found on {}: status={}, code={}",
-        request.getRequestURI(), HttpStatus.NOT_FOUND.value(), "ENDPOINT_NOT_FOUND");
+        sanitizedUri, HttpStatus.NOT_FOUND.value(), "ENDPOINT_NOT_FOUND");
+    String message = "/sanitized-path".equals(sanitizedUri) || sanitizedUri.isBlank()
+        ? "No static resource or endpoint found"
+        : "No static resource or endpoint found for path: " + sanitizedUri;
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.NOT_FOUND.value(),
         HttpStatus.NOT_FOUND.getReasonPhrase(),
         "ENDPOINT_NOT_FOUND",
-        "No static resource or endpoint found for path: " + request.getRequestURI(),
-        request.getRequestURI()
+        message,
+        sanitizedUri
     );
-    return new ResponseEntity<>(errorResponse, HttpStatus.NOT_FOUND);
+    return buildSanitizedResponse(errorResponse, HttpStatus.NOT_FOUND);
   }
 
   @ExceptionHandler(AccessDeniedException.class)
@@ -1485,42 +1985,45 @@ public class GlobalExceptionHandler {
     }
 
     // 14. Non-duplicate integrity violations (foreign keys, nulls, check constraints)
+    String uri = sanitizeUri(request);
     log.error("Unrecognized database integrity violation on {}: status={}, code={}",
-        request.getRequestURI(), HttpStatus.INTERNAL_SERVER_ERROR.value(), "INTERNAL_SERVER_ERROR");
+        uri, HttpStatus.INTERNAL_SERVER_ERROR.value(), "INTERNAL_SERVER_ERROR");
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.INTERNAL_SERVER_ERROR.value(),
         HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase(),
         "INTERNAL_SERVER_ERROR",
         "An unexpected database error occurred. Please try again later.",
-        request.getRequestURI()
+        uri
     );
-    return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+    return buildSanitizedResponse(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
   }
 
   private ResponseEntity<ErrorResponse> conflictResponse(String code, String message, HttpServletRequest request) {
+    String uri = sanitizeUri(request);
     log.warn("Database integrity conflict on {}: status={}, code={}",
-        request.getRequestURI(), HttpStatus.CONFLICT.value(), code);
+        uri, HttpStatus.CONFLICT.value(), code);
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.CONFLICT.value(),
         HttpStatus.CONFLICT.getReasonPhrase(),
         code,
         message,
-        request.getRequestURI()
+        uri
     );
-    return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    return buildSanitizedResponse(errorResponse, HttpStatus.CONFLICT);
   }
 
   @ExceptionHandler(Exception.class)
   public ResponseEntity<ErrorResponse> handleGenericException(Exception ex, HttpServletRequest request) {
+    String uri = sanitizeUri(request);
     log.error("Unhandled exception processing request to {}: status={}, code={}, exception={}",
-        request.getRequestURI(), HttpStatus.INTERNAL_SERVER_ERROR.value(), "INTERNAL_SERVER_ERROR", ex.getClass().getName());
+        uri, HttpStatus.INTERNAL_SERVER_ERROR.value(), "INTERNAL_SERVER_ERROR", ex.getClass().getName());
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.INTERNAL_SERVER_ERROR.value(),
         HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase(),
         "INTERNAL_SERVER_ERROR",
         "An unexpected error occurred. Please try again later.",
-        request.getRequestURI()
+        uri
     );
-    return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+    return buildSanitizedResponse(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
   }
 }

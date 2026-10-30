@@ -112,6 +112,9 @@ class GlobalExceptionHandlerErrorMappingTest {
   void setUp() {
     exceptionHandler = new GlobalExceptionHandler();
     org.mockito.Mockito.lenient().when(request.getRequestURI()).thenReturn("/api/v1/test-endpoint");
+    org.mockito.Mockito.lenient().when(request.getAttribute(
+        org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE))
+        .thenAnswer(inv -> request.getRequestURI());
   }
 
   // =========================================================================
@@ -1832,6 +1835,976 @@ class GlobalExceptionHandlerErrorMappingTest {
       assertThat(logs).contains("status=400");
       assertThat(logs).contains("code=VALIDATION_ERROR");
       assertThat(logs).contains("invalidProperties=[durationWeeks]");
+    }
+  }
+
+  // =========================================================================
+  // 7. Phase 26.9 - Error Sanitization, Data Privacy & Anti-Echo Tests
+  // =========================================================================
+
+  @Nested
+  @DisplayName("7. Phase 26.9 - Error Sanitization, Data Privacy & Anti-Echo Tests")
+  class Phase269ErrorSanitizationAndDataPrivacyTests {
+
+    @Test
+    @DisplayName("Aadhaar: Unformatted 12-digit Aadhaar number in BaseException message is sanitized to code-derived safe message")
+    void testAadhaar_unformatted12Digits_inBaseException_isSanitized() {
+      String rawAadhaar = "123456789012";
+      when(request.getRequestURI()).thenReturn("/api/v1/trainees/verify");
+
+      BadRequestException ex = new BadRequestException(
+          "Trainee verification failed for Aadhaar " + rawAadhaar, "INVALID_IDENTITY");
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("INVALID_IDENTITY");
+      assertThat(response.getBody().getMessage()).doesNotContain(rawAadhaar);
+      assertThat(response.getBody().getMessage()).isEqualTo("Identity verification failed. Please verify the provided identity details.");
+    }
+
+    @Test
+    @DisplayName("Aadhaar: Space-formatted 4-4-4 Aadhaar number in validation message is sanitized in response details")
+    void testAadhaar_spaceFormatted_inValidationError_isSanitized() {
+      String spaceAadhaar = "1234 5678 9012";
+      when(request.getRequestURI()).thenReturn("/api/v1/trainees");
+
+      MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
+      BindingResult bindingResult = mock(BindingResult.class);
+      FieldError fieldError = new FieldError(
+          "traineeRequest", "aadhaarNumber", spaceAadhaar, false, null, null, "Invalid Aadhaar: " + spaceAadhaar);
+      when(bindingResult.getFieldErrors()).thenReturn(Collections.singletonList(fieldError));
+      when(ex.getBindingResult()).thenReturn(bindingResult);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleValidationException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).containsExactly("aadhaarNumber: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain(spaceAadhaar);
+    }
+
+    @Test
+    @DisplayName("Aadhaar: Hyphen-formatted 4-4-4 Aadhaar number in constraint violation message is sanitized")
+    void testAadhaar_hyphenFormatted_inConstraintViolation_isSanitized() {
+      String hyphenAadhaar = "1234-5678-9012";
+      when(request.getRequestURI()).thenReturn("/api/v1/trainees");
+
+      ConstraintViolation<?> violation = mock(ConstraintViolation.class);
+      Path path = mock(Path.class);
+      when(path.toString()).thenReturn("aadhaarNumber");
+      when(violation.getPropertyPath()).thenReturn(path);
+      when(violation.getMessage()).thenReturn("Aadhaar " + hyphenAadhaar + " format mismatch");
+      when(violation.getInvalidValue()).thenReturn(hyphenAadhaar);
+      doReturn(in.gov.sih.sih26135.dto.request.CreateTraineeRequest.class).when(violation).getRootBeanClass();
+
+      ConstraintViolationException ex = new ConstraintViolationException("Validation failed", Collections.singleton(violation));
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleConstraintViolation(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).containsExactly("aadhaarNumber: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain(hyphenAadhaar);
+    }
+
+    @Test
+    @DisplayName("Aadhaar: Parenthesis-wrapped Aadhaar number in URI path is sanitized in NoResourceFoundException")
+    void testAadhaar_parenthesisFormatted_inEndpointNotFound_isSanitized() {
+      String sensitiveUri = "/api/v1/trainees/(123456789012)";
+      when(request.getRequestURI()).thenReturn(sensitiveUri);
+
+      NoResourceFoundException ex = new NoResourceFoundException(HttpMethod.GET, sensitiveUri);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleNoResourceFound(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("ENDPOINT_NOT_FOUND");
+      assertThat(response.getBody().getMessage()).doesNotContain("123456789012");
+      assertThat(response.getBody().getMessage()).isEqualTo("No static resource or endpoint found");
+      assertThat(response.getBody().getPath()).isEqualTo("/sanitized-path");
+    }
+
+    @Test
+    @DisplayName("PAN: Uppercase PAN number in BaseException message is sanitized to code-derived safe message")
+    void testPAN_uppercase_inBaseException_isSanitized() {
+      String pan = "ABCDE1234F";
+      when(request.getRequestURI()).thenReturn("/api/v1/employers/verify");
+
+      BadRequestException ex = new BadRequestException(
+          "Duplicate PAN " + pan + " already registered", "INVALID_PAN");
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("INVALID_PAN");
+      assertThat(response.getBody().getMessage()).doesNotContain(pan);
+      assertThat(response.getBody().getMessage()).isEqualTo("Invalid PAN format");
+    }
+
+    @Test
+    @DisplayName("PAN: Lowercase PAN number in validation error is sanitized in response details")
+    void testPAN_lowercase_inValidationError_isSanitized() {
+      String lowerPan = "abcde1234f";
+      when(request.getRequestURI()).thenReturn("/api/v1/employers");
+
+      MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
+      BindingResult bindingResult = mock(BindingResult.class);
+      FieldError fieldError = new FieldError(
+          "employerRequest", "panNumber", lowerPan, false, null, null, "Invalid pan " + lowerPan);
+      when(bindingResult.getFieldErrors()).thenReturn(Collections.singletonList(fieldError));
+      when(ex.getBindingResult()).thenReturn(bindingResult);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleValidationException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).containsExactly("panNumber: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain(lowerPan);
+    }
+
+    @Test
+    @DisplayName("Database URL: JDBC URL with credentials in exception message is completely suppressed")
+    void testDatabaseUrl_withCredentials_inException_isSanitized() {
+      String sensitiveUrl = "jdbc:mysql://db.prod.internal:3306/sih26135?user=dbadmin&password=SuperSecretPassword123!";
+      when(request.getRequestURI()).thenReturn("/api/v1/users");
+
+      RuntimeException ex = new RuntimeException("Unable to connect to " + sensitiveUrl);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleGenericException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("INTERNAL_SERVER_ERROR");
+      assertThat(response.getBody().getMessage()).isEqualTo("An unexpected error occurred. Please try again later.");
+      assertThat(response.getBody().getMessage()).doesNotContain("jdbc:mysql");
+      assertThat(response.getBody().getMessage()).doesNotContain("db.prod.internal");
+      assertThat(response.getBody().getMessage()).doesNotContain("dbadmin");
+      assertThat(response.getBody().getMessage()).doesNotContain("SuperSecretPassword123!");
+    }
+
+    @Test
+    @DisplayName("Database URL: PostgreSQL URL with credentials in DataIntegrityViolationException is suppressed")
+    void testPostgresUrl_withCredentials_inDataIntegrityViolation_isSanitized() {
+      String pgUrl = "postgresql://admin:secretPass@10.0.1.5:5432/production";
+      when(request.getRequestURI()).thenReturn("/api/v1/batches");
+
+      DataIntegrityViolationException ex = buildDbException("could not connect to " + pgUrl);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleDataIntegrityViolation(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("INTERNAL_SERVER_ERROR");
+      assertThat(response.getBody().getMessage()).isEqualTo("An unexpected database error occurred. Please try again later.");
+      assertThat(response.getBody().getMessage()).doesNotContain("postgresql://");
+      assertThat(response.getBody().getMessage()).doesNotContain("secretPass");
+      assertThat(response.getBody().getMessage()).doesNotContain("10.0.1.5");
+    }
+
+    @Test
+    @DisplayName("Raw SQL: SELECT query with column names in BaseException message is suppressed")
+    void testRawSql_selectQuery_inBaseException_isSanitized() {
+      String sql = "SELECT password_hash, salt FROM users WHERE username = 'admin'";
+      when(request.getRequestURI()).thenReturn("/api/v1/users/admin");
+
+      BadRequestException ex = new BadRequestException(
+          "Failed executing: " + sql, "DATABASE_ERROR");
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("DATABASE_ERROR");
+      assertThat(response.getBody().getMessage()).isEqualTo("An unexpected database error occurred. Please try again later.");
+      assertThat(response.getBody().getMessage()).doesNotContain("SELECT");
+      assertThat(response.getBody().getMessage()).doesNotContain("password_hash");
+      assertThat(response.getBody().getMessage()).doesNotContain("users");
+      assertThat(response.getBody().getMessage()).doesNotContain("'admin'");
+    }
+
+    @Test
+    @DisplayName("Raw SQL: INSERT query in constraint violation message is suppressed in response details")
+    void testRawSql_insertQuery_inConstraintViolation_isSanitized() {
+      String sql = "INSERT INTO payroll (trainee_id, salary) VALUES (101, 75000.00)";
+      when(request.getRequestURI()).thenReturn("/api/v1/salary-histories");
+
+      ConstraintViolation<?> violation = mock(ConstraintViolation.class);
+      Path path = mock(Path.class);
+      when(path.toString()).thenReturn("amount");
+      when(violation.getPropertyPath()).thenReturn(path);
+      when(violation.getMessage()).thenReturn("SQL Error: " + sql);
+      when(violation.getInvalidValue()).thenReturn("75000.00");
+      doReturn(in.gov.sih.sih26135.dto.request.CreateSalaryHistoryRequest.class).when(violation).getRootBeanClass();
+
+      ConstraintViolationException ex = new ConstraintViolationException("Validation failed", Collections.singleton(violation));
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleConstraintViolation(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).containsExactly("amount: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain("INSERT INTO");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain("payroll");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain("75000.00");
+    }
+
+    @Test
+    @DisplayName("JWT: Full JWT token in BaseException message is suppressed to code-derived message")
+    void testJwtToken_inBaseException_isSanitized() {
+      String jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+      when(request.getRequestURI()).thenReturn("/api/auth/validate");
+
+      BadRequestException ex = new BadRequestException("Token expired: " + jwt, "INVALID_TOKEN");
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("INVALID_TOKEN");
+      assertThat(response.getBody().getMessage()).doesNotContain(jwt);
+      assertThat(response.getBody().getMessage()).doesNotContain("eyJ");
+      assertThat(response.getBody().getMessage()).isEqualTo("Invalid or expired authentication token");
+    }
+
+    @Test
+    @DisplayName("Bearer Token: Bearer token header value in validation error is suppressed in response details")
+    void testBearerToken_inValidationMessage_isSanitized() {
+      String bearer = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummyPayloadString12345";
+      when(request.getRequestURI()).thenReturn("/api/auth/refresh");
+
+      MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
+      BindingResult bindingResult = mock(BindingResult.class);
+      FieldError fieldError = new FieldError(
+          "refreshTokenRequest", "token", bearer, false, null, null, "Invalid authorization: " + bearer);
+      when(bindingResult.getFieldErrors()).thenReturn(Collections.singletonList(fieldError));
+      when(ex.getBindingResult()).thenReturn(bindingResult);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleValidationException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).containsExactly("token: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain("Bearer");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain("eyJ");
+    }
+
+    @Test
+    @DisplayName("API Key: API key assignment in generic exception is suppressed")
+    void testApiKey_assignment_inException_isSanitized() {
+      String apiKeyStr = "api_key=ak_live_998877665544332211";
+      when(request.getRequestURI()).thenReturn("/api/v1/integrations");
+
+      RuntimeException ex = new RuntimeException("API authentication failed: " + apiKeyStr);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleGenericException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("INTERNAL_SERVER_ERROR");
+      assertThat(response.getBody().getMessage()).isEqualTo("An unexpected error occurred. Please try again later.");
+      assertThat(response.getBody().getMessage()).doesNotContain("api_key");
+      assertThat(response.getBody().getMessage()).doesNotContain("ak_live_");
+    }
+
+    @Test
+    @DisplayName("Filesystem: Windows absolute path in exception message is suppressed")
+    void testWindowsPath_inException_isSanitized() {
+      String winPath = "C:\\Users\\aditya\\workspace\\backend\\src\\main\\resources\\application-prod.properties";
+      when(request.getRequestURI()).thenReturn("/api/v1/admin/config");
+
+      RuntimeException ex = new RuntimeException("Configuration file missing: " + winPath);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleGenericException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("INTERNAL_SERVER_ERROR");
+      assertThat(response.getBody().getMessage()).isEqualTo("An unexpected error occurred. Please try again later.");
+      assertThat(response.getBody().getMessage()).doesNotContain("C:\\Users");
+      assertThat(response.getBody().getMessage()).doesNotContain("application-prod.properties");
+    }
+
+    @Test
+    @DisplayName("Filesystem: Unix absolute path in validation error is suppressed in response details")
+    void testUnixPath_inValidationMessage_isSanitized() {
+      String unixPath = "/etc/ssl/certs/private.key";
+      when(request.getRequestURI()).thenReturn("/api/v1/certificates");
+
+      MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
+      BindingResult bindingResult = mock(BindingResult.class);
+      FieldError fieldError = new FieldError(
+          "certRequest", "certificatePath", unixPath, false, null, null, "File not found at " + unixPath);
+      when(bindingResult.getFieldErrors()).thenReturn(Collections.singletonList(fieldError));
+      when(ex.getBindingResult()).thenReturn(bindingResult);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleValidationException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).containsExactly("certificatePath: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain("/etc/ssl");
+    }
+
+    @Test
+    @DisplayName("Internal Package: Internal application package name in BaseException is suppressed")
+    void testInternalPackageName_inBaseException_isSanitized() {
+      String internalClass = "in.gov.sih.sih26135.service.impl.UserServiceImpl";
+      when(request.getRequestURI()).thenReturn("/api/v1/users");
+
+      BadRequestException ex = new BadRequestException(
+          "Failure occurred inside " + internalClass, "BAD_REQUEST");
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("BAD_REQUEST");
+      assertThat(response.getBody().getMessage()).isEqualTo("The request is invalid");
+      assertThat(response.getBody().getMessage()).doesNotContain("in.gov.sih.sih26135");
+      assertThat(response.getBody().getMessage()).doesNotContain("UserServiceImpl");
+    }
+
+    @Test
+    @DisplayName("Hibernate: Hibernate package reference in exception message is suppressed")
+    void testHibernateClassName_inException_isSanitized() {
+      String hibernateClass = "org.hibernate.exception.ConstraintViolationException";
+      when(request.getRequestURI()).thenReturn("/api/v1/courses");
+
+      RuntimeException ex = new RuntimeException("Exception from " + hibernateClass);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleGenericException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("INTERNAL_SERVER_ERROR");
+      assertThat(response.getBody().getMessage()).isEqualTo("An unexpected error occurred. Please try again later.");
+      assertThat(response.getBody().getMessage()).doesNotContain("org.hibernate");
+    }
+
+    @Test
+    @DisplayName("Stack Trace: Line number and method location in exception message is suppressed")
+    void testStackTrace_inException_isSanitized() {
+      String stackLine = "at in.gov.sih.sih26135.controller.UserController.createUser(UserController.java:85)";
+      when(request.getRequestURI()).thenReturn("/api/v1/users");
+
+      RuntimeException ex = new RuntimeException("Crash occurred: " + stackLine);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleGenericException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("INTERNAL_SERVER_ERROR");
+      assertThat(response.getBody().getMessage()).isEqualTo("An unexpected error occurred. Please try again later.");
+      assertThat(response.getBody().getMessage()).doesNotContain("UserController.java:85");
+      assertThat(response.getBody().getMessage()).doesNotContain("at in.gov.sih");
+    }
+
+    @Test
+    @DisplayName("Stack Trace: 'Caused by:' prefix in exception message is suppressed")
+    void testCausedBy_inException_isSanitized() {
+      String causedBy = "Caused by: java.lang.NullPointerException: object reference is null";
+      when(request.getRequestURI()).thenReturn("/api/v1/programs");
+
+      RuntimeException ex = new RuntimeException("Wrapped error: " + causedBy);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleGenericException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("INTERNAL_SERVER_ERROR");
+      assertThat(response.getBody().getMessage()).isEqualTo("An unexpected error occurred. Please try again later.");
+      assertThat(response.getBody().getMessage()).doesNotContain("Caused by:");
+    }
+
+    @Test
+    @DisplayName("URI Sanitization: Aadhaar number in probe path is sanitized in NoResourceFoundException")
+    void testNoResourceFound_withAadhaarInPath_sanitizesUri() {
+      String sensitiveUri = "/api/v1/users/123456789012";
+      when(request.getRequestURI()).thenReturn(sensitiveUri);
+
+      NoResourceFoundException ex = new NoResourceFoundException(HttpMethod.GET, sensitiveUri);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleNoResourceFound(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("ENDPOINT_NOT_FOUND");
+      assertThat(response.getBody().getMessage()).isEqualTo("No static resource or endpoint found");
+      assertThat(response.getBody().getPath()).isEqualTo("/sanitized-path");
+      assertThat(response.getBody().getMessage()).doesNotContain("123456789012");
+      assertThat(response.getBody().getPath()).doesNotContain("123456789012");
+    }
+
+    @Test
+    @DisplayName("URI Sanitization: Sentinel token in probe path is sanitized in NoResourceFoundException")
+    void testNoResourceFound_withSentinelTokenInPath_sanitizesUri() {
+      String sensitiveUri = "/api/v1/auth/tokens/SENTINEL_TOKEN_SECRET_999";
+      when(request.getRequestURI()).thenReturn(sensitiveUri);
+
+      NoResourceFoundException ex = new NoResourceFoundException(HttpMethod.GET, sensitiveUri);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleNoResourceFound(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("ENDPOINT_NOT_FOUND");
+      assertThat(response.getBody().getMessage()).isEqualTo("No static resource or endpoint found");
+      assertThat(response.getBody().getPath()).isEqualTo("/sanitized-path");
+      assertThat(response.getBody().getMessage()).doesNotContain("SENTINEL");
+      assertThat(response.getBody().getPath()).doesNotContain("SENTINEL");
+    }
+
+    @Test
+    @DisplayName("URI Sanitization: Unmapped path with no matching route template fails closed to /sanitized-path in NoResourceFoundException")
+    void testNoResourceFound_withNoMatchingRouteTemplate_failsClosedToSanitizedPath() {
+      String normalUri = "/api/v1/nonexistent-feature";
+      when(request.getRequestURI()).thenReturn(normalUri);
+      when(request.getAttribute(org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE)).thenReturn(null);
+
+      NoResourceFoundException ex = new NoResourceFoundException(HttpMethod.GET, normalUri);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleNoResourceFound(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("ENDPOINT_NOT_FOUND");
+      assertThat(response.getBody().getMessage()).isEqualTo("No static resource or endpoint found");
+      assertThat(response.getBody().getPath()).isEqualTo("/sanitized-path");
+      assertThat(response.getBody().getPath()).doesNotContain("nonexistent-feature");
+    }
+
+    @Test
+    @DisplayName("Anti-Echo: String array rejected value is not echoed in validation response details")
+    void testValidationException_stringArrayRejectedValue_isNotEchoed() {
+      String maliciousValue = "malicious_script_payload_123";
+      String[] rejectedArray = new String[]{maliciousValue, "second_element"};
+      when(request.getRequestURI()).thenReturn("/api/v1/items");
+
+      MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
+      BindingResult bindingResult = mock(BindingResult.class);
+      FieldError fieldError = new FieldError(
+          "itemRequest", "tags", rejectedArray, false, null, null, "Invalid tags: " + maliciousValue);
+      when(bindingResult.getFieldErrors()).thenReturn(Collections.singletonList(fieldError));
+      when(ex.getBindingResult()).thenReturn(bindingResult);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleValidationException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).containsExactly("tags: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain(maliciousValue);
+    }
+
+    @Test
+    @DisplayName("Anti-Echo: Iterable rejected value is not echoed in validation response details")
+    void testValidationException_iterableRejectedValue_isNotEchoed() {
+      String leakedEmail = "leaked_user_email@domain.com";
+      List<String> rejectedList = List.of(leakedEmail);
+      when(request.getRequestURI()).thenReturn("/api/v1/users");
+
+      MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
+      BindingResult bindingResult = mock(BindingResult.class);
+      FieldError fieldError = new FieldError(
+          "userRequest", "emails", rejectedList, false, null, null, "Email " + leakedEmail + " is already taken");
+      when(bindingResult.getFieldErrors()).thenReturn(Collections.singletonList(fieldError));
+      when(ex.getBindingResult()).thenReturn(bindingResult);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleValidationException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).containsExactly("emails: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain(leakedEmail);
+    }
+
+    @Test
+    @DisplayName("Defense-in-Depth: Field name containing sensitive data is sanitized to 'field'")
+    void testValidationException_sensitiveFieldName_isSanitizedToField() {
+      String sensitiveField = "SENTINEL_SECRET_FIELD_NAME";
+      when(request.getRequestURI()).thenReturn("/api/v1/config");
+
+      MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
+      BindingResult bindingResult = mock(BindingResult.class);
+      FieldError fieldError = new FieldError(
+          "configRequest", sensitiveField, "value", false, null, null, "must not be blank");
+      when(bindingResult.getFieldErrors()).thenReturn(Collections.singletonList(fieldError));
+      when(ex.getBindingResult()).thenReturn(bindingResult);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleValidationException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).containsExactly("field: must not be blank");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain(sensitiveField);
+    }
+
+    @Test
+    @DisplayName("Anti-Echo: Single-digit rejected value echoed in custom message is strictly detected and sanitized")
+    void testContainsRejectedValue_singleDigitRejectedValueEchoed_isSanitized() {
+      Integer rejectedDigit = 5;
+      when(request.getRequestURI()).thenReturn("/api/v1/test");
+
+      MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
+      BindingResult bindingResult = mock(BindingResult.class);
+      FieldError fieldError = new FieldError(
+          "testDto", "count", rejectedDigit, false, null, null, "Provided " + rejectedDigit + " is invalid");
+      when(bindingResult.getFieldErrors()).thenReturn(Collections.singletonList(fieldError));
+      when(ex.getBindingResult()).thenReturn(bindingResult);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleValidationException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).containsExactly("count: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain("5");
+    }
+
+    @Test
+    @DisplayName("Anti-Echo: Boolean false rejected value echoed in custom message is strictly detected and sanitized")
+    void testContainsRejectedValue_booleanFalseRejectedValueEchoed_isSanitized() {
+      Boolean rejectedBool = false;
+      when(request.getRequestURI()).thenReturn("/api/v1/test");
+
+      MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
+      BindingResult bindingResult = mock(BindingResult.class);
+      FieldError fieldError = new FieldError(
+          "testDto", "active", rejectedBool, false, null, null, "Value " + rejectedBool + " is not permitted");
+      when(bindingResult.getFieldErrors()).thenReturn(Collections.singletonList(fieldError));
+      when(ex.getBindingResult()).thenReturn(bindingResult);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleValidationException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).containsExactly("active: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain("false");
+    }
+
+    @Test
+    @DisplayName("Anti-Echo: Boolean true rejected value echoed in custom message is strictly detected and sanitized")
+    void testContainsRejectedValue_booleanTrueRejectedValueEchoed_isSanitized() {
+      Boolean rejectedBool = true;
+      when(request.getRequestURI()).thenReturn("/api/v1/test");
+
+      MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
+      BindingResult bindingResult = mock(BindingResult.class);
+      FieldError fieldError = new FieldError(
+          "testDto", "flag", rejectedBool, false, null, null, "Setting " + rejectedBool + " is disallowed");
+      when(bindingResult.getFieldErrors()).thenReturn(Collections.singletonList(fieldError));
+      when(ex.getBindingResult()).thenReturn(bindingResult);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleValidationException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).containsExactly("flag: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain("true");
+    }
+
+    @Test
+    @DisplayName("Anti-Echo: Cyclic collection passed as rejected value is handled safely without StackOverflowError")
+    void testContainsRejectedValue_cyclicCollection_handlesWithoutStackOverflow() {
+      java.util.List<Object> cyclicList = new java.util.ArrayList<>();
+      cyclicList.add(cyclicList);
+      when(request.getRequestURI()).thenReturn("/api/v1/test");
+
+      MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
+      BindingResult bindingResult = mock(BindingResult.class);
+      FieldError fieldError = new FieldError(
+          "testDto", "items", cyclicList, false, null, null, "items: is invalid");
+      when(bindingResult.getFieldErrors()).thenReturn(Collections.singletonList(fieldError));
+      when(ex.getBindingResult()).thenReturn(bindingResult);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleValidationException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).containsExactly("items: is invalid");
+    }
+
+    @Test
+    @DisplayName("Anti-Echo: Deeply nested array exceeding max collection depth terminates gracefully")
+    void testContainsRejectedValue_deepCollectionExceedingMaxDepth_handlesGracefully() {
+      Object[] nested = new Object[]{ new Object[]{ new Object[]{ new Object[]{ "deepPayload" } } } };
+      when(request.getRequestURI()).thenReturn("/api/v1/test");
+
+      MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
+      BindingResult bindingResult = mock(BindingResult.class);
+      FieldError fieldError = new FieldError(
+          "testDto", "tree", nested, false, null, null, "tree: is invalid");
+      when(bindingResult.getFieldErrors()).thenReturn(Collections.singletonList(fieldError));
+      when(ex.getBindingResult()).thenReturn(bindingResult);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleValidationException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).containsExactly("tree: is invalid");
+    }
+
+    @Test
+    @DisplayName("Safe-by-Construction: BaseException with arbitrary unapproved message and unknown code fails closed to generic safe fallback")
+    void testBaseException_arbitraryUnapprovedMessageUnknownCode_failsClosedToGenericSafeMessage() {
+      String arbitraryInternalMessage = "Some proprietary internal business failure note that should never leak";
+      when(request.getRequestURI()).thenReturn("/api/v1/custom");
+
+      BadRequestException ex = new BadRequestException(arbitraryInternalMessage, "UNKNOWN_PROPRIETARY_CODE");
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("UNKNOWN_PROPRIETARY_CODE");
+      assertThat(response.getBody().getMessage()).isEqualTo("The request is invalid");
+      assertThat(response.getBody().getMessage()).doesNotContain("proprietary");
+      assertThat(response.getBody().getMessage()).doesNotContain("internal");
+      assertThat(response.getBody().getMessage()).doesNotContain("failure note");
+    }
+
+    @Test
+    @DisplayName("Safe-by-Construction: BaseException with 500 status and arbitrary message fails closed to unexpected error message")
+    void testBaseException_500LevelArbitraryMessageUnknownCode_failsClosedToInternalErrorMessage() {
+      String internalDetail = "Internal DB table trainees schema column mismatch";
+      when(request.getRequestURI()).thenReturn("/api/v1/internal");
+
+      BaseException ex = new BaseException(internalDetail, HttpStatus.INTERNAL_SERVER_ERROR, "UNKNOWN_500_CODE") {};
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("UNKNOWN_500_CODE");
+      assertThat(response.getBody().getMessage()).isEqualTo("An unexpected error occurred. Please try again later.");
+      assertThat(response.getBody().getMessage()).doesNotContain("trainees");
+      assertThat(response.getBody().getMessage()).doesNotContain("schema");
+      assertThat(response.getBody().getMessage()).doesNotContain("column");
+    }
+
+    @Test
+    @DisplayName("Safe-by-Construction: Constraint violation with unrecognized constraint code falls back to 'is invalid'")
+    void testConstraintViolation_unrecognizedConstraintAnnotation_failsClosedToIsInvalid() {
+      String arbitraryValue = "CUSTOM_PAYLOAD_XYZ";
+      when(request.getRequestURI()).thenReturn("/api/v1/training-batches");
+
+      ConstraintViolation<?> violation = mock(ConstraintViolation.class);
+      Path path = mock(Path.class);
+      when(path.toString()).thenReturn("batchCode");
+      when(violation.getPropertyPath()).thenReturn(path);
+      when(violation.getMessage()).thenReturn("Custom error echoing " + arbitraryValue);
+      when(violation.getInvalidValue()).thenReturn(arbitraryValue);
+      doReturn(in.gov.sih.sih26135.dto.request.CreateTrainingBatchRequest.class).when(violation).getRootBeanClass();
+
+      // Constraint descriptor returns null or unrecognized annotation
+      when(violation.getConstraintDescriptor()).thenReturn(null);
+
+      ConstraintViolationException ex = new ConstraintViolationException("Validation failed", Collections.singleton(violation));
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleConstraintViolation(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).containsExactly("batchCode: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain(arbitraryValue);
+    }
+
+    @Test
+    @DisplayName("Anti-Echo: Rejected value nested exactly at the depth boundary (depth 3 leaf) is detected and sanitized")
+    void testContainsRejectedValue_nestedExactlyAtDepthBoundary_isSanitized() {
+      String boundarySecret = "BOUNDARY_SECRET_TOKEN_123";
+      Object[] lvl2 = new Object[]{ boundarySecret };
+      Object[] lvl1 = new Object[]{ lvl2 };
+      Object[] lvl0 = new Object[]{ lvl1 }; // depth 0 (lvl0) -> depth 1 (lvl1) -> depth 2 (lvl2) -> depth 3 (leaf)
+      when(request.getRequestURI()).thenReturn("/api/v1/test-endpoint");
+
+      MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
+      BindingResult bindingResult = mock(BindingResult.class);
+      FieldError fieldError = new FieldError(
+          "testDto", "data", lvl0, false, null, null, "Validation error echoing " + boundarySecret);
+      when(bindingResult.getFieldErrors()).thenReturn(Collections.singletonList(fieldError));
+      when(ex.getBindingResult()).thenReturn(bindingResult);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleValidationException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).containsExactly("data: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain(boundarySecret);
+    }
+
+    @Test
+    @DisplayName("Anti-Echo: Rejected value nested beyond the depth boundary fails closed without exposing nested value")
+    void testContainsRejectedValue_nestedBeyondDepthBoundary_failsClosed() {
+      String deepSecret = "DEEP_SECRET_PAYLOAD_456";
+      Object[] lvl3 = new Object[]{ deepSecret };
+      Object[] lvl2 = new Object[]{ lvl3 };
+      Object[] lvl1 = new Object[]{ lvl2 };
+      Object[] lvl0 = new Object[]{ lvl1 }; // depth 0 -> 1 -> 2 -> 3 (collection beyond limit)
+      when(request.getRequestURI()).thenReturn("/api/v1/test-endpoint");
+
+      MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
+      BindingResult bindingResult = mock(BindingResult.class);
+      FieldError fieldError = new FieldError(
+          "testDto", "data", lvl0, false, null, null, "Custom message with " + deepSecret);
+      when(bindingResult.getFieldErrors()).thenReturn(Collections.singletonList(fieldError));
+      when(ex.getBindingResult()).thenReturn(bindingResult);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleValidationException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).containsExactly("data: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain(deepSecret);
+    }
+
+    @Test
+    @DisplayName("Anti-Echo: Unrelated safe standard validation message is preserved")
+    void testContainsRejectedValue_unrelatedSafeMessage_isPreserved() {
+      when(request.getRequestURI()).thenReturn("/api/v1/test-endpoint");
+
+      MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
+      BindingResult bindingResult = mock(BindingResult.class);
+      FieldError fieldError = new FieldError(
+          "userDto", "username", "john_doe", false, null, null, "must not be blank");
+      when(bindingResult.getFieldErrors()).thenReturn(Collections.singletonList(fieldError));
+      when(ex.getBindingResult()).thenReturn(bindingResult);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleValidationException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).containsExactly("username: must not be blank");
+    }
+
+    @Test
+    @DisplayName("Anti-Echo: Set Iterable implementation echoing rejected value is strictly sanitized")
+    void testContainsRejectedValue_iterableSetImplementation_isSanitized() {
+      String leakedSetElement = "LEAKED_SET_VALUE_789";
+      Set<String> rejectedSet = Set.of(leakedSetElement);
+      when(request.getRequestURI()).thenReturn("/api/v1/test-endpoint");
+
+      MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
+      BindingResult bindingResult = mock(BindingResult.class);
+      FieldError fieldError = new FieldError(
+          "itemDto", "tags", rejectedSet, false, null, null, "Tag " + leakedSetElement + " already registered");
+      when(bindingResult.getFieldErrors()).thenReturn(Collections.singletonList(fieldError));
+      when(ex.getBindingResult()).thenReturn(bindingResult);
+
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleValidationException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getCode()).isEqualTo("VALIDATION_ERROR");
+      assertThat(response.getBody().getDetails()).containsExactly("tags: is invalid");
+      assertThat(response.getBody().getDetails().get(0)).doesNotContain(leakedSetElement);
+    }
+
+    @Test
+    @DisplayName("URI Sanitization: Sensitive path segment (Aadhaar/sentinel) is sanitized to /sanitized-path")
+    void testUriSanitization_sensitivePathSegment_sanitizesToSanitizedPath() {
+      String sensitiveUri = "/api/v1/users/123456789012";
+      when(request.getRequestURI()).thenReturn(sensitiveUri);
+
+      BadRequestException ex = new BadRequestException("Identity verification failed", "INVALID_IDENTITY");
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getPath()).isEqualTo("/sanitized-path");
+      assertThat(response.getBody().getPath()).doesNotContain("123456789012");
+    }
+
+    @Test
+    @DisplayName("URI Sanitization: Arbitrary user-controlled path segment is sanitized to /sanitized-path when no template exists")
+    void testUriSanitization_arbitraryUserControlledPathSegment_sanitizesToSanitizedPath() {
+      String arbitraryProbeUri = "/api/v1/users/arbitrary-user-controlled-slug-value";
+      when(request.getRequestURI()).thenReturn(arbitraryProbeUri);
+      when(request.getAttribute(org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE))
+          .thenReturn(null);
+
+      BadRequestException ex = new BadRequestException("The request is invalid", "BAD_REQUEST");
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getPath()).isEqualTo("/sanitized-path");
+      assertThat(response.getBody().getPath()).doesNotContain("arbitrary-user-controlled-slug-value");
+    }
+
+    @Test
+    @DisplayName("URI Sanitization: Numeric path variable resolves to route template and never leaks raw numeric ID")
+    void testUriSanitization_numericPathVariable_resolvesToRouteTemplateWithoutRawId() {
+      String rawUriWithNumericId = "/api/v1/job-postings/42";
+      when(request.getRequestURI()).thenReturn(rawUriWithNumericId);
+      when(request.getAttribute(org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE))
+          .thenReturn("/api/v1/job-postings/{id}");
+
+      BadRequestException ex = new BadRequestException("The request is invalid", "BAD_REQUEST");
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getPath()).isEqualTo("/api/v1/job-postings/{id}");
+      assertThat(response.getBody().getPath()).doesNotContain("42");
+    }
+
+    @Test
+    @DisplayName("URI Sanitization: Long numeric identifier never appears raw in returned error path")
+    void testUriSanitization_longNumericIdentifier_resolvesToRouteTemplateWithoutLongId() {
+      String rawUriWithLongId = "/api/v1/trainees/998877665544332211";
+      when(request.getRequestURI()).thenReturn(rawUriWithLongId);
+      when(request.getAttribute(org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE))
+          .thenReturn("/api/v1/trainees/{id}");
+
+      BadRequestException ex = new BadRequestException("The request is invalid", "BAD_REQUEST");
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getPath()).isEqualTo("/api/v1/trainees/{id}");
+      assertThat(response.getBody().getPath()).doesNotContain("998877665544332211");
+    }
+
+    @Test
+    @DisplayName("URI Sanitization: Numeric path variable with missing route template falls back to /sanitized-path")
+    void testUriSanitization_numericPathVariable_missingTemplateFallsBackToSanitizedPath() {
+      String rawUriWithNumericId = "/api/v1/users/12345";
+      when(request.getRequestURI()).thenReturn(rawUriWithNumericId);
+      when(request.getAttribute(org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE))
+          .thenReturn(null);
+
+      BadRequestException ex = new BadRequestException("The request is invalid", "BAD_REQUEST");
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getPath()).isEqualTo("/sanitized-path");
+      assertThat(response.getBody().getPath()).doesNotContain("12345");
+    }
+
+    @Test
+    @DisplayName("URI Sanitization: Route template containing sensitive data fails closed to /sanitized-path")
+    void testUriSanitization_routeTemplateWithSensitiveData_failsClosedToSanitizedPath() {
+      String rawUri = "/api/v1/auth/tokens/999";
+      when(request.getRequestURI()).thenReturn(rawUri);
+      when(request.getAttribute(org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE))
+          .thenReturn("/api/v1/auth/tokens/SENTINEL_TOKEN_SECRET/{id}");
+
+      BadRequestException ex = new BadRequestException("The request is invalid", "BAD_REQUEST");
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getPath()).isEqualTo("/sanitized-path");
+      assertThat(response.getBody().getPath()).doesNotContain("SENTINEL");
+    }
+
+    @Test
+    @DisplayName("URI Sanitization: Route template with untrusted prefix fails closed to /sanitized-path")
+    void testUriSanitization_routeTemplateWithUntrustedPrefix_failsClosedToSanitizedPath() {
+      String rawUri = "/internal/admin/42";
+      when(request.getRequestURI()).thenReturn(rawUri);
+      when(request.getAttribute(org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE))
+          .thenReturn("/internal/admin/{id}");
+
+      BadRequestException ex = new BadRequestException("The request is invalid", "BAD_REQUEST");
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getPath()).isEqualTo("/sanitized-path");
+      assertThat(response.getBody().getPath()).doesNotContain("internal");
+      assertThat(response.getBody().getPath()).doesNotContain("42");
+    }
+
+    @Test
+    @DisplayName("URI Sanitization: Query parameters on route template are stripped by default")
+    void testUriSanitization_routeTemplateWithQueryParams_stripsQueryParams() {
+      String rawUri = "/api/v1/users/42?token=secret123";
+      when(request.getRequestURI()).thenReturn(rawUri);
+      when(request.getAttribute(org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE))
+          .thenReturn("/api/v1/users/{id}?token=secret123");
+
+      BadRequestException ex = new BadRequestException("The request is invalid", "BAD_REQUEST");
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getPath()).isEqualTo("/api/v1/users/{id}");
+      assertThat(response.getBody().getPath()).doesNotContain("token");
+      assertThat(response.getBody().getPath()).doesNotContain("secret123");
+    }
+
+    @Test
+    @DisplayName("URI Sanitization: Query parameters containing tokens or credentials are completely suppressed")
+    void testUriSanitization_queryParamsContainingTokens_suppressesQueryParams() {
+      String uriWithQuery = "/api/v1/users?token=superSecretTokenValue123&password=secretPassword456";
+      when(request.getRequestURI()).thenReturn(uriWithQuery);
+
+      BadRequestException ex = new BadRequestException("The request is invalid", "BAD_REQUEST");
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getPath()).isEqualTo("/api/v1/users");
+      assertThat(response.getBody().getPath()).doesNotContain("token");
+      assertThat(response.getBody().getPath()).doesNotContain("password");
+      assertThat(response.getBody().getPath()).doesNotContain("superSecretTokenValue123");
+      assertThat(response.getBody().getPath()).doesNotContain("secretPassword456");
+    }
+
+    @Test
+    @DisplayName("URI Sanitization: Untrusted route outside API prefix with no known sensitive pattern fails closed to /sanitized-path")
+    void testUriSanitization_untrustedRouteNoSensitivePattern_failsClosedToSanitizedPath() {
+      String untrustedUri = "/unmatched/probe/untrusted/endpoint";
+      when(request.getRequestURI()).thenReturn(untrustedUri);
+
+      BadRequestException ex = new BadRequestException("The request is invalid", "BAD_REQUEST");
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getPath()).isEqualTo("/sanitized-path");
+      assertThat(response.getBody().getPath()).doesNotContain("unmatched");
+      assertThat(response.getBody().getPath()).doesNotContain("probe");
+    }
+
+    @Test
+    @DisplayName("URI Sanitization: Safe known route template is preferred when available from HandlerMapping")
+    void testUriSanitization_safeKnownRouteTemplate_resolvesTemplateWhenAttributePresent() {
+      String rawUriWithSlug = "/api/v1/users/custom-slug-identifier";
+      when(request.getRequestURI()).thenReturn(rawUriWithSlug);
+      when(request.getAttribute(org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE))
+          .thenReturn("/api/v1/users/{id}");
+
+      BadRequestException ex = new BadRequestException("The request is invalid", "BAD_REQUEST");
+      ResponseEntity<ErrorResponse> response = exceptionHandler.handleBaseException(ex, request);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().getPath()).isEqualTo("/api/v1/users/{id}");
+      assertThat(response.getBody().getPath()).doesNotContain("custom-slug-identifier");
     }
   }
 }

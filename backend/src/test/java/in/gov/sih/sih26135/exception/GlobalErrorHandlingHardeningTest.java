@@ -295,7 +295,7 @@ class GlobalErrorHandlingHardeningTest {
           .andExpect(jsonPath("$.error").value("Bad Request"))
           .andExpect(jsonPath("$.code").value("TYPE_MISMATCH"))
           .andExpect(jsonPath("$.message").value("Invalid parameter value for 'id'. Expected type: Long"))
-          .andExpect(jsonPath("$.path").value("/api/test/hardening/path-check/abc"))
+          .andExpect(jsonPath("$.path").value("/api/test/hardening/path-check/{id}"))
           .andExpect(jsonPath("$.message", not(containsString("abc"))));
     }
 
@@ -384,7 +384,7 @@ class GlobalErrorHandlingHardeningTest {
           .andExpect(jsonPath("$.error").value("Method Not Allowed"))
           .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"))
           .andExpect(jsonPath("$.message").value("HTTP method 'PATCH' is not supported for this endpoint"))
-          .andExpect(jsonPath("$.path").value("/api/test/hardening/resource"));
+          .andExpect(jsonPath("$.path").value("/sanitized-path"));
     }
   }
 
@@ -408,7 +408,7 @@ class GlobalErrorHandlingHardeningTest {
           .andExpect(jsonPath("$.error").value("Unsupported Media Type"))
           .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"))
           .andExpect(jsonPath("$.message").value(containsString("Content type 'application/xml")))
-          .andExpect(jsonPath("$.path").value("/api/test/hardening/resource"));
+          .andExpect(jsonPath("$.path").value("/sanitized-path"));
     }
   }
 
@@ -480,6 +480,78 @@ class GlobalErrorHandlingHardeningTest {
               .content(objectMapper.writeValueAsString(validPayload)))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$").value("processed:Valid Course"));
+    }
+  }
+
+  // =========================================================================
+  // 9. Phase 26.9 - Error Sanitization & Information Leakage Prevention MockMvc Integration Tests
+  // =========================================================================
+  @Nested
+  @DisplayName("9. Phase 26.9 - Error Sanitization & Information Leakage Prevention MockMvc Tests")
+  class ErrorSanitizationMockMvcTests {
+
+    @Test
+    @DisplayName("404 endpoint not found: Aadhaar in request URI path is sanitized and not reflected")
+    void testNoResourceFound_withAadhaarInUri_doesNotLeakAadhaar() throws Exception {
+      String probePath = "/api/test/hardening/trainees/123456789012";
+
+      mockMvc.perform(get(probePath))
+          .andExpect(status().isNotFound())
+          .andExpect(jsonPath("$.status").value(404))
+          .andExpect(jsonPath("$.code").value("ENDPOINT_NOT_FOUND"))
+          .andExpect(jsonPath("$.path").value("/sanitized-path"))
+          .andExpect(jsonPath("$.message").value("No static resource or endpoint found"))
+          .andExpect(jsonPath("$.message", not(containsString("123456789012"))));
+    }
+
+    @Test
+    @DisplayName("404 endpoint not found: Sentinel token in request URI path is sanitized and not reflected")
+    void testNoResourceFound_withSentinelTokenInUri_doesNotLeakToken() throws Exception {
+      String probePath = "/api/test/hardening/auth/tokens/SENTINEL_TOKEN_SECRET_XYZ";
+
+      mockMvc.perform(get(probePath))
+          .andExpect(status().isNotFound())
+          .andExpect(jsonPath("$.status").value(404))
+          .andExpect(jsonPath("$.code").value("ENDPOINT_NOT_FOUND"))
+          .andExpect(jsonPath("$.path").value("/sanitized-path"))
+          .andExpect(jsonPath("$.message").value("No static resource or endpoint found"))
+          .andExpect(jsonPath("$.message", not(containsString("SENTINEL"))));
+    }
+
+    @Test
+    @DisplayName("Malformed JSON: Broken payload with sensitive credentials is not reflected in error response")
+    void testMalformedJson_withSensitivePayload_suppressesCredentials() throws Exception {
+      String brokenPayload = "{\"password\": \"SuperSecretAdminPass123!\", \"count\": }";
+
+      mockMvc.perform(post("/api/test/hardening/payload")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(brokenPayload))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.status").value(400))
+          .andExpect(jsonPath("$.code").value("MALFORMED_JSON"))
+          .andExpect(jsonPath("$.message").value("Malformed or unreadable request body"))
+          .andExpect(jsonPath("$.message", not(containsString("SuperSecretAdminPass123!"))));
+    }
+
+    @Test
+    @DisplayName("Type mismatch: Invalid parameter value is not reflected in error message (anti-echo)")
+    void testTypeMismatch_invalidParameterValue_isNotReflected() throws Exception {
+      String invalidValue = "not-a-valid-numeric-id";
+
+      mockMvc.perform(get("/api/test/hardening/path-check/" + invalidValue))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.status").value(400))
+          .andExpect(jsonPath("$.code").value("TYPE_MISMATCH"))
+          .andExpect(jsonPath("$.message").value("Invalid parameter value for 'id'. Expected type: Long"))
+          .andExpect(jsonPath("$.message", not(containsString(invalidValue))));
+    }
+
+    @Test
+    @DisplayName("Valid endpoint processing preserves standard API contracts")
+    void testValidEndpoint_preservesContract() throws Exception {
+      mockMvc.perform(get("/api/test/hardening/path-check/42"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$").value("id=42"));
     }
   }
 }
