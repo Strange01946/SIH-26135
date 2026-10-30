@@ -1,6 +1,7 @@
 package in.gov.sih.sih26135.exception;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import in.gov.sih.sih26135.correlation.CorrelationContextHolder;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -19,9 +20,11 @@ public class ErrorResponse {
   private String message;
   private String path;
   private List<String> details;
+  private String correlationId;
 
   public ErrorResponse() {
     this.timestamp = LocalDateTime.now();
+    this.correlationId = CorrelationContextHolder.getCorrelationId();
   }
 
   public ErrorResponse(int status, String error, String code, String message, String path) {
@@ -31,11 +34,19 @@ public class ErrorResponse {
     this.code = code;
     this.message = message;
     this.path = path;
+    this.correlationId = CorrelationContextHolder.getCorrelationId();
   }
 
   public ErrorResponse(int status, String error, String code, String message, String path, List<String> details) {
     this(status, error, code, message, path);
     this.details = details;
+  }
+
+  public ErrorResponse(int status, String error, String code, String message, String path, List<String> details, String correlationId) {
+    this(status, error, code, message, path, details);
+    if (correlationId != null) {
+      this.correlationId = correlationId;
+    }
   }
 
   public String getType() {
@@ -100,5 +111,13 @@ public class ErrorResponse {
 
   public void setDetails(List<String> details) {
     this.details = details;
+  }
+
+  public String getCorrelationId() {
+    return correlationId;
+  }
+
+  public void setCorrelationId(String correlationId) {
+    this.correlationId = correlationId;
   }
 }

@@ -26,6 +26,7 @@ import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
+import in.gov.sih.sih26135.correlation.CorrelationContextHolder;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -751,6 +752,10 @@ public class GlobalExceptionHandler {
       effectiveStatus = HttpStatus.INTERNAL_SERVER_ERROR;
     }
 
+    if (response.getCorrelationId() == null || response.getCorrelationId().isBlank()) {
+      response.setCorrelationId(CorrelationContextHolder.getCorrelationId());
+    }
+
     if (response.getPath() != null && containsSensitiveData(response.getPath())) {
       response.setPath("/sanitized-path");
     }
@@ -806,10 +811,23 @@ public class GlobalExceptionHandler {
 
   private ResponseEntity<ErrorResponse> buildSanitizedResponse(ErrorResponse response, HttpHeaders headers, HttpStatus status) {
     sanitizeErrorResponse(response, status);
-    if (headers != null) {
-      return new ResponseEntity<>(response, headers, status);
+    HttpHeaders responseHeaders = headers != null ? new HttpHeaders(headers) : new HttpHeaders();
+    String correlationId = response != null ? response.getCorrelationId() : null;
+    if (correlationId == null) {
+      correlationId = CorrelationContextHolder.getCorrelationId();
+      if (response != null && correlationId != null) {
+        response.setCorrelationId(correlationId);
+      }
     }
-    return new ResponseEntity<>(response, status);
+    if (correlationId != null && !correlationId.isBlank()) {
+      if (!responseHeaders.containsKey("X-Correlation-Id")) {
+        responseHeaders.set("X-Correlation-Id", correlationId);
+      }
+      if (!responseHeaders.containsKey("X-Request-Id")) {
+        responseHeaders.set("X-Request-Id", correlationId);
+      }
+    }
+    return new ResponseEntity<>(response, responseHeaders, status);
   }
 
   @ExceptionHandler(BaseException.class)

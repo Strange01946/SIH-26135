@@ -3,6 +3,7 @@ package in.gov.sih.sih26135.response;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import in.gov.sih.sih26135.correlation.CorrelationContextHolder;
 import java.time.Instant;
 
 /**
@@ -23,14 +24,34 @@ public class ApiResponse<T> {
   @JsonInclude(JsonInclude.Include.NON_NULL)
   private final String code;
 
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  private final String correlationId;
+
   @JsonCreator
   public ApiResponse(
       @JsonProperty("success") Boolean success,
+      @JsonProperty("code") String code,
       @JsonProperty("message") String message,
       @JsonProperty("data") T data,
       @JsonProperty("timestamp") Instant timestamp,
-      @JsonProperty("path") String path) {
-    this(success, null, message, data, timestamp, path);
+      @JsonProperty("path") String path,
+      @JsonProperty("correlationId") String correlationId) {
+    this.success = success != null ? success : true;
+    this.code = code;
+    this.message = message;
+    this.data = data;
+    this.timestamp = timestamp != null ? timestamp : Instant.now();
+    this.path = path;
+    this.correlationId = correlationId != null ? correlationId : CorrelationContextHolder.getCorrelationId();
+  }
+
+  public ApiResponse(
+      Boolean success,
+      String message,
+      T data,
+      Instant timestamp,
+      String path) {
+    this(success, null, message, data, timestamp, path, null);
   }
 
   public ApiResponse(
@@ -40,16 +61,15 @@ public class ApiResponse<T> {
       T data,
       Instant timestamp,
       String path) {
-    this.success = success != null ? success : true;
-    this.code = code;
-    this.message = message;
-    this.data = data;
-    this.timestamp = timestamp != null ? timestamp : Instant.now();
-    this.path = path;
+    this(success, code, message, data, timestamp, path, null);
   }
 
   private ApiResponse(String message, T data, String path) {
-    this(true, null, message, data, Instant.now(), path);
+    this(true, null, message, data, Instant.now(), path, null);
+  }
+
+  private ApiResponse(String message, T data, String path, String correlationId) {
+    this(true, null, message, data, Instant.now(), path, correlationId);
   }
 
   /**
@@ -61,7 +81,7 @@ public class ApiResponse<T> {
    * @return successful ApiResponse instance
    */
   public static <T> ApiResponse<T> success(String message, T data) {
-    return new ApiResponse<>(message, data, null);
+    return new ApiResponse<>(true, null, message, data, Instant.now(), null, null);
   }
 
   /**
@@ -74,7 +94,21 @@ public class ApiResponse<T> {
    * @return successful ApiResponse instance
    */
   public static <T> ApiResponse<T> success(String message, T data, String path) {
-    return new ApiResponse<>(message, data, path);
+    return new ApiResponse<>(true, null, message, data, Instant.now(), path, null);
+  }
+
+  /**
+   * Creates a successful API response with message, payload data, request path, and explicit correlation ID.
+   *
+   * @param message       human-readable result message
+   * @param data          payload data
+   * @param path          request URI path
+   * @param correlationId correlation identifier
+   * @param <T>           data type
+   * @return successful ApiResponse instance
+   */
+  public static <T> ApiResponse<T> success(String message, T data, String path, String correlationId) {
+    return new ApiResponse<>(true, null, message, data, Instant.now(), path, correlationId);
   }
 
   /**
@@ -85,7 +119,7 @@ public class ApiResponse<T> {
    * @return successful ApiResponse instance with null data
    */
   public static <T> ApiResponse<T> success(String message) {
-    return new ApiResponse<>(message, null, null);
+    return new ApiResponse<>(true, null, message, null, Instant.now(), null, null);
   }
 
   /**
@@ -97,7 +131,7 @@ public class ApiResponse<T> {
    * @return successful ApiResponse instance with null data
    */
   public static <T> ApiResponse<T> success(String message, String path) {
-    return new ApiResponse<>(message, null, path);
+    return new ApiResponse<>(true, null, message, null, Instant.now(), path, null);
   }
 
   /**
@@ -108,7 +142,7 @@ public class ApiResponse<T> {
    * @return successful ApiResponse instance
    */
   public static <T> ApiResponse<T> ok(T data) {
-    return new ApiResponse<>("Operation completed successfully", data, null);
+    return new ApiResponse<>(true, null, "Operation completed successfully", data, Instant.now(), null, null);
   }
 
   /**
@@ -121,7 +155,21 @@ public class ApiResponse<T> {
    * @return error ApiResponse instance with null data and success=false
    */
   public static <T> ApiResponse<T> error(String code, String message, String path) {
-    return new ApiResponse<>(false, code, message, null, Instant.now(), path);
+    return new ApiResponse<>(false, code, message, null, Instant.now(), path, null);
+  }
+
+  /**
+   * Creates an error API response with a machine-readable code, human-readable message, request path, and explicit correlation ID.
+   *
+   * @param code          machine-readable error code
+   * @param message       human-readable error message
+   * @param path          request URI path
+   * @param correlationId correlation identifier
+   * @param <T>           data type
+   * @return error ApiResponse instance with null data and success=false
+   */
+  public static <T> ApiResponse<T> error(String code, String message, String path, String correlationId) {
+    return new ApiResponse<>(false, code, message, null, Instant.now(), path, correlationId);
   }
 
   /**
@@ -133,7 +181,7 @@ public class ApiResponse<T> {
    * @return error ApiResponse instance with null data and success=false
    */
   public static <T> ApiResponse<T> error(String message, String path) {
-    return new ApiResponse<>(false, null, message, null, Instant.now(), path);
+    return new ApiResponse<>(false, null, message, null, Instant.now(), path, null);
   }
 
   /**
@@ -144,7 +192,7 @@ public class ApiResponse<T> {
    * @return error ApiResponse instance with null data and success=false
    */
   public static <T> ApiResponse<T> error(String message) {
-    return new ApiResponse<>(false, null, message, null, Instant.now(), null);
+    return new ApiResponse<>(false, null, message, null, Instant.now(), null, null);
   }
 
   public boolean isSuccess() {
@@ -171,6 +219,10 @@ public class ApiResponse<T> {
     return path;
   }
 
+  public String getCorrelationId() {
+    return correlationId;
+  }
+
   @Override
   public String toString() {
     return "ApiResponse{" +
@@ -180,6 +232,7 @@ public class ApiResponse<T> {
         ", data=" + data +
         ", timestamp=" + timestamp +
         ", path='" + path + '\'' +
+        ", correlationId='" + correlationId + '\'' +
         '}';
   }
 }

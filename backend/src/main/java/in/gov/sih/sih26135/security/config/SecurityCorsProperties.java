@@ -42,14 +42,15 @@ public class SecurityCorsProperties {
    * Allowed HTTP request headers. Must include Authorization and Content-Type.
    */
   private List<String> allowedHeaders = new ArrayList<>(List.of(
-      "Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"
+      "Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With",
+      "X-Correlation-Id", "X-Request-Id"
   ));
 
   /**
    * Response headers exposed to browser clients.
    */
   private List<String> exposedHeaders = new ArrayList<>(List.of(
-      "Authorization"
+      "Authorization", "X-Correlation-Id", "X-Request-Id"
   ));
 
   /**

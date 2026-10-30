@@ -1,6 +1,7 @@
 package in.gov.sih.sih26135.security.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import in.gov.sih.sih26135.correlation.CorrelationContextHolder;
 import in.gov.sih.sih26135.response.ApiResponse;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -48,6 +49,16 @@ public class RestAccessDeniedHandler implements AccessDeniedHandler {
 
     String path = request.getRequestURI();
     log.warn("Access denied for request to {}", path);
+
+    String correlationId = CorrelationContextHolder.getCorrelationId();
+    if (correlationId != null && !correlationId.isBlank()) {
+      if (!response.containsHeader("X-Correlation-Id")) {
+        response.setHeader("X-Correlation-Id", correlationId);
+      }
+      if (!response.containsHeader("X-Request-Id")) {
+        response.setHeader("X-Request-Id", correlationId);
+      }
+    }
 
     response.setStatus(HttpServletResponse.SC_FORBIDDEN);
     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
