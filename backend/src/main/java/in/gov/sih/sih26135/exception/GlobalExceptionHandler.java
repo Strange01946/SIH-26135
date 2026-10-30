@@ -27,6 +27,7 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import in.gov.sih.sih26135.correlation.CorrelationContextHolder;
+import in.gov.sih.sih26135.response.PaginationUtils;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -468,6 +469,10 @@ public class GlobalExceptionHandler {
       "^Row number [0-9]+ already exists in import batch$"
   );
 
+  private static final Pattern SAFE_SEARCH_TERM_PATTERN = Pattern.compile(
+      "^Search term must not exceed [0-9]+ characters$"
+  );
+
   private static final Set<String> APPROVED_DOMAIN_MESSAGES = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
       // 1. Entity Lifecycle & Deletion Constraints
       "Cannot create job application for soft-deleted trainee",
@@ -583,6 +588,10 @@ public class GlobalExceptionHandler {
       "At least one skill gap is required",
       "Rating must be between 0.00 and 5.00",
       "Invalid pincode format. Must be 6 digits starting with 1-9",
+      "Invalid sort field provided",
+      "Invalid sort direction provided",
+      "Search term is invalid or exceeds maximum length",
+      "Search term must not exceed 100 characters",
       "Certification requires a passing assessment outcome",
       "Course code already exists",
       "Batch code already exists",
@@ -647,6 +656,7 @@ public class GlobalExceptionHandler {
       case "INVALID_PAGE_SIZE" -> "Invalid page size provided";
       case "INVALID_SORT_FIELD" -> "Invalid sort field provided";
       case "INVALID_SORT_DIRECTION" -> "Invalid sort direction provided";
+      case "INVALID_SEARCH_TERM" -> "Search term is invalid or exceeds maximum length";
       case "RESOURCE_CONFLICT" -> "A resource with the specified unique attributes already exists";
       case "DUPLICATE_PLACEMENT_EMPLOYMENT" -> "Placement record is already linked to another employment record";
       case "DUPLICATE_ENROLLMENT" -> "Trainee is already enrolled in this training batch";
@@ -702,12 +712,31 @@ public class GlobalExceptionHandler {
       return true;
     }
     if ("INVALID_SORT_DIRECTION".equals(errorCode) && SAFE_SORT_DIRECTION_PATTERN.matcher(trimmed).matches()) {
+      int startQuote = trimmed.indexOf('\'');
+      int endQuote = trimmed.indexOf('\'', startQuote + 1);
+      if (startQuote >= 0 && endQuote > startQuote) {
+        String extracted = trimmed.substring(startQuote + 1, endQuote);
+        if (PaginationUtils.isSensitiveSortField(extracted) || containsSensitiveData(extracted)) {
+          return false;
+        }
+      }
       return true;
     }
     if ("INVALID_SORT_FIELD".equals(errorCode) && SAFE_SORT_FIELD_PATTERN.matcher(trimmed).matches()) {
+      int startQuote = trimmed.indexOf('\'');
+      int endQuote = trimmed.indexOf('\'', startQuote + 1);
+      if (startQuote >= 0 && endQuote > startQuote) {
+        String extracted = trimmed.substring(startQuote + 1, endQuote);
+        if (PaginationUtils.isSensitiveSortField(extracted) || containsSensitiveData(extracted)) {
+          return false;
+        }
+      }
       return true;
     }
     if ("INVALID_PAGE_SIZE".equals(errorCode) && SAFE_PAGE_SIZE_PATTERN.matcher(trimmed).matches()) {
+      return true;
+    }
+    if ("INVALID_SEARCH_TERM".equals(errorCode) && SAFE_SEARCH_TERM_PATTERN.matcher(trimmed).matches()) {
       return true;
     }
     if (SAFE_ALREADY_EXISTS_PATTERN.matcher(trimmed).matches()) {

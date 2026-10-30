@@ -6,6 +6,7 @@ import in.gov.sih.sih26135.exception.BadRequestException;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -438,6 +439,42 @@ public final class PaginationUtils {
       entry("created_at", "createdAt")
   );
 
+  public static final int MAX_SORT_FIELD_LENGTH = 64;
+  public static final int MAX_SORT_DIRECTION_LENGTH = 16;
+
+  private static final Pattern SAFE_SORT_PROPERTY_PATTERN = Pattern.compile("^[a-zA-Z0-9_-]{1,64}$");
+  private static final Pattern SAFE_SORT_DIRECTION_PATTERN = Pattern.compile("^[a-zA-Z]{1,16}$");
+
+  private static final Set<String> SENSITIVE_SORT_TERMS = Set.of(
+      "password", "passwordhash", "passwordalgo", "passwd", "pwd",
+      "secret", "token", "accesstoken", "refreshtoken", "authtoken",
+      "apikey", "credential", "credentials",
+      "failedlogincount", "lockeduntil", "mustchangepassword",
+      "aadhaarvaultref", "aadhaar", "panvaultref",
+      "bankaccount", "bankaccountnumber", "ifsc", "accountnumber",
+      "deletedat", "isdeleted", "softdeleted", "deletedby",
+      "hash", "salt", "privatekey", "secretkey", "otp"
+  );
+
+  /**
+   * Checks whether the given sort field name contains sensitive terms or internal attributes.
+   *
+   * @param sort the sort property to check
+   * @return true if sensitive, false otherwise
+   */
+  public static boolean isSensitiveSortField(String sort) {
+    if (sort == null || sort.isBlank()) {
+      return false;
+    }
+    String normalized = sort.toLowerCase().replaceAll("[^a-z0-9]", "");
+    for (String term : SENSITIVE_SORT_TERMS) {
+      if (normalized.contains(term)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private PaginationUtils() {
     // Utility class
   }
@@ -536,6 +573,11 @@ public final class PaginationUtils {
     String resolvedProperty = defaultSortProperty;
     if (sort != null && !sort.isBlank()) {
       String trimmed = sort.trim();
+      if (trimmed.length() > MAX_SORT_FIELD_LENGTH
+          || !SAFE_SORT_PROPERTY_PATTERN.matcher(trimmed).matches()
+          || isSensitiveSortField(trimmed)) {
+        throw new BadRequestException("Invalid sort field provided", "INVALID_SORT_FIELD");
+      }
       String normalizedKey = trimmed.toLowerCase();
       if (allowedSortFields.containsKey(trimmed)) {
         resolvedProperty = allowedSortFields.get(trimmed);
@@ -569,6 +611,12 @@ public final class PaginationUtils {
     }
     if ("DESC".equals(normalized)) {
       return Sort.Direction.DESC;
+    }
+    String trimmed = direction.trim();
+    if (trimmed.length() > MAX_SORT_DIRECTION_LENGTH
+        || !SAFE_SORT_DIRECTION_PATTERN.matcher(trimmed).matches()
+        || isSensitiveSortField(trimmed)) {
+      throw new BadRequestException("Invalid sort direction provided", "INVALID_SORT_DIRECTION");
     }
     throw new BadRequestException(
         "Invalid sort direction '" + direction + "'. Must be ASC or DESC",
