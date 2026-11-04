@@ -403,7 +403,7 @@ class DashboardDtoContractTest {
         new BigDecimal("33.33")
     );
 
-    assertThat(dto.employmentWithSalaryRowCount()).isEqualTo(1000L);
+    assertThat(dto.employmentSpellCount()).isEqualTo(1000L);
     assertThat(dto.firstSalaryCount()).isEqualTo(800L);
     assertThat(dto.latestSalaryCount()).isEqualTo(750L);
     assertThat(dto.avgFirstRecordedSalary()).isEqualByComparingTo(new BigDecimal("18000.00"));
@@ -412,6 +412,8 @@ class DashboardDtoContractTest {
     assertThat(dto.avgSalaryChangePct()).isEqualByComparingTo(new BigDecimal("33.33"));
 
     String json = objectMapper.writeValueAsString(dto);
+    assertThat(json).contains("\"employmentSpellCount\":1000");
+    assertThat(json).doesNotContain("employmentWithSalaryRowCount");
     assertThat(json).contains("\"avgSalaryChangeAmount\":6000.00");
     assertThat(json).contains("\"avgSalaryChangePct\":33.33");
 

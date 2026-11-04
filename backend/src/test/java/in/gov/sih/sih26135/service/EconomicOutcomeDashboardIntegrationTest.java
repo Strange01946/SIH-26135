@@ -144,8 +144,20 @@ class EconomicOutcomeDashboardIntegrationTest {
         economicOutcomeDashboardRepository.getFormalQ10WageProgression();
 
     assertThat(wage).isNotNull();
-    if (wage.employmentWithSalaryRowCount() != null) {
-      assertThat(wage.employmentWithSalaryRowCount()).isGreaterThanOrEqualTo(0L);
+    if (wage.employmentSpellCount() != null) {
+      assertThat(wage.employmentSpellCount()).isGreaterThanOrEqualTo(0L);
+    }
+    if (wage.firstSalaryCount() != null) {
+      assertThat(wage.firstSalaryCount()).isGreaterThanOrEqualTo(0L);
+      if (wage.employmentSpellCount() != null) {
+        assertThat(wage.employmentSpellCount()).isGreaterThanOrEqualTo(wage.firstSalaryCount());
+      }
+    }
+    if (wage.latestSalaryCount() != null) {
+      assertThat(wage.latestSalaryCount()).isGreaterThanOrEqualTo(0L);
+      if (wage.employmentSpellCount() != null) {
+        assertThat(wage.employmentSpellCount()).isGreaterThanOrEqualTo(wage.latestSalaryCount());
+      }
     }
     if (wage.avgFirstRecordedSalary() != null) {
       assertThat(wage.avgFirstRecordedSalary()).isGreaterThanOrEqualTo(BigDecimal.ZERO);
@@ -217,6 +229,8 @@ class EconomicOutcomeDashboardIntegrationTest {
         .andExpect(jsonPath("$.success").value(true))
         .andExpect(jsonPath("$.path").value("/api/v1/dashboards/economic-outcomes"))
         .andExpect(jsonPath("$.data.wageProgression").isMap())
+        .andExpect(jsonPath("$.data.wageProgression.employmentSpellCount").isNumber())
+        .andExpect(jsonPath("$.data.wageProgression.employmentWithSalaryRowCount").doesNotExist())
         .andExpect(jsonPath("$.data.salaryDistribution").isArray())
         .andExpect(jsonPath("$.data.salaryDistribution.length()").value(4))
         .andExpect(jsonPath("$.data.employmentMix").isMap())

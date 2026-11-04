@@ -162,6 +162,8 @@ class EconomicOutcomeDashboardControllerTest {
           .andExpect(jsonPath("$.success").value(true))
           .andExpect(jsonPath("$.message").value("Economic outcome analytics retrieved successfully"))
           .andExpect(jsonPath("$.path").value("/api/v1/dashboards/economic-outcomes"))
+          .andExpect(jsonPath("$.data.wageProgression.employmentSpellCount").value(1000))
+          .andExpect(jsonPath("$.data.wageProgression.employmentWithSalaryRowCount").doesNotExist())
           .andExpect(jsonPath("$.data.wageProgression.avgSalaryChangeAmount").value(6000.00))
           .andExpect(jsonPath("$.data.wageProgression.avgSalaryChangePct").value(33.33))
           .andExpect(jsonPath("$.data.salaryDistribution").isArray())

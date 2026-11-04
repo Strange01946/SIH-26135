@@ -155,6 +155,10 @@ class EconomicOutcomeDashboardServiceTest {
 
     EconomicOutcomeSummaryResponse result = service.getEconomicOutcomeSummary();
 
+    assertThat(result.wageProgression().employmentSpellCount()).isEqualTo(100L);
+    assertThat(result.wageProgression().firstSalaryCount()).isEqualTo(80L);
+    assertThat(result.wageProgression().latestSalaryCount()).isEqualTo(75L);
+
     List<SalaryDistributionResponse> dist = result.salaryDistribution();
     assertThat(dist).hasSize(4);
 
@@ -194,6 +198,10 @@ class EconomicOutcomeDashboardServiceTest {
     when(repository.getFormalQ11CourseWageProgression()).thenReturn(null);
 
     EconomicOutcomeSummaryResponse result = service.getEconomicOutcomeSummary();
+
+    assertThat(result.wageProgression().employmentSpellCount()).isEqualTo(0L);
+    assertThat(result.wageProgression().firstSalaryCount()).isEqualTo(0L);
+    assertThat(result.wageProgression().latestSalaryCount()).isEqualTo(0L);
 
     List<SalaryDistributionResponse> dist = result.salaryDistribution();
     assertThat(dist).hasSize(4);
@@ -302,5 +310,65 @@ class EconomicOutcomeDashboardServiceTest {
     assertThat(courseList.get(0).courseCode()).isEqualTo("CRS-JAVA");
     assertThat(courseList.get(0).spellCount()).isEqualTo(120L);
     assertThat(courseList.get(0).avgSalaryChangePct()).isEqualByComparingTo(new BigDecimal("40.00"));
+  }
+
+  @Test
+  @DisplayName("getEconomicOutcomeSummary: employmentSpellCount includes spells without salary history while salary counts exclude them")
+  void testWageProgressionEmploymentSpellCountIncludesSpellsWithoutSalaryHistory() {
+    // 500 total spells: 350 have first salary, 300 have latest salary; 150 spells lack salary history
+    WageProgressionProjection wageProj = new WageProgressionProjection(
+        500L, 350L, 300L,
+        new BigDecimal("18000.00"), new BigDecimal("24000.00"),
+        new BigDecimal("6000.00"), new BigDecimal("33.33")
+    );
+
+    when(repository.getFormalQ10WageProgression()).thenReturn(wageProj);
+    when(repository.getSalaryDistributionCounts()).thenReturn(Collections.emptyList());
+    when(repository.getFormalQ08EmploymentMix()).thenReturn(null);
+    when(repository.getFormalQ09CategoryBreakdown()).thenReturn(Collections.emptyList());
+    when(repository.getFormalQ11CourseWageProgression()).thenReturn(Collections.emptyList());
+
+    EconomicOutcomeSummaryResponse result = service.getEconomicOutcomeSummary();
+    WageProgressionResponse wage = result.wageProgression();
+
+    // 1. Spells without salary history contribute to employmentSpellCount
+    assertThat(wage.employmentSpellCount()).isEqualTo(500L);
+    // 2. Spells without salary history do NOT contribute to firstSalaryCount or latestSalaryCount
+    assertThat(wage.firstSalaryCount()).isEqualTo(350L);
+    assertThat(wage.latestSalaryCount()).isEqualTo(300L);
+    assertThat(wage.employmentSpellCount()).isGreaterThan(wage.firstSalaryCount());
+    assertThat(wage.employmentSpellCount()).isGreaterThan(wage.latestSalaryCount());
+    // 3. Valid salary observations contribute correctly to averages and uplift
+    assertThat(wage.avgFirstRecordedSalary()).isEqualByComparingTo(new BigDecimal("18000.00"));
+    assertThat(wage.avgLatestRecordedSalary()).isEqualByComparingTo(new BigDecimal("24000.00"));
+    assertThat(wage.avgSalaryChangeAmount()).isEqualByComparingTo(new BigDecimal("6000.00"));
+    assertThat(wage.avgSalaryChangePct()).isEqualByComparingTo(new BigDecimal("33.33"));
+  }
+
+  @Test
+  @DisplayName("getEconomicOutcomeSummary: preserves null metrics when salary progression data is unobservable")
+  void testWageProgressionNullAndZeroMetricsPreservation() {
+    // Spells exist, but zero salary records exist in salary_history
+    WageProgressionProjection wageProj = new WageProgressionProjection(
+        50L, 0L, 0L,
+        null, null, null, null
+    );
+
+    when(repository.getFormalQ10WageProgression()).thenReturn(wageProj);
+    when(repository.getSalaryDistributionCounts()).thenReturn(Collections.emptyList());
+    when(repository.getFormalQ08EmploymentMix()).thenReturn(null);
+    when(repository.getFormalQ09CategoryBreakdown()).thenReturn(Collections.emptyList());
+    when(repository.getFormalQ11CourseWageProgression()).thenReturn(Collections.emptyList());
+
+    EconomicOutcomeSummaryResponse result = service.getEconomicOutcomeSummary();
+    WageProgressionResponse wage = result.wageProgression();
+
+    assertThat(wage.employmentSpellCount()).isEqualTo(50L);
+    assertThat(wage.firstSalaryCount()).isEqualTo(0L);
+    assertThat(wage.latestSalaryCount()).isEqualTo(0L);
+    assertThat(wage.avgFirstRecordedSalary()).isNull();
+    assertThat(wage.avgLatestRecordedSalary()).isNull();
+    assertThat(wage.avgSalaryChangeAmount()).isNull();
+    assertThat(wage.avgSalaryChangePct()).isNull();
   }
 }

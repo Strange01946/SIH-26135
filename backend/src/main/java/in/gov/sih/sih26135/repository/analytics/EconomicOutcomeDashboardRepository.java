@@ -152,7 +152,7 @@ public class EconomicOutcomeDashboardRepository {
   public WageProgressionProjection getFormalQ10WageProgression() {
     String sql = """
         SELECT
-          COUNT(*) AS employment_with_salary_row_count,
+          COUNT(*) AS employment_spell_count,
           COUNT(first_recorded_salary) AS first_salary_count,
           COUNT(latest_recorded_salary) AS latest_salary_count,
           AVG(first_recorded_salary) AS avg_first_recorded_salary,
@@ -163,7 +163,7 @@ public class EconomicOutcomeDashboardRepository {
         """;
 
     return jdbcTemplate.queryForObject(sql, (rs, rowNum) -> new WageProgressionProjection(
-        getNullableLong(rs, "employment_with_salary_row_count"),
+        getNullableLong(rs, "employment_spell_count"),
         getNullableLong(rs, "first_salary_count"),
         getNullableLong(rs, "latest_salary_count"),
         getScaledBigDecimal(rs, "avg_first_recorded_salary"),

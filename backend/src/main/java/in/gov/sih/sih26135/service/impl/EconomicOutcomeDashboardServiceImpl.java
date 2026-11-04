@@ -117,7 +117,7 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
       return new WageProgressionResponse(0L, 0L, 0L, null, null, null, null);
     }
     return new WageProgressionResponse(
-        p.employmentWithSalaryRowCount() != null ? p.employmentWithSalaryRowCount() : 0L,
+        p.employmentSpellCount() != null ? p.employmentSpellCount() : 0L,
         p.firstSalaryCount() != null ? p.firstSalaryCount() : 0L,
         p.latestSalaryCount() != null ? p.latestSalaryCount() : 0L,
         p.avgFirstRecordedSalary(),

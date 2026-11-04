@@ -7,7 +7,7 @@ import java.math.BigDecimal;
  * derived from formal analytical Query Q10.
  */
 public record WageProgressionResponse(
-    Long employmentWithSalaryRowCount,
+    Long employmentSpellCount,
     Long firstSalaryCount,
     Long latestSalaryCount,
     BigDecimal avgFirstRecordedSalary,

@@ -20,7 +20,7 @@ Both endpoints strictly enforce `@PreAuthorize("hasAuthority('analytics.read')")
   - Exactly 137 `JpaRepository` interfaces and 2 `@Query` declarations preserved (zero Spring Data JPA invariant violations).
   - Production REST controller count expanded cleanly from 58 to 59; endpoint count from 639 to 641.
   - 100% of all 59 controllers and 641 endpoints verified by `ResponseEnvelopeAlignmentContractTest` and `ControllerPathQueryHeaderValidationTest`.
-  - Focused test suite (36 tests) and entire backend regression test suite (1,195 tests) passed cleanly with 0 failures, 0 errors.
+  - Focused test suite (38 tests) and entire backend regression test suite (1,197 tests) passed cleanly with 0 failures, 0 errors.
   - `git diff --check` passed with 0 whitespace errors. Zero git stage/commit/push/reset/clean actions performed.
 
 ---
@@ -133,7 +133,7 @@ ORDER BY spell_count DESC, ef.engagement_type_code ASC;
 ### 5.4 Query Q10 — Salary Progression KPI & Economic Uplift
 ```sql
 SELECT
-  COUNT(*) AS employment_with_salary_row_count,
+  COUNT(*) AS employment_spell_count,
   COUNT(first_recorded_salary) AS first_salary_count,
   COUNT(latest_recorded_salary) AS latest_salary_count,
   AVG(first_recorded_salary) AS avg_first_recorded_salary,
@@ -142,6 +142,7 @@ SELECT
   AVG(salary_change_pct) AS avg_salary_change_pct
 FROM vw_salary_progression_fact;
 ```
+- **Semantic Clarification on `COUNT(*)`:** In `database/phase-18-dashboard-analytical-queries.sql`, the query label was cataloged as `employment_with_salary_row_count`. However, because `vw_salary_progression_fact` is formed by starting from `employment_records` and `LEFT JOIN`ing first and latest `salary_history` records, `COUNT(*)` strictly counts total employment spells (including spells without recorded salary history). To maintain strict semantic accuracy and avoid implying that every counted spell has recorded salaries, the repository SQL alias, projection record, response DTO, service mapping, and JSON response model expose this metric as `employmentSpellCount`. Spells without salary history contribute to `employmentSpellCount` but do NOT contribute to `firstSalaryCount` or `latestSalaryCount`.
 
 ### 5.5 Query Q11 — Course-Level Wage Progression
 ```sql
@@ -185,6 +186,9 @@ ORDER BY avg_salary_change_pct IS NULL, avg_salary_change_pct DESC, c.course_cod
 | Q08 | `apprenticeshipSharePct`| `apprenticeshipSpellCount / employmentSpellCount * 100` | Derived in Java | `BigDecimal` (scale 2) |
 | Q08 | `internshipSharePct`| `internshipSpellCount / employmentSpellCount * 100` | Derived in Java | `BigDecimal` (scale 2) |
 | Q09 | `sharePct` | `spell_count / totalSpells * 100` | Derived in Java | `BigDecimal` (scale 2) |
+| Q10 | `employmentSpellCount` | `COUNT(*)` in `vw_salary_progression_fact` (all employment spells) | Direct from SQL | `Long` |
+| Q10 | `firstSalaryCount` | `COUNT(first_recorded_salary)` (spells with baseline salary) | Direct from SQL | `Long` |
+| Q10 | `latestSalaryCount` | `COUNT(latest_recorded_salary)` (spells with latest salary) | Direct from SQL | `Long` |
 | Q10 | `avgFirstRecordedSalary`| `AVG(first_recorded_salary)` (baseline) | Direct from SQL | `BigDecimal` (scale 2) |
 | Q10 | `avgLatestRecordedSalary`| `AVG(latest_recorded_salary)` (latest) | Direct from SQL | `BigDecimal` (scale 2) |
 | Q10 | `avgSalaryChangeAmount`| `AVG(salary_change_amount)` (uplift delta) | Direct from SQL | `BigDecimal` (scale 2) |
@@ -201,6 +205,7 @@ ORDER BY avg_salary_change_pct IS NULL, avg_salary_change_pct DESC, c.course_cod
    - **Latest Salary:** Isolated by `ROW_NUMBER() OVER (PARTITION BY employment_id ORDER BY (effective_to IS NULL) DESC, effective_from DESC, salary_history_id DESC) = 1`.
 3. **Null-Safety & Zero Denominators:** If either observation is null, delta and percentage return `null`. If `first_sh.salary_amount = 0`, `salary_change_pct` safely evaluates to `null` to prevent divide-by-zero errors.
 4. **Averaging Integrity:** `avgSalaryChangePct` is the mean of individual trainee percentage gains across paired observations, rather than a misleading aggregate percentage calculated from independent population means.
+5. **Employment Spell vs Salary Observation Count Semantics:** `employmentSpellCount` counts all employment spells in `vw_salary_progression_fact`. Inactive, self-employed, or apprentice spells without salary history records in `salary_history` are included in `employmentSpellCount` (`COUNT(*)`), but safely omitted from `firstSalaryCount` (`COUNT(first_recorded_salary)`) and `latestSalaryCount` (`COUNT(latest_recorded_salary)`). When salary history is unobservable, the averages evaluate safely to null.
 
 ---
 
@@ -341,9 +346,9 @@ mvn test -Dtest=MysqlConnectionTest -f backend/pom.xml
 ```bash
 mvn test "-Dtest=EconomicOutcomeDashboardServiceTest,EconomicOutcomeDashboardControllerTest,EconomicOutcomeDashboardIntegrationTest,DashboardDtoContractTest" -f backend/pom.xml
 ```
-- **Result:** Tests run: 36, Failures: 0, Errors: 0, Skipped: 0 (BUILD SUCCESS, 59.1s).
+- **Result:** Tests run: 38, Failures: 0, Errors: 0, Skipped: 0 (BUILD SUCCESS, 01:13 min).
 - **Breakdown:**
-  - `EconomicOutcomeDashboardServiceTest`: 7 tests, 0 failures.
+  - `EconomicOutcomeDashboardServiceTest`: 9 tests, 0 failures (includes dedicated tests for `employmentSpellCount` count semantics and null/zero metrics preservation).
   - `EconomicOutcomeDashboardControllerTest`: 6 tests (including parameterized suites), 0 failures.
   - `EconomicOutcomeDashboardIntegrationTest`: 8 live database tests against `SIH26135_TEST`, 0 failures.
   - `DashboardDtoContractTest`: 15 tests, 0 failures.
@@ -359,8 +364,8 @@ mvn test "-Dtest=ResponseEnvelopeAlignmentContractTest,ControllerPathQueryHeader
 ```bash
 mvn test -f backend/pom.xml
 ```
-- **Result:** Tests run: 1195, Failures: 0, Errors: 0, Skipped: 0 (BUILD SUCCESS, 02:33 min).
-- **Zero Regressions:** All 1,195 automated tests across the backend application passed cleanly.
+- **Result:** Tests run: 1197, Failures: 0, Errors: 0, Skipped: 0 (BUILD SUCCESS, 02:30 min).
+- **Zero Regressions:** All 1,197 automated tests across the backend application passed cleanly.
 
 ---
 
@@ -440,7 +445,7 @@ git diff --check
 - [x] No schema changes, migrations, or DDL are introduced.
 - [x] `spring.jpa.hibernate.ddl-auto=validate` remains intact.
 - [x] Existing Phase 27.3, 27.4, and 27.5 dashboard behavior remains intact.
-- [x] Focused tests (36) and full backend suite (1,195) executed and passed cleanly.
+- [x] Focused tests (38) and full backend suite (1,197) executed and passed cleanly.
 - [x] `git diff --check` is clean.
 - [x] No unrelated changes are introduced.
 - [x] No Git stage, commit, push, reset, stash, or clean operation is performed.

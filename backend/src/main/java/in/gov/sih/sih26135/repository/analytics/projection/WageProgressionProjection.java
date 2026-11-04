@@ -7,7 +7,7 @@ import java.math.BigDecimal;
  * from {@code vw_salary_progression_fact}.
  */
 public record WageProgressionProjection(
-    Long employmentWithSalaryRowCount,
+    Long employmentSpellCount,
     Long firstSalaryCount,
     Long latestSalaryCount,
     BigDecimal avgFirstRecordedSalary,
