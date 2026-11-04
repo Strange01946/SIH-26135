@@ -1222,7 +1222,10 @@ public class GlobalExceptionHandler {
       in.gov.sih.sih26135.controller.workflow.PlacementEmploymentWorkflowController.class,
       in.gov.sih.sih26135.controller.workflow.SkillGapRemediationWorkflowController.class,
       in.gov.sih.sih26135.controller.workflow.TrainingOutcomeWorkflowController.class,
-      in.gov.sih.sih26135.controller.workflow.VerificationWorkflowController.class
+      in.gov.sih.sih26135.controller.workflow.VerificationWorkflowController.class,
+      // in.gov.sih.sih26135.controller (Dashboard APIs)
+      in.gov.sih.sih26135.controller.ExecutiveDashboardController.class,
+      in.gov.sih.sih26135.controller.GeographicDashboardController.class
   );
 
   /**
