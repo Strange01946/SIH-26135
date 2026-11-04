@@ -599,4 +599,254 @@ class DashboardDtoContractTest {
         objectMapper.readValue(json, EconomicOutcomeSummaryResponse.class);
     assertThat(deserialized).isEqualTo(summary);
   }
+
+  @Test
+  @DisplayName("RetentionMilestoneResponse: instantiation, getters, and JSON roundtrip")
+  void testRetentionMilestoneResponseContract() throws Exception {
+    RetentionMilestoneResponse dto = new RetentionMilestoneResponse(
+        "6_MONTHS",
+        6,
+        1000L,
+        850L,
+        new BigDecimal("85.00")
+    );
+
+    assertThat(dto.milestone()).isEqualTo("6_MONTHS");
+    assertThat(dto.milestoneMonths()).isEqualTo(6);
+    assertThat(dto.observableCount()).isEqualTo(1000L);
+    assertThat(dto.retainedCount()).isEqualTo(850L);
+    assertThat(dto.retentionRatePct()).isEqualByComparingTo(new BigDecimal("85.00"));
+
+    String json = objectMapper.writeValueAsString(dto);
+    assertThat(json).contains("\"milestone\":\"6_MONTHS\"");
+    assertThat(json).contains("\"milestoneMonths\":6");
+    assertThat(json).contains("\"observableCount\":1000");
+    assertThat(json).contains("\"retainedCount\":850");
+    assertThat(json).contains("\"retentionRatePct\":85.00");
+
+    RetentionMilestoneResponse deserialized =
+        objectMapper.readValue(json, RetentionMilestoneResponse.class);
+    assertThat(deserialized).isEqualTo(dto);
+  }
+
+  @Test
+  @DisplayName("LongitudinalRetentionResponse: instantiation, immutability, and JSON roundtrip")
+  void testLongitudinalRetentionResponseContract() throws Exception {
+    RetentionMilestoneResponse m6 = new RetentionMilestoneResponse(
+        "6_MONTHS", 6, 1000L, 850L, new BigDecimal("85.00")
+    );
+    RetentionMilestoneResponse m12 = new RetentionMilestoneResponse(
+        "12_MONTHS", 12, 800L, 640L, new BigDecimal("80.00")
+    );
+    RetentionCohortResponse cohort = new RetentionCohortResponse(
+        1200L,
+        1000L, 850L, new BigDecimal("85.00"),
+        800L, 640L, new BigDecimal("80.00"),
+        500L, 350L, new BigDecimal("70.00"),
+        200L, 120L, new BigDecimal("60.00")
+    );
+
+    LongitudinalRetentionResponse dto = new LongitudinalRetentionResponse(
+        1200L,
+        cohort,
+        List.of(m6, m12)
+    );
+
+    assertThat(dto.employmentSpellCount()).isEqualTo(1200L);
+    assertThat(dto.cohortSummary()).isEqualTo(cohort);
+    assertThat(dto.milestones()).hasSize(2);
+
+    String json = objectMapper.writeValueAsString(dto);
+    assertThat(json).contains("\"employmentSpellCount\":1200");
+    assertThat(json).contains("\"cohortSummary\"");
+    assertThat(json).contains("\"milestones\"");
+
+    LongitudinalRetentionResponse deserialized =
+        objectMapper.readValue(json, LongitudinalRetentionResponse.class);
+    assertThat(deserialized).isEqualTo(dto);
+  }
+
+  @Test
+  @DisplayName("UnemploymentSummaryResponse: instantiation, getters, and JSON roundtrip")
+  void testUnemploymentSummaryResponseContract() throws Exception {
+    UnemploymentSummaryResponse dto = new UnemploymentSummaryResponse(
+        500L,
+        450L,
+        120L,
+        280L,
+        90L,
+        new BigDecimal("145.50"),
+        new BigDecimal("62.30"),
+        new BigDecimal("56.00")
+    );
+
+    assertThat(dto.unemploymentPeriodCount()).isEqualTo(500L);
+    assertThat(dto.traineeCount()).isEqualTo(450L);
+    assertThat(dto.currentUnemploymentCount()).isEqualTo(120L);
+    assertThat(dto.reemployedCount()).isEqualTo(280L);
+    assertThat(dto.neverPrecededByEmploymentCount()).isEqualTo(90L);
+    assertThat(dto.avgDurationDays()).isEqualByComparingTo(new BigDecimal("145.50"));
+    assertThat(dto.avgOpenPeriodDurationDays()).isEqualByComparingTo(new BigDecimal("62.30"));
+    assertThat(dto.reemploymentRatePct()).isEqualByComparingTo(new BigDecimal("56.00"));
+
+    String json = objectMapper.writeValueAsString(dto);
+    assertThat(json).contains("\"unemploymentPeriodCount\":500");
+    assertThat(json).contains("\"reemploymentRatePct\":56.00");
+
+    UnemploymentSummaryResponse deserialized =
+        objectMapper.readValue(json, UnemploymentSummaryResponse.class);
+    assertThat(deserialized).isEqualTo(dto);
+  }
+
+  @Test
+  @DisplayName("UnemploymentReasonBreakdownResponse: instantiation, getters, and JSON roundtrip")
+  void testUnemploymentReasonBreakdownResponseContract() throws Exception {
+    UnemploymentReasonBreakdownResponse dto = new UnemploymentReasonBreakdownResponse(
+        1L,
+        "SKILL_MISMATCH",
+        "Skill mismatch",
+        150L,
+        140L,
+        35L,
+        85L,
+        new BigDecimal("120.00"),
+        new BigDecimal("30.00"),
+        new BigDecimal("56.67")
+    );
+
+    assertThat(dto.unemploymentReasonId()).isEqualTo(1L);
+    assertThat(dto.unemploymentReasonCode()).isEqualTo("SKILL_MISMATCH");
+    assertThat(dto.reasonName()).isEqualTo("Skill mismatch");
+    assertThat(dto.periodCount()).isEqualTo(150L);
+    assertThat(dto.traineeCount()).isEqualTo(140L);
+    assertThat(dto.currentPeriodCount()).isEqualTo(35L);
+    assertThat(dto.reemployedCount()).isEqualTo(85L);
+    assertThat(dto.avgDurationDays()).isEqualByComparingTo(new BigDecimal("120.00"));
+    assertThat(dto.sharePct()).isEqualByComparingTo(new BigDecimal("30.00"));
+    assertThat(dto.reemploymentRatePct()).isEqualByComparingTo(new BigDecimal("56.67"));
+
+    String json = objectMapper.writeValueAsString(dto);
+    assertThat(json).contains("\"unemploymentReasonCode\":\"SKILL_MISMATCH\"");
+    assertThat(json).contains("\"sharePct\":30.00");
+
+    UnemploymentReasonBreakdownResponse deserialized =
+        objectMapper.readValue(json, UnemploymentReasonBreakdownResponse.class);
+    assertThat(deserialized).isEqualTo(dto);
+  }
+
+  @Test
+  @DisplayName("SeparationAnalysisResponse: instantiation, getters, and JSON roundtrip")
+  void testSeparationAnalysisResponseContract() throws Exception {
+    SeparationAnalysisResponse dto = new SeparationAnalysisResponse(
+        400L,
+        250L,
+        120L,
+        30L,
+        new BigDecimal("62.50"),
+        new BigDecimal("30.00"),
+        new BigDecimal("7.50"),
+        new BigDecimal("2.08"),
+        null
+    );
+
+    assertThat(dto.totalExitCount()).isEqualTo(400L);
+    assertThat(dto.voluntaryExitCount()).isEqualTo(250L);
+    assertThat(dto.involuntaryExitCount()).isEqualTo(120L);
+    assertThat(dto.otherExitCount()).isEqualTo(30L);
+    assertThat(dto.voluntaryExitSharePct()).isEqualByComparingTo(new BigDecimal("62.50"));
+    assertThat(dto.involuntaryExitSharePct()).isEqualByComparingTo(new BigDecimal("30.00"));
+    assertThat(dto.otherExitSharePct()).isEqualByComparingTo(new BigDecimal("7.50"));
+    assertThat(dto.voluntaryToInvoluntaryRatio()).isEqualByComparingTo(new BigDecimal("2.08"));
+    assertThat(dto.noticeComplianceRatePct()).isNull();
+
+    String json = objectMapper.writeValueAsString(dto);
+    assertThat(json).contains("\"totalExitCount\":400");
+    assertThat(json).contains("\"voluntaryToInvoluntaryRatio\":2.08");
+
+    SeparationAnalysisResponse deserialized =
+        objectMapper.readValue(json, SeparationAnalysisResponse.class);
+    assertThat(deserialized).isEqualTo(dto);
+  }
+
+  @Test
+  @DisplayName("AttritionReasonBreakdownResponse: instantiation, getters, and JSON roundtrip")
+  void testAttritionReasonBreakdownResponseContract() throws Exception {
+    AttritionReasonBreakdownResponse dto = new AttritionReasonBreakdownResponse(
+        1L,
+        "BETTER_OPPORTUNITY",
+        "Better opportunity",
+        1L,
+        "VOLUNTARY",
+        "Voluntary resignation / quit",
+        true,
+        false,
+        150L,
+        140L,
+        new BigDecimal("37.50")
+    );
+
+    assertThat(dto.employmentExitReasonId()).isEqualTo(1L);
+    assertThat(dto.exitReasonCode()).isEqualTo("BETTER_OPPORTUNITY");
+    assertThat(dto.exitReasonName()).isEqualTo("Better opportunity");
+    assertThat(dto.separationNatureId()).isEqualTo(1L);
+    assertThat(dto.separationNatureCode()).isEqualTo("VOLUNTARY");
+    assertThat(dto.separationNatureName()).isEqualTo("Voluntary resignation / quit");
+    assertThat(dto.isVoluntaryFlag()).isTrue();
+    assertThat(dto.isInvoluntaryFlag()).isFalse();
+    assertThat(dto.exitCount()).isEqualTo(150L);
+    assertThat(dto.traineeCount()).isEqualTo(140L);
+    assertThat(dto.sharePct()).isEqualByComparingTo(new BigDecimal("37.50"));
+
+    String json = objectMapper.writeValueAsString(dto);
+    assertThat(json).contains("\"exitReasonCode\":\"BETTER_OPPORTUNITY\"");
+    assertThat(json).contains("\"isVoluntaryFlag\":true");
+
+    AttritionReasonBreakdownResponse deserialized =
+        objectMapper.readValue(json, AttritionReasonBreakdownResponse.class);
+    assertThat(deserialized).isEqualTo(dto);
+  }
+
+  @Test
+  @DisplayName("AttritionDashboardResponse: instantiation, immutability, and JSON roundtrip")
+  void testAttritionDashboardResponseContract() throws Exception {
+    UnemploymentSummaryResponse uSummary = new UnemploymentSummaryResponse(
+        500L, 450L, 120L, 280L, 90L,
+        new BigDecimal("145.50"), new BigDecimal("62.30"), new BigDecimal("56.00")
+    );
+    UnemploymentReasonBreakdownResponse uReason = new UnemploymentReasonBreakdownResponse(
+        1L, "SKILL_MISMATCH", "Skill mismatch", 150L, 140L, 35L, 85L,
+        new BigDecimal("120.00"), new BigDecimal("30.00"), new BigDecimal("56.67")
+    );
+    SeparationAnalysisResponse sep = new SeparationAnalysisResponse(
+        400L, 250L, 120L, 30L,
+        new BigDecimal("62.50"), new BigDecimal("30.00"), new BigDecimal("7.50"),
+        new BigDecimal("2.08"), null
+    );
+    AttritionReasonBreakdownResponse aReason = new AttritionReasonBreakdownResponse(
+        1L, "BETTER_OPPORTUNITY", "Better opportunity", 1L, "VOLUNTARY", "Voluntary resignation / quit",
+        true, false, 150L, 140L, new BigDecimal("37.50")
+    );
+
+    AttritionDashboardResponse dashboard = new AttritionDashboardResponse(
+        uSummary,
+        List.of(uReason),
+        sep,
+        List.of(aReason)
+    );
+
+    assertThat(dashboard.unemploymentSummary()).isEqualTo(uSummary);
+    assertThat(dashboard.unemploymentReasons()).hasSize(1);
+    assertThat(dashboard.separationAnalysis()).isEqualTo(sep);
+    assertThat(dashboard.exitReasons()).hasSize(1);
+
+    String json = objectMapper.writeValueAsString(dashboard);
+    assertThat(json).contains("\"unemploymentSummary\"");
+    assertThat(json).contains("\"unemploymentReasons\"");
+    assertThat(json).contains("\"separationAnalysis\"");
+    assertThat(json).contains("\"exitReasons\"");
+
+    AttritionDashboardResponse deserialized =
+        objectMapper.readValue(json, AttritionDashboardResponse.class);
+    assertThat(deserialized).isEqualTo(dashboard);
+  }
 }

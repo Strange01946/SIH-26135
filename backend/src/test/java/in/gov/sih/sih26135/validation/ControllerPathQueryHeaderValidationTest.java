@@ -170,8 +170,8 @@ public class ControllerPathQueryHeaderValidationTest {
     void testAllControllersDeclareClassLevelValidated() throws Exception {
       List<Class<?>> controllers = getAllProjectControllers();
       assertThat(controllers)
-          .as("Exactly 59 application REST controllers must be present (55 baseline + ExecutiveDashboardController + GeographicDashboardController + InstitutionalAnalyticsController + EconomicOutcomeDashboardController)")
-          .hasSize(59);
+          .as("Exactly 60 application REST controllers must be present (55 baseline + ExecutiveDashboardController + GeographicDashboardController + InstitutionalAnalyticsController + EconomicOutcomeDashboardController + RetentionAttritionDashboardController)")
+          .hasSize(60);
 
       List<String> missingValidated = new ArrayList<>();
       for (Class<?> controller : controllers) {

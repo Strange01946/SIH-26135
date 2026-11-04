@@ -1227,7 +1227,8 @@ public class GlobalExceptionHandler {
       in.gov.sih.sih26135.controller.ExecutiveDashboardController.class,
       in.gov.sih.sih26135.controller.GeographicDashboardController.class,
       in.gov.sih.sih26135.controller.InstitutionalAnalyticsController.class,
-      in.gov.sih.sih26135.controller.EconomicOutcomeDashboardController.class
+      in.gov.sih.sih26135.controller.EconomicOutcomeDashboardController.class,
+      in.gov.sih.sih26135.controller.RetentionAttritionDashboardController.class
   );
 
   /**
