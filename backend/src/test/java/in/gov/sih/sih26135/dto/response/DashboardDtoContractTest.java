@@ -354,4 +354,247 @@ class DashboardDtoContractTest {
     CourseEmployabilityResponse deserialized = objectMapper.readValue(json, CourseEmployabilityResponse.class);
     assertThat(deserialized).isEqualTo(dto);
   }
+
+  @Test
+  @DisplayName("EmployerHiringPerformanceResponse record contract and JSON serialization")
+  void testEmployerHiringPerformanceResponseContract() throws Exception {
+    EmployerHiringPerformanceResponse dto = new EmployerHiringPerformanceResponse(
+        10L,
+        "EMP-TATA",
+        "Tata Consultancy Services",
+        500L,
+        450L,
+        400L,
+        new BigDecimal("80.00"),
+        new BigDecimal("35000.00"),
+        1
+    );
+
+    assertThat(dto.employerId()).isEqualTo(10L);
+    assertThat(dto.employerCode()).isEqualTo("EMP-TATA");
+    assertThat(dto.employerName()).isEqualTo("Tata Consultancy Services");
+    assertThat(dto.placementCount()).isEqualTo(500L);
+    assertThat(dto.traineeCount()).isEqualTo(450L);
+    assertThat(dto.joinedCount()).isEqualTo(400L);
+    assertThat(dto.joinRatePct()).isEqualByComparingTo(new BigDecimal("80.00"));
+    assertThat(dto.avgJoiningSalary()).isEqualByComparingTo(new BigDecimal("35000.00"));
+    assertThat(dto.rank()).isEqualTo(1);
+
+    String json = objectMapper.writeValueAsString(dto);
+    assertThat(json).contains("\"employerCode\":\"EMP-TATA\"");
+    assertThat(json).contains("\"joinRatePct\":80.00");
+    assertThat(json).contains("\"avgJoiningSalary\":35000.00");
+
+    EmployerHiringPerformanceResponse deserialized =
+        objectMapper.readValue(json, EmployerHiringPerformanceResponse.class);
+    assertThat(deserialized).isEqualTo(dto);
+  }
+
+  @Test
+  @DisplayName("WageProgressionResponse record contract and JSON serialization")
+  void testWageProgressionResponseContract() throws Exception {
+    WageProgressionResponse dto = new WageProgressionResponse(
+        1000L,
+        800L,
+        750L,
+        new BigDecimal("18000.00"),
+        new BigDecimal("24000.00"),
+        new BigDecimal("6000.00"),
+        new BigDecimal("33.33")
+    );
+
+    assertThat(dto.employmentWithSalaryRowCount()).isEqualTo(1000L);
+    assertThat(dto.firstSalaryCount()).isEqualTo(800L);
+    assertThat(dto.latestSalaryCount()).isEqualTo(750L);
+    assertThat(dto.avgFirstRecordedSalary()).isEqualByComparingTo(new BigDecimal("18000.00"));
+    assertThat(dto.avgLatestRecordedSalary()).isEqualByComparingTo(new BigDecimal("24000.00"));
+    assertThat(dto.avgSalaryChangeAmount()).isEqualByComparingTo(new BigDecimal("6000.00"));
+    assertThat(dto.avgSalaryChangePct()).isEqualByComparingTo(new BigDecimal("33.33"));
+
+    String json = objectMapper.writeValueAsString(dto);
+    assertThat(json).contains("\"avgSalaryChangeAmount\":6000.00");
+    assertThat(json).contains("\"avgSalaryChangePct\":33.33");
+
+    WageProgressionResponse deserialized =
+        objectMapper.readValue(json, WageProgressionResponse.class);
+    assertThat(deserialized).isEqualTo(dto);
+  }
+
+  @Test
+  @DisplayName("SalaryDistributionResponse record contract and JSON serialization")
+  void testSalaryDistributionResponseContract() throws Exception {
+    SalaryDistributionResponse dto = new SalaryDistributionResponse(
+        "FROM_15K_TO_25K",
+        "₹15,000–₹25,000",
+        450L,
+        new BigDecimal("45.00")
+    );
+
+    assertThat(dto.bracketCode()).isEqualTo("FROM_15K_TO_25K");
+    assertThat(dto.bracketName()).isEqualTo("₹15,000–₹25,000");
+    assertThat(dto.count()).isEqualTo(450L);
+    assertThat(dto.percentage()).isEqualByComparingTo(new BigDecimal("45.00"));
+
+    String json = objectMapper.writeValueAsString(dto);
+    assertThat(json).contains("\"bracketCode\":\"FROM_15K_TO_25K\"");
+    assertThat(json).contains("\"count\":450");
+    assertThat(json).contains("\"percentage\":45.00");
+
+    SalaryDistributionResponse deserialized =
+        objectMapper.readValue(json, SalaryDistributionResponse.class);
+    assertThat(deserialized).isEqualTo(dto);
+  }
+
+  @Test
+  @DisplayName("EmploymentMixResponse record contract and JSON serialization")
+  void testEmploymentMixResponseContract() throws Exception {
+    EmploymentMixResponse dto = new EmploymentMixResponse(
+        1000L,
+        900L,
+        700L,
+        600L,
+        200L,
+        150L,
+        50L,
+        450L,
+        150L,
+        new BigDecimal("180.50"),
+        new BigDecimal("120.00"),
+        new BigDecimal("60.00"),
+        new BigDecimal("20.00"),
+        new BigDecimal("15.00"),
+        new BigDecimal("5.00")
+    );
+
+    assertThat(dto.employmentSpellCount()).isEqualTo(1000L);
+    assertThat(dto.traineeCount()).isEqualTo(900L);
+    assertThat(dto.wageEmploymentSharePct()).isEqualByComparingTo(new BigDecimal("60.00"));
+    assertThat(dto.selfEmploymentSharePct()).isEqualByComparingTo(new BigDecimal("20.00"));
+    assertThat(dto.apprenticeshipSharePct()).isEqualByComparingTo(new BigDecimal("15.00"));
+    assertThat(dto.internshipSharePct()).isEqualByComparingTo(new BigDecimal("5.00"));
+
+    String json = objectMapper.writeValueAsString(dto);
+    assertThat(json).contains("\"employmentSpellCount\":1000");
+    assertThat(json).contains("\"wageEmploymentSharePct\":60.00");
+
+    EmploymentMixResponse deserialized =
+        objectMapper.readValue(json, EmploymentMixResponse.class);
+    assertThat(deserialized).isEqualTo(dto);
+  }
+
+  @Test
+  @DisplayName("EmploymentCategoryBreakdownResponse record contract and JSON serialization")
+  void testEmploymentCategoryBreakdownResponseContract() throws Exception {
+    EmploymentCategoryBreakdownResponse dto = new EmploymentCategoryBreakdownResponse(
+        "WAGE_EMPLOYMENT",
+        "Wage employment",
+        true,
+        false,
+        false,
+        false,
+        600L,
+        550L,
+        450L,
+        new BigDecimal("60.00"),
+        new BigDecimal("210.00")
+    );
+
+    assertThat(dto.engagementTypeCode()).isEqualTo("WAGE_EMPLOYMENT");
+    assertThat(dto.engagementTypeName()).isEqualTo("Wage employment");
+    assertThat(dto.isWageEmployment()).isTrue();
+    assertThat(dto.isSelfEmployment()).isFalse();
+    assertThat(dto.spellCount()).isEqualTo(600L);
+    assertThat(dto.sharePct()).isEqualByComparingTo(new BigDecimal("60.00"));
+    assertThat(dto.avgDurationDays()).isEqualByComparingTo(new BigDecimal("210.00"));
+
+    String json = objectMapper.writeValueAsString(dto);
+    assertThat(json).contains("\"engagementTypeCode\":\"WAGE_EMPLOYMENT\"");
+    assertThat(json).contains("\"sharePct\":60.00");
+
+    EmploymentCategoryBreakdownResponse deserialized =
+        objectMapper.readValue(json, EmploymentCategoryBreakdownResponse.class);
+    assertThat(deserialized).isEqualTo(dto);
+  }
+
+  @Test
+  @DisplayName("CourseWageProgressionResponse record contract and JSON serialization")
+  void testCourseWageProgressionResponseContract() throws Exception {
+    CourseWageProgressionResponse dto = new CourseWageProgressionResponse(
+        101L,
+        "CRS-JAVA",
+        "Full Stack Java",
+        200L,
+        new BigDecimal("20000.00"),
+        new BigDecimal("28000.00"),
+        new BigDecimal("40.00")
+    );
+
+    assertThat(dto.courseId()).isEqualTo(101L);
+    assertThat(dto.courseCode()).isEqualTo("CRS-JAVA");
+    assertThat(dto.courseName()).isEqualTo("Full Stack Java");
+    assertThat(dto.spellCount()).isEqualTo(200L);
+    assertThat(dto.avgFirstRecordedSalary()).isEqualByComparingTo(new BigDecimal("20000.00"));
+    assertThat(dto.avgLatestRecordedSalary()).isEqualByComparingTo(new BigDecimal("28000.00"));
+    assertThat(dto.avgSalaryChangePct()).isEqualByComparingTo(new BigDecimal("40.00"));
+
+    String json = objectMapper.writeValueAsString(dto);
+    assertThat(json).contains("\"courseCode\":\"CRS-JAVA\"");
+    assertThat(json).contains("\"avgSalaryChangePct\":40.00");
+
+    CourseWageProgressionResponse deserialized =
+        objectMapper.readValue(json, CourseWageProgressionResponse.class);
+    assertThat(deserialized).isEqualTo(dto);
+  }
+
+  @Test
+  @DisplayName("EconomicOutcomeSummaryResponse record contract and JSON serialization")
+  void testEconomicOutcomeSummaryResponseContract() throws Exception {
+    WageProgressionResponse wage = new WageProgressionResponse(
+        100L, 80L, 75L,
+        new BigDecimal("15000.00"), new BigDecimal("20000.00"),
+        new BigDecimal("5000.00"), new BigDecimal("33.33")
+    );
+    SalaryDistributionResponse dist = new SalaryDistributionResponse(
+        "BELOW_15K", "Below ₹15,000", 20L, new BigDecimal("25.00")
+    );
+    EmploymentMixResponse mix = new EmploymentMixResponse(
+        100L, 90L, 70L, 60L, 20L, 15L, 5L, 45L, 15L,
+        new BigDecimal("150.00"), new BigDecimal("100.00"),
+        new BigDecimal("60.00"), new BigDecimal("20.00"),
+        new BigDecimal("15.00"), new BigDecimal("5.00")
+    );
+    EmploymentCategoryBreakdownResponse cat = new EmploymentCategoryBreakdownResponse(
+        "WAGE_EMPLOYMENT", "Wage employment", true, false, false, false,
+        60L, 55L, 45L, new BigDecimal("60.00"), new BigDecimal("150.00")
+    );
+    CourseWageProgressionResponse course = new CourseWageProgressionResponse(
+        10L, "CRS-10", "Course 10", 30L,
+        new BigDecimal("15000.00"), new BigDecimal("21000.00"), new BigDecimal("40.00")
+    );
+
+    EconomicOutcomeSummaryResponse summary = new EconomicOutcomeSummaryResponse(
+        wage,
+        List.of(dist),
+        mix,
+        List.of(cat),
+        List.of(course)
+    );
+
+    assertThat(summary.wageProgression()).isEqualTo(wage);
+    assertThat(summary.salaryDistribution()).hasSize(1);
+    assertThat(summary.employmentMix()).isEqualTo(mix);
+    assertThat(summary.categoryBreakdown()).hasSize(1);
+    assertThat(summary.courseWageProgression()).hasSize(1);
+
+    String json = objectMapper.writeValueAsString(summary);
+    assertThat(json).contains("\"wageProgression\"");
+    assertThat(json).contains("\"salaryDistribution\"");
+    assertThat(json).contains("\"employmentMix\"");
+    assertThat(json).contains("\"categoryBreakdown\"");
+    assertThat(json).contains("\"courseWageProgression\"");
+
+    EconomicOutcomeSummaryResponse deserialized =
+        objectMapper.readValue(json, EconomicOutcomeSummaryResponse.class);
+    assertThat(deserialized).isEqualTo(summary);
+  }
 }
