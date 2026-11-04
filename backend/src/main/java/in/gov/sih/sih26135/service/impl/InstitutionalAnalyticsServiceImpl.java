@@ -123,17 +123,6 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
           i + 1
       ));
     }
-          toLong(c.joinedPlacementCount()),
-          toLong(c.employedCount()),
-          c.completionRatePct(),
-          c.certificationRatePct(),
-          c.placementRatePct(),
-          c.employmentRatePct(),
-          dropoutRatePct,
-          c.avgStartingWage(),
-          i + 1
-      ));
-    }
 
     return LeaderboardResponse.of(RANKING_METRIC, items);
   }

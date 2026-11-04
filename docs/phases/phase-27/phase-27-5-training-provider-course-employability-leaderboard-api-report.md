@@ -20,7 +20,7 @@ Both endpoints enforce `@PreAuthorize("hasAuthority('analytics.read')")`, return
   - Exactly 137 `JpaRepository` interfaces and 2 `@Query` declarations preserved (zero Spring Data JPA invariant violations).
   - Production REST controller count expanded cleanly from 57 to 58; endpoint count from 637 to 639.
   - 100% of all 58 controllers and 639 endpoints verified by `ResponseEnvelopeAlignmentContractTest` and `ControllerPathQueryHeaderValidationTest`.
-  - Focused test suite (28 tests) and entire backend regression test suite (1,163 tests) passed cleanly with 0 failures, 0 errors.
+  - Focused test suite (32 tests) and entire backend regression test suite (1,167 tests) passed cleanly with 0 failures, 0 errors.
   - `git diff --check` passed with 0 whitespace errors. Zero git stage/commit/push/reset/clean actions performed.
 
 ---
@@ -287,12 +287,24 @@ GROUP BY course_id;
 
 In `InstitutionalAnalyticsServiceImpl`:
 1. **Sequential Rank Assignment:** Traverses the repository projection list in order and assigns `i + 1` as the `rank`.
-2. **Derived Dropout Rate:**
-   $$\text{dropoutCount} = \max(0, \text{enrollmentCount} - \text{completedCount})$$
-   $$\text{dropoutRatePct} = \text{AnalyticsCalculationUtils.calculatePercentage}(\text{dropoutCount}, \text{enrollmentCount})$$
-   If `completedCount` is null but `completionRatePct` exists, falls back to:
-   $$\text{dropoutRatePct} = 100.00 - \text{completionRatePct}$$
-   If `enrollmentCount` is zero or null, safely returns `null`.
+2. **Derived Dropout Rate & Null-Safety Handling:**
+   - **Type Distinction:** A dedicated `toNullableLong(Number number)` method converts SQL numbers to `Long` while preserving `null` vs `0L`. A genuinely zero completed count (`0L`) is never conflated with a missing/null count (`null`).
+   - **Case 1 (Positive Enrollment & Completed Count Available):**
+     When `rawEnrollmentCount > 0` and `rawCompletedCount != null`:
+     $$\text{dropoutCount} = \max(0, \text{rawEnrollmentCount} - \text{rawCompletedCount})$$
+     $$\text{dropoutRatePct} = \text{AnalyticsCalculationUtils.calculatePercentage}(\text{dropoutCount}, \text{rawEnrollmentCount})$$
+     (e.g., 200 enrollment and 160 completed yields 20.00%; 100 enrollment and 0 completed yields 100.00%).
+   - **Case 2 (Positive Enrollment, Null Completed Count with Completion Rate Fallback):**
+     When `rawEnrollmentCount > 0`, `rawCompletedCount == null`, and `completionRatePct != null`:
+     $$\text{dropoutRatePct} = (100.00 - \text{completionRatePct}).\text{setScale}(2, \text{RoundingMode.HALF\_UP})$$
+     (e.g., 100 enrollment, null completed count, and 85.50% completion rate yields exactly 14.50% dropout).
+   - **Case 3 (Positive Enrollment, Null Completed Count and Null Completion Rate):**
+     When `rawEnrollmentCount > 0`, `rawCompletedCount == null`, and `completionRatePct == null`:
+     $$\text{dropoutRatePct} = \text{null}$$
+   - **Case 4 (Zero or Null Enrollment):**
+     When `rawEnrollmentCount == null` or `rawEnrollmentCount <= 0`:
+     $$\text{dropoutRatePct} = \text{null}$$
+   - **No Count Fabrication in DTO:** `CourseEmployabilityResponse.completedCount` receives `rawCompletedCount`, preserving `null` when the source projection is null and `0L` when genuine zero.
 3. **No Redundant Re-Aggregation:** Pre-computed view percentages (`completionRatePct`, `certificationRatePct`, `placementRatePct`, `employmentRatePct`) are mapped directly from the projection without erroneous averaging.
 
 ---
@@ -336,10 +348,10 @@ mvn test "-Dtest=MysqlConnectionTest" -f backend/pom.xml
 ```bash
 mvn test "-Dtest=InstitutionalAnalyticsServiceTest,InstitutionalAnalyticsControllerTest,InstitutionalAnalyticsIntegrationTest,DashboardDtoContractTest" -f backend/pom.xml
 ```
-- **Result:** Tests run: 28, Failures: 0, Errors: 0, Skipped: 0 (BUILD SUCCESS, 56.8s).
+- **Result:** Tests run: 32, Failures: 0, Errors: 0, Skipped: 0 (BUILD SUCCESS, 36.7s).
 - **Breakdown:**
   - `InstitutionalAnalyticsControllerTest`: 4 tests (including parameterized suites), 0 failures.
-  - `InstitutionalAnalyticsServiceTest`: 8 tests, 0 failures.
+  - `InstitutionalAnalyticsServiceTest`: 12 tests (including 6 dropout null-safety permutation tests), 0 failures.
   - `InstitutionalAnalyticsIntegrationTest`: 6 live database tests against `SIH26135_TEST`, 0 failures.
   - `DashboardDtoContractTest`: 10 tests, 0 failures.
 
@@ -354,8 +366,8 @@ mvn test "-Dtest=ResponseEnvelopeAlignmentContractTest,ControllerPathQueryHeader
 ```bash
 mvn test -f backend/pom.xml
 ```
-- **Result:** Tests run: 1163, Failures: 0, Errors: 0, Skipped: 0 (BUILD SUCCESS, 02:18 min).
-- **Zero Regressions:** All 1,163 automated tests passed cleanly.
+- **Result:** Tests run: 1167, Failures: 0, Errors: 0, Skipped: 0 (BUILD SUCCESS, 02:13 min).
+- **Zero Regressions:** All 1,167 automated tests passed cleanly.
 
 ---
 
@@ -434,6 +446,6 @@ git diff --check
 - [x] No schema changes, migrations, or DDL introduced.
 - [x] No unrelated modifications made.
 - [x] No Git stage/commit/push/reset/stash/clean action performed.
-- [x] Focused tests (28) and full regression tests (1,163) passed cleanly.
+- [x] Focused tests (32) and full regression tests (1,167) passed cleanly.
 - [x] `git diff --check` passes with zero whitespace defects.
 - [x] Detailed Phase 27.5 report created.
