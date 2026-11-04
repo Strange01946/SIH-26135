@@ -253,4 +253,105 @@ class DashboardDtoContractTest {
     DistributionBreakdownResponse deserialized = objectMapper.readValue(json, DistributionBreakdownResponse.class);
     assertThat(deserialized).isEqualTo(full);
   }
+
+  @Test
+  @DisplayName("ProviderPerformanceResponse: instantiation, getters, and JSON roundtrip")
+  void testProviderPerformanceResponseContract() throws Exception {
+    ProviderPerformanceResponse dto = new ProviderPerformanceResponse(
+        10L,
+        "TP-001",
+        "Apex Training Institute",
+        1500L,
+        1400L,
+        1350L,
+        1300L,
+        1100L,
+        1050L,
+        new BigDecimal("90.00"),
+        new BigDecimal("86.67"),
+        new BigDecimal("73.33"),
+        new BigDecimal("70.00"),
+        250L,
+        1
+    );
+
+    assertThat(dto.providerId()).isEqualTo(10L);
+    assertThat(dto.providerCode()).isEqualTo("TP-001");
+    assertThat(dto.providerName()).isEqualTo("Apex Training Institute");
+    assertThat(dto.enrollmentCount()).isEqualTo(1500L);
+    assertThat(dto.traineeCount()).isEqualTo(1400L);
+    assertThat(dto.completedCount()).isEqualTo(1350L);
+    assertThat(dto.certifiedCount()).isEqualTo(1300L);
+    assertThat(dto.joinedPlacementCount()).isEqualTo(1100L);
+    assertThat(dto.employedCount()).isEqualTo(1050L);
+    assertThat(dto.completionRatePct()).isEqualByComparingTo(new BigDecimal("90.00"));
+    assertThat(dto.certificationRatePct()).isEqualByComparingTo(new BigDecimal("86.67"));
+    assertThat(dto.placementRatePct()).isEqualByComparingTo(new BigDecimal("73.33"));
+    assertThat(dto.employmentRatePct()).isEqualByComparingTo(new BigDecimal("70.00"));
+    assertThat(dto.activeBatchCapacity()).isEqualTo(250L);
+    assertThat(dto.rank()).isEqualTo(1);
+
+    String json = objectMapper.writeValueAsString(dto);
+    assertThat(json).contains("\"providerCode\":\"TP-001\"");
+    assertThat(json).contains("\"rank\":1");
+
+    ProviderPerformanceResponse deserialized = objectMapper.readValue(json, ProviderPerformanceResponse.class);
+    assertThat(deserialized).isEqualTo(dto);
+  }
+
+  @Test
+  @DisplayName("CourseEmployabilityResponse: instantiation, getters, and JSON roundtrip")
+  void testCourseEmployabilityResponseContract() throws Exception {
+    CourseEmployabilityResponse dto = new CourseEmployabilityResponse(
+        50L,
+        "CRS-DATA-ENG",
+        "Data Engineering Specialist",
+        3L,
+        "NSQF-5",
+        "NSQF Level 5",
+        5,
+        800L,
+        750L,
+        720L,
+        700L,
+        600L,
+        580L,
+        new BigDecimal("90.00"),
+        new BigDecimal("87.50"),
+        new BigDecimal("75.00"),
+        new BigDecimal("72.50"),
+        new BigDecimal("10.00"),
+        new BigDecimal("45000.00"),
+        1
+    );
+
+    assertThat(dto.courseId()).isEqualTo(50L);
+    assertThat(dto.courseCode()).isEqualTo("CRS-DATA-ENG");
+    assertThat(dto.courseName()).isEqualTo("Data Engineering Specialist");
+    assertThat(dto.qualificationLevelId()).isEqualTo(3L);
+    assertThat(dto.qualificationLevelCode()).isEqualTo("NSQF-5");
+    assertThat(dto.qualificationLevelName()).isEqualTo("NSQF Level 5");
+    assertThat(dto.nsqfLevel()).isEqualTo(5);
+    assertThat(dto.enrollmentCount()).isEqualTo(800L);
+    assertThat(dto.traineeCount()).isEqualTo(750L);
+    assertThat(dto.completedCount()).isEqualTo(720L);
+    assertThat(dto.certifiedCount()).isEqualTo(700L);
+    assertThat(dto.joinedPlacementCount()).isEqualTo(600L);
+    assertThat(dto.employedCount()).isEqualTo(580L);
+    assertThat(dto.completionRatePct()).isEqualByComparingTo(new BigDecimal("90.00"));
+    assertThat(dto.certificationRatePct()).isEqualByComparingTo(new BigDecimal("87.50"));
+    assertThat(dto.placementRatePct()).isEqualByComparingTo(new BigDecimal("75.00"));
+    assertThat(dto.employmentRatePct()).isEqualByComparingTo(new BigDecimal("72.50"));
+    assertThat(dto.dropoutRatePct()).isEqualByComparingTo(new BigDecimal("10.00"));
+    assertThat(dto.avgStartingWage()).isEqualByComparingTo(new BigDecimal("45000.00"));
+    assertThat(dto.rank()).isEqualTo(1);
+
+    String json = objectMapper.writeValueAsString(dto);
+    assertThat(json).contains("\"courseCode\":\"CRS-DATA-ENG\"");
+    assertThat(json).contains("\"dropoutRatePct\":10.00");
+    assertThat(json).contains("\"avgStartingWage\":45000.00");
+
+    CourseEmployabilityResponse deserialized = objectMapper.readValue(json, CourseEmployabilityResponse.class);
+    assertThat(deserialized).isEqualTo(dto);
+  }
 }
