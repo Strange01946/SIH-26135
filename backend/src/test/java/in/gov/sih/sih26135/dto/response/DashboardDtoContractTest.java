@@ -849,4 +849,122 @@ class DashboardDtoContractTest {
         objectMapper.readValue(json, AttritionDashboardResponse.class);
     assertThat(deserialized).isEqualTo(dashboard);
   }
+
+  @Test
+  @DisplayName("TopSkillGapResponse: instantiation, getters, and JSON roundtrip")
+  void testTopSkillGapResponseContract() throws Exception {
+    TopSkillGapResponse dto = new TopSkillGapResponse(
+        10L,
+        "SKILL-JAVA",
+        "Java Enterprise Development",
+        5L,
+        "CRITICAL",
+        120L,
+        95L,
+        78L,
+        new BigDecimal("2.35"),
+        null,
+        null,
+        null,
+        null
+    );
+
+    assertThat(dto.skillId()).isEqualTo(10L);
+    assertThat(dto.skillCode()).isEqualTo("SKILL-JAVA");
+    assertThat(dto.skillName()).isEqualTo("Java Enterprise Development");
+    assertThat(dto.skillGapSeverityId()).isEqualTo(5L);
+    assertThat(dto.severityCode()).isEqualTo("CRITICAL");
+    assertThat(dto.gapCount()).isEqualTo(120L);
+    assertThat(dto.traineeCount()).isEqualTo(95L);
+    assertThat(dto.currentGapCount()).isEqualTo(78L);
+    assertThat(dto.avgGapLevelDelta()).isEqualByComparingTo(new BigDecimal("2.35"));
+    assertThat(dto.sectorId()).isNull();
+    assertThat(dto.sectorName()).isNull();
+    assertThat(dto.jobRoleId()).isNull();
+    assertThat(dto.jobRoleName()).isNull();
+
+    String json = objectMapper.writeValueAsString(dto);
+    assertThat(json).contains("\"skillCode\":\"SKILL-JAVA\"");
+    assertThat(json).contains("\"severityCode\":\"CRITICAL\"");
+    assertThat(json).contains("\"avgGapLevelDelta\":2.35");
+
+    TopSkillGapResponse deserialized = objectMapper.readValue(json, TopSkillGapResponse.class);
+    assertThat(deserialized).isEqualTo(dto);
+  }
+
+  @Test
+  @DisplayName("SkillGapSeverityBreakdownResponse: instantiation, getters, and JSON roundtrip")
+  void testSkillGapSeverityBreakdownResponseContract() throws Exception {
+    SkillGapSeverityBreakdownResponse dto = new SkillGapSeverityBreakdownResponse(
+        "CRITICAL",
+        "Critical",
+        150L,
+        130L,
+        140L,
+        105L,
+        new BigDecimal("37.50"),
+        new BigDecimal("75.00")
+    );
+
+    assertThat(dto.severityCode()).isEqualTo("CRITICAL");
+    assertThat(dto.severityName()).isEqualTo("Critical");
+    assertThat(dto.currentGapCount()).isEqualTo(150L);
+    assertThat(dto.traineeCount()).isEqualTo(130L);
+    assertThat(dto.recommendationCount()).isEqualTo(140L);
+    assertThat(dto.acceptedRecommendationCount()).isEqualTo(105L);
+    assertThat(dto.sharePct()).isEqualByComparingTo(new BigDecimal("37.50"));
+    assertThat(dto.acceptanceRatePct()).isEqualByComparingTo(new BigDecimal("75.00"));
+
+    String json = objectMapper.writeValueAsString(dto);
+    assertThat(json).contains("\"severityCode\":\"CRITICAL\"");
+    assertThat(json).contains("\"sharePct\":37.50");
+    assertThat(json).contains("\"acceptanceRatePct\":75.00");
+
+    SkillGapSeverityBreakdownResponse deserialized =
+        objectMapper.readValue(json, SkillGapSeverityBreakdownResponse.class);
+    assertThat(deserialized).isEqualTo(dto);
+  }
+
+  @Test
+  @DisplayName("SkillGapDashboardResponse: instantiation, immutability, and JSON roundtrip")
+  void testSkillGapDashboardResponseContract() throws Exception {
+    TopSkillGapResponse topGap = new TopSkillGapResponse(
+        10L, "SKILL-JAVA", "Java Enterprise Development",
+        5L, "CRITICAL", 120L, 95L, 78L, new BigDecimal("2.35"),
+        null, null, null, null
+    );
+
+    SkillGapSeverityBreakdownResponse sev = new SkillGapSeverityBreakdownResponse(
+        "CRITICAL", "Critical", 150L, 130L, 140L, 105L,
+        new BigDecimal("37.50"), new BigDecimal("75.00")
+    );
+
+    SkillGapDashboardResponse dashboard = new SkillGapDashboardResponse(
+        400L,
+        320L,
+        350L,
+        260L,
+        new BigDecimal("74.29"),
+        List.of(topGap),
+        List.of(sev)
+    );
+
+    assertThat(dashboard.totalCurrentGaps()).isEqualTo(400L);
+    assertThat(dashboard.totalAffectedTrainees()).isEqualTo(320L);
+    assertThat(dashboard.totalRecommendations()).isEqualTo(350L);
+    assertThat(dashboard.totalAcceptedRecommendations()).isEqualTo(260L);
+    assertThat(dashboard.overallAcceptanceRatePct()).isEqualByComparingTo(new BigDecimal("74.29"));
+    assertThat(dashboard.topSkillGaps()).hasSize(1).containsExactly(topGap);
+    assertThat(dashboard.severityBreakdown()).hasSize(1).containsExactly(sev);
+
+    String json = objectMapper.writeValueAsString(dashboard);
+    assertThat(json).contains("\"totalCurrentGaps\":400");
+    assertThat(json).contains("\"overallAcceptanceRatePct\":74.29");
+    assertThat(json).contains("\"topSkillGaps\"");
+    assertThat(json).contains("\"severityBreakdown\"");
+
+    SkillGapDashboardResponse deserialized =
+        objectMapper.readValue(json, SkillGapDashboardResponse.class);
+    assertThat(deserialized).isEqualTo(dashboard);
+  }
 }
