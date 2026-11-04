@@ -166,12 +166,12 @@ public class ControllerPathQueryHeaderValidationTest {
     }
 
     @Test
-    @DisplayName("Audit 1.1: All 55 REST controllers exist and declare class-level @Validated")
+    @DisplayName("Audit 1.1: All production REST controllers exist and declare class-level @Validated")
     void testAllControllersDeclareClassLevelValidated() throws Exception {
       List<Class<?>> controllers = getAllProjectControllers();
       assertThat(controllers)
-          .as("Exactly 55 application REST controllers must be present")
-          .hasSize(55);
+          .as("Exactly 56 application REST controllers must be present (55 baseline + ExecutiveDashboardController)")
+          .hasSize(56);
 
       List<String> missingValidated = new ArrayList<>();
       for (Class<?> controller : controllers) {

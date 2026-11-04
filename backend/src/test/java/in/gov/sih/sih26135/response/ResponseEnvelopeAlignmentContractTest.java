@@ -135,7 +135,7 @@ public class ResponseEnvelopeAlignmentContractTest {
   class RestControllerReflectionAuditTests {
 
     @Test
-    @DisplayName("Verify exactly 55 production REST controllers exist and all 629 endpoints return ApiResponse envelope")
+    @DisplayName("Verify production REST controllers exist and all endpoints return ApiResponse envelope")
     void testAuditAll55ControllersAnd629EndpointsReturnApiResponseEnvelope() {
       Map<String, Object> controllerBeans = applicationContext.getBeansWithAnnotation(RestController.class);
 
@@ -150,10 +150,10 @@ public class ResponseEnvelopeAlignmentContractTest {
           .sorted(Comparator.comparing(Class::getName))
           .toList();
 
-      // Baseline comparison: User specification noted 54 as baseline; verified actual production count is 55.
+      // Baseline comparison: User specification noted 54 as baseline; verified actual production count is 56 (55 baseline + ExecutiveDashboardController).
       assertThat(productionControllers)
-          .as("Audit must discover exactly 55 production REST controllers across core domain, analytics, auth, and workflows")
-          .hasSize(55);
+          .as("Audit must discover exactly 56 production REST controllers across core domain, analytics, auth, and workflows")
+          .hasSize(56);
 
       int totalAuditedEndpoints = 0;
       List<String> violations = new ArrayList<>();
@@ -209,8 +209,8 @@ public class ResponseEnvelopeAlignmentContractTest {
           .isEmpty();
 
       assertThat(totalAuditedEndpoints)
-          .as("Audit must inspect and verify exactly 629 endpoints across all 55 controllers")
-          .isEqualTo(629);
+          .as("Audit must inspect and verify all endpoints across all controllers")
+          .isEqualTo(634);
     }
 
     @Test
