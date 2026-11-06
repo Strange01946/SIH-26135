@@ -17,6 +17,7 @@ public class DistrictOutcomeSummaryServiceImpl implements DistrictOutcomeSummary
 
   private final DistrictOutcomeSummaryRepository repository;
   private final DistrictOutcomeSummaryMapper mapper;
+  private in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate;
 
   public DistrictOutcomeSummaryServiceImpl(
       DistrictOutcomeSummaryRepository repository,
@@ -25,8 +26,20 @@ public class DistrictOutcomeSummaryServiceImpl implements DistrictOutcomeSummary
     this.mapper = mapper;
   }
 
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  public void setCacheDelegate(in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate) {
+    this.cacheDelegate = cacheDelegate;
+  }
+
   @Override
   public List<DistrictOutcomeSummaryResponse> getAllDistrictOutcomes() {
+    if (cacheDelegate != null) {
+      return cacheDelegate.getSummaryList("district:all", this::computeAllDistrictOutcomes);
+    }
+    return computeAllDistrictOutcomes();
+  }
+
+  private List<DistrictOutcomeSummaryResponse> computeAllDistrictOutcomes() {
     return repository.findAll().stream()
         .map(mapper::toResponse)
         .toList();
@@ -34,6 +47,13 @@ public class DistrictOutcomeSummaryServiceImpl implements DistrictOutcomeSummary
 
   @Override
   public List<DistrictOutcomeSummaryResponse> getAllDistrictOutcomesOrderByEnrollmentCountDesc() {
+    if (cacheDelegate != null) {
+      return cacheDelegate.getSummaryList("district:leaderboard", this::computeDistrictLeaderboard);
+    }
+    return computeDistrictLeaderboard();
+  }
+
+  private List<DistrictOutcomeSummaryResponse> computeDistrictLeaderboard() {
     return repository.findAllByOrderByEnrollmentCountDesc().stream()
         .map(mapper::toResponse)
         .toList();

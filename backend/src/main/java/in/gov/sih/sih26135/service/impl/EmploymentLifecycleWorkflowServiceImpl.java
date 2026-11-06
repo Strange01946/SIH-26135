@@ -39,6 +39,12 @@ public class EmploymentLifecycleWorkflowServiceImpl implements EmploymentLifecyc
   private final SalaryHistoryService salaryHistoryService;
   private final TraineeUnemploymentEventRepository traineeUnemploymentEventRepository;
   private final WorkflowSecurityScopeValidator scopeValidator;
+  private in.gov.sih.sih26135.config.cache.AnalyticsCacheEvictionService evictionService;
+
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  public void setEvictionService(in.gov.sih.sih26135.config.cache.AnalyticsCacheEvictionService evictionService) {
+    this.evictionService = evictionService;
+  }
 
   @Autowired
   public EmploymentLifecycleWorkflowServiceImpl(
@@ -213,6 +219,9 @@ public class EmploymentLifecycleWorkflowServiceImpl implements EmploymentLifecyc
       unemploymentEvent = traineeUnemploymentEventService.createUnemploymentEvent(unempReq);
     }
 
+    if (evictionService != null) {
+      evictionService.evictOnEmploymentExitOrTransition(this);
+    }
     return new EmploymentExitAndUnemploymentResponse(exitEvent, unemploymentEvent);
   }
 
@@ -334,6 +343,9 @@ public class EmploymentLifecycleWorkflowServiceImpl implements EmploymentLifecyc
       initialSalary = salaryHistoryService.createSalaryHistory(salaryReq);
     }
 
+    if (evictionService != null) {
+      evictionService.evictOnEmploymentExitOrTransition(this);
+    }
     return new UnemploymentToEmploymentTransitionResponse(updatedUnemp, newEmployment, initialSalary);
   }
 

@@ -64,6 +64,12 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
   private final TraineeRepository traineeRepository;
   private final SkillGapRecommendationMapper skillGapRecommendationMapper;
   private final WorkflowSecurityScopeValidator scopeValidator;
+  private in.gov.sih.sih26135.config.cache.AnalyticsCacheEvictionService evictionService;
+
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  public void setEvictionService(in.gov.sih.sih26135.config.cache.AnalyticsCacheEvictionService evictionService) {
+    this.evictionService = evictionService;
+  }
 
   @Autowired
   public SkillGapRemediationWorkflowServiceImpl(
@@ -235,6 +241,9 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
       }
     }
 
+    if (evictionService != null) {
+      evictionService.evictOnSkillGapRemediation(this);
+    }
     return new RecordSkillGapAssessmentWithGapsResponse(assessment, createdGaps, createdRecs);
   }
 
@@ -336,6 +345,9 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
     log.info("Skill gap recommendation id={} accepted by user id={}", recommendationId, authUserId);
 
     SkillGapRecommendation saved = skillGapRecommendationRepository.save(rec);
+    if (evictionService != null) {
+      evictionService.evictOnSkillGapRemediation(this);
+    }
     return skillGapRecommendationMapper.toResponse(saved);
   }
 
@@ -442,6 +454,9 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
     log.info("Skill gap recommendation id={} rejected by user id={}", recommendationId, authUserId);
 
     SkillGapRecommendation saved = skillGapRecommendationRepository.save(rec);
+    if (evictionService != null) {
+      evictionService.evictOnSkillGapRemediation(this);
+    }
     return skillGapRecommendationMapper.toResponse(saved);
   }
 
@@ -640,6 +655,9 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
 
     log.info("Enrolled trainee id={} in remediation course id={} for skill gap id={}",
         gapTraineeId, enrolReq.getCourseId(), gapEntity.getId());
+    if (evictionService != null) {
+      evictionService.evictOnSkillGapRemediation(this);
+    }
     return new SkillGapRemediationEnrollmentResponse(rec, createdEnrollment);
   }
 

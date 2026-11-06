@@ -50,6 +50,7 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
 
   private final EconomicOutcomeDashboardRepository repository;
   private final WorkflowSecurityScopeValidator scopeValidator;
+  private in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate;
 
   public EconomicOutcomeDashboardServiceImpl(
       EconomicOutcomeDashboardRepository repository,
@@ -58,9 +59,21 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
     this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  public void setCacheDelegate(in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate) {
+    this.cacheDelegate = cacheDelegate;
+  }
+
   @Override
   public LeaderboardResponse<EmployerHiringPerformanceResponse> getEmployerLeaderboard() {
     scopeValidator.validateNationwideScope();
+    if (cacheDelegate != null) {
+      return cacheDelegate.getEmployerLeaderboard(null, this::computeUnfilteredEmployerLeaderboard);
+    }
+    return computeUnfilteredEmployerLeaderboard();
+  }
+
+  private LeaderboardResponse<EmployerHiringPerformanceResponse> computeUnfilteredEmployerLeaderboard() {
     List<EmployerHiringProjection> projections = repository.getFormalQ07EmployerLeaderboard();
     if (projections == null || projections.isEmpty()) {
       return LeaderboardResponse.of(EMPLOYER_RANKING_METRIC, Collections.emptyList());
@@ -88,6 +101,13 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
   @Override
   public EconomicOutcomeSummaryResponse getEconomicOutcomeSummary() {
     scopeValidator.validateNationwideScope();
+    if (cacheDelegate != null) {
+      return cacheDelegate.getEconomicOutcomeSummary(null, this::computeUnfilteredEconomicOutcomeSummary);
+    }
+    return computeUnfilteredEconomicOutcomeSummary();
+  }
+
+  private EconomicOutcomeSummaryResponse computeUnfilteredEconomicOutcomeSummary() {
     // 1. Wage Progression KPIs (Q10)
     WageProgressionResponse wageProgression = mapWageProgression(repository.getFormalQ10WageProgression());
 

@@ -44,6 +44,7 @@ public class DataIntegrityDashboardServiceImpl implements DataIntegrityDashboard
 
   private final DataIntegrityDashboardRepository repository;
   private final WorkflowSecurityScopeValidator scopeValidator;
+  private in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate;
 
   public DataIntegrityDashboardServiceImpl(
       DataIntegrityDashboardRepository repository,
@@ -52,9 +53,21 @@ public class DataIntegrityDashboardServiceImpl implements DataIntegrityDashboard
     this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  public void setCacheDelegate(in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate) {
+    this.cacheDelegate = cacheDelegate;
+  }
+
   @Override
   public VerificationDashboardResponse getVerificationDashboard() {
     scopeValidator.validateNationwideScope();
+    if (cacheDelegate != null) {
+      return cacheDelegate.getVerificationDashboard(null, this::computeUnfilteredVerificationDashboard);
+    }
+    return computeUnfilteredVerificationDashboard();
+  }
+
+  private VerificationDashboardResponse computeUnfilteredVerificationDashboard() {
     List<VerificationOutcomeProjection> outcomes = repository.getFormalQ21VerificationOutcomes();
     List<VerificationMethodEfficacyProjection> methodProjections = repository.getFormalQ22VerificationMethodEfficacy();
     VerificationOverallSummaryProjection summary = repository.getFormalQ21Q22OverallSummary();
@@ -218,6 +231,13 @@ public class DataIntegrityDashboardServiceImpl implements DataIntegrityDashboard
   @Override
   public FollowupDashboardResponse getFollowupDashboard() {
     scopeValidator.validateNationwideScope();
+    if (cacheDelegate != null) {
+      return cacheDelegate.getFollowupDashboard(null, this::computeUnfilteredFollowupDashboard);
+    }
+    return computeUnfilteredFollowupDashboard();
+  }
+
+  private FollowupDashboardResponse computeUnfilteredFollowupDashboard() {
     List<FollowupWaveProjection> waves = repository.getFormalQ19FollowupSuccessByWave();
     FollowupOverallSummaryProjection summary = repository.getFormalQ19OverallSummary();
 
@@ -341,6 +361,13 @@ public class DataIntegrityDashboardServiceImpl implements DataIntegrityDashboard
   @Override
   public SurveyDashboardResponse getSurveyDashboard() {
     scopeValidator.validateNationwideScope();
+    if (cacheDelegate != null) {
+      return cacheDelegate.getSurveyDashboard(null, this::computeUnfilteredSurveyDashboard);
+    }
+    return computeUnfilteredSurveyDashboard();
+  }
+
+  private SurveyDashboardResponse computeUnfilteredSurveyDashboard() {
     List<SurveyResponsePipelineProjection> pipeline = repository.getFormalQ20SurveyResponsePipeline();
     SurveyOverallSummaryProjection summary = repository.getFormalQ20OverallSummary();
 

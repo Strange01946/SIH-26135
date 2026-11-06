@@ -58,6 +58,12 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
   private final UserRepository userRepository;
   private final RefUserStatusRepository refUserStatusRepository;
   private WorkflowSecurityScopeValidator scopeValidator;
+  private in.gov.sih.sih26135.config.cache.AnalyticsCacheEvictionService evictionService;
+
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  public void setEvictionService(in.gov.sih.sih26135.config.cache.AnalyticsCacheEvictionService evictionService) {
+    this.evictionService = evictionService;
+  }
 
   @Autowired
   public VerificationWorkflowServiceImpl(
@@ -489,6 +495,9 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
       updatedEmployment = employmentRecordService.updateEmploymentRecord(currentEmp.id(), updateEmp);
     }
 
+    if (evictionService != null) {
+      evictionService.evictOnVerificationVerdict(this);
+    }
     return new RecordVerificationVerdictResponse(verification, evidenceList, updatedRequest, updatedEmployment);
   }
 

@@ -36,6 +36,7 @@ public class RetentionAttritionDashboardServiceImpl implements RetentionAttritio
 
   private final RetentionAttritionDashboardRepository repository;
   private final WorkflowSecurityScopeValidator scopeValidator;
+  private in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate;
 
   public RetentionAttritionDashboardServiceImpl(
       RetentionAttritionDashboardRepository repository,
@@ -44,9 +45,21 @@ public class RetentionAttritionDashboardServiceImpl implements RetentionAttritio
     this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  public void setCacheDelegate(in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate) {
+    this.cacheDelegate = cacheDelegate;
+  }
+
   @Override
   public LongitudinalRetentionResponse getLongitudinalRetention() {
     scopeValidator.validateNationwideScope();
+    if (cacheDelegate != null) {
+      return cacheDelegate.getLongitudinalRetention(null, this::computeUnfilteredLongitudinalRetention);
+    }
+    return computeUnfilteredLongitudinalRetention();
+  }
+
+  private LongitudinalRetentionResponse computeUnfilteredLongitudinalRetention() {
     RetentionSurvivalProjection projection = repository.getFormalQ12RetentionSurvival();
     if (projection == null) {
       return new LongitudinalRetentionResponse(0L, null, List.of());
@@ -90,6 +103,13 @@ public class RetentionAttritionDashboardServiceImpl implements RetentionAttritio
   @Override
   public AttritionDashboardResponse getAttritionDashboard() {
     scopeValidator.validateNationwideScope();
+    if (cacheDelegate != null) {
+      return cacheDelegate.getAttritionDashboard(null, this::computeUnfilteredAttritionDashboard);
+    }
+    return computeUnfilteredAttritionDashboard();
+  }
+
+  private AttritionDashboardResponse computeUnfilteredAttritionDashboard() {
     UnemploymentSummaryProjection uProj = repository.getFormalQ15UnemploymentSummary();
     List<UnemploymentReasonProjection> reasonProjs = repository.getFormalQ16UnemploymentReasons();
     List<AttritionReasonProjection> exitProjs = repository.getFormalQ17AttritionReasons();

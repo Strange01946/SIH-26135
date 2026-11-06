@@ -50,6 +50,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
 
   private final GeographicDashboardRepository geographicDashboardRepository;
   private final WorkflowSecurityScopeValidator scopeValidator;
+  private in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate;
 
   public GeographicDashboardServiceImpl(
       GeographicDashboardRepository geographicDashboardRepository,
@@ -58,9 +59,21 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  public void setCacheDelegate(in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate) {
+    this.cacheDelegate = cacheDelegate;
+  }
+
   @Override
   public GeographicOverviewResponse getNationalGeographicOverview() {
     scopeValidator.validateNationwideScope();
+    if (cacheDelegate != null) {
+      return cacheDelegate.getNationalGeographicOverview(null, this::computeUnfilteredNationalOverview);
+    }
+    return computeUnfilteredNationalOverview();
+  }
+
+  private GeographicOverviewResponse computeUnfilteredNationalOverview() {
     List<StatePerformanceProjection> stateProjections = geographicDashboardRepository.getStateSummaries();
     List<DistrictPerformanceProjection> q06Projections = geographicDashboardRepository.getFormalQ06DistrictOutcomes();
 
@@ -120,7 +133,13 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     if (!geographicDashboardRepository.existsStateById(stateId)) {
       throw new ResourceNotFoundException("State not found with ID: " + stateId);
     }
+    if (cacheDelegate != null) {
+      return cacheDelegate.getStateGeographicAnalytics(stateId, null, () -> computeUnfilteredStateGeography(stateId));
+    }
+    return computeUnfilteredStateGeography(stateId);
+  }
 
+  private StateGeographicResponse computeUnfilteredStateGeography(Long stateId) {
     StatePerformanceProjection stateProj = geographicDashboardRepository.getStateSummaryById(stateId);
     List<DistrictPerformanceProjection> districtProjections =
         geographicDashboardRepository.getDistrictsByStateId(stateId);
@@ -178,7 +197,13 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     if (!geographicDashboardRepository.existsDistrictById(districtId)) {
       throw new ResourceNotFoundException("District not found with ID: " + districtId);
     }
+    if (cacheDelegate != null) {
+      return cacheDelegate.getDistrictGeographicAnalytics(districtId, null, () -> computeUnfilteredDistrictGeography(districtId));
+    }
+    return computeUnfilteredDistrictGeography(districtId);
+  }
 
+  private DistrictGeographicResponse computeUnfilteredDistrictGeography(Long districtId) {
     DistrictPerformanceProjection districtProj = geographicDashboardRepository.getDistrictById(districtId);
     List<TrainingCenterSummaryProjection> centerProjs =
         geographicDashboardRepository.getTrainingCentersByDistrictId(districtId);
@@ -267,6 +292,13 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     }
     scopeValidator.validateNationwideScope();
     scopeValidator.validateAnalyticsFilterScope(criteria);
+    if (cacheDelegate != null) {
+      return cacheDelegate.getNationalGeographicOverview(criteria, () -> computeFilteredNationalOverview(criteria));
+    }
+    return computeFilteredNationalOverview(criteria);
+  }
+
+  private GeographicOverviewResponse computeFilteredNationalOverview(AnalyticsFilterCriteria criteria) {
     List<StatePerformanceProjection> stateProjections = geographicDashboardRepository.getStateSummaries(criteria);
     List<DistrictPerformanceProjection> q06Projections = geographicDashboardRepository.getFormalQ06DistrictOutcomes(criteria);
 
@@ -330,7 +362,13 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     if (!geographicDashboardRepository.existsStateById(stateId)) {
       throw new ResourceNotFoundException("State not found with ID: " + stateId);
     }
+    if (cacheDelegate != null) {
+      return cacheDelegate.getStateGeographicAnalytics(stateId, criteria, () -> computeFilteredStateGeography(stateId, criteria));
+    }
+    return computeFilteredStateGeography(stateId, criteria);
+  }
 
+  private StateGeographicResponse computeFilteredStateGeography(Long stateId, AnalyticsFilterCriteria criteria) {
     StatePerformanceProjection stateProj = geographicDashboardRepository.getStateSummaryById(stateId, criteria);
     List<DistrictPerformanceProjection> districtProjections =
         geographicDashboardRepository.getDistrictsByStateId(stateId, criteria);
@@ -390,7 +428,13 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     if (!geographicDashboardRepository.existsDistrictById(districtId)) {
       throw new ResourceNotFoundException("District not found with ID: " + districtId);
     }
+    if (cacheDelegate != null) {
+      return cacheDelegate.getDistrictGeographicAnalytics(districtId, criteria, () -> computeFilteredDistrictGeography(districtId, criteria));
+    }
+    return computeFilteredDistrictGeography(districtId, criteria);
+  }
 
+  private DistrictGeographicResponse computeFilteredDistrictGeography(Long districtId, AnalyticsFilterCriteria criteria) {
     DistrictPerformanceProjection districtProj = geographicDashboardRepository.getDistrictById(districtId, criteria);
     List<TrainingCenterSummaryProjection> centerProjs =
         geographicDashboardRepository.getTrainingCentersByDistrictId(districtId);

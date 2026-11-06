@@ -35,6 +35,7 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
 
   private final InstitutionalAnalyticsRepository institutionalAnalyticsRepository;
   private final WorkflowSecurityScopeValidator scopeValidator;
+  private in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate;
 
   public InstitutionalAnalyticsServiceImpl(
       InstitutionalAnalyticsRepository institutionalAnalyticsRepository,
@@ -43,9 +44,21 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
     this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  public void setCacheDelegate(in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate) {
+    this.cacheDelegate = cacheDelegate;
+  }
+
   @Override
   public LeaderboardResponse<ProviderPerformanceResponse> getProviderLeaderboard() {
     scopeValidator.validateNationwideScope();
+    if (cacheDelegate != null) {
+      return cacheDelegate.getProviderLeaderboard(null, this::computeUnfilteredProviderLeaderboard);
+    }
+    return computeUnfilteredProviderLeaderboard();
+  }
+
+  private LeaderboardResponse<ProviderPerformanceResponse> computeUnfilteredProviderLeaderboard() {
     List<ProviderPerformanceProjection> projections =
         institutionalAnalyticsRepository.getFormalQ04ProviderLeaderboard();
 
@@ -81,6 +94,13 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
   @Override
   public LeaderboardResponse<CourseEmployabilityResponse> getCourseLeaderboard() {
     scopeValidator.validateNationwideScope();
+    if (cacheDelegate != null) {
+      return cacheDelegate.getCourseEmployabilityScorecard(null, this::computeUnfilteredCourseLeaderboard);
+    }
+    return computeUnfilteredCourseLeaderboard();
+  }
+
+  private LeaderboardResponse<CourseEmployabilityResponse> computeUnfilteredCourseLeaderboard() {
     List<CourseEmployabilityProjection> projections =
         institutionalAnalyticsRepository.getFormalQ05CourseEmployability();
 
@@ -158,6 +178,13 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
     }
     scopeValidator.validateNationwideScope();
     scopeValidator.validateAnalyticsFilterScope(criteria);
+    if (cacheDelegate != null) {
+      return cacheDelegate.getProviderLeaderboard(criteria, () -> computeFilteredProviderLeaderboard(criteria));
+    }
+    return computeFilteredProviderLeaderboard(criteria);
+  }
+
+  private LeaderboardResponse<ProviderPerformanceResponse> computeFilteredProviderLeaderboard(AnalyticsFilterCriteria criteria) {
     List<ProviderPerformanceProjection> projections =
         institutionalAnalyticsRepository.getFormalQ04ProviderLeaderboard(criteria);
 
@@ -197,6 +224,13 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
     }
     scopeValidator.validateNationwideScope();
     scopeValidator.validateAnalyticsFilterScope(criteria);
+    if (cacheDelegate != null) {
+      return cacheDelegate.getCourseEmployabilityScorecard(criteria, () -> computeFilteredCourseLeaderboard(criteria));
+    }
+    return computeFilteredCourseLeaderboard(criteria);
+  }
+
+  private LeaderboardResponse<CourseEmployabilityResponse> computeFilteredCourseLeaderboard(AnalyticsFilterCriteria criteria) {
     List<CourseEmployabilityProjection> projections =
         institutionalAnalyticsRepository.getFormalQ05CourseEmployability(criteria);
 

@@ -17,6 +17,7 @@ public class ProviderOutcomeSummaryServiceImpl implements ProviderOutcomeSummary
 
   private final ProviderOutcomeSummaryRepository repository;
   private final ProviderOutcomeSummaryMapper mapper;
+  private in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate;
 
   public ProviderOutcomeSummaryServiceImpl(
       ProviderOutcomeSummaryRepository repository,
@@ -25,8 +26,20 @@ public class ProviderOutcomeSummaryServiceImpl implements ProviderOutcomeSummary
     this.mapper = mapper;
   }
 
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  public void setCacheDelegate(in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate) {
+    this.cacheDelegate = cacheDelegate;
+  }
+
   @Override
   public List<ProviderOutcomeSummaryResponse> getAllProviderOutcomes() {
+    if (cacheDelegate != null) {
+      return cacheDelegate.getSummaryList("provider:all", this::computeAllProviderOutcomes);
+    }
+    return computeAllProviderOutcomes();
+  }
+
+  private List<ProviderOutcomeSummaryResponse> computeAllProviderOutcomes() {
     return repository.findAll().stream()
         .map(mapper::toResponse)
         .toList();
@@ -34,6 +47,13 @@ public class ProviderOutcomeSummaryServiceImpl implements ProviderOutcomeSummary
 
   @Override
   public List<ProviderOutcomeSummaryResponse> getAllProviderOutcomesOrderByEnrollmentCountDesc() {
+    if (cacheDelegate != null) {
+      return cacheDelegate.getSummaryList("provider:leaderboard", this::computeProviderLeaderboard);
+    }
+    return computeProviderLeaderboard();
+  }
+
+  private List<ProviderOutcomeSummaryResponse> computeProviderLeaderboard() {
     return repository.findAllByOrderByEnrollmentCountDesc().stream()
         .map(mapper::toResponse)
         .toList();

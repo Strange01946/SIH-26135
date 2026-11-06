@@ -48,6 +48,12 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
   private final SkillGapRepository skillGapRepository;
   private final RefSkillGapStatusRepository refSkillGapStatusRepository;
   private final WorkflowSecurityScopeValidator scopeValidator;
+  private in.gov.sih.sih26135.config.cache.AnalyticsCacheEvictionService evictionService;
+
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  public void setEvictionService(in.gov.sih.sih26135.config.cache.AnalyticsCacheEvictionService evictionService) {
+    this.evictionService = evictionService;
+  }
 
   @Autowired
   public TrainingOutcomeWorkflowServiceImpl(
@@ -247,6 +253,9 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
       }
     }
 
+    if (evictionService != null) {
+      evictionService.evictOnCertificationIssued(this);
+    }
     return new RecordAssessmentAndIssueCertificateResponse(result, certification, updatedEnrollment);
   }
 
@@ -265,14 +274,15 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
       return;
     }
 
-    // Find every skill taught by the completed course.
-    List<CourseSkill> courseSkills = courseSkillRepository.findByCourseId(courseId);
+    // Find every skill taught by the completed course via lightweight interface projection.
+    List<in.gov.sih.sih26135.repository.projection.CourseSkillIdOnlyProjection> courseSkills =
+        courseSkillRepository.findProjectedByCourseId(courseId);
     if (courseSkills == null || courseSkills.isEmpty()) {
       return;
     }
     Set<Long> taughtSkillIds = courseSkills.stream()
         .filter(cs -> cs != null && cs.getSkillId() != null)
-        .map(CourseSkill::getSkillId)
+        .map(in.gov.sih.sih26135.repository.projection.CourseSkillIdOnlyProjection::getSkillId)
         .collect(Collectors.toSet());
 
     if (taughtSkillIds.isEmpty()) {

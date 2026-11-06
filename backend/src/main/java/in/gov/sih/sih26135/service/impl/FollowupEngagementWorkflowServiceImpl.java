@@ -34,6 +34,12 @@ public class FollowupEngagementWorkflowServiceImpl implements FollowupEngagement
   private final CommunicationLogService communicationLogService;
   private final TraineeConsentService traineeConsentService;
   private final WorkflowSecurityScopeValidator scopeValidator;
+  private in.gov.sih.sih26135.config.cache.AnalyticsCacheEvictionService evictionService;
+
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  public void setEvictionService(in.gov.sih.sih26135.config.cache.AnalyticsCacheEvictionService evictionService) {
+    this.evictionService = evictionService;
+  }
 
   @Autowired
   public FollowupEngagementWorkflowServiceImpl(
@@ -156,6 +162,9 @@ public class FollowupEngagementWorkflowServiceImpl implements FollowupEngagement
       updatedTask = followupTaskService.updateFollowupTask(task.getId(), updateTask);
     }
 
+    if (evictionService != null) {
+      evictionService.evictOnFollowupOrSurveySubmitted(this);
+    }
     return new RecordFollowupSurveyResponseResponse(surveyResponse, updatedTask);
   }
 

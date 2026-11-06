@@ -31,6 +31,7 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
 
   private final ExecutiveDashboardRepository executiveDashboardRepository;
   private final WorkflowSecurityScopeValidator scopeValidator;
+  private in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate;
 
   public ExecutiveDashboardServiceImpl(
       ExecutiveDashboardRepository executiveDashboardRepository,
@@ -39,9 +40,21 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
     this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  public void setCacheDelegate(in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate) {
+    this.cacheDelegate = cacheDelegate;
+  }
+
   @Override
   public DashboardKpiStripResponse getDashboardKpiStrip() {
     scopeValidator.validateNationwideScope();
+    if (cacheDelegate != null) {
+      return cacheDelegate.getDashboardKpiStrip(null, this::computeUnfilteredKpiStrip);
+    }
+    return computeUnfilteredKpiStrip();
+  }
+
+  private DashboardKpiStripResponse computeUnfilteredKpiStrip() {
     DashboardKpiProjection proj = executiveDashboardRepository.getExecutiveDashboardKpiStrip();
 
     Long traineeCount = toLong(proj != null ? proj.getTraineeCount() : null);
@@ -85,6 +98,13 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
   @Override
   public PipelineFunnelResponse getTrainingPipelineFunnel() {
     scopeValidator.validateNationwideScope();
+    if (cacheDelegate != null) {
+      return cacheDelegate.getTrainingPipelineFunnel(null, this::computeUnfilteredFunnel);
+    }
+    return computeUnfilteredFunnel();
+  }
+
+  private PipelineFunnelResponse computeUnfilteredFunnel() {
     PipelineFunnelProjection proj = executiveDashboardRepository.getTrainingPipelineConversionFunnel();
 
     Long enrollmentCount = toLong(proj != null ? proj.getEnrollmentCount() : null);
@@ -125,6 +145,13 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
   @Override
   public LeaderboardResponse<SchemeProgramPerformanceResponse> getSchemeProgramPerformanceMatrix() {
     scopeValidator.validateNationwideScope();
+    if (cacheDelegate != null) {
+      return cacheDelegate.getSchemeProgramPerformanceMatrix(null, this::computeUnfilteredSchemeMatrix);
+    }
+    return computeUnfilteredSchemeMatrix();
+  }
+
+  private LeaderboardResponse<SchemeProgramPerformanceResponse> computeUnfilteredSchemeMatrix() {
     List<SchemeProgramPerformanceProjection> projections = executiveDashboardRepository.getSchemeProgramPerformanceMatrix();
     if (projections == null || projections.isEmpty()) {
       return LeaderboardResponse.of("employmentRatePct", Collections.emptyList());
@@ -140,6 +167,13 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
   @Override
   public ExecutiveDashboardResponse getExecutiveDashboard() {
     scopeValidator.validateNationwideScope();
+    if (cacheDelegate != null) {
+      return cacheDelegate.getExecutiveDashboard(null, this::computeUnfilteredExecutiveDashboard);
+    }
+    return computeUnfilteredExecutiveDashboard();
+  }
+
+  private ExecutiveDashboardResponse computeUnfilteredExecutiveDashboard() {
     DashboardKpiStripResponse kpiStrip = getDashboardKpiStrip();
     PipelineFunnelResponse pipelineFunnel = getTrainingPipelineFunnel();
     LeaderboardResponse<SchemeProgramPerformanceResponse> schemeProgramMatrix = getSchemeProgramPerformanceMatrix();
@@ -154,6 +188,13 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
     }
     scopeValidator.validateNationwideScope();
     scopeValidator.validateAnalyticsFilterScope(criteria);
+    if (cacheDelegate != null) {
+      return cacheDelegate.getDashboardKpiStrip(criteria, () -> computeFilteredKpiStrip(criteria));
+    }
+    return computeFilteredKpiStrip(criteria);
+  }
+
+  private DashboardKpiStripResponse computeFilteredKpiStrip(AnalyticsFilterCriteria criteria) {
     DashboardKpiProjection proj = executiveDashboardRepository.getExecutiveDashboardKpiStrip(criteria);
 
     Long traineeCount = toLong(proj != null ? proj.getTraineeCount() : null);
@@ -201,6 +242,13 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
     }
     scopeValidator.validateNationwideScope();
     scopeValidator.validateAnalyticsFilterScope(criteria);
+    if (cacheDelegate != null) {
+      return cacheDelegate.getTrainingPipelineFunnel(criteria, () -> computeFilteredFunnel(criteria));
+    }
+    return computeFilteredFunnel(criteria);
+  }
+
+  private PipelineFunnelResponse computeFilteredFunnel(AnalyticsFilterCriteria criteria) {
     PipelineFunnelProjection proj = executiveDashboardRepository.getTrainingPipelineConversionFunnel(criteria);
 
     Long enrollmentCount = toLong(proj != null ? proj.getEnrollmentCount() : null);
@@ -245,6 +293,13 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
     }
     scopeValidator.validateNationwideScope();
     scopeValidator.validateAnalyticsFilterScope(criteria);
+    if (cacheDelegate != null) {
+      return cacheDelegate.getSchemeProgramPerformanceMatrix(criteria, () -> computeFilteredSchemeMatrix(criteria));
+    }
+    return computeFilteredSchemeMatrix(criteria);
+  }
+
+  private LeaderboardResponse<SchemeProgramPerformanceResponse> computeFilteredSchemeMatrix(AnalyticsFilterCriteria criteria) {
     List<SchemeProgramPerformanceProjection> projections = executiveDashboardRepository.getSchemeProgramPerformanceMatrix(criteria);
     if (projections == null || projections.isEmpty()) {
       return LeaderboardResponse.of("employmentRatePct", Collections.emptyList());
@@ -264,6 +319,13 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
     }
     scopeValidator.validateNationwideScope();
     scopeValidator.validateAnalyticsFilterScope(criteria);
+    if (cacheDelegate != null) {
+      return cacheDelegate.getExecutiveDashboard(criteria, () -> computeFilteredExecutiveDashboard(criteria));
+    }
+    return computeFilteredExecutiveDashboard(criteria);
+  }
+
+  private ExecutiveDashboardResponse computeFilteredExecutiveDashboard(AnalyticsFilterCriteria criteria) {
     DashboardKpiStripResponse kpiStrip = getDashboardKpiStrip(criteria);
     PipelineFunnelResponse pipelineFunnel = getTrainingPipelineFunnel(criteria);
     LeaderboardResponse<SchemeProgramPerformanceResponse> schemeProgramMatrix = getSchemeProgramPerformanceMatrix(criteria);

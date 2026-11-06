@@ -42,6 +42,12 @@ public class PlacementEmploymentWorkflowServiceImpl implements PlacementEmployme
   private final RefPlacementStatusRepository refPlacementStatusRepository;
   private final RefJoiningStatusRepository refJoiningStatusRepository;
   private final WorkflowSecurityScopeValidator scopeValidator;
+  private in.gov.sih.sih26135.config.cache.AnalyticsCacheEvictionService evictionService;
+
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  public void setEvictionService(in.gov.sih.sih26135.config.cache.AnalyticsCacheEvictionService evictionService) {
+    this.evictionService = evictionService;
+  }
 
   @Autowired
   public PlacementEmploymentWorkflowServiceImpl(
@@ -153,7 +159,7 @@ public class PlacementEmploymentWorkflowServiceImpl implements PlacementEmployme
       }
     }
 
-    if (employmentRecordRepository.findByPlacementRecordId(placement.id()).isPresent()) {
+    if (employmentRecordRepository.existsByPlacementRecordId(placement.id())) {
       throw new ConflictException("Placement record is already linked to another employment record", "DUPLICATE_PLACEMENT_EMPLOYMENT");
     }
 
@@ -299,6 +305,9 @@ public class PlacementEmploymentWorkflowServiceImpl implements PlacementEmployme
       initialSalary = salaryHistoryService.createSalaryHistory(salaryReq);
     }
 
+    if (evictionService != null) {
+      evictionService.evictOnPlacementTransition(this);
+    }
     return new PlacementToEmploymentTransitionResponse(placement, employmentRecord, initialSalary);
   }
 

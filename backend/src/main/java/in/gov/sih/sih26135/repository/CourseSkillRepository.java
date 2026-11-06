@@ -2,6 +2,7 @@ package in.gov.sih.sih26135.repository;
 
 import in.gov.sih.sih26135.entity.CourseSkill;
 import in.gov.sih.sih26135.entity.CourseSkillId;
+import in.gov.sih.sih26135.repository.projection.CourseSkillIdOnlyProjection;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
@@ -10,6 +11,8 @@ import org.springframework.stereotype.Repository;
 public interface CourseSkillRepository extends JpaRepository<CourseSkill, CourseSkillId> {
 
   List<CourseSkill> findByCourseId(Long courseId);
+
+  List<CourseSkillIdOnlyProjection> findProjectedByCourseId(Long courseId);
 
   List<CourseSkill> findBySkillId(Long skillId);
 

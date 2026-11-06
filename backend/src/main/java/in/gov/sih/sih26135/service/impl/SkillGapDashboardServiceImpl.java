@@ -29,6 +29,7 @@ public class SkillGapDashboardServiceImpl implements SkillGapDashboardService {
 
   private final SkillGapDashboardRepository repository;
   private final WorkflowSecurityScopeValidator scopeValidator;
+  private in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate;
 
   public SkillGapDashboardServiceImpl(
       SkillGapDashboardRepository repository,
@@ -37,9 +38,21 @@ public class SkillGapDashboardServiceImpl implements SkillGapDashboardService {
     this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  public void setCacheDelegate(in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate) {
+    this.cacheDelegate = cacheDelegate;
+  }
+
   @Override
   public SkillGapDashboardResponse getSkillGapDashboard() {
     scopeValidator.validateNationwideScope();
+    if (cacheDelegate != null) {
+      return cacheDelegate.getSkillGapDashboard(null, this::computeSkillGapDashboardInternal);
+    }
+    return computeSkillGapDashboardInternal();
+  }
+
+  private SkillGapDashboardResponse computeSkillGapDashboardInternal() {
     List<TopSkillGapProjection> topGapsProjections = repository.getFormalQ13TopSkillGaps();
     List<SkillGapSeverityMixProjection> severityProjections = repository.getFormalQ14SeverityAndUptakeMix();
     SkillGapSummaryProjection summaryProjection = repository.getFormalQ14OverallSummary();

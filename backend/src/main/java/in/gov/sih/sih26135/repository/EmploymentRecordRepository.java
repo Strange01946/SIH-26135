@@ -22,6 +22,8 @@ public interface EmploymentRecordRepository extends JpaRepository<EmploymentReco
 
   Optional<EmploymentRecord> findByPlacementRecordId(Long placementRecordId);
 
+  boolean existsByPlacementRecordId(Long placementRecordId);
+
   List<EmploymentRecord> findByEmployerBranchId(Long employerBranchId);
 
   List<EmploymentRecord> findByJobRoleId(Long jobRoleId);
