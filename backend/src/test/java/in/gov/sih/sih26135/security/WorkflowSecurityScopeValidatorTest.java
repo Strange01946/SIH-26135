@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -946,6 +947,215 @@ class WorkflowSecurityScopeValidatorTest {
       assertThatThrownBy(() -> validator.validateProviderScope(9997L))
           .isInstanceOf(BadRequestException.class)
           .extracting("errorCode").isEqualTo("ORGANIZATION_NOT_FOUND");
+    }
+  }
+
+  // =========================================================================
+  // 10. Persona Tenancy and Dashboard Scope Hardening (Phase 27.10)
+  // =========================================================================
+  @Nested
+  @DisplayName("10. Persona Tenancy and Dashboard Scope Hardening (Phase 27.10)")
+  class DashboardTenancyScopeTests {
+
+    @Test
+    @DisplayName("validateNationwideScope permits super admin")
+    void testNationwideScope_permitsSuperAdmin() {
+      setAuthenticatedUser(1L, "super_admin", List.of("ROLE_super_admin"));
+      assertThatCode(() -> validator.validateNationwideScope()).doesNotThrowAnyException();
+      assertThat(validator.isNationwideAdmin()).isTrue();
+      assertThat(validator.isStateAdmin()).isFalse();
+    }
+
+    @Test
+    @DisplayName("validateNationwideScope permits national admin without state restriction")
+    void testNationwideScope_permitsNationalAdminWithoutState() {
+      setAuthenticatedUser(2L, "nat_admin", List.of("ROLE_government_admin", "analytics.read"));
+      User user = new User();
+      user.setId(2L);
+      user.setStateId(null);
+      when(userRepository.findById(2L)).thenReturn(Optional.of(user));
+
+      assertThatCode(() -> validator.validateNationwideScope()).doesNotThrowAnyException();
+      assertThat(validator.isNationwideAdmin()).isTrue();
+      assertThat(validator.isStateAdmin()).isFalse();
+    }
+
+    @Test
+    @DisplayName("validateNationwideScope rejects state admin with AccessDeniedException")
+    void testNationwideScope_rejectsStateAdmin() {
+      setAuthenticatedUser(3L, "state_admin", List.of("ROLE_government_admin", "analytics.read"));
+      User user = new User();
+      user.setId(3L);
+      user.setStateId(27L);
+      when(userRepository.findById(3L)).thenReturn(Optional.of(user));
+
+      assertThatThrownBy(() -> validator.validateNationwideScope())
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessage("Access denied");
+      assertThat(validator.isNationwideAdmin()).isFalse();
+      assertThat(validator.isStateAdmin()).isTrue();
+    }
+
+    @Test
+    @DisplayName("validateNationwideScope rejects training provider with AccessDeniedException")
+    void testNationwideScope_rejectsTrainingProvider() {
+      setAuthenticatedUser(4L, "tp_user", List.of("ROLE_training_provider"));
+
+      assertThatThrownBy(() -> validator.validateNationwideScope())
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessage("Access denied");
+      assertThat(validator.isTrainingProviderCaller()).isTrue();
+    }
+
+    @Test
+    @DisplayName("validateNationwideScope rejects employer with AccessDeniedException")
+    void testNationwideScope_rejectsEmployer() {
+      setAuthenticatedUser(5L, "emp_user", List.of("ROLE_employer"));
+
+      assertThatThrownBy(() -> validator.validateNationwideScope())
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessage("Access denied");
+      assertThat(validator.isEmployerCaller()).isTrue();
+    }
+
+    @Test
+    @DisplayName("validateNationwideScope rejects trainee with AccessDeniedException")
+    void testNationwideScope_rejectsTrainee() {
+      setAuthenticatedUser(6L, "trainee_user", List.of("ROLE_trainee"));
+
+      assertThatThrownBy(() -> validator.validateNationwideScope())
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessage("Access denied");
+      assertThat(validator.isTraineeCaller()).isTrue();
+    }
+
+    @Test
+    @DisplayName("validateNationwideScope permits internal call when unauthenticated")
+    void testNationwideScope_permitsUnauthenticatedInternalCall() {
+      SecurityContextHolder.clearContext();
+      assertThatCode(() -> validator.validateNationwideScope()).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("validateStateScope rejects null stateId")
+    void testStateScope_rejectsNullStateId() {
+      setAuthenticatedUser(1L, "super_admin", List.of("ROLE_super_admin"));
+      assertThatThrownBy(() -> validator.validateStateScope(null))
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessage("Access denied");
+    }
+
+    @Test
+    @DisplayName("validateStateScope permits super admin for any state")
+    void testStateScope_permitsSuperAdmin() {
+      setAuthenticatedUser(1L, "super_admin", List.of("ROLE_super_admin"));
+      assertThatCode(() -> validator.validateStateScope(27L)).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("validateStateScope permits state admin matching assigned state")
+    void testStateScope_permitsAssignedState() {
+      setAuthenticatedUser(3L, "state_admin", List.of("ROLE_government_admin", "analytics.read"));
+      User user = new User();
+      user.setId(3L);
+      user.setStateId(27L);
+      when(userRepository.findById(3L)).thenReturn(Optional.of(user));
+
+      assertThatCode(() -> validator.validateStateScope(27L)).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("validateStateScope rejects state admin requesting differing state")
+    void testStateScope_rejectsDifferingState() {
+      setAuthenticatedUser(3L, "state_admin", List.of("ROLE_government_admin", "analytics.read"));
+      User user = new User();
+      user.setId(3L);
+      user.setStateId(27L);
+      when(userRepository.findById(3L)).thenReturn(Optional.of(user));
+
+      assertThatThrownBy(() -> validator.validateStateScope(28L))
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessage("Access denied");
+    }
+
+    @Test
+    @DisplayName("validateStateScope rejects non-admin roles")
+    void testStateScope_rejectsNonAdminRoles() {
+      setAuthenticatedUser(4L, "tp_user", List.of("ROLE_training_provider"));
+
+      assertThatThrownBy(() -> validator.validateStateScope(27L))
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessage("Access denied");
+    }
+
+    @Test
+    @DisplayName("validateDistrictScope rejects null districtId")
+    void testDistrictScope_rejectsNullDistrictId() {
+      setAuthenticatedUser(1L, "super_admin", List.of("ROLE_super_admin"));
+      assertThatThrownBy(() -> validator.validateDistrictScope(null))
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessage("Access denied");
+    }
+
+    @Test
+    @DisplayName("validateDistrictScope rejects missing district")
+    void testDistrictScope_rejectsMissingDistrict() {
+      setAuthenticatedUser(3L, "state_admin", List.of("ROLE_government_admin", "analytics.read"));
+      User user = new User();
+      user.setId(3L);
+      user.setStateId(27L);
+      when(userRepository.findById(3L)).thenReturn(Optional.of(user));
+      validator.setDistrictStateLookup(id -> null);
+
+      assertThatThrownBy(() -> validator.validateDistrictScope(99999L))
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessage("Access denied");
+    }
+
+    @Test
+    @DisplayName("validateDistrictScope permits super admin for valid district")
+    void testDistrictScope_permitsSuperAdmin() {
+      setAuthenticatedUser(1L, "super_admin", List.of("ROLE_super_admin"));
+
+      assertThatCode(() -> validator.validateDistrictScope(101L)).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("validateDistrictScope permits state admin when district belongs to assigned state")
+    void testDistrictScope_permitsConstituentDistrict() {
+      setAuthenticatedUser(3L, "state_admin", List.of("ROLE_government_admin", "analytics.read"));
+      User user = new User();
+      user.setId(3L);
+      user.setStateId(27L);
+      when(userRepository.findById(3L)).thenReturn(Optional.of(user));
+      validator.setDistrictStateLookup(id -> 27L);
+
+      assertThatCode(() -> validator.validateDistrictScope(101L)).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("validateDistrictScope rejects state admin when district belongs to another state")
+    void testDistrictScope_rejectsCrossStateDistrict() {
+      setAuthenticatedUser(3L, "state_admin", List.of("ROLE_government_admin", "analytics.read"));
+      User user = new User();
+      user.setId(3L);
+      user.setStateId(27L);
+      when(userRepository.findById(3L)).thenReturn(Optional.of(user));
+      validator.setDistrictStateLookup(id -> 28L); // District belongs to state 28
+
+      assertThatThrownBy(() -> validator.validateDistrictScope(102L))
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessage("Access denied");
+    }
+
+    @Test
+    @DisplayName("validateDistrictScope rejects non-admin roles")
+    void testDistrictScope_rejectsNonAdminRoles() {
+      setAuthenticatedUser(5L, "emp_user", List.of("ROLE_employer"));
+
+      assertThatThrownBy(() -> validator.validateDistrictScope(101L))
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessage("Access denied");
     }
   }
 }

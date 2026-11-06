@@ -15,6 +15,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,13 +33,25 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
   private static final String RANKING_METRIC = "employment_rate_pct DESC, enrollment_count DESC";
 
   private final InstitutionalAnalyticsRepository institutionalAnalyticsRepository;
+  private final WorkflowSecurityScopeValidator scopeValidator;
 
   public InstitutionalAnalyticsServiceImpl(InstitutionalAnalyticsRepository institutionalAnalyticsRepository) {
+    this(institutionalAnalyticsRepository, null);
+  }
+
+  @Autowired
+  public InstitutionalAnalyticsServiceImpl(
+      InstitutionalAnalyticsRepository institutionalAnalyticsRepository,
+      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
     this.institutionalAnalyticsRepository = institutionalAnalyticsRepository;
+    this.scopeValidator = scopeValidator;
   }
 
   @Override
   public LeaderboardResponse<ProviderPerformanceResponse> getProviderLeaderboard() {
+    if (scopeValidator != null) {
+      scopeValidator.validateNationwideScope();
+    }
     List<ProviderPerformanceProjection> projections =
         institutionalAnalyticsRepository.getFormalQ04ProviderLeaderboard();
 
@@ -72,6 +86,9 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
 
   @Override
   public LeaderboardResponse<CourseEmployabilityResponse> getCourseLeaderboard() {
+    if (scopeValidator != null) {
+      scopeValidator.validateNationwideScope();
+    }
     List<CourseEmployabilityProjection> projections =
         institutionalAnalyticsRepository.getFormalQ05CourseEmployability();
 

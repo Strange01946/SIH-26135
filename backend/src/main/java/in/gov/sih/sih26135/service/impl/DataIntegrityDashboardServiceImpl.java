@@ -24,6 +24,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,13 +43,25 @@ public class DataIntegrityDashboardServiceImpl implements DataIntegrityDashboard
       "Satisfaction rating metrics deferred: survey questions are dynamically defined per template version with no standardized rating question in ref_survey_purpose or vw_survey_response_fact.";
 
   private final DataIntegrityDashboardRepository repository;
+  private final WorkflowSecurityScopeValidator scopeValidator;
 
   public DataIntegrityDashboardServiceImpl(DataIntegrityDashboardRepository repository) {
+    this(repository, null);
+  }
+
+  @Autowired
+  public DataIntegrityDashboardServiceImpl(
+      DataIntegrityDashboardRepository repository,
+      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
     this.repository = repository;
+    this.scopeValidator = scopeValidator;
   }
 
   @Override
   public VerificationDashboardResponse getVerificationDashboard() {
+    if (scopeValidator != null) {
+      scopeValidator.validateNationwideScope();
+    }
     List<VerificationOutcomeProjection> outcomes = repository.getFormalQ21VerificationOutcomes();
     List<VerificationMethodEfficacyProjection> methodProjections = repository.getFormalQ22VerificationMethodEfficacy();
     VerificationOverallSummaryProjection summary = repository.getFormalQ21Q22OverallSummary();
@@ -210,6 +224,9 @@ public class DataIntegrityDashboardServiceImpl implements DataIntegrityDashboard
 
   @Override
   public FollowupDashboardResponse getFollowupDashboard() {
+    if (scopeValidator != null) {
+      scopeValidator.validateNationwideScope();
+    }
     List<FollowupWaveProjection> waves = repository.getFormalQ19FollowupSuccessByWave();
     FollowupOverallSummaryProjection summary = repository.getFormalQ19OverallSummary();
 
@@ -332,6 +349,9 @@ public class DataIntegrityDashboardServiceImpl implements DataIntegrityDashboard
 
   @Override
   public SurveyDashboardResponse getSurveyDashboard() {
+    if (scopeValidator != null) {
+      scopeValidator.validateNationwideScope();
+    }
     List<SurveyResponsePipelineProjection> pipeline = repository.getFormalQ20SurveyResponsePipeline();
     SurveyOverallSummaryProjection summary = repository.getFormalQ20OverallSummary();
 

@@ -12,6 +12,8 @@ import in.gov.sih.sih26135.util.AnalyticsCalculationUtils;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,13 +28,25 @@ import org.springframework.transaction.annotation.Transactional;
 public class SkillGapDashboardServiceImpl implements SkillGapDashboardService {
 
   private final SkillGapDashboardRepository repository;
+  private final WorkflowSecurityScopeValidator scopeValidator;
 
   public SkillGapDashboardServiceImpl(SkillGapDashboardRepository repository) {
+    this(repository, null);
+  }
+
+  @Autowired
+  public SkillGapDashboardServiceImpl(
+      SkillGapDashboardRepository repository,
+      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
     this.repository = repository;
+    this.scopeValidator = scopeValidator;
   }
 
   @Override
   public SkillGapDashboardResponse getSkillGapDashboard() {
+    if (scopeValidator != null) {
+      scopeValidator.validateNationwideScope();
+    }
     List<TopSkillGapProjection> topGapsProjections = repository.getFormalQ13TopSkillGaps();
     List<SkillGapSeverityMixProjection> severityProjections = repository.getFormalQ14SeverityAndUptakeMix();
     SkillGapSummaryProjection summaryProjection = repository.getFormalQ14OverallSummary();

@@ -2,8 +2,10 @@ package in.gov.sih.sih26135.controller;
 
 import in.gov.sih.sih26135.dto.response.SkillGapDashboardResponse;
 import in.gov.sih.sih26135.response.ApiResponse;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.SkillGapDashboardService;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
@@ -15,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
  * REST controller for Skill Gap, Industry Demand Alignment, and Remediation Analytics Dashboards.
  *
  * <p>Base Route: /api/v1/dashboards
- * Authorization: requires {@code analytics.read} authority.
+ * Authorization: requires {@code analytics.read} authority and nationwide administrative scope.
  */
 @Validated
 @RestController
@@ -24,14 +26,24 @@ import org.springframework.web.bind.annotation.RestController;
 public class SkillGapDashboardController {
 
   private final SkillGapDashboardService skillGapDashboardService;
+  private final WorkflowSecurityScopeValidator scopeValidator;
 
   public SkillGapDashboardController(SkillGapDashboardService skillGapDashboardService) {
+    this(skillGapDashboardService, null);
+  }
+
+  @Autowired
+  public SkillGapDashboardController(
+      SkillGapDashboardService skillGapDashboardService,
+      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
     this.skillGapDashboardService = skillGapDashboardService;
+    this.scopeValidator = scopeValidator;
   }
 
   /**
    * Retrieves skill gap dashboard analytics, including top current skill gaps (formal Query Q13)
    * and severity breakdown with remediation recommendation uptake metrics (formal Query Q14).
+   * Restricted to National Administrators with nationwide authority.
    *
    * @param httpRequest HTTP servlet request for URI extraction
    * @return 200 OK with {@link SkillGapDashboardResponse} in {@link ApiResponse}
@@ -39,6 +51,9 @@ public class SkillGapDashboardController {
   @GetMapping("/skill-gaps")
   public ResponseEntity<ApiResponse<SkillGapDashboardResponse>> getSkillGapDashboard(
       HttpServletRequest httpRequest) {
+    if (scopeValidator != null) {
+      scopeValidator.validateNationwideScope();
+    }
     SkillGapDashboardResponse response = skillGapDashboardService.getSkillGapDashboard();
     return ResponseEntity.ok(ApiResponse.success(
         "Skill gap analytics retrieved successfully",

@@ -10,10 +10,12 @@ import in.gov.sih.sih26135.repository.analytics.projection.DashboardKpiProjectio
 import in.gov.sih.sih26135.repository.analytics.projection.PipelineFunnelProjection;
 import in.gov.sih.sih26135.repository.analytics.projection.SchemeProgramPerformanceProjection;
 import in.gov.sih.sih26135.service.ExecutiveDashboardService;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.util.AnalyticsCalculationUtils;
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,13 +29,25 @@ import org.springframework.transaction.annotation.Transactional;
 public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService {
 
   private final ExecutiveDashboardRepository executiveDashboardRepository;
+  private final WorkflowSecurityScopeValidator scopeValidator;
 
   public ExecutiveDashboardServiceImpl(ExecutiveDashboardRepository executiveDashboardRepository) {
+    this(executiveDashboardRepository, null);
+  }
+
+  @Autowired
+  public ExecutiveDashboardServiceImpl(
+      ExecutiveDashboardRepository executiveDashboardRepository,
+      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
     this.executiveDashboardRepository = executiveDashboardRepository;
+    this.scopeValidator = scopeValidator;
   }
 
   @Override
   public DashboardKpiStripResponse getDashboardKpiStrip() {
+    if (scopeValidator != null) {
+      scopeValidator.validateNationwideScope();
+    }
     DashboardKpiProjection proj = executiveDashboardRepository.getExecutiveDashboardKpiStrip();
 
     Long traineeCount = toLong(proj != null ? proj.getTraineeCount() : null);
@@ -76,6 +90,9 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
 
   @Override
   public PipelineFunnelResponse getTrainingPipelineFunnel() {
+    if (scopeValidator != null) {
+      scopeValidator.validateNationwideScope();
+    }
     PipelineFunnelProjection proj = executiveDashboardRepository.getTrainingPipelineConversionFunnel();
 
     Long enrollmentCount = toLong(proj != null ? proj.getEnrollmentCount() : null);
@@ -115,6 +132,9 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
 
   @Override
   public LeaderboardResponse<SchemeProgramPerformanceResponse> getSchemeProgramPerformanceMatrix() {
+    if (scopeValidator != null) {
+      scopeValidator.validateNationwideScope();
+    }
     List<SchemeProgramPerformanceProjection> projections = executiveDashboardRepository.getSchemeProgramPerformanceMatrix();
     if (projections == null || projections.isEmpty()) {
       return LeaderboardResponse.of("employmentRatePct", Collections.emptyList());
@@ -129,6 +149,9 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
 
   @Override
   public ExecutiveDashboardResponse getExecutiveDashboard() {
+    if (scopeValidator != null) {
+      scopeValidator.validateNationwideScope();
+    }
     DashboardKpiStripResponse kpiStrip = getDashboardKpiStrip();
     PipelineFunnelResponse pipelineFunnel = getTrainingPipelineFunnel();
     LeaderboardResponse<SchemeProgramPerformanceResponse> schemeProgramMatrix = getSchemeProgramPerformanceMatrix();

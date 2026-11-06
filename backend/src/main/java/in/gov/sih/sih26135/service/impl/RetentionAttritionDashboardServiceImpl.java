@@ -19,6 +19,8 @@ import in.gov.sih.sih26135.util.AnalyticsCalculationUtils;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,13 +35,25 @@ import org.springframework.transaction.annotation.Transactional;
 public class RetentionAttritionDashboardServiceImpl implements RetentionAttritionDashboardService {
 
   private final RetentionAttritionDashboardRepository repository;
+  private final WorkflowSecurityScopeValidator scopeValidator;
 
   public RetentionAttritionDashboardServiceImpl(RetentionAttritionDashboardRepository repository) {
+    this(repository, null);
+  }
+
+  @Autowired
+  public RetentionAttritionDashboardServiceImpl(
+      RetentionAttritionDashboardRepository repository,
+      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
     this.repository = repository;
+    this.scopeValidator = scopeValidator;
   }
 
   @Override
   public LongitudinalRetentionResponse getLongitudinalRetention() {
+    if (scopeValidator != null) {
+      scopeValidator.validateNationwideScope();
+    }
     RetentionSurvivalProjection projection = repository.getFormalQ12RetentionSurvival();
     if (projection == null) {
       return new LongitudinalRetentionResponse(0L, null, List.of());
@@ -82,6 +96,9 @@ public class RetentionAttritionDashboardServiceImpl implements RetentionAttritio
 
   @Override
   public AttritionDashboardResponse getAttritionDashboard() {
+    if (scopeValidator != null) {
+      scopeValidator.validateNationwideScope();
+    }
     UnemploymentSummaryProjection uProj = repository.getFormalQ15UnemploymentSummary();
     List<UnemploymentReasonProjection> reasonProjs = repository.getFormalQ16UnemploymentReasons();
     List<AttritionReasonProjection> exitProjs = repository.getFormalQ17AttritionReasons();

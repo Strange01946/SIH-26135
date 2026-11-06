@@ -23,6 +23,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,13 +49,25 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
   );
 
   private final EconomicOutcomeDashboardRepository repository;
+  private final WorkflowSecurityScopeValidator scopeValidator;
 
   public EconomicOutcomeDashboardServiceImpl(EconomicOutcomeDashboardRepository repository) {
+    this(repository, null);
+  }
+
+  @Autowired
+  public EconomicOutcomeDashboardServiceImpl(
+      EconomicOutcomeDashboardRepository repository,
+      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
     this.repository = repository;
+    this.scopeValidator = scopeValidator;
   }
 
   @Override
   public LeaderboardResponse<EmployerHiringPerformanceResponse> getEmployerLeaderboard() {
+    if (scopeValidator != null) {
+      scopeValidator.validateNationwideScope();
+    }
     List<EmployerHiringProjection> projections = repository.getFormalQ07EmployerLeaderboard();
     if (projections == null || projections.isEmpty()) {
       return LeaderboardResponse.of(EMPLOYER_RANKING_METRIC, Collections.emptyList());
@@ -80,6 +94,9 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
 
   @Override
   public EconomicOutcomeSummaryResponse getEconomicOutcomeSummary() {
+    if (scopeValidator != null) {
+      scopeValidator.validateNationwideScope();
+    }
     // 1. Wage Progression KPIs (Q10)
     WageProgressionResponse wageProgression = mapWageProgression(repository.getFormalQ10WageProgression());
 

@@ -4,8 +4,10 @@ import in.gov.sih.sih26135.dto.response.FollowupDashboardResponse;
 import in.gov.sih.sih26135.dto.response.SurveyDashboardResponse;
 import in.gov.sih.sih26135.dto.response.VerificationDashboardResponse;
 import in.gov.sih.sih26135.response.ApiResponse;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.DataIntegrityDashboardService;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
@@ -17,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
  * REST controller for Verification Integrity, Longitudinal Follow-up, and Survey Analytics Dashboards.
  *
  * <p>Base Route: /api/v1/dashboards
- * Authorization: requires {@code analytics.read} authority.
+ * Authorization: requires {@code analytics.read} authority and nationwide administrative scope.
  */
 @Validated
 @RestController
@@ -26,13 +28,23 @@ import org.springframework.web.bind.annotation.RestController;
 public class DataIntegrityDashboardController {
 
   private final DataIntegrityDashboardService dataIntegrityDashboardService;
+  private final WorkflowSecurityScopeValidator scopeValidator;
 
   public DataIntegrityDashboardController(DataIntegrityDashboardService dataIntegrityDashboardService) {
+    this(dataIntegrityDashboardService, null);
+  }
+
+  @Autowired
+  public DataIntegrityDashboardController(
+      DataIntegrityDashboardService dataIntegrityDashboardService,
+      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
     this.dataIntegrityDashboardService = dataIntegrityDashboardService;
+    this.scopeValidator = scopeValidator;
   }
 
   /**
    * Retrieves employment verification integrity and method efficacy analytics (formal Queries Q21 & Q22).
+   * Restricted to National Administrators with nationwide authority.
    *
    * @param httpRequest HTTP servlet request for URI extraction
    * @return 200 OK with {@link VerificationDashboardResponse} in {@link ApiResponse}
@@ -40,6 +52,9 @@ public class DataIntegrityDashboardController {
   @GetMapping("/verifications")
   public ResponseEntity<ApiResponse<VerificationDashboardResponse>> getVerificationDashboard(
       HttpServletRequest httpRequest) {
+    if (scopeValidator != null) {
+      scopeValidator.validateNationwideScope();
+    }
     VerificationDashboardResponse response = dataIntegrityDashboardService.getVerificationDashboard();
     return ResponseEntity.ok(ApiResponse.success(
         "Verification integrity analytics retrieved successfully",
@@ -50,6 +65,7 @@ public class DataIntegrityDashboardController {
 
   /**
    * Retrieves longitudinal follow-up outreach success and SLA tracking analytics (formal Query Q19).
+   * Restricted to National Administrators with nationwide authority.
    *
    * @param httpRequest HTTP servlet request for URI extraction
    * @return 200 OK with {@link FollowupDashboardResponse} in {@link ApiResponse}
@@ -57,6 +73,9 @@ public class DataIntegrityDashboardController {
   @GetMapping("/followups")
   public ResponseEntity<ApiResponse<FollowupDashboardResponse>> getFollowupDashboard(
       HttpServletRequest httpRequest) {
+    if (scopeValidator != null) {
+      scopeValidator.validateNationwideScope();
+    }
     FollowupDashboardResponse response = dataIntegrityDashboardService.getFollowupDashboard();
     return ResponseEntity.ok(ApiResponse.success(
         "Follow-up outreach analytics retrieved successfully",
@@ -67,6 +86,7 @@ public class DataIntegrityDashboardController {
 
   /**
    * Retrieves post-training survey response pipeline and satisfaction analytics (formal Query Q20).
+   * Restricted to National Administrators with nationwide authority.
    *
    * @param httpRequest HTTP servlet request for URI extraction
    * @return 200 OK with {@link SurveyDashboardResponse} in {@link ApiResponse}
@@ -74,6 +94,9 @@ public class DataIntegrityDashboardController {
   @GetMapping("/surveys")
   public ResponseEntity<ApiResponse<SurveyDashboardResponse>> getSurveyDashboard(
       HttpServletRequest httpRequest) {
+    if (scopeValidator != null) {
+      scopeValidator.validateNationwideScope();
+    }
     SurveyDashboardResponse response = dataIntegrityDashboardService.getSurveyDashboard();
     return ResponseEntity.ok(ApiResponse.success(
         "Survey response pipeline analytics retrieved successfully",
