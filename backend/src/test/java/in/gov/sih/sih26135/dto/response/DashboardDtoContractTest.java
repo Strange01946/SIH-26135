@@ -862,11 +862,7 @@ class DashboardDtoContractTest {
         120L,
         95L,
         78L,
-        new BigDecimal("2.35"),
-        null,
-        null,
-        null,
-        null
+        new BigDecimal("2.35")
     );
 
     assertThat(dto.skillId()).isEqualTo(10L);
@@ -878,10 +874,6 @@ class DashboardDtoContractTest {
     assertThat(dto.traineeCount()).isEqualTo(95L);
     assertThat(dto.currentGapCount()).isEqualTo(78L);
     assertThat(dto.avgGapLevelDelta()).isEqualByComparingTo(new BigDecimal("2.35"));
-    assertThat(dto.sectorId()).isNull();
-    assertThat(dto.sectorName()).isNull();
-    assertThat(dto.jobRoleId()).isNull();
-    assertThat(dto.jobRoleName()).isNull();
 
     String json = objectMapper.writeValueAsString(dto);
     assertThat(json).contains("\"skillCode\":\"SKILL-JAVA\"");
@@ -930,8 +922,7 @@ class DashboardDtoContractTest {
   void testSkillGapDashboardResponseContract() throws Exception {
     TopSkillGapResponse topGap = new TopSkillGapResponse(
         10L, "SKILL-JAVA", "Java Enterprise Development",
-        5L, "CRITICAL", 120L, 95L, 78L, new BigDecimal("2.35"),
-        null, null, null, null
+        5L, "CRITICAL", 120L, 95L, 78L, new BigDecimal("2.35")
     );
 
     SkillGapSeverityBreakdownResponse sev = new SkillGapSeverityBreakdownResponse(

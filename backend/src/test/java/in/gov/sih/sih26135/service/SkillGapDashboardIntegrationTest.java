@@ -17,6 +17,8 @@ import in.gov.sih.sih26135.security.jwt.JwtTokenProvider;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -26,6 +28,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
@@ -33,7 +36,7 @@ import org.springframework.test.web.servlet.MockMvc;
  * and Remediation Analytics Dashboards.
  *
  * <p>Verifies exact formal queries Q13 and Q14 execution, mathematical reconciliation,
- * and REST endpoint behavior against dedicated test database catalog {@code SIH26135_TEST}.
+ * canonical severity categories, and REST endpoint behavior against dedicated test database catalog {@code SIH26135_TEST}.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -42,6 +45,9 @@ class SkillGapDashboardIntegrationTest {
 
   @Autowired
   private DataSource dataSource;
+
+  @Autowired
+  private JdbcTemplate jdbcTemplate;
 
   @Autowired
   private SkillGapDashboardService skillGapDashboardService;
@@ -56,6 +62,10 @@ class SkillGapDashboardIntegrationTest {
   private JwtTokenProvider jwtTokenProvider;
 
   private String tokenAnalyticsRead;
+
+  private static final Set<String> CANONICAL_SEVERITY_CODES = Set.of(
+      "NONE", "LOW", "MODERATE", "HIGH", "CRITICAL"
+  );
 
   @BeforeEach
   void enforceDatabaseIsolationGuardAndSetupTokens() throws Exception {
@@ -72,6 +82,36 @@ class SkillGapDashboardIntegrationTest {
   }
 
   @Test
+  @DisplayName("Reference Table: verify all 5 canonical severity categories exist in ref_skill_gap_severity")
+  void testLiveCanonicalSeverityReferenceCodes() {
+    List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+        "SELECT severity_code, severity_name, severity_rank FROM ref_skill_gap_severity ORDER BY severity_rank ASC"
+    );
+
+    assertThat(rows).hasSize(5);
+
+    assertThat(rows.get(0).get("severity_code")).isEqualTo("NONE");
+    assertThat(rows.get(0).get("severity_name")).isEqualTo("No gap / meets requirement");
+    assertThat(((Number) rows.get(0).get("severity_rank")).intValue()).isEqualTo(1);
+
+    assertThat(rows.get(1).get("severity_code")).isEqualTo("LOW");
+    assertThat(rows.get(1).get("severity_name")).isEqualTo("Low");
+    assertThat(((Number) rows.get(1).get("severity_rank")).intValue()).isEqualTo(2);
+
+    assertThat(rows.get(2).get("severity_code")).isEqualTo("MODERATE");
+    assertThat(rows.get(2).get("severity_name")).isEqualTo("Moderate");
+    assertThat(((Number) rows.get(2).get("severity_rank")).intValue()).isEqualTo(3);
+
+    assertThat(rows.get(3).get("severity_code")).isEqualTo("HIGH");
+    assertThat(rows.get(3).get("severity_name")).isEqualTo("High");
+    assertThat(((Number) rows.get(3).get("severity_rank")).intValue()).isEqualTo(4);
+
+    assertThat(rows.get(4).get("severity_code")).isEqualTo("CRITICAL");
+    assertThat(rows.get(4).get("severity_name")).isEqualTo("Critical");
+    assertThat(((Number) rows.get(4).get("severity_rank")).intValue()).isEqualTo(5);
+  }
+
+  @Test
   @DisplayName("Repository: execute formal Q13 top skill gaps query against live SIH26135_TEST")
   void testLiveFormalQ13Execution() {
     List<TopSkillGapProjection> topGaps = skillGapDashboardRepository.getFormalQ13TopSkillGaps();
@@ -84,6 +124,7 @@ class SkillGapDashboardIntegrationTest {
       assertThat(p.skillId()).isNotNull().isPositive();
       assertThat(p.skillCode()).isNotBlank();
       assertThat(p.severityCode()).isNotBlank();
+      assertThat(CANONICAL_SEVERITY_CODES).contains(p.severityCode());
 
       if (p.gapCount() != null) {
         assertThat(p.gapCount()).isGreaterThanOrEqualTo(0L);
@@ -117,6 +158,10 @@ class SkillGapDashboardIntegrationTest {
 
     for (SkillGapSeverityMixProjection s : severities) {
       assertThat(s.severityCode()).isNotBlank();
+      assertThat(CANONICAL_SEVERITY_CODES)
+          .as("Severity code must belong to canonical reference table")
+          .contains(s.severityCode());
+
       if (s.currentGapCount() != null) {
         assertThat(s.currentGapCount()).isGreaterThanOrEqualTo(0L);
       }
@@ -130,10 +175,10 @@ class SkillGapDashboardIntegrationTest {
         assertThat(s.acceptedRecommendationCount()).isGreaterThanOrEqualTo(0L);
       }
 
-      // Uptake invariant: accepted recommendations cannot exceed assigned recommendations
+      // Uptake invariant: accepted recommendations cannot exceed created recommendations
       if (s.acceptedRecommendationCount() != null && s.recommendationCount() != null) {
         assertThat(s.acceptedRecommendationCount())
-            .as("Accepted recommendations cannot exceed assigned recommendations")
+            .as("Accepted recommendations cannot exceed created recommendations")
             .isLessThanOrEqualTo(s.recommendationCount());
       }
     }

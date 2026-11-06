@@ -37,39 +37,43 @@ public class SkillGapDashboardServiceImpl implements SkillGapDashboardService {
     List<SkillGapSeverityMixProjection> severityProjections = repository.getFormalQ14SeverityAndUptakeMix();
     SkillGapSummaryProjection summaryProjection = repository.getFormalQ14OverallSummary();
 
-    Long totalCurrentGaps = summaryProjection != null && summaryProjection.totalCurrentGaps() != null
-        ? summaryProjection.totalCurrentGaps() : 0L;
-    Long totalAffectedTrainees = summaryProjection != null && summaryProjection.totalAffectedTrainees() != null
-        ? summaryProjection.totalAffectedTrainees() : 0L;
-    Long totalRecommendations = summaryProjection != null && summaryProjection.totalRecommendations() != null
-        ? summaryProjection.totalRecommendations() : 0L;
-    Long totalAcceptedRecommendations = summaryProjection != null && summaryProjection.totalAcceptedRecommendations() != null
-        ? summaryProjection.totalAcceptedRecommendations() : 0L;
+    Long totalCurrentGaps;
+    Long totalAffectedTrainees;
+    Long totalRecommendations;
+    Long totalAcceptedRecommendations;
 
-    // Fallback calculation if summary projection is unavailable but severity mix items are present
-    if (summaryProjection == null && severityProjections != null && !severityProjections.isEmpty()) {
-      long currentGaps = 0L;
-      long trainees = 0L;
-      long recs = 0L;
-      long accepted = 0L;
-      for (SkillGapSeverityMixProjection s : severityProjections) {
-        if (s.currentGapCount() != null) {
-          currentGaps += s.currentGapCount();
+    if (summaryProjection != null) {
+      totalCurrentGaps = summaryProjection.totalCurrentGaps() != null ? summaryProjection.totalCurrentGaps() : 0L;
+      totalAffectedTrainees = summaryProjection.totalAffectedTrainees() != null ? summaryProjection.totalAffectedTrainees() : 0L;
+      totalRecommendations = summaryProjection.totalRecommendations() != null ? summaryProjection.totalRecommendations() : 0L;
+      totalAcceptedRecommendations = summaryProjection.totalAcceptedRecommendations() != null ? summaryProjection.totalAcceptedRecommendations() : 0L;
+    } else {
+      totalAffectedTrainees = null; // Missing aggregate projection does not establish nationwide distinct trainees
+      if (severityProjections != null && !severityProjections.isEmpty()) {
+        // Severity categories form a mutually exclusive partition for gap counts and recommendation counts.
+        // However, nationwide distinct trainees CANNOT be summed across severity levels due to potential trainee overlap.
+        long currentGaps = 0L;
+        long recs = 0L;
+        long accepted = 0L;
+        for (SkillGapSeverityMixProjection s : severityProjections) {
+          if (s.currentGapCount() != null) {
+            currentGaps += s.currentGapCount();
+          }
+          if (s.recommendationCount() != null) {
+            recs += s.recommendationCount();
+          }
+          if (s.acceptedRecommendationCount() != null) {
+            accepted += s.acceptedRecommendationCount();
+          }
         }
-        if (s.traineeCount() != null) {
-          trainees += s.traineeCount();
-        }
-        if (s.recommendationCount() != null) {
-          recs += s.recommendationCount();
-        }
-        if (s.acceptedRecommendationCount() != null) {
-          accepted += s.acceptedRecommendationCount();
-        }
+        totalCurrentGaps = currentGaps;
+        totalRecommendations = recs;
+        totalAcceptedRecommendations = accepted;
+      } else {
+        totalCurrentGaps = 0L;
+        totalRecommendations = 0L;
+        totalAcceptedRecommendations = 0L;
       }
-      totalCurrentGaps = currentGaps;
-      totalAffectedTrainees = trainees;
-      totalRecommendations = recs;
-      totalAcceptedRecommendations = accepted;
     }
 
     BigDecimal overallAcceptanceRatePct = AnalyticsCalculationUtils.calculatePercentage(
@@ -88,11 +92,7 @@ public class SkillGapDashboardServiceImpl implements SkillGapDashboardService {
             p.gapCount(),
             p.traineeCount(),
             p.currentGapCount(),
-            p.avgGapLevelDelta(),
-            null, // sectorId
-            null, // sectorName
-            null, // jobRoleId
-            null  // jobRoleName
+            p.avgGapLevelDelta()
         ));
       }
     }

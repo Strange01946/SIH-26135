@@ -59,8 +59,7 @@ class SkillGapDashboardControllerTest {
 
     TopSkillGapResponse topGap = new TopSkillGapResponse(
         101L, "SKILL-JAVA", "Java Programming", 5L, "CRITICAL",
-        120L, 95L, 78L, new BigDecimal("2.35"),
-        null, null, null, null
+        120L, 95L, 78L, new BigDecimal("2.35")
     );
 
     SkillGapSeverityBreakdownResponse sev = new SkillGapSeverityBreakdownResponse(
