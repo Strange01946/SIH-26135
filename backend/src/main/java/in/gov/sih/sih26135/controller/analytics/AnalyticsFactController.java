@@ -16,6 +16,9 @@ import in.gov.sih.sih26135.dto.response.SurveyResponseFactResponse;
 import in.gov.sih.sih26135.dto.response.UnemploymentFactResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.response.ApiResponse;
+import in.gov.sih.sih26135.response.PagedResponse;
+import in.gov.sih.sih26135.response.PaginationUtils;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.EmploymentExitFactService;
 import in.gov.sih.sih26135.service.EmploymentFactService;
 import in.gov.sih.sih26135.service.EmploymentRetentionFactService;
@@ -29,6 +32,10 @@ import in.gov.sih.sih26135.service.SurveyResponseFactService;
 import in.gov.sih.sih26135.service.UnemploymentFactService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -64,6 +71,7 @@ public class AnalyticsFactController {
   private final SkillGapFactService skillGapFactService;
   private final SurveyResponseFactService surveyResponseFactService;
   private final UnemploymentFactService unemploymentFactService;
+  private final WorkflowSecurityScopeValidator scopeValidator;
 
   public AnalyticsFactController(
       EmploymentExitFactService employmentExitFactService,
@@ -76,7 +84,8 @@ public class AnalyticsFactController {
       SalaryProgressionFactService salaryProgressionFactService,
       SkillGapFactService skillGapFactService,
       SurveyResponseFactService surveyResponseFactService,
-      UnemploymentFactService unemploymentFactService) {
+      UnemploymentFactService unemploymentFactService,
+      WorkflowSecurityScopeValidator scopeValidator) {
     this.employmentExitFactService = employmentExitFactService;
     this.employmentFactService = employmentFactService;
     this.employmentRetentionFactService = employmentRetentionFactService;
@@ -88,6 +97,7 @@ public class AnalyticsFactController {
     this.skillGapFactService = skillGapFactService;
     this.surveyResponseFactService = surveyResponseFactService;
     this.unemploymentFactService = unemploymentFactService;
+    this.scopeValidator = Objects.requireNonNull(scopeValidator, "scopeValidator must not be null");
   }
 
   // =========================================================================
@@ -98,15 +108,27 @@ public class AnalyticsFactController {
       "!traineeId", "!employmentId", "!employmentExitReasonId", "!separationNatureId",
       "!isVoluntaryFlag", "!isInvoluntaryFlag"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentExitFactResponse>>> getAllEmploymentExits(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentExitFactResponse>>> getAllEmploymentExits(
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateNoQueryParameters(httpRequest);
-    return ResponseEntity.ok(ApiResponse.ok(employmentExitFactService.getAllEmploymentExits()));
+    scopeValidator.validateNationwideScope();
+    validatePaginationParametersOnly(httpRequest);
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_EXIT_FACT_SORT_FIELDS,
+        "employmentExitEventId", "employmentExitEventId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentExitFactService.getAllEmploymentExits(pageable)));
   }
 
   @GetMapping("/employment-exits/{id}")
   public ResponseEntity<ApiResponse<EmploymentExitFactResponse>> getEmploymentExitById(
       @PathVariable @Positive Long id) {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(employmentExitFactService.getEmploymentExitById(id)));
   }
 
@@ -114,70 +136,132 @@ public class AnalyticsFactController {
       "traineeId", "!employmentId", "!employmentExitReasonId", "!separationNatureId",
       "!isVoluntaryFlag", "!isInvoluntaryFlag"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentExitFactResponse>>> getEmploymentExitsByTraineeId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentExitFactResponse>>> getEmploymentExitsByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "traineeId");
-    return ResponseEntity.ok(ApiResponse.ok(employmentExitFactService.getEmploymentExitsByTraineeId(traineeId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "traineeId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_EXIT_FACT_SORT_FIELDS,
+        "employmentExitEventId", "employmentExitEventId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentExitFactService.getEmploymentExitsByTraineeId(traineeId, pageable)));
   }
 
   @GetMapping(value = "/employment-exits", params = {
       "employmentId", "!traineeId", "!employmentExitReasonId", "!separationNatureId",
       "!isVoluntaryFlag", "!isInvoluntaryFlag"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentExitFactResponse>>> getEmploymentExitsByEmploymentId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentExitFactResponse>>> getEmploymentExitsByEmploymentId(
       @RequestParam("employmentId") @Positive Long employmentId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "employmentId");
-    return ResponseEntity.ok(ApiResponse.ok(employmentExitFactService.getEmploymentExitsByEmploymentId(employmentId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "employmentId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_EXIT_FACT_SORT_FIELDS,
+        "employmentExitEventId", "employmentExitEventId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentExitFactService.getEmploymentExitsByEmploymentId(employmentId, pageable)));
   }
 
   @GetMapping(value = "/employment-exits", params = {
       "employmentExitReasonId", "!traineeId", "!employmentId", "!separationNatureId",
       "!isVoluntaryFlag", "!isInvoluntaryFlag"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentExitFactResponse>>> getEmploymentExitsByExitReasonId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentExitFactResponse>>> getEmploymentExitsByExitReasonId(
       @RequestParam("employmentExitReasonId") @Positive Long employmentExitReasonId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "employmentExitReasonId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        employmentExitFactService.getEmploymentExitsByEmploymentExitReasonId(employmentExitReasonId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "employmentExitReasonId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_EXIT_FACT_SORT_FIELDS,
+        "employmentExitEventId", "employmentExitEventId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentExitFactService.getEmploymentExitsByEmploymentExitReasonId(employmentExitReasonId, pageable)));
   }
 
   @GetMapping(value = "/employment-exits", params = {
       "separationNatureId", "!traineeId", "!employmentId", "!employmentExitReasonId",
       "!isVoluntaryFlag", "!isInvoluntaryFlag"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentExitFactResponse>>> getEmploymentExitsBySeparationNatureId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentExitFactResponse>>> getEmploymentExitsBySeparationNatureId(
       @RequestParam("separationNatureId") @Positive Long separationNatureId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "separationNatureId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        employmentExitFactService.getEmploymentExitsBySeparationNatureId(separationNatureId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "separationNatureId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_EXIT_FACT_SORT_FIELDS,
+        "employmentExitEventId", "employmentExitEventId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentExitFactService.getEmploymentExitsBySeparationNatureId(separationNatureId, pageable)));
   }
 
   @GetMapping(value = "/employment-exits", params = {
       "isVoluntaryFlag", "!traineeId", "!employmentId", "!employmentExitReasonId",
       "!separationNatureId", "!isInvoluntaryFlag"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentExitFactResponse>>> getEmploymentExitsByIsVoluntaryFlag(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentExitFactResponse>>> getEmploymentExitsByIsVoluntaryFlag(
       @RequestParam("isVoluntaryFlag") Boolean isVoluntaryFlag,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "isVoluntaryFlag");
-    return ResponseEntity.ok(ApiResponse.ok(
-        employmentExitFactService.getEmploymentExitsByIsVoluntaryFlag(isVoluntaryFlag)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "isVoluntaryFlag");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_EXIT_FACT_SORT_FIELDS,
+        "employmentExitEventId", "employmentExitEventId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentExitFactService.getEmploymentExitsByIsVoluntaryFlag(isVoluntaryFlag, pageable)));
   }
 
   @GetMapping(value = "/employment-exits", params = {
       "isInvoluntaryFlag", "!traineeId", "!employmentId", "!employmentExitReasonId",
       "!separationNatureId", "!isVoluntaryFlag"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentExitFactResponse>>> getEmploymentExitsByIsInvoluntaryFlag(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentExitFactResponse>>> getEmploymentExitsByIsInvoluntaryFlag(
       @RequestParam("isInvoluntaryFlag") Boolean isInvoluntaryFlag,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "isInvoluntaryFlag");
-    return ResponseEntity.ok(ApiResponse.ok(
-        employmentExitFactService.getEmploymentExitsByIsInvoluntaryFlag(isInvoluntaryFlag)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "isInvoluntaryFlag");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_EXIT_FACT_SORT_FIELDS,
+        "employmentExitEventId", "employmentExitEventId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentExitFactService.getEmploymentExitsByIsInvoluntaryFlag(isInvoluntaryFlag, pageable)));
   }
 
   // =========================================================================
@@ -188,15 +272,27 @@ public class AnalyticsFactController {
       "!employmentNumber", "!traineeId", "!employerId", "!enrollmentId",
       "!placementId", "!jobRoleId", "!isCurrent", "!engagementTypeId", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentFactResponse>>> getAllEmployments(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentFactResponse>>> getAllEmployments(
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateNoQueryParameters(httpRequest);
-    return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getAllEmployments()));
+    scopeValidator.validateNationwideScope();
+    validatePaginationParametersOnly(httpRequest);
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_FACT_SORT_FIELDS,
+        "employmentId", "employmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getAllEmployments(pageable)));
   }
 
   @GetMapping("/employments/{id}")
   public ResponseEntity<ApiResponse<EmploymentFactResponse>> getEmploymentById(
       @PathVariable @Positive Long id) {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentById(id)));
   }
 
@@ -207,6 +303,7 @@ public class AnalyticsFactController {
   public ResponseEntity<ApiResponse<EmploymentFactResponse>> getEmploymentByEmploymentNumber(
       @RequestParam("employmentNumber") @NotBlank String employmentNumber,
       HttpServletRequest httpRequest) {
+    scopeValidator.validateNationwideScope();
     validateOnlyQueryParameter(httpRequest, "employmentNumber");
     return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentByEmploymentNumber(employmentNumber)));
   }
@@ -215,91 +312,179 @@ public class AnalyticsFactController {
       "traineeId", "!employmentNumber", "!employerId", "!enrollmentId",
       "!placementId", "!jobRoleId", "!isCurrent", "!engagementTypeId", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentFactResponse>>> getEmploymentsByTraineeId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentFactResponse>>> getEmploymentsByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "traineeId");
-    return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByTraineeId(traineeId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "traineeId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_FACT_SORT_FIELDS,
+        "employmentId", "employmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByTraineeId(traineeId, pageable)));
   }
 
   @GetMapping(value = "/employments", params = {
       "employerId", "!employmentNumber", "!traineeId", "!enrollmentId",
       "!placementId", "!jobRoleId", "!isCurrent", "!engagementTypeId", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentFactResponse>>> getEmploymentsByEmployerId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentFactResponse>>> getEmploymentsByEmployerId(
       @RequestParam("employerId") @Positive Long employerId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "employerId");
-    return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByEmployerId(employerId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "employerId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_FACT_SORT_FIELDS,
+        "employmentId", "employmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByEmployerId(employerId, pageable)));
   }
 
   @GetMapping(value = "/employments", params = {
       "enrollmentId", "!employmentNumber", "!traineeId", "!employerId",
       "!placementId", "!jobRoleId", "!isCurrent", "!engagementTypeId", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentFactResponse>>> getEmploymentsByEnrollmentId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentFactResponse>>> getEmploymentsByEnrollmentId(
       @RequestParam("enrollmentId") @Positive Long enrollmentId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "enrollmentId");
-    return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByEnrollmentId(enrollmentId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "enrollmentId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_FACT_SORT_FIELDS,
+        "employmentId", "employmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByEnrollmentId(enrollmentId, pageable)));
   }
 
   @GetMapping(value = "/employments", params = {
       "placementId", "!employmentNumber", "!traineeId", "!employerId",
       "!enrollmentId", "!jobRoleId", "!isCurrent", "!engagementTypeId", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentFactResponse>>> getEmploymentsByPlacementId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentFactResponse>>> getEmploymentsByPlacementId(
       @RequestParam("placementId") @Positive Long placementId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "placementId");
-    return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByPlacementId(placementId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "placementId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_FACT_SORT_FIELDS,
+        "employmentId", "employmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByPlacementId(placementId, pageable)));
   }
 
   @GetMapping(value = "/employments", params = {
       "jobRoleId", "!employmentNumber", "!traineeId", "!employerId",
       "!enrollmentId", "!placementId", "!isCurrent", "!engagementTypeId", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentFactResponse>>> getEmploymentsByJobRoleId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentFactResponse>>> getEmploymentsByJobRoleId(
       @RequestParam("jobRoleId") @Positive Long jobRoleId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "jobRoleId");
-    return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByJobRoleId(jobRoleId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "jobRoleId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_FACT_SORT_FIELDS,
+        "employmentId", "employmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByJobRoleId(jobRoleId, pageable)));
   }
 
   @GetMapping(value = "/employments", params = {
       "isCurrent", "!employmentNumber", "!traineeId", "!employerId",
       "!enrollmentId", "!placementId", "!jobRoleId", "!engagementTypeId", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentFactResponse>>> getCurrentEmployments(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentFactResponse>>> getCurrentEmployments(
       @RequestParam("isCurrent") boolean isCurrent,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "isCurrent");
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "isCurrent");
     if (!isCurrent) {
       throw new BadRequestException("Only isCurrent=true is supported for current employments filter", "INVALID_FILTER_PARAMETER");
     }
-    return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getCurrentEmployments()));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_FACT_SORT_FIELDS,
+        "employmentId", "employmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getCurrentEmployments(pageable)));
   }
 
   @GetMapping(value = "/employments", params = {
       "engagementTypeId", "!employmentNumber", "!traineeId", "!employerId",
       "!enrollmentId", "!placementId", "!jobRoleId", "!isCurrent", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentFactResponse>>> getEmploymentsByEngagementTypeId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentFactResponse>>> getEmploymentsByEngagementTypeId(
       @RequestParam("engagementTypeId") @Positive Long engagementTypeId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "engagementTypeId");
-    return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByEngagementTypeId(engagementTypeId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "engagementTypeId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_FACT_SORT_FIELDS,
+        "employmentId", "employmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByEngagementTypeId(engagementTypeId, pageable)));
   }
 
   @GetMapping(value = "/employments", params = {
       "traineeDistrictId", "!employmentNumber", "!traineeId", "!employerId",
       "!enrollmentId", "!placementId", "!jobRoleId", "!isCurrent", "!engagementTypeId"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentFactResponse>>> getEmploymentsByTraineeDistrictId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentFactResponse>>> getEmploymentsByTraineeDistrictId(
       @RequestParam("traineeDistrictId") @Positive Long traineeDistrictId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "traineeDistrictId");
-    return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByTraineeDistrictId(traineeDistrictId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "traineeDistrictId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_FACT_SORT_FIELDS,
+        "employmentId", "employmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentFactService.getEmploymentsByTraineeDistrictId(traineeDistrictId, pageable)));
   }
 
   // =========================================================================
@@ -309,59 +494,115 @@ public class AnalyticsFactController {
   @GetMapping(value = "/employment-retentions", params = {
       "!traineeId", "!enrollmentId", "!engagementTypeId", "!isCurrent"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentRetentionFactResponse>>> getAllEmploymentRetentions(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentRetentionFactResponse>>> getAllEmploymentRetentions(
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateNoQueryParameters(httpRequest);
-    return ResponseEntity.ok(ApiResponse.ok(employmentRetentionFactService.getAllEmploymentRetentions()));
+    scopeValidator.validateNationwideScope();
+    validatePaginationParametersOnly(httpRequest);
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_RETENTION_FACT_SORT_FIELDS,
+        "employmentId", "employmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentRetentionFactService.getAllEmploymentRetentions(pageable)));
   }
 
   @GetMapping("/employment-retentions/{id}")
   public ResponseEntity<ApiResponse<EmploymentRetentionFactResponse>> getEmploymentRetentionById(
       @PathVariable @Positive Long id) {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(employmentRetentionFactService.getEmploymentRetentionById(id)));
   }
 
   @GetMapping(value = "/employment-retentions", params = {
       "traineeId", "!enrollmentId", "!engagementTypeId", "!isCurrent"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentRetentionFactResponse>>> getEmploymentRetentionsByTraineeId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentRetentionFactResponse>>> getEmploymentRetentionsByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "traineeId");
-    return ResponseEntity.ok(ApiResponse.ok(employmentRetentionFactService.getEmploymentRetentionsByTraineeId(traineeId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "traineeId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_RETENTION_FACT_SORT_FIELDS,
+        "employmentId", "employmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentRetentionFactService.getEmploymentRetentionsByTraineeId(traineeId, pageable)));
   }
 
   @GetMapping(value = "/employment-retentions", params = {
       "enrollmentId", "!traineeId", "!engagementTypeId", "!isCurrent"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentRetentionFactResponse>>> getEmploymentRetentionsByEnrollmentId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentRetentionFactResponse>>> getEmploymentRetentionsByEnrollmentId(
       @RequestParam("enrollmentId") @Positive Long enrollmentId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "enrollmentId");
-    return ResponseEntity.ok(ApiResponse.ok(employmentRetentionFactService.getEmploymentRetentionsByEnrollmentId(enrollmentId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "enrollmentId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_RETENTION_FACT_SORT_FIELDS,
+        "employmentId", "employmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentRetentionFactService.getEmploymentRetentionsByEnrollmentId(enrollmentId, pageable)));
   }
 
   @GetMapping(value = "/employment-retentions", params = {
       "engagementTypeId", "!traineeId", "!enrollmentId", "!isCurrent"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentRetentionFactResponse>>> getEmploymentRetentionsByEngagementTypeId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentRetentionFactResponse>>> getEmploymentRetentionsByEngagementTypeId(
       @RequestParam("engagementTypeId") @Positive Long engagementTypeId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "engagementTypeId");
-    return ResponseEntity.ok(ApiResponse.ok(employmentRetentionFactService.getEmploymentRetentionsByEngagementTypeId(engagementTypeId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "engagementTypeId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_RETENTION_FACT_SORT_FIELDS,
+        "employmentId", "employmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentRetentionFactService.getEmploymentRetentionsByEngagementTypeId(engagementTypeId, pageable)));
   }
 
   @GetMapping(value = "/employment-retentions", params = {
       "isCurrent", "!traineeId", "!enrollmentId", "!engagementTypeId"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentRetentionFactResponse>>> getCurrentEmploymentRetentions(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentRetentionFactResponse>>> getCurrentEmploymentRetentions(
       @RequestParam("isCurrent") boolean isCurrent,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "isCurrent");
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "isCurrent");
     if (!isCurrent) {
       throw new BadRequestException("Only isCurrent=true is supported for current employment retentions filter", "INVALID_FILTER_PARAMETER");
     }
-    return ResponseEntity.ok(ApiResponse.ok(employmentRetentionFactService.getCurrentEmploymentRetentions()));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_RETENTION_FACT_SORT_FIELDS,
+        "employmentId", "employmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentRetentionFactService.getCurrentEmploymentRetentions(pageable)));
   }
 
   // =========================================================================
@@ -372,15 +613,27 @@ public class AnalyticsFactController {
       "!verificationNumber", "!traineeId", "!employmentId", "!placementId",
       "!employerId", "!statusId", "!methodId", "!isCurrent", "!isVerifiedFlag"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentVerificationFactResponse>>> getAllEmploymentVerifications(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationFactResponse>>> getAllEmploymentVerifications(
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateNoQueryParameters(httpRequest);
-    return ResponseEntity.ok(ApiResponse.ok(employmentVerificationFactService.getAllEmploymentVerifications()));
+    scopeValidator.validateNationwideScope();
+    validatePaginationParametersOnly(httpRequest);
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_VERIFICATION_FACT_SORT_FIELDS,
+        "employmentVerificationId", "employmentVerificationId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentVerificationFactService.getAllEmploymentVerifications(pageable)));
   }
 
   @GetMapping("/employment-verifications/{id}")
   public ResponseEntity<ApiResponse<EmploymentVerificationFactResponse>> getEmploymentVerificationById(
       @PathVariable @Positive Long id) {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(employmentVerificationFactService.getEmploymentVerificationById(id)));
   }
 
@@ -391,6 +644,7 @@ public class AnalyticsFactController {
   public ResponseEntity<ApiResponse<EmploymentVerificationFactResponse>> getEmploymentVerificationByNumber(
       @RequestParam("verificationNumber") @NotBlank String verificationNumber,
       HttpServletRequest httpRequest) {
+    scopeValidator.validateNationwideScope();
     validateOnlyQueryParameter(httpRequest, "verificationNumber");
     return ResponseEntity.ok(ApiResponse.ok(
         employmentVerificationFactService.getEmploymentVerificationByNumber(verificationNumber)));
@@ -400,98 +654,179 @@ public class AnalyticsFactController {
       "traineeId", "!verificationNumber", "!employmentId", "!placementId",
       "!employerId", "!statusId", "!methodId", "!isCurrent", "!isVerifiedFlag"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByTraineeId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "traineeId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        employmentVerificationFactService.getEmploymentVerificationsByTraineeId(traineeId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "traineeId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_VERIFICATION_FACT_SORT_FIELDS,
+        "employmentVerificationId", "employmentVerificationId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentVerificationFactService.getEmploymentVerificationsByTraineeId(traineeId, pageable)));
   }
 
   @GetMapping(value = "/employment-verifications", params = {
       "employmentId", "!verificationNumber", "!traineeId", "!placementId",
       "!employerId", "!statusId", "!methodId", "!isCurrent", "!isVerifiedFlag"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByEmploymentId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByEmploymentId(
       @RequestParam("employmentId") @Positive Long employmentId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "employmentId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        employmentVerificationFactService.getEmploymentVerificationsByEmploymentId(employmentId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "employmentId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_VERIFICATION_FACT_SORT_FIELDS,
+        "employmentVerificationId", "employmentVerificationId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentVerificationFactService.getEmploymentVerificationsByEmploymentId(employmentId, pageable)));
   }
 
   @GetMapping(value = "/employment-verifications", params = {
       "placementId", "!verificationNumber", "!traineeId", "!employmentId",
       "!employerId", "!statusId", "!methodId", "!isCurrent", "!isVerifiedFlag"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByPlacementId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByPlacementId(
       @RequestParam("placementId") @Positive Long placementId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "placementId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        employmentVerificationFactService.getEmploymentVerificationsByPlacementId(placementId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "placementId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_VERIFICATION_FACT_SORT_FIELDS,
+        "employmentVerificationId", "employmentVerificationId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentVerificationFactService.getEmploymentVerificationsByPlacementId(placementId, pageable)));
   }
 
   @GetMapping(value = "/employment-verifications", params = {
       "employerId", "!verificationNumber", "!traineeId", "!employmentId",
       "!placementId", "!statusId", "!methodId", "!isCurrent", "!isVerifiedFlag"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByEmployerId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByEmployerId(
       @RequestParam("employerId") @Positive Long employerId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "employerId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        employmentVerificationFactService.getEmploymentVerificationsByEmployerId(employerId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "employerId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_VERIFICATION_FACT_SORT_FIELDS,
+        "employmentVerificationId", "employmentVerificationId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentVerificationFactService.getEmploymentVerificationsByEmployerId(employerId, pageable)));
   }
 
   @GetMapping(value = "/employment-verifications", params = {
       "statusId", "!verificationNumber", "!traineeId", "!employmentId",
       "!placementId", "!employerId", "!methodId", "!isCurrent", "!isVerifiedFlag"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByStatusId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByStatusId(
       @RequestParam("statusId") @Positive Long statusId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "statusId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        employmentVerificationFactService.getEmploymentVerificationsByStatusId(statusId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "statusId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_VERIFICATION_FACT_SORT_FIELDS,
+        "employmentVerificationId", "employmentVerificationId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentVerificationFactService.getEmploymentVerificationsByStatusId(statusId, pageable)));
   }
 
   @GetMapping(value = "/employment-verifications", params = {
       "methodId", "!verificationNumber", "!traineeId", "!employmentId",
       "!placementId", "!employerId", "!statusId", "!isCurrent", "!isVerifiedFlag"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByMethodId(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByMethodId(
       @RequestParam("methodId") @Positive Long methodId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "methodId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        employmentVerificationFactService.getEmploymentVerificationsByMethodId(methodId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "methodId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_VERIFICATION_FACT_SORT_FIELDS,
+        "employmentVerificationId", "employmentVerificationId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentVerificationFactService.getEmploymentVerificationsByMethodId(methodId, pageable)));
   }
 
   @GetMapping(value = "/employment-verifications", params = {
       "isCurrent", "!verificationNumber", "!traineeId", "!employmentId",
       "!placementId", "!employerId", "!statusId", "!methodId", "!isVerifiedFlag"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentVerificationFactResponse>>> getCurrentEmploymentVerifications(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationFactResponse>>> getCurrentEmploymentVerifications(
       @RequestParam("isCurrent") boolean isCurrent,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "isCurrent");
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "isCurrent");
     if (!isCurrent) {
       throw new BadRequestException("Only isCurrent=true is supported for current employment verifications filter", "INVALID_FILTER_PARAMETER");
     }
-    return ResponseEntity.ok(ApiResponse.ok(employmentVerificationFactService.getCurrentEmploymentVerifications()));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_VERIFICATION_FACT_SORT_FIELDS,
+        "employmentVerificationId", "employmentVerificationId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentVerificationFactService.getCurrentEmploymentVerifications(pageable)));
   }
 
   @GetMapping(value = "/employment-verifications", params = {
       "isVerifiedFlag", "!verificationNumber", "!traineeId", "!employmentId",
       "!placementId", "!employerId", "!statusId", "!methodId", "!isCurrent"
   })
-  public ResponseEntity<ApiResponse<List<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByIsVerifiedFlag(
+  public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByIsVerifiedFlag(
       @RequestParam("isVerifiedFlag") Boolean isVerifiedFlag,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "isVerifiedFlag");
-    return ResponseEntity.ok(ApiResponse.ok(
-        employmentVerificationFactService.getEmploymentVerificationsByIsVerifiedFlag(isVerifiedFlag)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "isVerifiedFlag");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.EMPLOYMENT_VERIFICATION_FACT_SORT_FIELDS,
+        "employmentVerificationId", "employmentVerificationId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(employmentVerificationFactService.getEmploymentVerificationsByIsVerifiedFlag(isVerifiedFlag, pageable)));
   }
 
   // =========================================================================
@@ -502,15 +837,27 @@ public class AnalyticsFactController {
       "!enrollmentNumber", "!traineeId", "!programId", "!courseId",
       "!providerId", "!batchId", "!traineeDistrictId", "!traineeStateId"
   })
-  public ResponseEntity<ApiResponse<List<EnrollmentOutcomeFactResponse>>> getAllEnrollmentOutcomes(
+  public ResponseEntity<ApiResponse<PagedResponse<EnrollmentOutcomeFactResponse>>> getAllEnrollmentOutcomes(
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateNoQueryParameters(httpRequest);
-    return ResponseEntity.ok(ApiResponse.ok(enrollmentOutcomeFactService.getAllEnrollmentOutcomes()));
+    scopeValidator.validateNationwideScope();
+    validatePaginationParametersOnly(httpRequest);
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.ENROLLMENT_OUTCOME_FACT_SORT_FIELDS,
+        "enrollmentId", "enrollmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(enrollmentOutcomeFactService.getAllEnrollmentOutcomes(pageable)));
   }
 
   @GetMapping("/enrollment-outcomes/{id}")
   public ResponseEntity<ApiResponse<EnrollmentOutcomeFactResponse>> getEnrollmentOutcomeById(
       @PathVariable @Positive Long id) {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(enrollmentOutcomeFactService.getEnrollmentOutcomeById(id)));
   }
 
@@ -521,6 +868,7 @@ public class AnalyticsFactController {
   public ResponseEntity<ApiResponse<EnrollmentOutcomeFactResponse>> getEnrollmentOutcomeByEnrollmentNumber(
       @RequestParam("enrollmentNumber") @NotBlank String enrollmentNumber,
       HttpServletRequest httpRequest) {
+    scopeValidator.validateNationwideScope();
     validateOnlyQueryParameter(httpRequest, "enrollmentNumber");
     return ResponseEntity.ok(ApiResponse.ok(
         enrollmentOutcomeFactService.getEnrollmentOutcomeByEnrollmentNumber(enrollmentNumber)));
@@ -530,84 +878,154 @@ public class AnalyticsFactController {
       "traineeId", "!enrollmentNumber", "!programId", "!courseId",
       "!providerId", "!batchId", "!traineeDistrictId", "!traineeStateId"
   })
-  public ResponseEntity<ApiResponse<List<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByTraineeId(
+  public ResponseEntity<ApiResponse<PagedResponse<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "traineeId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        enrollmentOutcomeFactService.getEnrollmentOutcomesByTraineeId(traineeId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "traineeId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.ENROLLMENT_OUTCOME_FACT_SORT_FIELDS,
+        "enrollmentId", "enrollmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(enrollmentOutcomeFactService.getEnrollmentOutcomesByTraineeId(traineeId, pageable)));
   }
 
   @GetMapping(value = "/enrollment-outcomes", params = {
       "programId", "!enrollmentNumber", "!traineeId", "!courseId",
       "!providerId", "!batchId", "!traineeDistrictId", "!traineeStateId"
   })
-  public ResponseEntity<ApiResponse<List<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByProgramId(
+  public ResponseEntity<ApiResponse<PagedResponse<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByProgramId(
       @RequestParam("programId") @Positive Long programId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "programId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        enrollmentOutcomeFactService.getEnrollmentOutcomesByProgramId(programId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "programId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.ENROLLMENT_OUTCOME_FACT_SORT_FIELDS,
+        "enrollmentId", "enrollmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(enrollmentOutcomeFactService.getEnrollmentOutcomesByProgramId(programId, pageable)));
   }
 
   @GetMapping(value = "/enrollment-outcomes", params = {
       "courseId", "!enrollmentNumber", "!traineeId", "!programId",
       "!providerId", "!batchId", "!traineeDistrictId", "!traineeStateId"
   })
-  public ResponseEntity<ApiResponse<List<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByCourseId(
+  public ResponseEntity<ApiResponse<PagedResponse<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByCourseId(
       @RequestParam("courseId") @Positive Long courseId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "courseId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        enrollmentOutcomeFactService.getEnrollmentOutcomesByCourseId(courseId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "courseId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.ENROLLMENT_OUTCOME_FACT_SORT_FIELDS,
+        "enrollmentId", "enrollmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(enrollmentOutcomeFactService.getEnrollmentOutcomesByCourseId(courseId, pageable)));
   }
 
   @GetMapping(value = "/enrollment-outcomes", params = {
       "providerId", "!enrollmentNumber", "!traineeId", "!programId",
       "!courseId", "!batchId", "!traineeDistrictId", "!traineeStateId"
   })
-  public ResponseEntity<ApiResponse<List<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByProviderId(
+  public ResponseEntity<ApiResponse<PagedResponse<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByProviderId(
       @RequestParam("providerId") @Positive Long providerId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "providerId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        enrollmentOutcomeFactService.getEnrollmentOutcomesByProviderId(providerId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "providerId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.ENROLLMENT_OUTCOME_FACT_SORT_FIELDS,
+        "enrollmentId", "enrollmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(enrollmentOutcomeFactService.getEnrollmentOutcomesByProviderId(providerId, pageable)));
   }
 
   @GetMapping(value = "/enrollment-outcomes", params = {
       "batchId", "!enrollmentNumber", "!traineeId", "!programId",
       "!courseId", "!providerId", "!traineeDistrictId", "!traineeStateId"
   })
-  public ResponseEntity<ApiResponse<List<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByBatchId(
+  public ResponseEntity<ApiResponse<PagedResponse<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByBatchId(
       @RequestParam("batchId") @Positive Long batchId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "batchId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        enrollmentOutcomeFactService.getEnrollmentOutcomesByBatchId(batchId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "batchId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.ENROLLMENT_OUTCOME_FACT_SORT_FIELDS,
+        "enrollmentId", "enrollmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(enrollmentOutcomeFactService.getEnrollmentOutcomesByBatchId(batchId, pageable)));
   }
 
   @GetMapping(value = "/enrollment-outcomes", params = {
       "traineeDistrictId", "!enrollmentNumber", "!traineeId", "!programId",
       "!courseId", "!providerId", "!batchId", "!traineeStateId"
   })
-  public ResponseEntity<ApiResponse<List<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByTraineeDistrictId(
+  public ResponseEntity<ApiResponse<PagedResponse<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByTraineeDistrictId(
       @RequestParam("traineeDistrictId") @Positive Long traineeDistrictId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "traineeDistrictId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        enrollmentOutcomeFactService.getEnrollmentOutcomesByTraineeDistrictId(traineeDistrictId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "traineeDistrictId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.ENROLLMENT_OUTCOME_FACT_SORT_FIELDS,
+        "enrollmentId", "enrollmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(enrollmentOutcomeFactService.getEnrollmentOutcomesByTraineeDistrictId(traineeDistrictId, pageable)));
   }
 
   @GetMapping(value = "/enrollment-outcomes", params = {
       "traineeStateId", "!enrollmentNumber", "!traineeId", "!programId",
       "!courseId", "!providerId", "!batchId", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByTraineeStateId(
+  public ResponseEntity<ApiResponse<PagedResponse<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByTraineeStateId(
       @RequestParam("traineeStateId") @Positive Long traineeStateId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "traineeStateId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        enrollmentOutcomeFactService.getEnrollmentOutcomesByTraineeStateId(traineeStateId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "traineeStateId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.ENROLLMENT_OUTCOME_FACT_SORT_FIELDS,
+        "enrollmentId", "enrollmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(enrollmentOutcomeFactService.getEnrollmentOutcomesByTraineeStateId(traineeStateId, pageable)));
   }
 
   // =========================================================================
@@ -618,15 +1036,27 @@ public class AnalyticsFactController {
       "!traineeId", "!campaignId", "!typeId", "!typeCode",
       "!statusId", "!outcomeId", "!isOpenFlag"
   })
-  public ResponseEntity<ApiResponse<List<FollowupFactResponse>>> getAllFollowupFacts(
+  public ResponseEntity<ApiResponse<PagedResponse<FollowupFactResponse>>> getAllFollowupFacts(
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateNoQueryParameters(httpRequest);
-    return ResponseEntity.ok(ApiResponse.ok(followupFactService.getAllFollowupFacts()));
+    scopeValidator.validateNationwideScope();
+    validatePaginationParametersOnly(httpRequest);
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.FOLLOWUP_FACT_SORT_FIELDS,
+        "followupTaskId", "followupTaskId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(followupFactService.getAllFollowupFacts(pageable)));
   }
 
   @GetMapping("/followups/{id}")
   public ResponseEntity<ApiResponse<FollowupFactResponse>> getFollowupFactById(
       @PathVariable @Positive Long id) {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactById(id)));
   }
 
@@ -634,77 +1064,154 @@ public class AnalyticsFactController {
       "traineeId", "!campaignId", "!typeId", "!typeCode",
       "!statusId", "!outcomeId", "!isOpenFlag"
   })
-  public ResponseEntity<ApiResponse<List<FollowupFactResponse>>> getFollowupFactsByTraineeId(
+  public ResponseEntity<ApiResponse<PagedResponse<FollowupFactResponse>>> getFollowupFactsByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "traineeId");
-    return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactsByTraineeId(traineeId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "traineeId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.FOLLOWUP_FACT_SORT_FIELDS,
+        "followupTaskId", "followupTaskId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactsByTraineeId(traineeId, pageable)));
   }
 
   @GetMapping(value = "/followups", params = {
       "campaignId", "!traineeId", "!typeId", "!typeCode",
       "!statusId", "!outcomeId", "!isOpenFlag"
   })
-  public ResponseEntity<ApiResponse<List<FollowupFactResponse>>> getFollowupFactsByCampaignId(
+  public ResponseEntity<ApiResponse<PagedResponse<FollowupFactResponse>>> getFollowupFactsByCampaignId(
       @RequestParam("campaignId") @Positive Long campaignId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "campaignId");
-    return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactsByCampaignId(campaignId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "campaignId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.FOLLOWUP_FACT_SORT_FIELDS,
+        "followupTaskId", "followupTaskId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactsByCampaignId(campaignId, pageable)));
   }
 
   @GetMapping(value = "/followups", params = {
       "typeId", "!traineeId", "!campaignId", "!typeCode",
       "!statusId", "!outcomeId", "!isOpenFlag"
   })
-  public ResponseEntity<ApiResponse<List<FollowupFactResponse>>> getFollowupFactsByTypeId(
+  public ResponseEntity<ApiResponse<PagedResponse<FollowupFactResponse>>> getFollowupFactsByTypeId(
       @RequestParam("typeId") @Positive Long typeId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "typeId");
-    return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactsByTypeId(typeId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "typeId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.FOLLOWUP_FACT_SORT_FIELDS,
+        "followupTaskId", "followupTaskId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactsByTypeId(typeId, pageable)));
   }
 
   @GetMapping(value = "/followups", params = {
       "typeCode", "!traineeId", "!campaignId", "!typeId",
       "!statusId", "!outcomeId", "!isOpenFlag"
   })
-  public ResponseEntity<ApiResponse<List<FollowupFactResponse>>> getFollowupFactsByTypeCode(
+  public ResponseEntity<ApiResponse<PagedResponse<FollowupFactResponse>>> getFollowupFactsByTypeCode(
       @RequestParam("typeCode") @NotBlank String typeCode,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "typeCode");
-    return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactsByTypeCode(typeCode)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "typeCode");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.FOLLOWUP_FACT_SORT_FIELDS,
+        "followupTaskId", "followupTaskId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactsByTypeCode(typeCode, pageable)));
   }
 
   @GetMapping(value = "/followups", params = {
       "statusId", "!traineeId", "!campaignId", "!typeId",
       "!typeCode", "!outcomeId", "!isOpenFlag"
   })
-  public ResponseEntity<ApiResponse<List<FollowupFactResponse>>> getFollowupFactsByStatusId(
+  public ResponseEntity<ApiResponse<PagedResponse<FollowupFactResponse>>> getFollowupFactsByStatusId(
       @RequestParam("statusId") @Positive Long statusId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "statusId");
-    return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactsByStatusId(statusId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "statusId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.FOLLOWUP_FACT_SORT_FIELDS,
+        "followupTaskId", "followupTaskId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactsByStatusId(statusId, pageable)));
   }
 
   @GetMapping(value = "/followups", params = {
       "outcomeId", "!traineeId", "!campaignId", "!typeId",
       "!typeCode", "!statusId", "!isOpenFlag"
   })
-  public ResponseEntity<ApiResponse<List<FollowupFactResponse>>> getFollowupFactsByOutcomeId(
+  public ResponseEntity<ApiResponse<PagedResponse<FollowupFactResponse>>> getFollowupFactsByOutcomeId(
       @RequestParam("outcomeId") @Positive Long outcomeId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "outcomeId");
-    return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactsByOutcomeId(outcomeId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "outcomeId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.FOLLOWUP_FACT_SORT_FIELDS,
+        "followupTaskId", "followupTaskId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactsByOutcomeId(outcomeId, pageable)));
   }
 
   @GetMapping(value = "/followups", params = {
       "isOpenFlag", "!traineeId", "!campaignId", "!typeId",
       "!typeCode", "!statusId", "!outcomeId"
   })
-  public ResponseEntity<ApiResponse<List<FollowupFactResponse>>> getFollowupFactsByIsOpenFlag(
+  public ResponseEntity<ApiResponse<PagedResponse<FollowupFactResponse>>> getFollowupFactsByIsOpenFlag(
       @RequestParam("isOpenFlag") Boolean isOpenFlag,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "isOpenFlag");
-    return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactsByIsOpenFlag(isOpenFlag)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "isOpenFlag");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.FOLLOWUP_FACT_SORT_FIELDS,
+        "followupTaskId", "followupTaskId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(followupFactService.getFollowupFactsByIsOpenFlag(isOpenFlag, pageable)));
   }
 
   // =========================================================================
@@ -715,15 +1222,27 @@ public class AnalyticsFactController {
       "!placementNumber", "!traineeId", "!enrollmentId", "!employerId",
       "!courseId", "!programId", "!providerId", "!jobRoleId", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<PlacementFactResponse>>> getAllPlacements(
+  public ResponseEntity<ApiResponse<PagedResponse<PlacementFactResponse>>> getAllPlacements(
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateNoQueryParameters(httpRequest);
-    return ResponseEntity.ok(ApiResponse.ok(placementFactService.getAllPlacements()));
+    scopeValidator.validateNationwideScope();
+    validatePaginationParametersOnly(httpRequest);
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.PLACEMENT_FACT_SORT_FIELDS,
+        "placementId", "placementId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(placementFactService.getAllPlacements(pageable)));
   }
 
   @GetMapping("/placements/{id}")
   public ResponseEntity<ApiResponse<PlacementFactResponse>> getPlacementById(
       @PathVariable @Positive Long id) {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementById(id)));
   }
 
@@ -734,6 +1253,7 @@ public class AnalyticsFactController {
   public ResponseEntity<ApiResponse<PlacementFactResponse>> getPlacementByPlacementNumber(
       @RequestParam("placementNumber") @NotBlank String placementNumber,
       HttpServletRequest httpRequest) {
+    scopeValidator.validateNationwideScope();
     validateOnlyQueryParameter(httpRequest, "placementNumber");
     return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementByPlacementNumber(placementNumber)));
   }
@@ -742,88 +1262,176 @@ public class AnalyticsFactController {
       "traineeId", "!placementNumber", "!enrollmentId", "!employerId",
       "!courseId", "!programId", "!providerId", "!jobRoleId", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<PlacementFactResponse>>> getPlacementsByTraineeId(
+  public ResponseEntity<ApiResponse<PagedResponse<PlacementFactResponse>>> getPlacementsByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "traineeId");
-    return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByTraineeId(traineeId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "traineeId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.PLACEMENT_FACT_SORT_FIELDS,
+        "placementId", "placementId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByTraineeId(traineeId, pageable)));
   }
 
   @GetMapping(value = "/placements", params = {
       "enrollmentId", "!placementNumber", "!traineeId", "!employerId",
       "!courseId", "!programId", "!providerId", "!jobRoleId", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<PlacementFactResponse>>> getPlacementsByEnrollmentId(
+  public ResponseEntity<ApiResponse<PagedResponse<PlacementFactResponse>>> getPlacementsByEnrollmentId(
       @RequestParam("enrollmentId") @Positive Long enrollmentId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "enrollmentId");
-    return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByEnrollmentId(enrollmentId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "enrollmentId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.PLACEMENT_FACT_SORT_FIELDS,
+        "placementId", "placementId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByEnrollmentId(enrollmentId, pageable)));
   }
 
   @GetMapping(value = "/placements", params = {
       "employerId", "!placementNumber", "!traineeId", "!enrollmentId",
       "!courseId", "!programId", "!providerId", "!jobRoleId", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<PlacementFactResponse>>> getPlacementsByEmployerId(
+  public ResponseEntity<ApiResponse<PagedResponse<PlacementFactResponse>>> getPlacementsByEmployerId(
       @RequestParam("employerId") @Positive Long employerId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "employerId");
-    return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByEmployerId(employerId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "employerId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.PLACEMENT_FACT_SORT_FIELDS,
+        "placementId", "placementId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByEmployerId(employerId, pageable)));
   }
 
   @GetMapping(value = "/placements", params = {
       "courseId", "!placementNumber", "!traineeId", "!enrollmentId",
       "!employerId", "!programId", "!providerId", "!jobRoleId", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<PlacementFactResponse>>> getPlacementsByCourseId(
+  public ResponseEntity<ApiResponse<PagedResponse<PlacementFactResponse>>> getPlacementsByCourseId(
       @RequestParam("courseId") @Positive Long courseId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "courseId");
-    return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByCourseId(courseId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "courseId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.PLACEMENT_FACT_SORT_FIELDS,
+        "placementId", "placementId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByCourseId(courseId, pageable)));
   }
 
   @GetMapping(value = "/placements", params = {
       "programId", "!placementNumber", "!traineeId", "!enrollmentId",
       "!employerId", "!courseId", "!providerId", "!jobRoleId", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<PlacementFactResponse>>> getPlacementsByProgramId(
+  public ResponseEntity<ApiResponse<PagedResponse<PlacementFactResponse>>> getPlacementsByProgramId(
       @RequestParam("programId") @Positive Long programId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "programId");
-    return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByProgramId(programId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "programId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.PLACEMENT_FACT_SORT_FIELDS,
+        "placementId", "placementId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByProgramId(programId, pageable)));
   }
 
   @GetMapping(value = "/placements", params = {
       "providerId", "!placementNumber", "!traineeId", "!enrollmentId",
       "!employerId", "!courseId", "!programId", "!jobRoleId", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<PlacementFactResponse>>> getPlacementsByProviderId(
+  public ResponseEntity<ApiResponse<PagedResponse<PlacementFactResponse>>> getPlacementsByProviderId(
       @RequestParam("providerId") @Positive Long providerId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "providerId");
-    return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByProviderId(providerId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "providerId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.PLACEMENT_FACT_SORT_FIELDS,
+        "placementId", "placementId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByProviderId(providerId, pageable)));
   }
 
   @GetMapping(value = "/placements", params = {
       "jobRoleId", "!placementNumber", "!traineeId", "!enrollmentId",
       "!employerId", "!courseId", "!programId", "!providerId", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<PlacementFactResponse>>> getPlacementsByJobRoleId(
+  public ResponseEntity<ApiResponse<PagedResponse<PlacementFactResponse>>> getPlacementsByJobRoleId(
       @RequestParam("jobRoleId") @Positive Long jobRoleId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "jobRoleId");
-    return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByJobRoleId(jobRoleId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "jobRoleId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.PLACEMENT_FACT_SORT_FIELDS,
+        "placementId", "placementId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByJobRoleId(jobRoleId, pageable)));
   }
 
   @GetMapping(value = "/placements", params = {
       "traineeDistrictId", "!placementNumber", "!traineeId", "!enrollmentId",
       "!employerId", "!courseId", "!programId", "!providerId", "!jobRoleId"
   })
-  public ResponseEntity<ApiResponse<List<PlacementFactResponse>>> getPlacementsByTraineeDistrictId(
+  public ResponseEntity<ApiResponse<PagedResponse<PlacementFactResponse>>> getPlacementsByTraineeDistrictId(
       @RequestParam("traineeDistrictId") @Positive Long traineeDistrictId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "traineeDistrictId");
-    return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByTraineeDistrictId(traineeDistrictId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "traineeDistrictId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.PLACEMENT_FACT_SORT_FIELDS,
+        "placementId", "placementId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(placementFactService.getPlacementsByTraineeDistrictId(traineeDistrictId, pageable)));
   }
 
   // =========================================================================
@@ -833,66 +1441,133 @@ public class AnalyticsFactController {
   @GetMapping(value = "/salary-progressions", params = {
       "!traineeId", "!enrollmentId", "!courseId", "!providerId", "!engagementTypeId"
   })
-  public ResponseEntity<ApiResponse<List<SalaryProgressionFactResponse>>> getAllSalaryProgressions(
+  public ResponseEntity<ApiResponse<PagedResponse<SalaryProgressionFactResponse>>> getAllSalaryProgressions(
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateNoQueryParameters(httpRequest);
-    return ResponseEntity.ok(ApiResponse.ok(salaryProgressionFactService.getAllSalaryProgressions()));
+    scopeValidator.validateNationwideScope();
+    validatePaginationParametersOnly(httpRequest);
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SALARY_PROGRESSION_FACT_SORT_FIELDS,
+        "employmentId", "employmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(salaryProgressionFactService.getAllSalaryProgressions(pageable)));
   }
 
   @GetMapping("/salary-progressions/{id}")
   public ResponseEntity<ApiResponse<SalaryProgressionFactResponse>> getSalaryProgressionById(
       @PathVariable @Positive Long id) {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(salaryProgressionFactService.getSalaryProgressionById(id)));
   }
 
   @GetMapping(value = "/salary-progressions", params = {
       "traineeId", "!enrollmentId", "!courseId", "!providerId", "!engagementTypeId"
   })
-  public ResponseEntity<ApiResponse<List<SalaryProgressionFactResponse>>> getSalaryProgressionsByTraineeId(
+  public ResponseEntity<ApiResponse<PagedResponse<SalaryProgressionFactResponse>>> getSalaryProgressionsByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "traineeId");
-    return ResponseEntity.ok(ApiResponse.ok(salaryProgressionFactService.getSalaryProgressionsByTraineeId(traineeId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "traineeId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SALARY_PROGRESSION_FACT_SORT_FIELDS,
+        "employmentId", "employmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(salaryProgressionFactService.getSalaryProgressionsByTraineeId(traineeId, pageable)));
   }
 
   @GetMapping(value = "/salary-progressions", params = {
       "enrollmentId", "!traineeId", "!courseId", "!providerId", "!engagementTypeId"
   })
-  public ResponseEntity<ApiResponse<List<SalaryProgressionFactResponse>>> getSalaryProgressionsByEnrollmentId(
+  public ResponseEntity<ApiResponse<PagedResponse<SalaryProgressionFactResponse>>> getSalaryProgressionsByEnrollmentId(
       @RequestParam("enrollmentId") @Positive Long enrollmentId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "enrollmentId");
-    return ResponseEntity.ok(ApiResponse.ok(salaryProgressionFactService.getSalaryProgressionsByEnrollmentId(enrollmentId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "enrollmentId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SALARY_PROGRESSION_FACT_SORT_FIELDS,
+        "employmentId", "employmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(salaryProgressionFactService.getSalaryProgressionsByEnrollmentId(enrollmentId, pageable)));
   }
 
   @GetMapping(value = "/salary-progressions", params = {
       "courseId", "!traineeId", "!enrollmentId", "!providerId", "!engagementTypeId"
   })
-  public ResponseEntity<ApiResponse<List<SalaryProgressionFactResponse>>> getSalaryProgressionsByCourseId(
+  public ResponseEntity<ApiResponse<PagedResponse<SalaryProgressionFactResponse>>> getSalaryProgressionsByCourseId(
       @RequestParam("courseId") @Positive Long courseId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "courseId");
-    return ResponseEntity.ok(ApiResponse.ok(salaryProgressionFactService.getSalaryProgressionsByCourseId(courseId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "courseId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SALARY_PROGRESSION_FACT_SORT_FIELDS,
+        "employmentId", "employmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(salaryProgressionFactService.getSalaryProgressionsByCourseId(courseId, pageable)));
   }
 
   @GetMapping(value = "/salary-progressions", params = {
       "providerId", "!traineeId", "!enrollmentId", "!courseId", "!engagementTypeId"
   })
-  public ResponseEntity<ApiResponse<List<SalaryProgressionFactResponse>>> getSalaryProgressionsByProviderId(
+  public ResponseEntity<ApiResponse<PagedResponse<SalaryProgressionFactResponse>>> getSalaryProgressionsByProviderId(
       @RequestParam("providerId") @Positive Long providerId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "providerId");
-    return ResponseEntity.ok(ApiResponse.ok(salaryProgressionFactService.getSalaryProgressionsByProviderId(providerId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "providerId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SALARY_PROGRESSION_FACT_SORT_FIELDS,
+        "employmentId", "employmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(salaryProgressionFactService.getSalaryProgressionsByProviderId(providerId, pageable)));
   }
 
   @GetMapping(value = "/salary-progressions", params = {
       "engagementTypeId", "!traineeId", "!enrollmentId", "!courseId", "!providerId"
   })
-  public ResponseEntity<ApiResponse<List<SalaryProgressionFactResponse>>> getSalaryProgressionsByEngagementTypeId(
+  public ResponseEntity<ApiResponse<PagedResponse<SalaryProgressionFactResponse>>> getSalaryProgressionsByEngagementTypeId(
       @RequestParam("engagementTypeId") @Positive Long engagementTypeId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "engagementTypeId");
-    return ResponseEntity.ok(ApiResponse.ok(salaryProgressionFactService.getSalaryProgressionsByEngagementTypeId(engagementTypeId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "engagementTypeId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SALARY_PROGRESSION_FACT_SORT_FIELDS,
+        "employmentId", "employmentId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(salaryProgressionFactService.getSalaryProgressionsByEngagementTypeId(engagementTypeId, pageable)));
   }
 
   // =========================================================================
@@ -903,15 +1578,27 @@ public class AnalyticsFactController {
       "!skillGapNumber", "!traineeId", "!skillId", "!courseId",
       "!jobRoleId", "!severityId", "!statusId", "!isCurrent", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<SkillGapFactResponse>>> getAllSkillGaps(
+  public ResponseEntity<ApiResponse<PagedResponse<SkillGapFactResponse>>> getAllSkillGaps(
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateNoQueryParameters(httpRequest);
-    return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getAllSkillGaps()));
+    scopeValidator.validateNationwideScope();
+    validatePaginationParametersOnly(httpRequest);
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SKILL_GAP_FACT_SORT_FIELDS,
+        "skillGapId", "skillGapId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getAllSkillGaps(pageable)));
   }
 
   @GetMapping("/skill-gaps/{id}")
   public ResponseEntity<ApiResponse<SkillGapFactResponse>> getSkillGapById(
       @PathVariable @Positive Long id) {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapById(id)));
   }
 
@@ -922,6 +1609,7 @@ public class AnalyticsFactController {
   public ResponseEntity<ApiResponse<SkillGapFactResponse>> getSkillGapByNumber(
       @RequestParam("skillGapNumber") @NotBlank String skillGapNumber,
       HttpServletRequest httpRequest) {
+    scopeValidator.validateNationwideScope();
     validateOnlyQueryParameter(httpRequest, "skillGapNumber");
     return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapByNumber(skillGapNumber)));
   }
@@ -930,91 +1618,179 @@ public class AnalyticsFactController {
       "traineeId", "!skillGapNumber", "!skillId", "!courseId",
       "!jobRoleId", "!severityId", "!statusId", "!isCurrent", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<SkillGapFactResponse>>> getSkillGapsByTraineeId(
+  public ResponseEntity<ApiResponse<PagedResponse<SkillGapFactResponse>>> getSkillGapsByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "traineeId");
-    return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsByTraineeId(traineeId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "traineeId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SKILL_GAP_FACT_SORT_FIELDS,
+        "skillGapId", "skillGapId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsByTraineeId(traineeId, pageable)));
   }
 
   @GetMapping(value = "/skill-gaps", params = {
       "skillId", "!skillGapNumber", "!traineeId", "!courseId",
       "!jobRoleId", "!severityId", "!statusId", "!isCurrent", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<SkillGapFactResponse>>> getSkillGapsBySkillId(
+  public ResponseEntity<ApiResponse<PagedResponse<SkillGapFactResponse>>> getSkillGapsBySkillId(
       @RequestParam("skillId") @Positive Long skillId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "skillId");
-    return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsBySkillId(skillId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "skillId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SKILL_GAP_FACT_SORT_FIELDS,
+        "skillGapId", "skillGapId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsBySkillId(skillId, pageable)));
   }
 
   @GetMapping(value = "/skill-gaps", params = {
       "courseId", "!skillGapNumber", "!traineeId", "!skillId",
       "!jobRoleId", "!severityId", "!statusId", "!isCurrent", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<SkillGapFactResponse>>> getSkillGapsByCourseId(
+  public ResponseEntity<ApiResponse<PagedResponse<SkillGapFactResponse>>> getSkillGapsByCourseId(
       @RequestParam("courseId") @Positive Long courseId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "courseId");
-    return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsByCourseId(courseId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "courseId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SKILL_GAP_FACT_SORT_FIELDS,
+        "skillGapId", "skillGapId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsByCourseId(courseId, pageable)));
   }
 
   @GetMapping(value = "/skill-gaps", params = {
       "jobRoleId", "!skillGapNumber", "!traineeId", "!skillId",
       "!courseId", "!severityId", "!statusId", "!isCurrent", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<SkillGapFactResponse>>> getSkillGapsByJobRoleId(
+  public ResponseEntity<ApiResponse<PagedResponse<SkillGapFactResponse>>> getSkillGapsByJobRoleId(
       @RequestParam("jobRoleId") @Positive Long jobRoleId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "jobRoleId");
-    return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsByJobRoleId(jobRoleId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "jobRoleId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SKILL_GAP_FACT_SORT_FIELDS,
+        "skillGapId", "skillGapId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsByJobRoleId(jobRoleId, pageable)));
   }
 
   @GetMapping(value = "/skill-gaps", params = {
       "severityId", "!skillGapNumber", "!traineeId", "!skillId",
       "!courseId", "!jobRoleId", "!statusId", "!isCurrent", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<SkillGapFactResponse>>> getSkillGapsBySeverityId(
+  public ResponseEntity<ApiResponse<PagedResponse<SkillGapFactResponse>>> getSkillGapsBySeverityId(
       @RequestParam("severityId") @Positive Long severityId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "severityId");
-    return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsBySeverityId(severityId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "severityId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SKILL_GAP_FACT_SORT_FIELDS,
+        "skillGapId", "skillGapId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsBySeverityId(severityId, pageable)));
   }
 
   @GetMapping(value = "/skill-gaps", params = {
       "statusId", "!skillGapNumber", "!traineeId", "!skillId",
       "!courseId", "!jobRoleId", "!severityId", "!isCurrent", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<SkillGapFactResponse>>> getSkillGapsByStatusId(
+  public ResponseEntity<ApiResponse<PagedResponse<SkillGapFactResponse>>> getSkillGapsByStatusId(
       @RequestParam("statusId") @Positive Long statusId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "statusId");
-    return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsByStatusId(statusId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "statusId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SKILL_GAP_FACT_SORT_FIELDS,
+        "skillGapId", "skillGapId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsByStatusId(statusId, pageable)));
   }
 
   @GetMapping(value = "/skill-gaps", params = {
       "isCurrent", "!skillGapNumber", "!traineeId", "!skillId",
       "!courseId", "!jobRoleId", "!severityId", "!statusId", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<SkillGapFactResponse>>> getCurrentSkillGaps(
+  public ResponseEntity<ApiResponse<PagedResponse<SkillGapFactResponse>>> getCurrentSkillGaps(
       @RequestParam("isCurrent") boolean isCurrent,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "isCurrent");
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "isCurrent");
     if (!isCurrent) {
       throw new BadRequestException("Only isCurrent=true is supported for current skill gaps filter", "INVALID_FILTER_PARAMETER");
     }
-    return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getCurrentSkillGaps()));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SKILL_GAP_FACT_SORT_FIELDS,
+        "skillGapId", "skillGapId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getCurrentSkillGaps(pageable)));
   }
 
   @GetMapping(value = "/skill-gaps", params = {
       "traineeDistrictId", "!skillGapNumber", "!traineeId", "!skillId",
       "!courseId", "!jobRoleId", "!severityId", "!statusId", "!isCurrent"
   })
-  public ResponseEntity<ApiResponse<List<SkillGapFactResponse>>> getSkillGapsByTraineeDistrictId(
+  public ResponseEntity<ApiResponse<PagedResponse<SkillGapFactResponse>>> getSkillGapsByTraineeDistrictId(
       @RequestParam("traineeDistrictId") @Positive Long traineeDistrictId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "traineeDistrictId");
-    return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsByTraineeDistrictId(traineeDistrictId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "traineeDistrictId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SKILL_GAP_FACT_SORT_FIELDS,
+        "skillGapId", "skillGapId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(skillGapFactService.getSkillGapsByTraineeDistrictId(traineeDistrictId, pageable)));
   }
 
   // =========================================================================
@@ -1025,15 +1801,27 @@ public class AnalyticsFactController {
       "!traineeId", "!surveyId", "!surveyPurposeId", "!surveyPurposeCode",
       "!programId", "!courseId", "!batchId", "!enrollmentId", "!followupTaskId", "!isSubmittedFlag"
   })
-  public ResponseEntity<ApiResponse<List<SurveyResponseFactResponse>>> getAllSurveyResponses(
+  public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getAllSurveyResponses(
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateNoQueryParameters(httpRequest);
-    return ResponseEntity.ok(ApiResponse.ok(surveyResponseFactService.getAllSurveyResponses()));
+    scopeValidator.validateNationwideScope();
+    validatePaginationParametersOnly(httpRequest);
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SURVEY_RESPONSE_FACT_SORT_FIELDS,
+        "surveyResponseId", "surveyResponseId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(surveyResponseFactService.getAllSurveyResponses(pageable)));
   }
 
   @GetMapping("/survey-responses/{id}")
   public ResponseEntity<ApiResponse<SurveyResponseFactResponse>> getSurveyResponseById(
       @PathVariable @Positive Long id) {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(surveyResponseFactService.getSurveyResponseById(id)));
   }
 
@@ -1041,118 +1829,220 @@ public class AnalyticsFactController {
       "traineeId", "!surveyId", "!surveyPurposeId", "!surveyPurposeCode",
       "!programId", "!courseId", "!batchId", "!enrollmentId", "!followupTaskId", "!isSubmittedFlag"
   })
-  public ResponseEntity<ApiResponse<List<SurveyResponseFactResponse>>> getSurveyResponsesByTraineeId(
+  public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getSurveyResponsesByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "traineeId");
-    return ResponseEntity.ok(ApiResponse.ok(surveyResponseFactService.getSurveyResponsesByTraineeId(traineeId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "traineeId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SURVEY_RESPONSE_FACT_SORT_FIELDS,
+        "surveyResponseId", "surveyResponseId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(surveyResponseFactService.getSurveyResponsesByTraineeId(traineeId, pageable)));
   }
 
   @GetMapping(value = "/survey-responses", params = {
       "surveyId", "!traineeId", "!surveyPurposeId", "!surveyPurposeCode",
       "!programId", "!courseId", "!batchId", "!enrollmentId", "!followupTaskId", "!isSubmittedFlag"
   })
-  public ResponseEntity<ApiResponse<List<SurveyResponseFactResponse>>> getSurveyResponsesBySurveyId(
+  public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getSurveyResponsesBySurveyId(
       @RequestParam("surveyId") @Positive Long surveyId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "surveyId");
-    return ResponseEntity.ok(ApiResponse.ok(surveyResponseFactService.getSurveyResponsesBySurveyId(surveyId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "surveyId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SURVEY_RESPONSE_FACT_SORT_FIELDS,
+        "surveyResponseId", "surveyResponseId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(surveyResponseFactService.getSurveyResponsesBySurveyId(surveyId, pageable)));
   }
 
   @GetMapping(value = "/survey-responses", params = {
       "surveyPurposeId", "!traineeId", "!surveyId", "!surveyPurposeCode",
       "!programId", "!courseId", "!batchId", "!enrollmentId", "!followupTaskId", "!isSubmittedFlag"
   })
-  public ResponseEntity<ApiResponse<List<SurveyResponseFactResponse>>> getSurveyResponsesBySurveyPurposeId(
+  public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getSurveyResponsesBySurveyPurposeId(
       @RequestParam("surveyPurposeId") @Positive Long surveyPurposeId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "surveyPurposeId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        surveyResponseFactService.getSurveyResponsesBySurveyPurposeId(surveyPurposeId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "surveyPurposeId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SURVEY_RESPONSE_FACT_SORT_FIELDS,
+        "surveyResponseId", "surveyResponseId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(surveyResponseFactService.getSurveyResponsesBySurveyPurposeId(surveyPurposeId, pageable)));
   }
 
   @GetMapping(value = "/survey-responses", params = {
       "surveyPurposeCode", "!traineeId", "!surveyId", "!surveyPurposeId",
       "!programId", "!courseId", "!batchId", "!enrollmentId", "!followupTaskId", "!isSubmittedFlag"
   })
-  public ResponseEntity<ApiResponse<List<SurveyResponseFactResponse>>> getSurveyResponsesBySurveyPurposeCode(
+  public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getSurveyResponsesBySurveyPurposeCode(
       @RequestParam("surveyPurposeCode") @NotBlank String surveyPurposeCode,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "surveyPurposeCode");
-    return ResponseEntity.ok(ApiResponse.ok(
-        surveyResponseFactService.getSurveyResponsesBySurveyPurposeCode(surveyPurposeCode)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "surveyPurposeCode");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SURVEY_RESPONSE_FACT_SORT_FIELDS,
+        "surveyResponseId", "surveyResponseId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(surveyResponseFactService.getSurveyResponsesBySurveyPurposeCode(surveyPurposeCode, pageable)));
   }
 
   @GetMapping(value = "/survey-responses", params = {
       "programId", "!traineeId", "!surveyId", "!surveyPurposeId",
       "!surveyPurposeCode", "!courseId", "!batchId", "!enrollmentId", "!followupTaskId", "!isSubmittedFlag"
   })
-  public ResponseEntity<ApiResponse<List<SurveyResponseFactResponse>>> getSurveyResponsesByProgramId(
+  public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getSurveyResponsesByProgramId(
       @RequestParam("programId") @Positive Long programId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "programId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        surveyResponseFactService.getSurveyResponsesByProgramId(programId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "programId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SURVEY_RESPONSE_FACT_SORT_FIELDS,
+        "surveyResponseId", "surveyResponseId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(surveyResponseFactService.getSurveyResponsesByProgramId(programId, pageable)));
   }
 
   @GetMapping(value = "/survey-responses", params = {
       "courseId", "!traineeId", "!surveyId", "!surveyPurposeId",
       "!surveyPurposeCode", "!programId", "!batchId", "!enrollmentId", "!followupTaskId", "!isSubmittedFlag"
   })
-  public ResponseEntity<ApiResponse<List<SurveyResponseFactResponse>>> getSurveyResponsesByCourseId(
+  public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getSurveyResponsesByCourseId(
       @RequestParam("courseId") @Positive Long courseId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "courseId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        surveyResponseFactService.getSurveyResponsesByCourseId(courseId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "courseId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SURVEY_RESPONSE_FACT_SORT_FIELDS,
+        "surveyResponseId", "surveyResponseId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(surveyResponseFactService.getSurveyResponsesByCourseId(courseId, pageable)));
   }
 
   @GetMapping(value = "/survey-responses", params = {
       "batchId", "!traineeId", "!surveyId", "!surveyPurposeId",
       "!surveyPurposeCode", "!programId", "!courseId", "!enrollmentId", "!followupTaskId", "!isSubmittedFlag"
   })
-  public ResponseEntity<ApiResponse<List<SurveyResponseFactResponse>>> getSurveyResponsesByBatchId(
+  public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getSurveyResponsesByBatchId(
       @RequestParam("batchId") @Positive Long batchId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "batchId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        surveyResponseFactService.getSurveyResponsesByBatchId(batchId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "batchId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SURVEY_RESPONSE_FACT_SORT_FIELDS,
+        "surveyResponseId", "surveyResponseId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(surveyResponseFactService.getSurveyResponsesByBatchId(batchId, pageable)));
   }
 
   @GetMapping(value = "/survey-responses", params = {
       "enrollmentId", "!traineeId", "!surveyId", "!surveyPurposeId",
       "!surveyPurposeCode", "!programId", "!courseId", "!batchId", "!followupTaskId", "!isSubmittedFlag"
   })
-  public ResponseEntity<ApiResponse<List<SurveyResponseFactResponse>>> getSurveyResponsesByEnrollmentId(
+  public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getSurveyResponsesByEnrollmentId(
       @RequestParam("enrollmentId") @Positive Long enrollmentId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "enrollmentId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        surveyResponseFactService.getSurveyResponsesByEnrollmentId(enrollmentId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "enrollmentId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SURVEY_RESPONSE_FACT_SORT_FIELDS,
+        "surveyResponseId", "surveyResponseId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(surveyResponseFactService.getSurveyResponsesByEnrollmentId(enrollmentId, pageable)));
   }
 
   @GetMapping(value = "/survey-responses", params = {
       "followupTaskId", "!traineeId", "!surveyId", "!surveyPurposeId",
       "!surveyPurposeCode", "!programId", "!courseId", "!batchId", "!enrollmentId", "!isSubmittedFlag"
   })
-  public ResponseEntity<ApiResponse<List<SurveyResponseFactResponse>>> getSurveyResponsesByFollowupTaskId(
+  public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getSurveyResponsesByFollowupTaskId(
       @RequestParam("followupTaskId") @Positive Long followupTaskId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "followupTaskId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        surveyResponseFactService.getSurveyResponsesByFollowupTaskId(followupTaskId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "followupTaskId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SURVEY_RESPONSE_FACT_SORT_FIELDS,
+        "surveyResponseId", "surveyResponseId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(surveyResponseFactService.getSurveyResponsesByFollowupTaskId(followupTaskId, pageable)));
   }
 
   @GetMapping(value = "/survey-responses", params = {
       "isSubmittedFlag", "!traineeId", "!surveyId", "!surveyPurposeId",
       "!surveyPurposeCode", "!programId", "!courseId", "!batchId", "!enrollmentId", "!followupTaskId"
   })
-  public ResponseEntity<ApiResponse<List<SurveyResponseFactResponse>>> getSurveyResponsesByIsSubmittedFlag(
+  public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getSurveyResponsesByIsSubmittedFlag(
       @RequestParam("isSubmittedFlag") Boolean isSubmittedFlag,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "isSubmittedFlag");
-    return ResponseEntity.ok(ApiResponse.ok(
-        surveyResponseFactService.getSurveyResponsesByIsSubmittedFlag(isSubmittedFlag)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "isSubmittedFlag");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.SURVEY_RESPONSE_FACT_SORT_FIELDS,
+        "surveyResponseId", "surveyResponseId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(surveyResponseFactService.getSurveyResponsesByIsSubmittedFlag(isSubmittedFlag, pageable)));
   }
 
   // =========================================================================
@@ -1162,77 +2052,165 @@ public class AnalyticsFactController {
   @GetMapping(value = "/unemployments", params = {
       "!traineeId", "!unemploymentReasonId", "!labourStatusId", "!isCurrent", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<UnemploymentFactResponse>>> getAllUnemploymentFacts(
+  public ResponseEntity<ApiResponse<PagedResponse<UnemploymentFactResponse>>> getAllUnemploymentFacts(
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateNoQueryParameters(httpRequest);
-    return ResponseEntity.ok(ApiResponse.ok(unemploymentFactService.getAllUnemploymentFacts()));
+    scopeValidator.validateNationwideScope();
+    validatePaginationParametersOnly(httpRequest);
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.UNEMPLOYMENT_FACT_SORT_FIELDS,
+        "unemploymentEventId", "unemploymentEventId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(unemploymentFactService.getAllUnemploymentFacts(pageable)));
   }
 
   @GetMapping("/unemployments/{id}")
   public ResponseEntity<ApiResponse<UnemploymentFactResponse>> getUnemploymentFactById(
       @PathVariable @Positive Long id) {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(unemploymentFactService.getUnemploymentFactById(id)));
   }
 
   @GetMapping(value = "/unemployments", params = {
       "traineeId", "!unemploymentReasonId", "!labourStatusId", "!isCurrent", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<UnemploymentFactResponse>>> getUnemploymentFactsByTraineeId(
+  public ResponseEntity<ApiResponse<PagedResponse<UnemploymentFactResponse>>> getUnemploymentFactsByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "traineeId");
-    return ResponseEntity.ok(ApiResponse.ok(unemploymentFactService.getUnemploymentFactsByTraineeId(traineeId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "traineeId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.UNEMPLOYMENT_FACT_SORT_FIELDS,
+        "unemploymentEventId", "unemploymentEventId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(unemploymentFactService.getUnemploymentFactsByTraineeId(traineeId, pageable)));
   }
 
   @GetMapping(value = "/unemployments", params = {
       "unemploymentReasonId", "!traineeId", "!labourStatusId", "!isCurrent", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<UnemploymentFactResponse>>> getUnemploymentFactsByUnemploymentReasonId(
+  public ResponseEntity<ApiResponse<PagedResponse<UnemploymentFactResponse>>> getUnemploymentFactsByUnemploymentReasonId(
       @RequestParam("unemploymentReasonId") @Positive Long unemploymentReasonId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "unemploymentReasonId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        unemploymentFactService.getUnemploymentFactsByUnemploymentReasonId(unemploymentReasonId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "unemploymentReasonId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.UNEMPLOYMENT_FACT_SORT_FIELDS,
+        "unemploymentEventId", "unemploymentEventId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(unemploymentFactService.getUnemploymentFactsByUnemploymentReasonId(unemploymentReasonId, pageable)));
   }
 
   @GetMapping(value = "/unemployments", params = {
       "labourStatusId", "!traineeId", "!unemploymentReasonId", "!isCurrent", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<UnemploymentFactResponse>>> getUnemploymentFactsByLabourStatusId(
+  public ResponseEntity<ApiResponse<PagedResponse<UnemploymentFactResponse>>> getUnemploymentFactsByLabourStatusId(
       @RequestParam("labourStatusId") @Positive Long labourStatusId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "labourStatusId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        unemploymentFactService.getUnemploymentFactsByLabourStatusId(labourStatusId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "labourStatusId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.UNEMPLOYMENT_FACT_SORT_FIELDS,
+        "unemploymentEventId", "unemploymentEventId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(unemploymentFactService.getUnemploymentFactsByLabourStatusId(labourStatusId, pageable)));
   }
 
   @GetMapping(value = "/unemployments", params = {
       "isCurrent", "!traineeId", "!unemploymentReasonId", "!labourStatusId", "!traineeDistrictId"
   })
-  public ResponseEntity<ApiResponse<List<UnemploymentFactResponse>>> getCurrentUnemploymentFacts(
+  public ResponseEntity<ApiResponse<PagedResponse<UnemploymentFactResponse>>> getCurrentUnemploymentFacts(
       @RequestParam("isCurrent") boolean isCurrent,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "isCurrent");
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "isCurrent");
     if (!isCurrent) {
       throw new BadRequestException("Only isCurrent=true is supported for current unemployments filter", "INVALID_FILTER_PARAMETER");
     }
-    return ResponseEntity.ok(ApiResponse.ok(unemploymentFactService.getCurrentUnemploymentFacts()));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.UNEMPLOYMENT_FACT_SORT_FIELDS,
+        "unemploymentEventId", "unemploymentEventId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(unemploymentFactService.getCurrentUnemploymentFacts(pageable)));
   }
 
   @GetMapping(value = "/unemployments", params = {
       "traineeDistrictId", "!traineeId", "!unemploymentReasonId", "!labourStatusId", "!isCurrent"
   })
-  public ResponseEntity<ApiResponse<List<UnemploymentFactResponse>>> getUnemploymentFactsByTraineeDistrictId(
+  public ResponseEntity<ApiResponse<PagedResponse<UnemploymentFactResponse>>> getUnemploymentFactsByTraineeDistrictId(
       @RequestParam("traineeDistrictId") @Positive Long traineeDistrictId,
+      @RequestParam(name = "page", defaultValue = "0") int page,
+      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "sort", required = false) String sort,
+      @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "traineeDistrictId");
-    return ResponseEntity.ok(ApiResponse.ok(
-        unemploymentFactService.getUnemploymentFactsByTraineeDistrictId(traineeDistrictId)));
+    scopeValidator.validateNationwideScope();
+    validateFilteredPaginationParameters(httpRequest, "traineeDistrictId");
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction,
+        PaginationUtils.UNEMPLOYMENT_FACT_SORT_FIELDS,
+        "unemploymentEventId", "unemploymentEventId",
+        Sort.Direction.ASC, Sort.Direction.ASC
+    );
+    return ResponseEntity.ok(ApiResponse.ok(unemploymentFactService.getUnemploymentFactsByTraineeDistrictId(traineeDistrictId, pageable)));
   }
 
   // =========================================================================
   // Validation Helpers
   // =========================================================================
+
+  private static final Set<String> ALLOWED_PAGINATION_PARAMS = Set.of("page", "size", "sort", "direction");
+
+  private void validateFilteredPaginationParameters(HttpServletRequest httpRequest, String allowedFilterParam) {
+    for (String paramName : httpRequest.getParameterMap().keySet()) {
+      if (!paramName.equals(allowedFilterParam) && !ALLOWED_PAGINATION_PARAMS.contains(paramName)) {
+        throw new BadRequestException(
+            "Unsupported query parameter: " + paramName,
+            "UNSUPPORTED_PARAMETER"
+        );
+      }
+    }
+  }
+
+  private void validatePaginationParametersOnly(HttpServletRequest httpRequest) {
+    for (String paramName : httpRequest.getParameterMap().keySet()) {
+      if (!ALLOWED_PAGINATION_PARAMS.contains(paramName)) {
+        throw new BadRequestException(
+            "Unsupported query parameter: " + paramName,
+            "UNSUPPORTED_PARAMETER"
+        );
+      }
+    }
+  }
 
   private void validateNoQueryParameters(HttpServletRequest request) {
     if (!request.getParameterMap().isEmpty()) {

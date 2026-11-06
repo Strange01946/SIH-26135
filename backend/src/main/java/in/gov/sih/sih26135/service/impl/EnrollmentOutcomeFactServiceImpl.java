@@ -6,8 +6,11 @@ import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.mapper.EnrollmentOutcomeFactMapper;
 import in.gov.sih.sih26135.repository.analytics.EnrollmentOutcomeFactRepository;
+import in.gov.sih.sih26135.response.PagedResponse;
 import in.gov.sih.sih26135.service.EnrollmentOutcomeFactService;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +26,12 @@ public class EnrollmentOutcomeFactServiceImpl implements EnrollmentOutcomeFactSe
       EnrollmentOutcomeFactMapper mapper) {
     this.repository = repository;
     this.mapper = mapper;
+  }
+
+  @Override
+  public PagedResponse<EnrollmentOutcomeFactResponse> getAllEnrollmentOutcomes(Pageable pageable) {
+    Page<EnrollmentOutcomeFact> page = repository.findAll(pageable);
+    return PagedResponse.from(page, mapper::toResponse);
   }
 
   @Override
@@ -47,7 +56,7 @@ public class EnrollmentOutcomeFactServiceImpl implements EnrollmentOutcomeFactSe
     if (enrollmentNumber == null || enrollmentNumber.isBlank()) {
       throw new BadRequestException("Enrollment number is required");
     }
-    EnrollmentOutcomeFact entity = repository.findByEnrollmentNumber(enrollmentNumber.trim())
+    EnrollmentOutcomeFact entity = repository.findByEnrollmentNumber(enrollmentNumber)
         .orElseThrow(() -> new ResourceNotFoundException("EnrollmentOutcomeFact", "enrollmentNumber"));
     return mapper.toResponse(entity);
   }
@@ -63,6 +72,15 @@ public class EnrollmentOutcomeFactServiceImpl implements EnrollmentOutcomeFactSe
   }
 
   @Override
+  public PagedResponse<EnrollmentOutcomeFactResponse> getEnrollmentOutcomesByTraineeId(Long traineeId, Pageable pageable) {
+    if (traineeId == null) {
+      throw new BadRequestException("Trainee ID is required");
+    }
+    Page<EnrollmentOutcomeFact> page = repository.findByTraineeId(traineeId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
+  }
+
+  @Override
   public List<EnrollmentOutcomeFactResponse> getEnrollmentOutcomesByProgramId(Long programId) {
     if (programId == null) {
       throw new BadRequestException("Program ID is required");
@@ -70,6 +88,15 @@ public class EnrollmentOutcomeFactServiceImpl implements EnrollmentOutcomeFactSe
     return repository.findByProgramId(programId).stream()
         .map(mapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public PagedResponse<EnrollmentOutcomeFactResponse> getEnrollmentOutcomesByProgramId(Long programId, Pageable pageable) {
+    if (programId == null) {
+      throw new BadRequestException("Program ID is required");
+    }
+    Page<EnrollmentOutcomeFact> page = repository.findByProgramId(programId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
   }
 
   @Override
@@ -83,6 +110,15 @@ public class EnrollmentOutcomeFactServiceImpl implements EnrollmentOutcomeFactSe
   }
 
   @Override
+  public PagedResponse<EnrollmentOutcomeFactResponse> getEnrollmentOutcomesByCourseId(Long courseId, Pageable pageable) {
+    if (courseId == null) {
+      throw new BadRequestException("Course ID is required");
+    }
+    Page<EnrollmentOutcomeFact> page = repository.findByCourseId(courseId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
+  }
+
+  @Override
   public List<EnrollmentOutcomeFactResponse> getEnrollmentOutcomesByProviderId(Long providerId) {
     if (providerId == null) {
       throw new BadRequestException("Provider ID is required");
@@ -90,6 +126,15 @@ public class EnrollmentOutcomeFactServiceImpl implements EnrollmentOutcomeFactSe
     return repository.findByProviderId(providerId).stream()
         .map(mapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public PagedResponse<EnrollmentOutcomeFactResponse> getEnrollmentOutcomesByProviderId(Long providerId, Pageable pageable) {
+    if (providerId == null) {
+      throw new BadRequestException("Provider ID is required");
+    }
+    Page<EnrollmentOutcomeFact> page = repository.findByProviderId(providerId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
   }
 
   @Override
@@ -103,6 +148,15 @@ public class EnrollmentOutcomeFactServiceImpl implements EnrollmentOutcomeFactSe
   }
 
   @Override
+  public PagedResponse<EnrollmentOutcomeFactResponse> getEnrollmentOutcomesByBatchId(Long batchId, Pageable pageable) {
+    if (batchId == null) {
+      throw new BadRequestException("Batch ID is required");
+    }
+    Page<EnrollmentOutcomeFact> page = repository.findByBatchId(batchId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
+  }
+
+  @Override
   public List<EnrollmentOutcomeFactResponse> getEnrollmentOutcomesByTraineeDistrictId(Long traineeDistrictId) {
     if (traineeDistrictId == null) {
       throw new BadRequestException("Trainee district ID is required");
@@ -113,6 +167,16 @@ public class EnrollmentOutcomeFactServiceImpl implements EnrollmentOutcomeFactSe
   }
 
   @Override
+  public PagedResponse<EnrollmentOutcomeFactResponse> getEnrollmentOutcomesByTraineeDistrictId(
+      Long traineeDistrictId, Pageable pageable) {
+    if (traineeDistrictId == null) {
+      throw new BadRequestException("Trainee district ID is required");
+    }
+    Page<EnrollmentOutcomeFact> page = repository.findByTraineeDistrictId(traineeDistrictId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
+  }
+
+  @Override
   public List<EnrollmentOutcomeFactResponse> getEnrollmentOutcomesByTraineeStateId(Long traineeStateId) {
     if (traineeStateId == null) {
       throw new BadRequestException("Trainee state ID is required");
@@ -120,5 +184,15 @@ public class EnrollmentOutcomeFactServiceImpl implements EnrollmentOutcomeFactSe
     return repository.findByTraineeStateId(traineeStateId).stream()
         .map(mapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public PagedResponse<EnrollmentOutcomeFactResponse> getEnrollmentOutcomesByTraineeStateId(
+      Long traineeStateId, Pageable pageable) {
+    if (traineeStateId == null) {
+      throw new BadRequestException("Trainee state ID is required");
+    }
+    Page<EnrollmentOutcomeFact> page = repository.findByTraineeStateId(traineeStateId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
   }
 }

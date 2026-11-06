@@ -439,6 +439,351 @@ public final class PaginationUtils {
       entry("created_at", "createdAt")
   );
 
+  // =========================================================================
+  // Analytical Fact Entity Sort Field Allowlists (Phase 27.12)
+  // =========================================================================
+
+  public static final Map<String, String> EMPLOYMENT_EXIT_FACT_SORT_FIELDS = Map.ofEntries(
+      entry("id", "employmentExitEventId"),
+      entry("employmentexiteventid", "employmentExitEventId"),
+      entry("employmentExitEventId", "employmentExitEventId"),
+      entry("employment_exit_event_id", "employmentExitEventId"),
+      entry("traineeid", "traineeId"),
+      entry("traineeId", "traineeId"),
+      entry("trainee_id", "traineeId"),
+      entry("employmentid", "employmentId"),
+      entry("employmentId", "employmentId"),
+      entry("employment_id", "employmentId"),
+      entry("exitreason", "exitReason"),
+      entry("exitReason", "exitReason"),
+      entry("exit_reason", "exitReason"),
+      entry("exitdate", "exitDate"),
+      entry("exitDate", "exitDate"),
+      entry("exit_date", "exitDate"),
+      entry("unemploymentdurationdays", "unemploymentDurationDays"),
+      entry("unemploymentDurationDays", "unemploymentDurationDays"),
+      entry("unemployment_duration_days", "unemploymentDurationDays"),
+      entry("settlementstatus", "settlementStatus"),
+      entry("settlementStatus", "settlementStatus"),
+      entry("settlement_status", "settlementStatus")
+  );
+
+  public static final Map<String, String> EMPLOYMENT_FACT_SORT_FIELDS = Map.ofEntries(
+      entry("id", "employmentId"),
+      entry("employmentid", "employmentId"),
+      entry("employmentId", "employmentId"),
+      entry("employment_id", "employmentId"),
+      entry("traineeid", "traineeId"),
+      entry("traineeId", "traineeId"),
+      entry("trainee_id", "traineeId"),
+      entry("employerid", "employerId"),
+      entry("employerId", "employerId"),
+      entry("employer_id", "employerId"),
+      entry("jobrole", "jobRole"),
+      entry("jobRole", "jobRole"),
+      entry("job_role", "jobRole"),
+      entry("employmenttype", "employmentType"),
+      entry("employmentType", "employmentType"),
+      entry("employment_type", "employmentType"),
+      entry("employmentstatus", "employmentStatus"),
+      entry("employmentStatus", "employmentStatus"),
+      entry("employment_status", "employmentStatus"),
+      entry("monthlyinr", "monthlyInr"),
+      entry("monthlyInr", "monthlyInr"),
+      entry("monthly_inr", "monthlyInr"),
+      entry("startdate", "startDate"),
+      entry("startDate", "startDate"),
+      entry("start_date", "startDate"),
+      entry("enddate", "endDate"),
+      entry("endDate", "endDate"),
+      entry("end_date", "endDate"),
+      entry("verificationstatus", "verificationStatus"),
+      entry("verificationStatus", "verificationStatus"),
+      entry("verification_status", "verificationStatus"),
+      entry("retentionriskscore", "retentionRiskScore"),
+      entry("retentionRiskScore", "retentionRiskScore"),
+      entry("retention_risk_score", "retentionRiskScore")
+  );
+
+  public static final Map<String, String> EMPLOYMENT_RETENTION_FACT_SORT_FIELDS = Map.ofEntries(
+      entry("id", "employmentId"),
+      entry("employmentid", "employmentId"),
+      entry("employmentId", "employmentId"),
+      entry("employment_id", "employmentId"),
+      entry("traineeid", "traineeId"),
+      entry("traineeId", "traineeId"),
+      entry("trainee_id", "traineeId"),
+      entry("employerid", "employerId"),
+      entry("employerId", "employerId"),
+      entry("employer_id", "employerId"),
+      entry("startdate", "startDate"),
+      entry("startDate", "startDate"),
+      entry("start_date", "startDate"),
+      entry("retentionmonths", "retentionMonths"),
+      entry("retentionMonths", "retentionMonths"),
+      entry("retention_months", "retentionMonths"),
+      entry("currentstatus", "currentStatus"),
+      entry("currentStatus", "currentStatus"),
+      entry("current_status", "currentStatus"),
+      entry("attritionriskfactor", "attritionRiskFactor"),
+      entry("attritionRiskFactor", "attritionRiskFactor"),
+      entry("attrition_risk_factor", "attritionRiskFactor")
+  );
+
+  public static final Map<String, String> EMPLOYMENT_VERIFICATION_FACT_SORT_FIELDS = Map.ofEntries(
+      entry("id", "employmentVerificationId"),
+      entry("employmentverificationid", "employmentVerificationId"),
+      entry("employmentVerificationId", "employmentVerificationId"),
+      entry("employment_verification_id", "employmentVerificationId"),
+      entry("employmentid", "employmentId"),
+      entry("employmentId", "employmentId"),
+      entry("employment_id", "employmentId"),
+      entry("traineeid", "traineeId"),
+      entry("traineeId", "traineeId"),
+      entry("trainee_id", "traineeId"),
+      entry("employerid", "employerId"),
+      entry("employerId", "employerId"),
+      entry("employer_id", "employerId"),
+      entry("verificationmethod", "verificationMethod"),
+      entry("verificationMethod", "verificationMethod"),
+      entry("verification_method", "verificationMethod"),
+      entry("verificationstatus", "verificationStatus"),
+      entry("verificationStatus", "verificationStatus"),
+      entry("verification_status", "verificationStatus"),
+      entry("verifiedat", "verifiedAt"),
+      entry("verifiedAt", "verifiedAt"),
+      entry("verified_at", "verifiedAt"),
+      entry("confidencescore", "confidenceScore"),
+      entry("confidenceScore", "confidenceScore"),
+      entry("confidence_score", "confidenceScore"),
+      entry("iscurrent", "isCurrent"),
+      entry("isCurrent", "isCurrent"),
+      entry("is_current", "isCurrent")
+  );
+
+  public static final Map<String, String> ENROLLMENT_OUTCOME_FACT_SORT_FIELDS = Map.ofEntries(
+      entry("id", "enrollmentId"),
+      entry("enrollmentid", "enrollmentId"),
+      entry("enrollmentId", "enrollmentId"),
+      entry("enrollment_id", "enrollmentId"),
+      entry("traineeid", "traineeId"),
+      entry("traineeId", "traineeId"),
+      entry("trainee_id", "traineeId"),
+      entry("courseid", "courseId"),
+      entry("courseId", "courseId"),
+      entry("course_id", "courseId"),
+      entry("centerid", "centerId"),
+      entry("centerId", "centerId"),
+      entry("center_id", "centerId"),
+      entry("schemeid", "schemeId"),
+      entry("schemeId", "schemeId"),
+      entry("scheme_id", "schemeId"),
+      entry("enrollmentstatus", "enrollmentStatus"),
+      entry("enrollmentStatus", "enrollmentStatus"),
+      entry("enrollment_status", "enrollmentStatus"),
+      entry("completionstatus", "completionStatus"),
+      entry("completionStatus", "completionStatus"),
+      entry("completion_status", "completionStatus"),
+      entry("certificationstatus", "certificationStatus"),
+      entry("certificationStatus", "certificationStatus"),
+      entry("certification_status", "certificationStatus"),
+      entry("placementstatus", "placementStatus"),
+      entry("placementStatus", "placementStatus"),
+      entry("placement_status", "placementStatus"),
+      entry("attendancepercentage", "attendancePercentage"),
+      entry("attendancePercentage", "attendancePercentage"),
+      entry("attendance_percentage", "attendancePercentage"),
+      entry("completiondate", "completionDate"),
+      entry("completionDate", "completionDate"),
+      entry("completion_date", "completionDate"),
+      entry("certificationdate", "certificationDate"),
+      entry("certificationDate", "certificationDate"),
+      entry("certification_date", "certificationDate"),
+      entry("firstplacementdate", "firstPlacementDate"),
+      entry("firstPlacementDate", "firstPlacementDate"),
+      entry("first_placement_date", "firstPlacementDate")
+  );
+
+  public static final Map<String, String> FOLLOWUP_FACT_SORT_FIELDS = Map.ofEntries(
+      entry("id", "followupTaskId"),
+      entry("followuptaskid", "followupTaskId"),
+      entry("followupTaskId", "followupTaskId"),
+      entry("followup_task_id", "followupTaskId"),
+      entry("traineeid", "traineeId"),
+      entry("traineeId", "traineeId"),
+      entry("trainee_id", "traineeId"),
+      entry("followupwave", "followupWave"),
+      entry("followupWave", "followupWave"),
+      entry("followup_wave", "followupWave"),
+      entry("scheduleddate", "scheduledDate"),
+      entry("scheduledDate", "scheduledDate"),
+      entry("scheduled_date", "scheduledDate"),
+      entry("completeddate", "completedDate"),
+      entry("completedDate", "completedDate"),
+      entry("completed_date", "completedDate"),
+      entry("taskstatus", "taskStatus"),
+      entry("taskStatus", "taskStatus"),
+      entry("task_status", "taskStatus"),
+      entry("contactchannel", "contactChannel"),
+      entry("contactChannel", "contactChannel"),
+      entry("contact_channel", "contactChannel"),
+      entry("responsestatus", "responseStatus"),
+      entry("responseStatus", "responseStatus"),
+      entry("response_status", "responseStatus"),
+      entry("slameta", "slaMet"),
+      entry("slaMet", "slaMet"),
+      entry("sla_met", "slaMet"),
+      entry("slabreachdays", "slaBreachDays"),
+      entry("slaBreachDays", "slaBreachDays"),
+      entry("sla_breach_days", "slaBreachDays")
+  );
+
+  public static final Map<String, String> PLACEMENT_FACT_SORT_FIELDS = Map.ofEntries(
+      entry("id", "placementId"),
+      entry("placementid", "placementId"),
+      entry("placementId", "placementId"),
+      entry("placement_id", "placementId"),
+      entry("traineeid", "traineeId"),
+      entry("traineeId", "traineeId"),
+      entry("trainee_id", "traineeId"),
+      entry("employerid", "employerId"),
+      entry("employerId", "employerId"),
+      entry("employer_id", "employerId"),
+      entry("jobrole", "jobRole"),
+      entry("jobRole", "jobRole"),
+      entry("job_role", "jobRole"),
+      entry("monthlyinr", "monthlyInr"),
+      entry("monthlyInr", "monthlyInr"),
+      entry("monthly_inr", "monthlyInr"),
+      entry("placementdate", "placementDate"),
+      entry("placementDate", "placementDate"),
+      entry("placement_date", "placementDate"),
+      entry("placementtype", "placementType"),
+      entry("placementType", "placementType"),
+      entry("placement_type", "placementType"),
+      entry("placementstatus", "placementStatus"),
+      entry("placementStatus", "placementStatus"),
+      entry("placement_status", "placementStatus"),
+      entry("statecode", "stateCode"),
+      entry("stateCode", "stateCode"),
+      entry("state_code", "stateCode"),
+      entry("districtcode", "districtCode"),
+      entry("districtCode", "districtCode"),
+      entry("district_code", "districtCode")
+  );
+
+  public static final Map<String, String> SALARY_PROGRESSION_FACT_SORT_FIELDS = Map.ofEntries(
+      entry("id", "employmentId"),
+      entry("employmentid", "employmentId"),
+      entry("employmentId", "employmentId"),
+      entry("employment_id", "employmentId"),
+      entry("traineeid", "traineeId"),
+      entry("traineeId", "traineeId"),
+      entry("trainee_id", "traineeId"),
+      entry("employerid", "employerId"),
+      entry("employerId", "employerId"),
+      entry("employer_id", "employerId"),
+      entry("initialsalaryinr", "initialSalaryInr"),
+      entry("initialSalaryInr", "initialSalaryInr"),
+      entry("initial_salary_inr", "initialSalaryInr"),
+      entry("currentsalaryinr", "currentSalaryInr"),
+      entry("currentSalaryInr", "currentSalaryInr"),
+      entry("current_salary_inr", "currentSalaryInr"),
+      entry("salaryhikepercentage", "salaryHikePercentage"),
+      entry("salaryHikePercentage", "salaryHikePercentage"),
+      entry("salary_hike_percentage", "salaryHikePercentage"),
+      entry("salarytier", "salaryTier"),
+      entry("salaryTier", "salaryTier"),
+      entry("salary_tier", "salaryTier"),
+      entry("recordedat", "recordedAt"),
+      entry("recordedAt", "recordedAt"),
+      entry("recorded_at", "recordedAt"),
+      entry("experiencemonths", "experienceMonths"),
+      entry("experienceMonths", "experienceMonths"),
+      entry("experience_months", "experienceMonths")
+  );
+
+  public static final Map<String, String> SKILL_GAP_FACT_SORT_FIELDS = Map.ofEntries(
+      entry("id", "skillGapId"),
+      entry("skillgapid", "skillGapId"),
+      entry("skillGapId", "skillGapId"),
+      entry("skill_gap_id", "skillGapId"),
+      entry("traineeid", "traineeId"),
+      entry("traineeId", "traineeId"),
+      entry("trainee_id", "traineeId"),
+      entry("courseid", "courseId"),
+      entry("courseId", "courseId"),
+      entry("course_id", "courseId"),
+      entry("skillname", "skillName"),
+      entry("skillName", "skillName"),
+      entry("skill_name", "skillName"),
+      entry("requiredproficiency", "requiredProficiency"),
+      entry("requiredProficiency", "requiredProficiency"),
+      entry("required_proficiency", "requiredProficiency"),
+      entry("assessedproficiency", "assessedProficiency"),
+      entry("assessedProficiency", "assessedProficiency"),
+      entry("assessed_proficiency", "assessedProficiency"),
+      entry("gapseverity", "gapSeverity"),
+      entry("gapSeverity", "gapSeverity"),
+      entry("gap_severity", "gapSeverity"),
+      entry("remediationrecommended", "remediationRecommended"),
+      entry("remediationRecommended", "remediationRecommended"),
+      entry("remediation_recommended", "remediationRecommended"),
+      entry("assessmentdate", "assessmentDate"),
+      entry("assessmentDate", "assessmentDate"),
+      entry("assessment_date", "assessmentDate")
+  );
+
+  public static final Map<String, String> SURVEY_RESPONSE_FACT_SORT_FIELDS = Map.ofEntries(
+      entry("id", "surveyResponseId"),
+      entry("surveyresponseid", "surveyResponseId"),
+      entry("surveyResponseId", "surveyResponseId"),
+      entry("survey_response_id", "surveyResponseId"),
+      entry("traineeid", "traineeId"),
+      entry("traineeId", "traineeId"),
+      entry("trainee_id", "traineeId"),
+      entry("surveytype", "surveyType"),
+      entry("surveyType", "surveyType"),
+      entry("survey_type", "surveyType"),
+      entry("responsedate", "responseDate"),
+      entry("responseDate", "responseDate"),
+      entry("response_date", "responseDate"),
+      entry("overallsatisfactionscore", "overallSatisfactionScore"),
+      entry("overallSatisfactionScore", "overallSatisfactionScore"),
+      entry("overall_satisfaction_score", "overallSatisfactionScore"),
+      entry("npscategory", "npsCategory"),
+      entry("npsCategory", "npsCategory"),
+      entry("nps_category", "npsCategory")
+  );
+
+  public static final Map<String, String> UNEMPLOYMENT_FACT_SORT_FIELDS = Map.ofEntries(
+      entry("id", "unemploymentEventId"),
+      entry("unemploymenteventid", "unemploymentEventId"),
+      entry("unemploymentEventId", "unemploymentEventId"),
+      entry("unemployment_event_id", "unemploymentEventId"),
+      entry("traineeid", "traineeId"),
+      entry("traineeId", "traineeId"),
+      entry("trainee_id", "traineeId"),
+      entry("exiteventid", "exitEventId"),
+      entry("exitEventId", "exitEventId"),
+      entry("exit_event_id", "exitEventId"),
+      entry("unemploymentstartdate", "unemploymentStartDate"),
+      entry("unemploymentStartDate", "unemploymentStartDate"),
+      entry("unemployment_start_date", "unemploymentStartDate"),
+      entry("unemploymentenddate", "unemploymentEndDate"),
+      entry("unemploymentEndDate", "unemploymentEndDate"),
+      entry("unemployment_end_date", "unemploymentEndDate"),
+      entry("durationdays", "durationDays"),
+      entry("durationDays", "durationDays"),
+      entry("duration_days", "durationDays"),
+      entry("resolutiontype", "resolutionType"),
+      entry("resolutionType", "resolutionType"),
+      entry("resolution_type", "resolutionType"),
+      entry("allowanceclaimed", "allowanceClaimed"),
+      entry("allowanceClaimed", "allowanceClaimed"),
+      entry("allowance_claimed", "allowanceClaimed")
+  );
+
   public static final int MAX_SORT_FIELD_LENGTH = 64;
   public static final int MAX_SORT_DIRECTION_LENGTH = 16;
 
@@ -555,6 +900,45 @@ public final class PaginationUtils {
       String defaultSortProperty,
       Sort.Direction defaultDirection,
       Sort.Direction tieBreakerDirection) {
+    return buildPageable(
+        page,
+        size,
+        sort,
+        direction,
+        allowedSortFields,
+        defaultSortProperty,
+        "id",
+        defaultDirection,
+        tieBreakerDirection
+    );
+  }
+
+  /**
+   * Validates pagination parameters and builds a Pageable instance with explicit default direction,
+   * custom primary key identifier property, and tie-breaker.
+   *
+   * @param page zero-based page index
+   * @param size number of records per page
+   * @param sort field to sort on (optional, uses default if null/blank)
+   * @param direction sorting direction ("ASC" or "DESC", case-insensitive)
+   * @param allowedSortFields map of allowed lowercase sort query keys to entity property names
+   * @param defaultSortProperty default property to sort by when sort parameter is omitted
+   * @param idProperty entity's authoritative unique identifier property for deterministic tie-breaking
+   * @param defaultDirection default sort direction when direction parameter is omitted
+   * @param tieBreakerDirection direction for secondary id tie-breaker
+   * @return validated {@link Pageable}
+   * @throws BadRequestException if any parameter is out of bounds or unsupported
+   */
+  public static Pageable buildPageable(
+      int page,
+      int size,
+      String sort,
+      String direction,
+      Map<String, String> allowedSortFields,
+      String defaultSortProperty,
+      String idProperty,
+      Sort.Direction defaultDirection,
+      Sort.Direction tieBreakerDirection) {
 
     if (page < MIN_PAGE) {
       throw new BadRequestException("Page index must not be less than zero", "INVALID_PAGE");
@@ -592,11 +976,12 @@ public final class PaginationUtils {
     }
 
     Sort primarySort = Sort.by(sortDirection, resolvedProperty);
-    // Add stable tie-breaker on primary key "id" if not already sorting by "id"
+    // Add stable tie-breaker on authoritative primary key if not already sorting by it
+    String effectiveIdProp = (idProperty != null && !idProperty.isBlank()) ? idProperty : "id";
     Sort.Direction effectiveTieBreakerDir = tieBreakerDirection != null ? tieBreakerDirection : Sort.Direction.ASC;
-    Sort finalSort = "id".equals(resolvedProperty)
+    Sort finalSort = effectiveIdProp.equals(resolvedProperty)
         ? primarySort
-        : primarySort.and(Sort.by(effectiveTieBreakerDir, "id"));
+        : primarySort.and(Sort.by(effectiveTieBreakerDir, effectiveIdProp));
 
     return PageRequest.of(page, size, finalSort);
   }

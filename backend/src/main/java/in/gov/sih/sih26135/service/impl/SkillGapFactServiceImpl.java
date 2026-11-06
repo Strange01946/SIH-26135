@@ -6,8 +6,11 @@ import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.mapper.SkillGapFactMapper;
 import in.gov.sih.sih26135.repository.analytics.SkillGapFactRepository;
+import in.gov.sih.sih26135.response.PagedResponse;
 import in.gov.sih.sih26135.service.SkillGapFactService;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +26,12 @@ public class SkillGapFactServiceImpl implements SkillGapFactService {
       SkillGapFactMapper mapper) {
     this.repository = repository;
     this.mapper = mapper;
+  }
+
+  @Override
+  public PagedResponse<SkillGapFactResponse> getAllSkillGaps(Pageable pageable) {
+    Page<SkillGapFact> page = repository.findAll(pageable);
+    return PagedResponse.from(page, mapper::toResponse);
   }
 
   @Override
@@ -47,7 +56,7 @@ public class SkillGapFactServiceImpl implements SkillGapFactService {
     if (skillGapNumber == null || skillGapNumber.isBlank()) {
       throw new BadRequestException("Skill gap number is required");
     }
-    SkillGapFact entity = repository.findBySkillGapNumber(skillGapNumber.trim())
+    SkillGapFact entity = repository.findBySkillGapNumber(skillGapNumber)
         .orElseThrow(() -> new ResourceNotFoundException("SkillGapFact", "skillGapNumber"));
     return mapper.toResponse(entity);
   }
@@ -63,6 +72,15 @@ public class SkillGapFactServiceImpl implements SkillGapFactService {
   }
 
   @Override
+  public PagedResponse<SkillGapFactResponse> getSkillGapsByTraineeId(Long traineeId, Pageable pageable) {
+    if (traineeId == null) {
+      throw new BadRequestException("Trainee ID is required");
+    }
+    Page<SkillGapFact> page = repository.findByTraineeId(traineeId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
+  }
+
+  @Override
   public List<SkillGapFactResponse> getSkillGapsBySkillId(Long skillId) {
     if (skillId == null) {
       throw new BadRequestException("Skill ID is required");
@@ -70,6 +88,15 @@ public class SkillGapFactServiceImpl implements SkillGapFactService {
     return repository.findBySkillId(skillId).stream()
         .map(mapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public PagedResponse<SkillGapFactResponse> getSkillGapsBySkillId(Long skillId, Pageable pageable) {
+    if (skillId == null) {
+      throw new BadRequestException("Skill ID is required");
+    }
+    Page<SkillGapFact> page = repository.findBySkillId(skillId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
   }
 
   @Override
@@ -83,6 +110,15 @@ public class SkillGapFactServiceImpl implements SkillGapFactService {
   }
 
   @Override
+  public PagedResponse<SkillGapFactResponse> getSkillGapsByCourseId(Long courseId, Pageable pageable) {
+    if (courseId == null) {
+      throw new BadRequestException("Course ID is required");
+    }
+    Page<SkillGapFact> page = repository.findByCourseId(courseId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
+  }
+
+  @Override
   public List<SkillGapFactResponse> getSkillGapsByJobRoleId(Long jobRoleId) {
     if (jobRoleId == null) {
       throw new BadRequestException("Job role ID is required");
@@ -90,6 +126,15 @@ public class SkillGapFactServiceImpl implements SkillGapFactService {
     return repository.findByJobRoleId(jobRoleId).stream()
         .map(mapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public PagedResponse<SkillGapFactResponse> getSkillGapsByJobRoleId(Long jobRoleId, Pageable pageable) {
+    if (jobRoleId == null) {
+      throw new BadRequestException("Job role ID is required");
+    }
+    Page<SkillGapFact> page = repository.findByJobRoleId(jobRoleId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
   }
 
   @Override
@@ -103,6 +148,15 @@ public class SkillGapFactServiceImpl implements SkillGapFactService {
   }
 
   @Override
+  public PagedResponse<SkillGapFactResponse> getSkillGapsBySeverityId(Long severityId, Pageable pageable) {
+    if (severityId == null) {
+      throw new BadRequestException("Severity ID is required");
+    }
+    Page<SkillGapFact> page = repository.findBySkillGapSeverityId(severityId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
+  }
+
+  @Override
   public List<SkillGapFactResponse> getSkillGapsByStatusId(Long statusId) {
     if (statusId == null) {
       throw new BadRequestException("Status ID is required");
@@ -113,10 +167,25 @@ public class SkillGapFactServiceImpl implements SkillGapFactService {
   }
 
   @Override
+  public PagedResponse<SkillGapFactResponse> getSkillGapsByStatusId(Long statusId, Pageable pageable) {
+    if (statusId == null) {
+      throw new BadRequestException("Status ID is required");
+    }
+    Page<SkillGapFact> page = repository.findBySkillGapStatusId(statusId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
+  }
+
+  @Override
   public List<SkillGapFactResponse> getCurrentSkillGaps() {
     return repository.findByIsCurrentTrue().stream()
         .map(mapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public PagedResponse<SkillGapFactResponse> getCurrentSkillGaps(Pageable pageable) {
+    Page<SkillGapFact> page = repository.findByIsCurrentTrue(pageable);
+    return PagedResponse.from(page, mapper::toResponse);
   }
 
   @Override
@@ -127,5 +196,14 @@ public class SkillGapFactServiceImpl implements SkillGapFactService {
     return repository.findByTraineeDistrictId(traineeDistrictId).stream()
         .map(mapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public PagedResponse<SkillGapFactResponse> getSkillGapsByTraineeDistrictId(Long traineeDistrictId, Pageable pageable) {
+    if (traineeDistrictId == null) {
+      throw new BadRequestException("Trainee district ID is required");
+    }
+    Page<SkillGapFact> page = repository.findByTraineeDistrictId(traineeDistrictId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
   }
 }

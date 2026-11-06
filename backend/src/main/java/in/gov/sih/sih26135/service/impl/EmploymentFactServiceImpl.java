@@ -6,8 +6,11 @@ import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.mapper.EmploymentFactMapper;
 import in.gov.sih.sih26135.repository.analytics.EmploymentFactRepository;
+import in.gov.sih.sih26135.response.PagedResponse;
 import in.gov.sih.sih26135.service.EmploymentFactService;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +26,12 @@ public class EmploymentFactServiceImpl implements EmploymentFactService {
       EmploymentFactMapper mapper) {
     this.repository = repository;
     this.mapper = mapper;
+  }
+
+  @Override
+  public PagedResponse<EmploymentFactResponse> getAllEmployments(Pageable pageable) {
+    Page<EmploymentFact> page = repository.findAll(pageable);
+    return PagedResponse.from(page, mapper::toResponse);
   }
 
   @Override
@@ -47,7 +56,7 @@ public class EmploymentFactServiceImpl implements EmploymentFactService {
     if (employmentNumber == null || employmentNumber.isBlank()) {
       throw new BadRequestException("Employment number is required");
     }
-    EmploymentFact entity = repository.findByEmploymentNumber(employmentNumber.trim())
+    EmploymentFact entity = repository.findByEmploymentNumber(employmentNumber)
         .orElseThrow(() -> new ResourceNotFoundException("EmploymentFact", "employmentNumber"));
     return mapper.toResponse(entity);
   }
@@ -63,6 +72,15 @@ public class EmploymentFactServiceImpl implements EmploymentFactService {
   }
 
   @Override
+  public PagedResponse<EmploymentFactResponse> getEmploymentsByTraineeId(Long traineeId, Pageable pageable) {
+    if (traineeId == null) {
+      throw new BadRequestException("Trainee ID is required");
+    }
+    Page<EmploymentFact> page = repository.findByTraineeId(traineeId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
+  }
+
+  @Override
   public List<EmploymentFactResponse> getEmploymentsByEmployerId(Long employerId) {
     if (employerId == null) {
       throw new BadRequestException("Employer ID is required");
@@ -70,6 +88,15 @@ public class EmploymentFactServiceImpl implements EmploymentFactService {
     return repository.findByEmployerId(employerId).stream()
         .map(mapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public PagedResponse<EmploymentFactResponse> getEmploymentsByEmployerId(Long employerId, Pageable pageable) {
+    if (employerId == null) {
+      throw new BadRequestException("Employer ID is required");
+    }
+    Page<EmploymentFact> page = repository.findByEmployerId(employerId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
   }
 
   @Override
@@ -83,6 +110,15 @@ public class EmploymentFactServiceImpl implements EmploymentFactService {
   }
 
   @Override
+  public PagedResponse<EmploymentFactResponse> getEmploymentsByEnrollmentId(Long enrollmentId, Pageable pageable) {
+    if (enrollmentId == null) {
+      throw new BadRequestException("Enrollment ID is required");
+    }
+    Page<EmploymentFact> page = repository.findByEnrollmentId(enrollmentId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
+  }
+
+  @Override
   public List<EmploymentFactResponse> getEmploymentsByPlacementId(Long placementId) {
     if (placementId == null) {
       throw new BadRequestException("Placement ID is required");
@@ -90,6 +126,15 @@ public class EmploymentFactServiceImpl implements EmploymentFactService {
     return repository.findByPlacementId(placementId).stream()
         .map(mapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public PagedResponse<EmploymentFactResponse> getEmploymentsByPlacementId(Long placementId, Pageable pageable) {
+    if (placementId == null) {
+      throw new BadRequestException("Placement ID is required");
+    }
+    Page<EmploymentFact> page = repository.findByPlacementId(placementId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
   }
 
   @Override
@@ -103,10 +148,25 @@ public class EmploymentFactServiceImpl implements EmploymentFactService {
   }
 
   @Override
+  public PagedResponse<EmploymentFactResponse> getEmploymentsByJobRoleId(Long jobRoleId, Pageable pageable) {
+    if (jobRoleId == null) {
+      throw new BadRequestException("Job role ID is required");
+    }
+    Page<EmploymentFact> page = repository.findByJobRoleId(jobRoleId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
+  }
+
+  @Override
   public List<EmploymentFactResponse> getCurrentEmployments() {
     return repository.findByIsCurrentTrue().stream()
         .map(mapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public PagedResponse<EmploymentFactResponse> getCurrentEmployments(Pageable pageable) {
+    Page<EmploymentFact> page = repository.findByIsCurrentTrue(pageable);
+    return PagedResponse.from(page, mapper::toResponse);
   }
 
   @Override
@@ -120,6 +180,15 @@ public class EmploymentFactServiceImpl implements EmploymentFactService {
   }
 
   @Override
+  public PagedResponse<EmploymentFactResponse> getEmploymentsByEngagementTypeId(Long engagementTypeId, Pageable pageable) {
+    if (engagementTypeId == null) {
+      throw new BadRequestException("Engagement type ID is required");
+    }
+    Page<EmploymentFact> page = repository.findByEngagementTypeId(engagementTypeId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
+  }
+
+  @Override
   public List<EmploymentFactResponse> getEmploymentsByTraineeDistrictId(Long traineeDistrictId) {
     if (traineeDistrictId == null) {
       throw new BadRequestException("Trainee district ID is required");
@@ -127,5 +196,14 @@ public class EmploymentFactServiceImpl implements EmploymentFactService {
     return repository.findByTraineeDistrictId(traineeDistrictId).stream()
         .map(mapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public PagedResponse<EmploymentFactResponse> getEmploymentsByTraineeDistrictId(Long traineeDistrictId, Pageable pageable) {
+    if (traineeDistrictId == null) {
+      throw new BadRequestException("Trainee district ID is required");
+    }
+    Page<EmploymentFact> page = repository.findByTraineeDistrictId(traineeDistrictId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
   }
 }

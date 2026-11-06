@@ -6,8 +6,11 @@ import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.mapper.EmploymentExitFactMapper;
 import in.gov.sih.sih26135.repository.analytics.EmploymentExitFactRepository;
+import in.gov.sih.sih26135.response.PagedResponse;
 import in.gov.sih.sih26135.service.EmploymentExitFactService;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +26,12 @@ public class EmploymentExitFactServiceImpl implements EmploymentExitFactService 
       EmploymentExitFactMapper mapper) {
     this.repository = repository;
     this.mapper = mapper;
+  }
+
+  @Override
+  public PagedResponse<EmploymentExitFactResponse> getAllEmploymentExits(Pageable pageable) {
+    Page<EmploymentExitFact> page = repository.findAll(pageable);
+    return PagedResponse.from(page, mapper::toResponse);
   }
 
   @Override
@@ -53,6 +62,15 @@ public class EmploymentExitFactServiceImpl implements EmploymentExitFactService 
   }
 
   @Override
+  public PagedResponse<EmploymentExitFactResponse> getEmploymentExitsByTraineeId(Long traineeId, Pageable pageable) {
+    if (traineeId == null) {
+      throw new BadRequestException("Trainee ID is required");
+    }
+    Page<EmploymentExitFact> page = repository.findByTraineeId(traineeId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
+  }
+
+  @Override
   public List<EmploymentExitFactResponse> getEmploymentExitsByEmploymentId(Long employmentId) {
     if (employmentId == null) {
       throw new BadRequestException("Employment ID is required");
@@ -60,6 +78,15 @@ public class EmploymentExitFactServiceImpl implements EmploymentExitFactService 
     return repository.findByEmploymentId(employmentId).stream()
         .map(mapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public PagedResponse<EmploymentExitFactResponse> getEmploymentExitsByEmploymentId(Long employmentId, Pageable pageable) {
+    if (employmentId == null) {
+      throw new BadRequestException("Employment ID is required");
+    }
+    Page<EmploymentExitFact> page = repository.findByEmploymentId(employmentId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
   }
 
   @Override
@@ -73,6 +100,16 @@ public class EmploymentExitFactServiceImpl implements EmploymentExitFactService 
   }
 
   @Override
+  public PagedResponse<EmploymentExitFactResponse> getEmploymentExitsByEmploymentExitReasonId(
+      Long employmentExitReasonId, Pageable pageable) {
+    if (employmentExitReasonId == null) {
+      throw new BadRequestException("Employment exit reason ID is required");
+    }
+    Page<EmploymentExitFact> page = repository.findByEmploymentExitReasonId(employmentExitReasonId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
+  }
+
+  @Override
   public List<EmploymentExitFactResponse> getEmploymentExitsBySeparationNatureId(Long separationNatureId) {
     if (separationNatureId == null) {
       throw new BadRequestException("Separation nature ID is required");
@@ -80,6 +117,16 @@ public class EmploymentExitFactServiceImpl implements EmploymentExitFactService 
     return repository.findBySeparationNatureId(separationNatureId).stream()
         .map(mapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public PagedResponse<EmploymentExitFactResponse> getEmploymentExitsBySeparationNatureId(
+      Long separationNatureId, Pageable pageable) {
+    if (separationNatureId == null) {
+      throw new BadRequestException("Separation nature ID is required");
+    }
+    Page<EmploymentExitFact> page = repository.findBySeparationNatureId(separationNatureId, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
   }
 
   @Override
@@ -93,6 +140,16 @@ public class EmploymentExitFactServiceImpl implements EmploymentExitFactService 
   }
 
   @Override
+  public PagedResponse<EmploymentExitFactResponse> getEmploymentExitsByIsVoluntaryFlag(
+      Boolean isVoluntaryFlag, Pageable pageable) {
+    if (isVoluntaryFlag == null) {
+      throw new BadRequestException("isVoluntaryFlag is required");
+    }
+    Page<EmploymentExitFact> page = repository.findByIsVoluntaryFlag(isVoluntaryFlag, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
+  }
+
+  @Override
   public List<EmploymentExitFactResponse> getEmploymentExitsByIsInvoluntaryFlag(Boolean isInvoluntaryFlag) {
     if (isInvoluntaryFlag == null) {
       throw new BadRequestException("isInvoluntaryFlag is required");
@@ -100,5 +157,15 @@ public class EmploymentExitFactServiceImpl implements EmploymentExitFactService 
     return repository.findByIsInvoluntaryFlag(isInvoluntaryFlag).stream()
         .map(mapper::toResponse)
         .toList();
+  }
+
+  @Override
+  public PagedResponse<EmploymentExitFactResponse> getEmploymentExitsByIsInvoluntaryFlag(
+      Boolean isInvoluntaryFlag, Pageable pageable) {
+    if (isInvoluntaryFlag == null) {
+      throw new BadRequestException("isInvoluntaryFlag is required");
+    }
+    Page<EmploymentExitFact> page = repository.findByIsInvoluntaryFlag(isInvoluntaryFlag, pageable);
+    return PagedResponse.from(page, mapper::toResponse);
   }
 }
