@@ -35,13 +35,23 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
 
   private final InstitutionalAnalyticsRepository institutionalAnalyticsRepository;
   private final WorkflowSecurityScopeValidator scopeValidator;
+  private final in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService privacyService;
   private in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  public InstitutionalAnalyticsServiceImpl(
+      InstitutionalAnalyticsRepository institutionalAnalyticsRepository,
+      WorkflowSecurityScopeValidator scopeValidator,
+      in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService privacyService) {
+    this.institutionalAnalyticsRepository = java.util.Objects.requireNonNull(institutionalAnalyticsRepository, "InstitutionalAnalyticsRepository is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
+    this.privacyService = privacyService != null ? privacyService : new in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService();
+  }
 
   public InstitutionalAnalyticsServiceImpl(
       InstitutionalAnalyticsRepository institutionalAnalyticsRepository,
       WorkflowSecurityScopeValidator scopeValidator) {
-    this.institutionalAnalyticsRepository = java.util.Objects.requireNonNull(institutionalAnalyticsRepository, "InstitutionalAnalyticsRepository is required");
-    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
+    this(institutionalAnalyticsRepository, scopeValidator, new in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService());
   }
 
   @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -88,7 +98,7 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
       ));
     }
 
-    return LeaderboardResponse.of(RANKING_METRIC, items);
+    return LeaderboardResponse.of(RANKING_METRIC, privacyService.applyPrivacyGuardrailsToProviders(items));
   }
 
   @Override
@@ -153,7 +163,7 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
       ));
     }
 
-    return LeaderboardResponse.of(RANKING_METRIC, items);
+    return LeaderboardResponse.of(RANKING_METRIC, privacyService.applyPrivacyGuardrailsToCourses(items));
   }
 
   @Override
@@ -214,7 +224,7 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
       ));
     }
 
-    return LeaderboardResponse.of(RANKING_METRIC, items);
+    return LeaderboardResponse.of(RANKING_METRIC, privacyService.applyPrivacyGuardrailsToProviders(items));
   }
 
   @Override
@@ -279,7 +289,7 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
       ));
     }
 
-    return LeaderboardResponse.of(RANKING_METRIC, items);
+    return LeaderboardResponse.of(RANKING_METRIC, privacyService.applyPrivacyGuardrailsToCourses(items));
   }
 
   @Override

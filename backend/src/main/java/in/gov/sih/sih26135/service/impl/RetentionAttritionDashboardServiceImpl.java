@@ -36,13 +36,23 @@ public class RetentionAttritionDashboardServiceImpl implements RetentionAttritio
 
   private final RetentionAttritionDashboardRepository repository;
   private final WorkflowSecurityScopeValidator scopeValidator;
+  private final in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService privacyService;
   private in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  public RetentionAttritionDashboardServiceImpl(
+      RetentionAttritionDashboardRepository repository,
+      WorkflowSecurityScopeValidator scopeValidator,
+      in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService privacyService) {
+    this.repository = java.util.Objects.requireNonNull(repository, "RetentionAttritionDashboardRepository is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
+    this.privacyService = privacyService != null ? privacyService : new in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService();
+  }
 
   public RetentionAttritionDashboardServiceImpl(
       RetentionAttritionDashboardRepository repository,
       WorkflowSecurityScopeValidator scopeValidator) {
-    this.repository = java.util.Objects.requireNonNull(repository, "RetentionAttritionDashboardRepository is required");
-    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
+    this(repository, scopeValidator, new in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService());
   }
 
   @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -93,11 +103,11 @@ public class RetentionAttritionDashboardServiceImpl implements RetentionAttritio
         new RetentionMilestoneResponse("36_MONTHS", 36, projection.observable36mCount(), projection.retained36mCount(), rate36m)
     );
 
-    return new LongitudinalRetentionResponse(
+    return privacyService.applyPrivacyGuardrail(new LongitudinalRetentionResponse(
         projection.employmentSpellCount(),
         cohortSummary,
         milestones
-    );
+    ));
   }
 
   @Override
@@ -120,12 +130,12 @@ public class RetentionAttritionDashboardServiceImpl implements RetentionAttritio
     SeparationAnalysisResponse separationAnalysis = mapSeparationAnalysis(sepProj);
     List<AttritionReasonBreakdownResponse> exitReasons = mapExitReasons(exitProjs, sepProj);
 
-    return new AttritionDashboardResponse(
+    return privacyService.applyPrivacyGuardrail(new AttritionDashboardResponse(
         unemploymentSummary,
         unemploymentReasons,
         separationAnalysis,
         exitReasons
-    );
+    ));
   }
 
   private UnemploymentSummaryResponse mapUnemploymentSummary(UnemploymentSummaryProjection p) {

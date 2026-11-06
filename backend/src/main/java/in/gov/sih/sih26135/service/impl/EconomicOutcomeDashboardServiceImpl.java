@@ -50,13 +50,23 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
 
   private final EconomicOutcomeDashboardRepository repository;
   private final WorkflowSecurityScopeValidator scopeValidator;
+  private final in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService privacyService;
   private in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  public EconomicOutcomeDashboardServiceImpl(
+      EconomicOutcomeDashboardRepository repository,
+      WorkflowSecurityScopeValidator scopeValidator,
+      in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService privacyService) {
+    this.repository = java.util.Objects.requireNonNull(repository, "EconomicOutcomeDashboardRepository is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
+    this.privacyService = privacyService != null ? privacyService : new in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService();
+  }
 
   public EconomicOutcomeDashboardServiceImpl(
       EconomicOutcomeDashboardRepository repository,
       WorkflowSecurityScopeValidator scopeValidator) {
-    this.repository = java.util.Objects.requireNonNull(repository, "EconomicOutcomeDashboardRepository is required");
-    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
+    this(repository, scopeValidator, new in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService());
   }
 
   @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -95,7 +105,7 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
       ));
     }
 
-    return LeaderboardResponse.of(EMPLOYER_RANKING_METRIC, items);
+    return LeaderboardResponse.of(EMPLOYER_RANKING_METRIC, privacyService.applyPrivacyGuardrailsToEmployers(items));
   }
 
   @Override
@@ -131,13 +141,13 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
         repository.getFormalQ11CourseWageProgression()
     );
 
-    return new EconomicOutcomeSummaryResponse(
+    return privacyService.applyPrivacyGuardrail(new EconomicOutcomeSummaryResponse(
         wageProgression,
         salaryDistribution,
         employmentMix,
         categoryBreakdown,
         courseWageProgression
-    );
+    ));
   }
 
   private WageProgressionResponse mapWageProgression(WageProgressionProjection p) {

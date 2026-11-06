@@ -50,13 +50,23 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
 
   private final GeographicDashboardRepository geographicDashboardRepository;
   private final WorkflowSecurityScopeValidator scopeValidator;
+  private final in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService privacyService;
   private in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  public GeographicDashboardServiceImpl(
+      GeographicDashboardRepository geographicDashboardRepository,
+      WorkflowSecurityScopeValidator scopeValidator,
+      in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService privacyService) {
+    this.geographicDashboardRepository = java.util.Objects.requireNonNull(geographicDashboardRepository, "GeographicDashboardRepository is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
+    this.privacyService = privacyService != null ? privacyService : new in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService();
+  }
 
   public GeographicDashboardServiceImpl(
       GeographicDashboardRepository geographicDashboardRepository,
       WorkflowSecurityScopeValidator scopeValidator) {
-    this.geographicDashboardRepository = java.util.Objects.requireNonNull(geographicDashboardRepository, "GeographicDashboardRepository is required");
-    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
+    this(geographicDashboardRepository, scopeValidator, new in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService());
   }
 
   @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -109,7 +119,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
         geographicDashboardRepository.countDistrictsWithoutTrainingCenters()
     );
 
-    return new GeographicOverviewResponse(
+    return privacyService.applyPrivacyGuardrail(new GeographicOverviewResponse(
         totalStates,
         totalDistricts,
         totalEnrollments,
@@ -124,7 +134,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
         stateSummaries,
         districtRankings,
         regionalDisparity
-    );
+    ));
   }
 
   @Override
@@ -179,7 +189,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     LeaderboardResponse<DistrictPerformanceResponse> districtRankings =
         LeaderboardResponse.of(RANKING_METRIC_STATE_DISTRICTS, stateDistricts);
 
-    return new StateGeographicResponse(
+    return privacyService.applyPrivacyGuardrail(new StateGeographicResponse(
         stateId,
         stateSummary != null ? stateSummary.stateCode() : null,
         stateSummary != null ? stateSummary.stateName() : null,
@@ -188,7 +198,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
         districtRankings,
         totalTrainingCenters,
         stateDisparity
-    );
+    ));
   }
 
   @Override
@@ -259,7 +269,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     regionalIndicators.put("hasEnrollment", performance != null && performance.enrollmentCount() > 0L);
     regionalIndicators.put("dataAvailabilityNotes", DATA_AVAILABILITY_NOTES);
 
-    return new DistrictGeographicResponse(
+    return privacyService.applyPrivacyGuardrail(new DistrictGeographicResponse(
         districtId,
         districtProj != null ? districtProj.districtCode() : null,
         districtProj != null ? districtProj.districtName() : null,
@@ -272,7 +282,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
         nationalRank,
         stateRank,
         regionalIndicators
-    );
+    ));
   }
 
   @Override
@@ -282,7 +292,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     for (int i = 0; i < q06Projections.size(); i++) {
       districtResponses.add(toDistrictResponse(q06Projections.get(i), i + 1));
     }
-    return LeaderboardResponse.of(RANKING_METRIC_Q06, districtResponses);
+    return LeaderboardResponse.of(RANKING_METRIC_Q06, privacyService.applyPrivacyGuardrailsToDistricts(districtResponses));
   }
 
   @Override
@@ -334,7 +344,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
         geographicDashboardRepository.countDistrictsWithoutTrainingCenters()
     );
 
-    return new GeographicOverviewResponse(
+    return privacyService.applyPrivacyGuardrail(new GeographicOverviewResponse(
         totalStates,
         totalDistricts,
         totalEnrollments,
@@ -349,7 +359,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
         stateSummaries,
         districtRankings,
         regionalDisparity
-    );
+    ));
   }
 
   @Override
@@ -406,7 +416,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     LeaderboardResponse<DistrictPerformanceResponse> districtRankings =
         LeaderboardResponse.of(RANKING_METRIC_STATE_DISTRICTS, stateDistricts);
 
-    return new StateGeographicResponse(
+    return privacyService.applyPrivacyGuardrail(new StateGeographicResponse(
         stateId,
         stateSummary != null ? stateSummary.stateCode() : null,
         stateSummary != null ? stateSummary.stateName() : null,
@@ -415,7 +425,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
         districtRankings,
         totalTrainingCenters,
         stateDisparity
-    );
+    ));
   }
 
   @Override
@@ -488,7 +498,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     regionalIndicators.put("hasEnrollment", performance != null && performance.enrollmentCount() > 0L);
     regionalIndicators.put("dataAvailabilityNotes", DATA_AVAILABILITY_NOTES);
 
-    return new DistrictGeographicResponse(
+    return privacyService.applyPrivacyGuardrail(new DistrictGeographicResponse(
         districtId,
         districtProj != null ? districtProj.districtCode() : null,
         districtProj != null ? districtProj.districtName() : null,
@@ -501,7 +511,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
         nationalRank,
         stateRank,
         regionalIndicators
-    );
+    ));
   }
 
   @Override
@@ -516,7 +526,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     for (int i = 0; i < projections.size(); i++) {
       items.add(toDistrictResponse(projections.get(i), i + 1));
     }
-    return LeaderboardResponse.of(RANKING_METRIC_Q06, items);
+    return LeaderboardResponse.of(RANKING_METRIC_Q06, privacyService.applyPrivacyGuardrailsToDistricts(items));
   }
 
   private RegionalDisparityResponse buildRegionalDisparity(

@@ -7,6 +7,10 @@ import java.math.BigDecimal;
  */
 public interface PipelineFunnelProjection {
 
+  default Number getTraineeCount() {
+    return null;
+  }
+
   Number getEnrollmentCount();
 
   Number getCompletedCount();

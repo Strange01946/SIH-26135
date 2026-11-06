@@ -37,6 +37,7 @@ public class ExecutiveDashboardRepository {
 
   private static final String Q02_SQL = """
       SELECT
+        COUNT(DISTINCT trainee_id) AS traineeCount,
         COUNT(*) AS enrollmentCount,
         SUM(is_completed_flag) AS completedCount,
         SUM(has_issued_certificate_flag) AS certifiedCount,
@@ -146,6 +147,7 @@ public class ExecutiveDashboardRepository {
         AnalyticsQueryFilterBuilder.buildEnrollmentFactPredicates(criteria, "v");
     String sql = """
         SELECT
+          COUNT(DISTINCT v.trainee_id) AS traineeCount,
           COUNT(*) AS enrollmentCount,
           SUM(v.is_completed_flag) AS completedCount,
           SUM(v.has_issued_certificate_flag) AS certifiedCount,
@@ -222,6 +224,7 @@ public class ExecutiveDashboardRepository {
 
   private static final RowMapper<PipelineFunnelProjection> FUNNEL_ROW_MAPPER = (rs, rowNum) ->
       new PipelineFunnelRecord(
+          (Number) rs.getObject("traineeCount"),
           (Number) rs.getObject("enrollmentCount"),
           (Number) rs.getObject("completedCount"),
           (Number) rs.getObject("certifiedCount"),
@@ -284,6 +287,7 @@ public class ExecutiveDashboardRepository {
   }
 
   record PipelineFunnelRecord(
+      Number traineeCount,
       Number enrollmentCount,
       Number completedCount,
       Number certifiedCount,
@@ -294,6 +298,7 @@ public class ExecutiveDashboardRepository {
       BigDecimal placementRatePct,
       BigDecimal employmentRatePct
   ) implements PipelineFunnelProjection {
+    @Override public Number getTraineeCount() { return traineeCount; }
     @Override public Number getEnrollmentCount() { return enrollmentCount; }
     @Override public Number getCompletedCount() { return completedCount; }
     @Override public Number getCertifiedCount() { return certifiedCount; }

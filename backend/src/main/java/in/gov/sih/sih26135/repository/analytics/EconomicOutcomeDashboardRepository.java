@@ -44,9 +44,15 @@ public class EconomicOutcomeDashboardRepository {
           v.trainee_count,
           v.joined_count,
           v.join_rate_pct,
-          v.avg_joining_salary
+          CASE WHEN sal.salary_contributors >= 5 THEN v.avg_joining_salary ELSE NULL END AS avg_joining_salary
         FROM vw_employer_hiring_summary v
         JOIN employers e ON e.employer_id = v.employer_id
+        LEFT JOIN (
+          SELECT employer_id, COUNT(DISTINCT trainee_id) AS salary_contributors
+          FROM vw_placement_fact
+          WHERE employer_id IS NOT NULL AND joining_salary IS NOT NULL
+          GROUP BY employer_id
+        ) sal ON sal.employer_id = e.employer_id
         WHERE e.deleted_at IS NULL
         ORDER BY v.joined_count DESC, v.placement_count DESC, e.employer_code ASC, e.employer_id ASC
         """;
@@ -153,8 +159,8 @@ public class EconomicOutcomeDashboardRepository {
     String sql = """
         SELECT
           COUNT(*) AS employment_spell_count,
-          COUNT(first_recorded_salary) AS first_salary_count,
-          COUNT(latest_recorded_salary) AS latest_salary_count,
+          COUNT(DISTINCT CASE WHEN first_recorded_salary IS NOT NULL THEN trainee_id ELSE NULL END) AS first_salary_count,
+          COUNT(DISTINCT CASE WHEN latest_recorded_salary IS NOT NULL THEN trainee_id ELSE NULL END) AS latest_salary_count,
           AVG(first_recorded_salary) AS avg_first_recorded_salary,
           AVG(latest_recorded_salary) AS avg_latest_recorded_salary,
           AVG(salary_change_amount) AS avg_salary_change_amount,
@@ -218,9 +224,12 @@ public class EconomicOutcomeDashboardRepository {
           c.course_code,
           c.course_name,
           COUNT(*) AS spell_count,
-          AVG(sp.first_recorded_salary) AS avg_first_recorded_salary,
-          AVG(sp.latest_recorded_salary) AS avg_latest_recorded_salary,
-          AVG(sp.salary_change_pct) AS avg_salary_change_pct
+          CASE WHEN COUNT(DISTINCT CASE WHEN sp.first_recorded_salary IS NOT NULL THEN sp.trainee_id ELSE NULL END) >= 5
+               THEN AVG(sp.first_recorded_salary) ELSE NULL END AS avg_first_recorded_salary,
+          CASE WHEN COUNT(DISTINCT CASE WHEN sp.latest_recorded_salary IS NOT NULL THEN sp.trainee_id ELSE NULL END) >= 5
+               THEN AVG(sp.latest_recorded_salary) ELSE NULL END AS avg_latest_recorded_salary,
+          CASE WHEN COUNT(DISTINCT CASE WHEN sp.salary_change_pct IS NOT NULL THEN sp.trainee_id ELSE NULL END) >= 5
+               THEN AVG(sp.salary_change_pct) ELSE NULL END AS avg_salary_change_pct
         FROM vw_salary_progression_fact sp
         LEFT JOIN courses c ON c.course_id = sp.course_id
         WHERE sp.course_id IS NOT NULL

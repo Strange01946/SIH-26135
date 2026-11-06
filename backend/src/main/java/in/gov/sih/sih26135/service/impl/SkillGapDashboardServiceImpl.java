@@ -29,13 +29,23 @@ public class SkillGapDashboardServiceImpl implements SkillGapDashboardService {
 
   private final SkillGapDashboardRepository repository;
   private final WorkflowSecurityScopeValidator scopeValidator;
+  private final in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService privacyService;
   private in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  public SkillGapDashboardServiceImpl(
+      SkillGapDashboardRepository repository,
+      WorkflowSecurityScopeValidator scopeValidator,
+      in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService privacyService) {
+    this.repository = java.util.Objects.requireNonNull(repository, "SkillGapDashboardRepository is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
+    this.privacyService = privacyService != null ? privacyService : new in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService();
+  }
 
   public SkillGapDashboardServiceImpl(
       SkillGapDashboardRepository repository,
       WorkflowSecurityScopeValidator scopeValidator) {
-    this.repository = java.util.Objects.requireNonNull(repository, "SkillGapDashboardRepository is required");
-    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
+    this(repository, scopeValidator, new in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService());
   }
 
   @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -139,7 +149,7 @@ public class SkillGapDashboardServiceImpl implements SkillGapDashboardService {
       }
     }
 
-    return new SkillGapDashboardResponse(
+    return privacyService.applyPrivacyGuardrail(new SkillGapDashboardResponse(
         totalCurrentGaps,
         totalAffectedTrainees,
         totalRecommendations,
@@ -147,6 +157,6 @@ public class SkillGapDashboardServiceImpl implements SkillGapDashboardService {
         overallAcceptanceRatePct,
         topGaps,
         severityBreakdown
-    );
+    ));
   }
 }

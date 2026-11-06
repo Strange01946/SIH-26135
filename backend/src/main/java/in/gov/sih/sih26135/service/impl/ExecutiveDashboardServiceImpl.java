@@ -31,13 +31,23 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
 
   private final ExecutiveDashboardRepository executiveDashboardRepository;
   private final WorkflowSecurityScopeValidator scopeValidator;
+  private final in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService privacyService;
   private in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  public ExecutiveDashboardServiceImpl(
+      ExecutiveDashboardRepository executiveDashboardRepository,
+      WorkflowSecurityScopeValidator scopeValidator,
+      in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService privacyService) {
+    this.executiveDashboardRepository = java.util.Objects.requireNonNull(executiveDashboardRepository, "ExecutiveDashboardRepository is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
+    this.privacyService = privacyService != null ? privacyService : new in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService();
+  }
 
   public ExecutiveDashboardServiceImpl(
       ExecutiveDashboardRepository executiveDashboardRepository,
       WorkflowSecurityScopeValidator scopeValidator) {
-    this.executiveDashboardRepository = java.util.Objects.requireNonNull(executiveDashboardRepository, "ExecutiveDashboardRepository is required");
-    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
+    this(executiveDashboardRepository, scopeValidator, new in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService());
   }
 
   @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -75,7 +85,7 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
     BigDecimal placementRatePct = AnalyticsCalculationUtils.calculatePercentage(joinedPlacementCount, enrollmentCount);
     BigDecimal employmentRatePct = AnalyticsCalculationUtils.calculatePercentage(employedTraineeCount, enrollmentCount);
 
-    return new DashboardKpiStripResponse(
+    return privacyService.applyPrivacyGuardrail(new DashboardKpiStripResponse(
         traineeCount,
         enrollmentCount,
         enrolledTraineeCount,
@@ -92,7 +102,7 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
         certificationRatePct,
         placementRatePct,
         employmentRatePct
-    );
+    ));
   }
 
   @Override
@@ -129,7 +139,9 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
         ? AnalyticsCalculationUtils.round(proj.getEmploymentRatePct())
         : AnalyticsCalculationUtils.calculatePercentage(employedCount, enrollmentCount);
 
-    return new PipelineFunnelResponse(
+    Long traineeCount = toLong(proj != null ? proj.getTraineeCount() : null);
+
+    return privacyService.applyPrivacyGuardrail(new PipelineFunnelResponse(
         enrollmentCount,
         completedCount,
         certifiedCount,
@@ -139,7 +151,7 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
         certificationRatePct,
         placementRatePct,
         employmentRatePct
-    );
+    ), traineeCount);
   }
 
   @Override
@@ -161,7 +173,7 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
         .map(this::toSchemeProgramResponse)
         .toList();
 
-    return LeaderboardResponse.of("employmentRatePct", items);
+    return LeaderboardResponse.of("employmentRatePct", privacyService.applyPrivacyGuardrailsToSchemePrograms(items));
   }
 
   @Override
@@ -178,7 +190,7 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
     PipelineFunnelResponse pipelineFunnel = getTrainingPipelineFunnel();
     LeaderboardResponse<SchemeProgramPerformanceResponse> schemeProgramMatrix = getSchemeProgramPerformanceMatrix();
 
-    return new ExecutiveDashboardResponse(kpiStrip, pipelineFunnel, schemeProgramMatrix);
+    return privacyService.applyPrivacyGuardrail(new ExecutiveDashboardResponse(kpiStrip, pipelineFunnel, schemeProgramMatrix));
   }
 
   @Override
@@ -215,7 +227,7 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
     BigDecimal placementRatePct = AnalyticsCalculationUtils.calculatePercentage(joinedPlacementCount, enrollmentCount);
     BigDecimal employmentRatePct = AnalyticsCalculationUtils.calculatePercentage(employedTraineeCount, enrollmentCount);
 
-    return new DashboardKpiStripResponse(
+    return privacyService.applyPrivacyGuardrail(new DashboardKpiStripResponse(
         traineeCount,
         enrollmentCount,
         enrolledTraineeCount,
@@ -232,7 +244,7 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
         certificationRatePct,
         placementRatePct,
         employmentRatePct
-    );
+    ));
   }
 
   @Override
@@ -273,7 +285,9 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
         ? AnalyticsCalculationUtils.round(proj.getEmploymentRatePct())
         : AnalyticsCalculationUtils.calculatePercentage(employedCount, enrollmentCount);
 
-    return new PipelineFunnelResponse(
+    Long traineeCount = toLong(proj != null ? proj.getTraineeCount() : null);
+
+    return privacyService.applyPrivacyGuardrail(new PipelineFunnelResponse(
         enrollmentCount,
         completedCount,
         certifiedCount,
@@ -283,7 +297,7 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
         certificationRatePct,
         placementRatePct,
         employmentRatePct
-    );
+    ), traineeCount);
   }
 
   @Override
@@ -309,7 +323,7 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
         .map(this::toSchemeProgramResponse)
         .toList();
 
-    return LeaderboardResponse.of("employmentRatePct", items);
+    return LeaderboardResponse.of("employmentRatePct", privacyService.applyPrivacyGuardrailsToSchemePrograms(items));
   }
 
   @Override
@@ -330,7 +344,7 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
     PipelineFunnelResponse pipelineFunnel = getTrainingPipelineFunnel(criteria);
     LeaderboardResponse<SchemeProgramPerformanceResponse> schemeProgramMatrix = getSchemeProgramPerformanceMatrix(criteria);
 
-    return new ExecutiveDashboardResponse(kpiStrip, pipelineFunnel, schemeProgramMatrix);
+    return privacyService.applyPrivacyGuardrail(new ExecutiveDashboardResponse(kpiStrip, pipelineFunnel, schemeProgramMatrix));
   }
 
   private SchemeProgramPerformanceResponse toSchemeProgramResponse(SchemeProgramPerformanceProjection p) {

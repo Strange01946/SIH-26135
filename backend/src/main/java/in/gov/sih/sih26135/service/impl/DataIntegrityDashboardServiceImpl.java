@@ -44,13 +44,23 @@ public class DataIntegrityDashboardServiceImpl implements DataIntegrityDashboard
 
   private final DataIntegrityDashboardRepository repository;
   private final WorkflowSecurityScopeValidator scopeValidator;
+  private final in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService privacyService;
   private in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  public DataIntegrityDashboardServiceImpl(
+      DataIntegrityDashboardRepository repository,
+      WorkflowSecurityScopeValidator scopeValidator,
+      in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService privacyService) {
+    this.repository = java.util.Objects.requireNonNull(repository, "DataIntegrityDashboardRepository is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
+    this.privacyService = privacyService != null ? privacyService : new in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService();
+  }
 
   public DataIntegrityDashboardServiceImpl(
       DataIntegrityDashboardRepository repository,
       WorkflowSecurityScopeValidator scopeValidator) {
-    this.repository = java.util.Objects.requireNonNull(repository, "DataIntegrityDashboardRepository is required");
-    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
+    this(repository, scopeValidator, new in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService());
   }
 
   @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -208,7 +218,7 @@ public class DataIntegrityDashboardServiceImpl implements DataIntegrityDashboard
       }
     }
 
-    return new VerificationDashboardResponse(
+    return privacyService.applyPrivacyGuardrail(new VerificationDashboardResponse(
         totalVerifications,
         totalEmployments,
         totalTrainees,
@@ -225,7 +235,7 @@ public class DataIntegrityDashboardServiceImpl implements DataIntegrityDashboard
         pendingRatePct,
         statusBreakdown,
         methodEfficacyBreakdown
-    );
+    ));
   }
 
   @Override
@@ -342,7 +352,7 @@ public class DataIntegrityDashboardServiceImpl implements DataIntegrityDashboard
         null
     );
 
-    return new FollowupDashboardResponse(
+    return privacyService.applyPrivacyGuardrail(new FollowupDashboardResponse(
         totalTasks,
         totalTrainees,
         completedTasks,
@@ -355,7 +365,7 @@ public class DataIntegrityDashboardServiceImpl implements DataIntegrityDashboard
         taskCompletionRatePct,
         wavePerformance,
         slaPerformance
-    );
+    ));
   }
 
   @Override
@@ -437,7 +447,7 @@ public class DataIntegrityDashboardServiceImpl implements DataIntegrityDashboard
         null
     );
 
-    return new SurveyDashboardResponse(
+    return privacyService.applyPrivacyGuardrail(new SurveyDashboardResponse(
         totalResponseRows,
         totalTrainees,
         submittedCount,
@@ -445,7 +455,7 @@ public class DataIntegrityDashboardServiceImpl implements DataIntegrityDashboard
         overallSubmissionRatePct,
         purposePipeline,
         satisfactionPerformance
-    );
+    ));
   }
 
   private static class MethodAccumulator {
