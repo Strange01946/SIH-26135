@@ -88,6 +88,11 @@ class WorkflowSecurityScopeValidatorTest {
     lenient().when(traineeRepository.existsById(500L)).thenReturn(true);
     lenient().when(traineeRepository.existsById(600L)).thenReturn(true);
     lenient().when(traineeRepository.existsById(999L)).thenReturn(true);
+
+    User superAdmin = new User();
+    superAdmin.setId(1L);
+    superAdmin.setUsername("super_admin");
+    lenient().when(userRepository.findById(1L)).thenReturn(Optional.of(superAdmin));
   }
 
   @AfterEach
@@ -1030,10 +1035,12 @@ class WorkflowSecurityScopeValidatorTest {
     }
 
     @Test
-    @DisplayName("validateNationwideScope permits internal call when unauthenticated")
-    void testNationwideScope_permitsUnauthenticatedInternalCall() {
+    @DisplayName("validateNationwideScope rejects unauthenticated call with AccessDeniedException")
+    void testNationwideScope_rejectsUnauthenticatedCall() {
       SecurityContextHolder.clearContext();
-      assertThatCode(() -> validator.validateNationwideScope()).doesNotThrowAnyException();
+      assertThatThrownBy(() -> validator.validateNationwideScope())
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessage("Access denied");
     }
 
     @Test

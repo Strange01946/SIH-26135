@@ -13,12 +13,14 @@ import in.gov.sih.sih26135.dto.response.ExecutiveDashboardResponse;
 import in.gov.sih.sih26135.dto.response.LeaderboardResponse;
 import in.gov.sih.sih26135.dto.response.PipelineFunnelResponse;
 import in.gov.sih.sih26135.dto.response.SchemeProgramPerformanceResponse;
+import in.gov.sih.sih26135.security.UserPrincipal;
 import in.gov.sih.sih26135.security.jwt.JwtTokenProvider;
 import in.gov.sih.sih26135.util.AnalyticsCalculationUtils;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.util.List;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -27,6 +29,10 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -42,6 +48,9 @@ class ExecutiveDashboardIntegrationTest {
 
   @Autowired
   private DataSource dataSource;
+
+  @Autowired
+  private JdbcTemplate jdbcTemplate;
 
   @Autowired
   private ExecutiveDashboardService executiveDashboardService;
@@ -61,11 +70,30 @@ class ExecutiveDashboardIntegrationTest {
       assertThat(connection.getCatalog()).isEqualToIgnoringCase(MysqlConnectionTest.EXPECTED_TEST_CATALOG);
     }
 
+    jdbcTemplate.update("""
+        INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, created_at, updated_at)
+        VALUES (1, 'admin', 'admin@test.gov.in', 'hash', 'argon2id', 1, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE state_id = NULL, district_id = NULL, training_provider_id = NULL, employer_id = NULL
+        """);
+
     tokenAnalyticsRead = "Bearer " + jwtTokenProvider.generateAccessToken(
         1L,
-        "executive",
-        List.of("analytics.read")
+        "admin",
+        List.of("ROLE_super_admin", "analytics.read")
     );
+
+    SecurityContextHolder.getContext().setAuthentication(
+        new UsernamePasswordAuthenticationToken(
+            new UserPrincipal(1L, "admin"),
+            null,
+            List.of(new SimpleGrantedAuthority("ROLE_super_admin"), new SimpleGrantedAuthority("analytics.read"))
+        )
+    );
+  }
+
+  @AfterEach
+  void tearDown() {
+    SecurityContextHolder.clearContext();
   }
 
   @Test

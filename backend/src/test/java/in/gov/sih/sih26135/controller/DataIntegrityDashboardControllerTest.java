@@ -44,6 +44,9 @@ class DataIntegrityDashboardControllerTest {
   @MockBean
   private DataIntegrityDashboardService dataIntegrityDashboardService;
 
+  @MockBean
+  private in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator scopeValidator;
+
   private String tokenAnalyticsRead;
   private String tokenUnauthorized;
 

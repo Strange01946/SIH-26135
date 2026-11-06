@@ -18,6 +18,7 @@ import in.gov.sih.sih26135.repository.analytics.projection.SurveyResponsePipelin
 import in.gov.sih.sih26135.repository.analytics.projection.VerificationMethodEfficacyProjection;
 import in.gov.sih.sih26135.repository.analytics.projection.VerificationOutcomeProjection;
 import in.gov.sih.sih26135.repository.analytics.projection.VerificationOverallSummaryProjection;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.impl.DataIntegrityDashboardServiceImpl;
 import java.math.BigDecimal;
 import java.util.List;
@@ -35,11 +36,14 @@ class DataIntegrityDashboardServiceTest {
   @Mock
   private DataIntegrityDashboardRepository repository;
 
+  @Mock
+  private WorkflowSecurityScopeValidator scopeValidator;
+
   private DataIntegrityDashboardService service;
 
   @BeforeEach
   void setUp() {
-    service = new DataIntegrityDashboardServiceImpl(repository);
+    service = new DataIntegrityDashboardServiceImpl(repository, scopeValidator);
   }
 
   // =========================================================================

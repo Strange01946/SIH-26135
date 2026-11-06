@@ -34,16 +34,11 @@ public class GeographicDashboardController {
   private final GeographicDashboardService geographicDashboardService;
   private final WorkflowSecurityScopeValidator scopeValidator;
 
-  public GeographicDashboardController(GeographicDashboardService geographicDashboardService) {
-    this(geographicDashboardService, null);
-  }
-
-  @Autowired
   public GeographicDashboardController(
       GeographicDashboardService geographicDashboardService,
-      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
-    this.geographicDashboardService = geographicDashboardService;
-    this.scopeValidator = scopeValidator;
+      WorkflowSecurityScopeValidator scopeValidator) {
+    this.geographicDashboardService = java.util.Objects.requireNonNull(geographicDashboardService, "GeographicDashboardService is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
   /**
@@ -57,9 +52,7 @@ public class GeographicDashboardController {
   @GetMapping("/geography")
   public ResponseEntity<ApiResponse<GeographicOverviewResponse>> getNationalGeography(
       HttpServletRequest httpRequest) {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     GeographicOverviewResponse response = geographicDashboardService.getNationalGeographicOverview();
     return ResponseEntity.ok(ApiResponse.success(
         "National geographic overview retrieved successfully",
@@ -81,9 +74,7 @@ public class GeographicDashboardController {
   public ResponseEntity<ApiResponse<StateGeographicResponse>> getStateGeography(
       @PathVariable @Positive Long stateId,
       HttpServletRequest httpRequest) {
-    if (scopeValidator != null) {
-      scopeValidator.validateStateScope(stateId);
-    }
+    scopeValidator.validateStateScope(stateId);
     StateGeographicResponse response = geographicDashboardService.getStateGeographicAnalytics(stateId);
     return ResponseEntity.ok(ApiResponse.success(
         "State geographic analytics retrieved successfully",
@@ -106,9 +97,7 @@ public class GeographicDashboardController {
   public ResponseEntity<ApiResponse<DistrictGeographicResponse>> getDistrictGeography(
       @PathVariable @Positive Long districtId,
       HttpServletRequest httpRequest) {
-    if (scopeValidator != null) {
-      scopeValidator.validateDistrictScope(districtId);
-    }
+    scopeValidator.validateDistrictScope(districtId);
     DistrictGeographicResponse response = geographicDashboardService.getDistrictGeographicAnalytics(districtId);
     return ResponseEntity.ok(ApiResponse.success(
         "District geographic analytics retrieved successfully",

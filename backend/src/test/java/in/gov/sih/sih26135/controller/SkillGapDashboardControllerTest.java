@@ -38,6 +38,9 @@ class SkillGapDashboardControllerTest {
   @MockBean
   private SkillGapDashboardService skillGapDashboardService;
 
+  @MockBean
+  private in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator scopeValidator;
+
   private String tokenAnalyticsRead;
   private String tokenUnauthorized;
 
@@ -96,6 +99,7 @@ class SkillGapDashboardControllerTest {
         .andExpect(jsonPath("$.data.severityBreakdown[0].acceptanceRatePct").value(76.00));
 
     verify(skillGapDashboardService).getSkillGapDashboard();
+    verify(scopeValidator).validateNationwideScope();
   }
 
   @Test

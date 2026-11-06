@@ -28,16 +28,11 @@ public class SkillGapDashboardController {
   private final SkillGapDashboardService skillGapDashboardService;
   private final WorkflowSecurityScopeValidator scopeValidator;
 
-  public SkillGapDashboardController(SkillGapDashboardService skillGapDashboardService) {
-    this(skillGapDashboardService, null);
-  }
-
-  @Autowired
   public SkillGapDashboardController(
       SkillGapDashboardService skillGapDashboardService,
-      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
-    this.skillGapDashboardService = skillGapDashboardService;
-    this.scopeValidator = scopeValidator;
+      WorkflowSecurityScopeValidator scopeValidator) {
+    this.skillGapDashboardService = java.util.Objects.requireNonNull(skillGapDashboardService, "SkillGapDashboardService is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
   /**
@@ -51,9 +46,7 @@ public class SkillGapDashboardController {
   @GetMapping("/skill-gaps")
   public ResponseEntity<ApiResponse<SkillGapDashboardResponse>> getSkillGapDashboard(
       HttpServletRequest httpRequest) {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     SkillGapDashboardResponse response = skillGapDashboardService.getSkillGapDashboard();
     return ResponseEntity.ok(ApiResponse.success(
         "Skill gap analytics retrieved successfully",

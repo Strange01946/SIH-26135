@@ -30,16 +30,11 @@ public class RetentionAttritionDashboardController {
   private final RetentionAttritionDashboardService retentionAttritionDashboardService;
   private final WorkflowSecurityScopeValidator scopeValidator;
 
-  public RetentionAttritionDashboardController(RetentionAttritionDashboardService retentionAttritionDashboardService) {
-    this(retentionAttritionDashboardService, null);
-  }
-
-  @Autowired
   public RetentionAttritionDashboardController(
       RetentionAttritionDashboardService retentionAttritionDashboardService,
-      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
-    this.retentionAttritionDashboardService = retentionAttritionDashboardService;
-    this.scopeValidator = scopeValidator;
+      WorkflowSecurityScopeValidator scopeValidator) {
+    this.retentionAttritionDashboardService = java.util.Objects.requireNonNull(retentionAttritionDashboardService, "RetentionAttritionDashboardService is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
   /**
@@ -53,9 +48,7 @@ public class RetentionAttritionDashboardController {
   @GetMapping("/retention")
   public ResponseEntity<ApiResponse<LongitudinalRetentionResponse>> getLongitudinalRetention(
       HttpServletRequest httpRequest) {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     LongitudinalRetentionResponse response =
         retentionAttritionDashboardService.getLongitudinalRetention();
     return ResponseEntity.ok(ApiResponse.success(
@@ -76,9 +69,7 @@ public class RetentionAttritionDashboardController {
   @GetMapping("/attrition")
   public ResponseEntity<ApiResponse<AttritionDashboardResponse>> getAttritionDashboard(
       HttpServletRequest httpRequest) {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     AttritionDashboardResponse response =
         retentionAttritionDashboardService.getAttritionDashboard();
     return ResponseEntity.ok(ApiResponse.success(

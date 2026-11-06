@@ -228,56 +228,40 @@ public class WorkflowSecurityScopeValidator {
       return false;
     }
 
-    // 2. Must hold administrative role or analytics.read permission
-    boolean hasAdminRole = authorities.contains("ROLE_super_admin") || authorities.contains("ROLE_government_admin");
-    boolean hasAnalyticsRead = authorities.contains("analytics.read");
+    // 2. Must hold explicit verified administrative role. analytics.read alone must NEVER grant nationwide access!
+    boolean hasSuperAdminRole = authorities.contains("ROLE_super_admin");
+    boolean hasGovAdminRole = authorities.contains("ROLE_government_admin");
 
-    if (!hasAdminRole && !hasAnalyticsRead) {
+    if (!hasSuperAdminRole && !hasGovAdminRole) {
+      log.warn("Nationwide authorization rejected: caller lacks explicit national administrative role");
       return false;
     }
 
-    // 3. Super admin role without user restrictions is always nationwide
-    if (authorities.contains("ROLE_super_admin")) {
-      Optional<User> userOpt = resolveAuthenticatedUser();
-      if (userOpt.isPresent()) {
-        User user = userOpt.get();
-        return user.getStateId() == null && user.getTrainingProviderId() == null && user.getEmployerId() == null;
-      }
-      return true;
-    }
-
-    // 4. Resolve authoritative User entity if present
+    // 3. Resolve authoritative User entity from database. Missing user records fail closed!
     Optional<User> userOpt = resolveAuthenticatedUser();
-    if (userOpt.isPresent()) {
-      User user = userOpt.get();
-      if (user.getStateId() != null
-          || user.getDistrictId() != null
-          || user.getTrainingProviderId() != null
-          || user.getEmployerId() != null) {
-        return false;
-      }
-      if (traineeRepository.findByUserId(user.getId()).isPresent()) {
-        return false;
-      }
-      return true;
+    if (userOpt.isEmpty()) {
+      log.warn("Nationwide authorization rejected: authoritative user record not found in database");
+      return false;
+    }
+    User user = userOpt.get();
+
+    // 4. Verify authoritative organizational assignment:
+    // Any state, district, provider, or employer tenancy restriction disqualifies nationwide scope.
+    if (user.getStateId() != null
+        || user.getDistrictId() != null
+        || user.getTrainingProviderId() != null
+        || user.getEmployerId() != null) {
+      log.warn("Nationwide authorization rejected: user {} has scoped tenancy assignment", user.getId());
+      return false;
     }
 
-    // 5. Fallback for test harnesses where User entity is not seeded in database
-    Object principal = authentication.getPrincipal();
-    String username = null;
-    if (principal instanceof UserPrincipal up) {
-      username = up.getUsername();
-    } else if (principal instanceof org.springframework.security.core.userdetails.UserDetails ud) {
-      username = ud.getUsername();
-    } else if (principal instanceof String s) {
-      username = s;
+    // 5. Trainee affiliation disqualifies nationwide scope
+    if (traineeRepository.findByUserId(user.getId()).isPresent()) {
+      log.warn("Nationwide authorization rejected: user {} is affiliated with trainee profile", user.getId());
+      return false;
     }
 
-    return username != null && (username.equalsIgnoreCase("admin")
-        || username.equalsIgnoreCase("super_admin")
-        || username.equalsIgnoreCase("executive")
-        || username.startsWith("admin_")
-        || username.startsWith("super_"));
+    return true;
   }
 
   /**
@@ -354,11 +338,8 @@ public class WorkflowSecurityScopeValidator {
    */
   public void validateNationwideScope() {
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-    if (authentication == null) {
-      // Direct internal/test service invocation without SecurityContext
-      return;
-    }
-    if (!authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
+    if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
+      log.warn("Nationwide scope violation: unauthenticated request");
       throw new AccessDeniedException("Access denied");
     }
     if (!isNationwideAdmin()) {
@@ -380,11 +361,8 @@ public class WorkflowSecurityScopeValidator {
       throw new AccessDeniedException("Access denied");
     }
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-    if (authentication == null) {
-      // Direct internal/test service invocation without SecurityContext
-      return;
-    }
-    if (!authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
+    if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
+      log.warn("State scope violation: unauthenticated request");
       throw new AccessDeniedException("Access denied");
     }
 
@@ -403,15 +381,16 @@ public class WorkflowSecurityScopeValidator {
       throw new AccessDeniedException("Access denied");
     }
 
-    if (!authorities.contains("analytics.read")
-        && !authorities.contains("ROLE_government_admin")
-        && !authorities.contains("ROLE_super_admin")) {
+    if (!authorities.contains("ROLE_government_admin")
+        && !authorities.contains("ROLE_super_admin")
+        && !authorities.contains("ROLE_state_admin")) {
+      log.warn("State scope violation: caller lacks administrative authority");
       throw new AccessDeniedException("Access denied");
     }
 
     Optional<User> userOpt = resolveAuthenticatedUser();
     if (userOpt.isEmpty()) {
-      log.warn("State scope violation: authenticated user record not found");
+      log.warn("State scope violation: authenticated user record not found in database");
       throw new AccessDeniedException("Access denied");
     }
     User user = userOpt.get();
@@ -451,11 +430,8 @@ public class WorkflowSecurityScopeValidator {
       throw new AccessDeniedException("Access denied");
     }
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-    if (authentication == null) {
-      // Direct internal/test service invocation without SecurityContext
-      return;
-    }
-    if (!authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
+    if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
+      log.warn("District scope violation: unauthenticated request");
       throw new AccessDeniedException("Access denied");
     }
 
@@ -474,15 +450,16 @@ public class WorkflowSecurityScopeValidator {
       throw new AccessDeniedException("Access denied");
     }
 
-    if (!authorities.contains("analytics.read")
-        && !authorities.contains("ROLE_government_admin")
-        && !authorities.contains("ROLE_super_admin")) {
+    if (!authorities.contains("ROLE_government_admin")
+        && !authorities.contains("ROLE_super_admin")
+        && !authorities.contains("ROLE_state_admin")) {
+      log.warn("District scope violation: caller lacks administrative authority");
       throw new AccessDeniedException("Access denied");
     }
 
     Optional<User> userOpt = resolveAuthenticatedUser();
     if (userOpt.isEmpty()) {
-      log.warn("District scope violation: authenticated user record not found");
+      log.warn("District scope violation: authenticated user record not found in database");
       throw new AccessDeniedException("Access denied");
     }
     User user = userOpt.get();
@@ -515,6 +492,111 @@ public class WorkflowSecurityScopeValidator {
     if (districtStateId == null || !districtStateId.equals(userStateId)) {
       log.warn("District scope violation: user state {} attempted to access district {} in state {}",
           userStateId, requestedDistrictId, districtStateId);
+      throw new AccessDeniedException("Access denied");
+    }
+  }
+
+  /**
+   * Validates that the requested training provider ID matches the caller's assigned training provider tenancy.
+   * National administrators have cross-provider access; training providers are restricted strictly to own operations.
+   *
+   * @param requestedProviderId unique identifier of the target provider
+   * @throws AccessDeniedException if access is forbidden (HTTP 403 Forbidden)
+   */
+  public void validateDashboardProviderScope(Long requestedProviderId) {
+    if (requestedProviderId == null) {
+      throw new AccessDeniedException("Access denied");
+    }
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
+      log.warn("Provider scope violation: unauthenticated request");
+      throw new AccessDeniedException("Access denied");
+    }
+
+    if (isNationwideAdmin()) {
+      return;
+    }
+
+    Optional<User> userOpt = resolveAuthenticatedUser();
+    if (userOpt.isEmpty()) {
+      log.warn("Provider scope violation: authenticated user record not found in database");
+      throw new AccessDeniedException("Access denied");
+    }
+    User user = userOpt.get();
+
+    if (user.getTrainingProviderId() == null || !user.getTrainingProviderId().equals(requestedProviderId)) {
+      log.warn("Provider scope violation: authenticated provider {} attempted to access provider {}",
+          user.getTrainingProviderId(), requestedProviderId);
+      throw new AccessDeniedException("Access denied");
+    }
+  }
+
+  /**
+   * Validates that the requested employer ID matches the caller's assigned employer tenancy.
+   * National administrators have cross-employer access; employers are restricted strictly to own operations.
+   *
+   * @param requestedEmployerId unique identifier of the target employer
+   * @throws AccessDeniedException if access is forbidden (HTTP 403 Forbidden)
+   */
+  public void validateDashboardEmployerScope(Long requestedEmployerId) {
+    if (requestedEmployerId == null) {
+      throw new AccessDeniedException("Access denied");
+    }
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
+      log.warn("Employer scope violation: unauthenticated request");
+      throw new AccessDeniedException("Access denied");
+    }
+
+    if (isNationwideAdmin()) {
+      return;
+    }
+
+    Optional<User> userOpt = resolveAuthenticatedUser();
+    if (userOpt.isEmpty()) {
+      log.warn("Employer scope violation: authenticated user record not found in database");
+      throw new AccessDeniedException("Access denied");
+    }
+    User user = userOpt.get();
+
+    if (user.getEmployerId() == null || !user.getEmployerId().equals(requestedEmployerId)) {
+      log.warn("Employer scope violation: authenticated employer {} attempted to access employer {}",
+          user.getEmployerId(), requestedEmployerId);
+      throw new AccessDeniedException("Access denied");
+    }
+  }
+
+  /**
+   * Validates that the requested trainee ID matches the caller's assigned trainee tenancy.
+   * National administrators have cross-trainee access; trainees are restricted strictly to own records.
+   *
+   * @param requestedTraineeId unique identifier of the target trainee
+   * @throws AccessDeniedException if access is forbidden (HTTP 403 Forbidden)
+   */
+  public void validateDashboardTraineeScope(Long requestedTraineeId) {
+    if (requestedTraineeId == null) {
+      throw new AccessDeniedException("Access denied");
+    }
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
+      log.warn("Trainee scope violation: unauthenticated request");
+      throw new AccessDeniedException("Access denied");
+    }
+
+    if (isNationwideAdmin()) {
+      return;
+    }
+
+    Optional<Trainee> traineeOpt = resolveAuthenticatedTrainee();
+    if (traineeOpt.isEmpty()) {
+      log.warn("Trainee scope violation: caller is not affiliated with a trainee profile");
+      throw new AccessDeniedException("Access denied");
+    }
+    Trainee trainee = traineeOpt.get();
+
+    if (trainee.getId() == null || !trainee.getId().equals(requestedTraineeId)) {
+      log.warn("Trainee scope violation: authenticated trainee {} attempted to access trainee {}",
+          trainee.getId(), requestedTraineeId);
       throw new AccessDeniedException("Access denied");
     }
   }

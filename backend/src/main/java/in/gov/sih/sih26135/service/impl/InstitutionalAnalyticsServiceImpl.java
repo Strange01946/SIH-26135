@@ -35,23 +35,16 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
   private final InstitutionalAnalyticsRepository institutionalAnalyticsRepository;
   private final WorkflowSecurityScopeValidator scopeValidator;
 
-  public InstitutionalAnalyticsServiceImpl(InstitutionalAnalyticsRepository institutionalAnalyticsRepository) {
-    this(institutionalAnalyticsRepository, null);
-  }
-
-  @Autowired
   public InstitutionalAnalyticsServiceImpl(
       InstitutionalAnalyticsRepository institutionalAnalyticsRepository,
-      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
-    this.institutionalAnalyticsRepository = institutionalAnalyticsRepository;
-    this.scopeValidator = scopeValidator;
+      WorkflowSecurityScopeValidator scopeValidator) {
+    this.institutionalAnalyticsRepository = java.util.Objects.requireNonNull(institutionalAnalyticsRepository, "InstitutionalAnalyticsRepository is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
   @Override
   public LeaderboardResponse<ProviderPerformanceResponse> getProviderLeaderboard() {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     List<ProviderPerformanceProjection> projections =
         institutionalAnalyticsRepository.getFormalQ04ProviderLeaderboard();
 
@@ -86,9 +79,7 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
 
   @Override
   public LeaderboardResponse<CourseEmployabilityResponse> getCourseLeaderboard() {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     List<CourseEmployabilityProjection> projections =
         institutionalAnalyticsRepository.getFormalQ05CourseEmployability();
 

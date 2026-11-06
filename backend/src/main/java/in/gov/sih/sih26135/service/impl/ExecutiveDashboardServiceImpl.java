@@ -31,23 +31,16 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
   private final ExecutiveDashboardRepository executiveDashboardRepository;
   private final WorkflowSecurityScopeValidator scopeValidator;
 
-  public ExecutiveDashboardServiceImpl(ExecutiveDashboardRepository executiveDashboardRepository) {
-    this(executiveDashboardRepository, null);
-  }
-
-  @Autowired
   public ExecutiveDashboardServiceImpl(
       ExecutiveDashboardRepository executiveDashboardRepository,
-      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
-    this.executiveDashboardRepository = executiveDashboardRepository;
-    this.scopeValidator = scopeValidator;
+      WorkflowSecurityScopeValidator scopeValidator) {
+    this.executiveDashboardRepository = java.util.Objects.requireNonNull(executiveDashboardRepository, "ExecutiveDashboardRepository is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
   @Override
   public DashboardKpiStripResponse getDashboardKpiStrip() {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     DashboardKpiProjection proj = executiveDashboardRepository.getExecutiveDashboardKpiStrip();
 
     Long traineeCount = toLong(proj != null ? proj.getTraineeCount() : null);
@@ -90,9 +83,7 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
 
   @Override
   public PipelineFunnelResponse getTrainingPipelineFunnel() {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     PipelineFunnelProjection proj = executiveDashboardRepository.getTrainingPipelineConversionFunnel();
 
     Long enrollmentCount = toLong(proj != null ? proj.getEnrollmentCount() : null);
@@ -132,9 +123,7 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
 
   @Override
   public LeaderboardResponse<SchemeProgramPerformanceResponse> getSchemeProgramPerformanceMatrix() {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     List<SchemeProgramPerformanceProjection> projections = executiveDashboardRepository.getSchemeProgramPerformanceMatrix();
     if (projections == null || projections.isEmpty()) {
       return LeaderboardResponse.of("employmentRatePct", Collections.emptyList());
@@ -149,9 +138,7 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
 
   @Override
   public ExecutiveDashboardResponse getExecutiveDashboard() {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     DashboardKpiStripResponse kpiStrip = getDashboardKpiStrip();
     PipelineFunnelResponse pipelineFunnel = getTrainingPipelineFunnel();
     LeaderboardResponse<SchemeProgramPerformanceResponse> schemeProgramMatrix = getSchemeProgramPerformanceMatrix();

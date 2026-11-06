@@ -46,6 +46,9 @@ class EconomicOutcomeDashboardControllerTest {
   @MockBean
   private EconomicOutcomeDashboardService economicOutcomeDashboardService;
 
+  @MockBean
+  private in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator scopeValidator;
+
   private String tokenAnalyticsRead;
   private String tokenUnauthorized;
 

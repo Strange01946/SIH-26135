@@ -1,4 +1,8 @@
 package in.gov.sih.sih26135.service;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import in.gov.sih.sih26135.security.UserPrincipal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -83,10 +87,24 @@ class GeographicDashboardIntegrationTest {
       assertThat(connection.getCatalog()).isEqualToIgnoringCase(MysqlConnectionTest.EXPECTED_TEST_CATALOG);
     }
 
+    jdbcTemplate.update("""
+        INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, created_at, updated_at)
+        VALUES (1, 'admin', 'admin@test.gov.in', 'hash', 'argon2id', 1, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE state_id = NULL, district_id = NULL, training_provider_id = NULL, employer_id = NULL
+        """);
+
     tokenAnalyticsRead = "Bearer " + jwtTokenProvider.generateAccessToken(
         1L,
-        "executive",
-        List.of("analytics.read")
+        "admin",
+        List.of("ROLE_super_admin", "analytics.read")
+    );
+
+    SecurityContextHolder.getContext().setAuthentication(
+        new UsernamePasswordAuthenticationToken(
+            new UserPrincipal(1L, "admin"),
+            null,
+            List.of(new SimpleGrantedAuthority("ROLE_super_admin"), new SimpleGrantedAuthority("analytics.read"))
+        )
     );
 
     // Identify existing active state with districts, or insert deterministic fixture records
@@ -138,6 +156,7 @@ class GeographicDashboardIntegrationTest {
 
   @AfterEach
   void cleanUpFixtures() {
+    SecurityContextHolder.clearContext();
     if (districtFixtureInserted) {
       jdbcTemplate.update("DELETE FROM districts WHERE district_id = ?", DETERMINISTIC_DISTRICT_ID);
       districtFixtureInserted = false;

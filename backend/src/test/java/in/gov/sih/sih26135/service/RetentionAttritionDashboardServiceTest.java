@@ -16,6 +16,7 @@ import in.gov.sih.sih26135.repository.analytics.projection.RetentionSurvivalProj
 import in.gov.sih.sih26135.repository.analytics.projection.SeparationAnalysisProjection;
 import in.gov.sih.sih26135.repository.analytics.projection.UnemploymentReasonProjection;
 import in.gov.sih.sih26135.repository.analytics.projection.UnemploymentSummaryProjection;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.impl.RetentionAttritionDashboardServiceImpl;
 import java.math.BigDecimal;
 import java.util.List;
@@ -32,6 +33,9 @@ class RetentionAttritionDashboardServiceTest {
 
   @Mock
   private RetentionAttritionDashboardRepository repository;
+
+  @Mock
+  private WorkflowSecurityScopeValidator scopeValidator;
 
   @InjectMocks
   private RetentionAttritionDashboardServiceImpl service;

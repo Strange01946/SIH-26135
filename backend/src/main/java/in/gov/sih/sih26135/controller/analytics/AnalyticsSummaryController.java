@@ -1,5 +1,8 @@
 package in.gov.sih.sih26135.controller.analytics;
 
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
+import java.util.Objects;
+
 import org.springframework.validation.annotation.Validated;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -50,7 +53,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @Validated
 @RestController
 @RequestMapping("/api/v1/analytics/summaries")
-@PreAuthorize("hasAuthority('analytics.read')")
+@PreAuthorize("hasAnyAuthority('analytics.read', 'ROLE_super_admin', 'ROLE_government_admin', 'ROLE_state_admin', 'ROLE_training_provider', 'ROLE_employer', 'ROLE_trainee')")
 public class AnalyticsSummaryController {
 
   private final AttritionReasonSummaryService attritionReasonSummaryService;
@@ -63,6 +66,7 @@ public class AnalyticsSummaryController {
   private final SkillGapSummaryService skillGapSummaryService;
   private final TraineeOutcomeSummaryService traineeOutcomeSummaryService;
   private final UnemploymentReasonSummaryService unemploymentReasonSummaryService;
+  private final WorkflowSecurityScopeValidator scopeValidator;
 
   public AnalyticsSummaryController(
       AttritionReasonSummaryService attritionReasonSummaryService,
@@ -74,7 +78,8 @@ public class AnalyticsSummaryController {
       ProviderOutcomeSummaryService providerOutcomeSummaryService,
       SkillGapSummaryService skillGapSummaryService,
       TraineeOutcomeSummaryService traineeOutcomeSummaryService,
-      UnemploymentReasonSummaryService unemploymentReasonSummaryService) {
+      UnemploymentReasonSummaryService unemploymentReasonSummaryService,
+      WorkflowSecurityScopeValidator scopeValidator) {
     this.attritionReasonSummaryService = attritionReasonSummaryService;
     this.courseOutcomeSummaryService = courseOutcomeSummaryService;
     this.districtOutcomeSummaryService = districtOutcomeSummaryService;
@@ -85,6 +90,7 @@ public class AnalyticsSummaryController {
     this.skillGapSummaryService = skillGapSummaryService;
     this.traineeOutcomeSummaryService = traineeOutcomeSummaryService;
     this.unemploymentReasonSummaryService = unemploymentReasonSummaryService;
+    this.scopeValidator = Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
   // =========================================================================
@@ -98,11 +104,13 @@ public class AnalyticsSummaryController {
   public ResponseEntity<ApiResponse<List<AttritionReasonSummaryResponse>>> getAllAttritionReasonSummaries(
       HttpServletRequest httpRequest) {
     validateNoQueryParameters(httpRequest);
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(attritionReasonSummaryService.getAllAttritionReasonSummaries()));
   }
 
   @GetMapping("/attrition-reasons/leaderboard")
   public ResponseEntity<ApiResponse<List<AttritionReasonSummaryResponse>>> getAttritionReasonLeaderboard() {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         attritionReasonSummaryService.getAllAttritionReasonSummariesOrderByExitCountDesc()));
   }
@@ -111,6 +119,7 @@ public class AnalyticsSummaryController {
   public ResponseEntity<ApiResponse<AttritionReasonSummaryResponse>> getAttritionReasonSummaryById(
       @PathVariable @Positive Long exitReasonId,
       @PathVariable @Positive Long separationNatureId) {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         attritionReasonSummaryService.getAttritionReasonSummaryById(exitReasonId, separationNatureId)));
   }
@@ -123,6 +132,7 @@ public class AnalyticsSummaryController {
       @RequestParam("exitReasonId") @Positive Long exitReasonId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "exitReasonId");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         attritionReasonSummaryService.getAttritionReasonSummariesByExitReasonId(exitReasonId)));
   }
@@ -135,6 +145,7 @@ public class AnalyticsSummaryController {
       @RequestParam("employmentExitReasonId") @Positive Long employmentExitReasonId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "employmentExitReasonId");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         attritionReasonSummaryService.getAttritionReasonSummariesByExitReasonId(employmentExitReasonId)));
   }
@@ -147,6 +158,7 @@ public class AnalyticsSummaryController {
       @RequestParam("separationNatureId") @Positive Long separationNatureId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "separationNatureId");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         attritionReasonSummaryService.getAttritionReasonSummariesBySeparationNatureId(separationNatureId)));
   }
@@ -159,6 +171,7 @@ public class AnalyticsSummaryController {
       @RequestParam("isVoluntaryFlag") Boolean isVoluntaryFlag,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "isVoluntaryFlag");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         attritionReasonSummaryService.getAttritionReasonSummariesByIsVoluntaryFlag(isVoluntaryFlag)));
   }
@@ -171,6 +184,7 @@ public class AnalyticsSummaryController {
       @RequestParam("isInvoluntaryFlag") Boolean isInvoluntaryFlag,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "isInvoluntaryFlag");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         attritionReasonSummaryService.getAttritionReasonSummariesByIsInvoluntaryFlag(isInvoluntaryFlag)));
   }
@@ -184,6 +198,7 @@ public class AnalyticsSummaryController {
       @RequestParam("separationNatureId") @Positive Long separationNatureId,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("exitReasonId", "separationNatureId"));
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         attritionReasonSummaryService.getAttritionReasonSummaryById(exitReasonId, separationNatureId)));
   }
@@ -197,6 +212,7 @@ public class AnalyticsSummaryController {
       @RequestParam("separationNatureId") @Positive Long separationNatureId,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("employmentExitReasonId", "separationNatureId"));
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         attritionReasonSummaryService.getAttritionReasonSummaryById(employmentExitReasonId, separationNatureId)));
   }
@@ -209,11 +225,13 @@ public class AnalyticsSummaryController {
   public ResponseEntity<ApiResponse<List<CourseOutcomeSummaryResponse>>> getAllCourseOutcomes(
       HttpServletRequest httpRequest) {
     validateNoQueryParameters(httpRequest);
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(courseOutcomeSummaryService.getAllCourseOutcomes()));
   }
 
   @GetMapping("/course-outcomes/leaderboard")
   public ResponseEntity<ApiResponse<List<CourseOutcomeSummaryResponse>>> getCourseOutcomeLeaderboard() {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         courseOutcomeSummaryService.getAllCourseOutcomesOrderByEnrollmentCountDesc()));
   }
@@ -221,6 +239,7 @@ public class AnalyticsSummaryController {
   @GetMapping("/course-outcomes/{courseId}")
   public ResponseEntity<ApiResponse<CourseOutcomeSummaryResponse>> getCourseOutcomeById(
       @PathVariable @Positive Long courseId) {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(courseOutcomeSummaryService.getCourseOutcomeByCourseId(courseId)));
   }
 
@@ -229,6 +248,7 @@ public class AnalyticsSummaryController {
       @RequestParam("courseId") @Positive Long courseId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "courseId");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(courseOutcomeSummaryService.getCourseOutcomeByCourseId(courseId)));
   }
 
@@ -240,11 +260,13 @@ public class AnalyticsSummaryController {
   public ResponseEntity<ApiResponse<List<DistrictOutcomeSummaryResponse>>> getAllDistrictOutcomes(
       HttpServletRequest httpRequest) {
     validateNoQueryParameters(httpRequest);
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(districtOutcomeSummaryService.getAllDistrictOutcomes()));
   }
 
   @GetMapping("/district-outcomes/leaderboard")
   public ResponseEntity<ApiResponse<List<DistrictOutcomeSummaryResponse>>> getDistrictOutcomeLeaderboard() {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         districtOutcomeSummaryService.getAllDistrictOutcomesOrderByEnrollmentCountDesc()));
   }
@@ -252,6 +274,7 @@ public class AnalyticsSummaryController {
   @GetMapping("/district-outcomes/{districtId}")
   public ResponseEntity<ApiResponse<DistrictOutcomeSummaryResponse>> getDistrictOutcomeById(
       @PathVariable @Positive Long districtId) {
+    scopeValidator.validateDistrictScope(districtId);
     return ResponseEntity.ok(ApiResponse.ok(districtOutcomeSummaryService.getDistrictOutcomeByDistrictId(districtId)));
   }
 
@@ -260,6 +283,7 @@ public class AnalyticsSummaryController {
       @RequestParam("districtId") @Positive Long districtId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "districtId");
+    scopeValidator.validateDistrictScope(districtId);
     return ResponseEntity.ok(ApiResponse.ok(districtOutcomeSummaryService.getDistrictOutcomeByDistrictId(districtId)));
   }
 
@@ -271,11 +295,13 @@ public class AnalyticsSummaryController {
   public ResponseEntity<ApiResponse<List<EmployerHiringSummaryResponse>>> getAllEmployerHiringSummaries(
       HttpServletRequest httpRequest) {
     validateNoQueryParameters(httpRequest);
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(employerHiringSummaryService.getAllEmployerHiringSummaries()));
   }
 
   @GetMapping("/employer-hirings/leaderboard")
   public ResponseEntity<ApiResponse<List<EmployerHiringSummaryResponse>>> getEmployerHiringLeaderboard() {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         employerHiringSummaryService.getAllEmployerHiringSummariesOrderByJoinedCountDesc()));
   }
@@ -283,6 +309,7 @@ public class AnalyticsSummaryController {
   @GetMapping("/employer-hirings/{employerId}")
   public ResponseEntity<ApiResponse<EmployerHiringSummaryResponse>> getEmployerHiringSummaryById(
       @PathVariable @Positive Long employerId) {
+    scopeValidator.validateDashboardEmployerScope(employerId);
     return ResponseEntity.ok(ApiResponse.ok(
         employerHiringSummaryService.getEmployerHiringSummaryByEmployerId(employerId)));
   }
@@ -292,6 +319,7 @@ public class AnalyticsSummaryController {
       @RequestParam("employerId") @Positive Long employerId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "employerId");
+    scopeValidator.validateDashboardEmployerScope(employerId);
     return ResponseEntity.ok(ApiResponse.ok(
         employerHiringSummaryService.getEmployerHiringSummaryByEmployerId(employerId)));
   }
@@ -306,11 +334,13 @@ public class AnalyticsSummaryController {
   public ResponseEntity<ApiResponse<List<FollowupOutcomeSummaryResponse>>> getAllFollowupOutcomeSummaries(
       HttpServletRequest httpRequest) {
     validateNoQueryParameters(httpRequest);
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(followupOutcomeSummaryService.getAllFollowupOutcomeSummaries()));
   }
 
   @GetMapping("/followup-outcomes/leaderboard")
   public ResponseEntity<ApiResponse<List<FollowupOutcomeSummaryResponse>>> getFollowupOutcomeLeaderboard() {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         followupOutcomeSummaryService.getAllFollowupOutcomeSummariesOrderByOffsetMonthsAsc()));
   }
@@ -319,6 +349,7 @@ public class AnalyticsSummaryController {
   public ResponseEntity<ApiResponse<FollowupOutcomeSummaryResponse>> getFollowupOutcomeSummaryById(
       @PathVariable @NotBlank String typeCode,
       @PathVariable @PositiveOrZero Integer offsetMonths) {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         followupOutcomeSummaryService.getFollowupOutcomeSummaryById(typeCode, offsetMonths)));
   }
@@ -330,6 +361,7 @@ public class AnalyticsSummaryController {
       @RequestParam("typeCode") @NotBlank String typeCode,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "typeCode");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         followupOutcomeSummaryService.getFollowupOutcomeSummariesByTypeCode(typeCode)));
   }
@@ -341,6 +373,7 @@ public class AnalyticsSummaryController {
       @RequestParam("followupTypeCode") @NotBlank String followupTypeCode,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "followupTypeCode");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         followupOutcomeSummaryService.getFollowupOutcomeSummariesByTypeCode(followupTypeCode)));
   }
@@ -352,6 +385,7 @@ public class AnalyticsSummaryController {
       @RequestParam("offsetMonths") @PositiveOrZero Integer offsetMonths,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "offsetMonths");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         followupOutcomeSummaryService.getFollowupOutcomeSummariesByOffsetMonths(offsetMonths)));
   }
@@ -363,6 +397,7 @@ public class AnalyticsSummaryController {
       @RequestParam("followupOffsetMonths") @PositiveOrZero Integer followupOffsetMonths,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "followupOffsetMonths");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         followupOutcomeSummaryService.getFollowupOutcomeSummariesByOffsetMonths(followupOffsetMonths)));
   }
@@ -375,6 +410,7 @@ public class AnalyticsSummaryController {
       @RequestParam("offsetMonths") @PositiveOrZero Integer offsetMonths,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("typeCode", "offsetMonths"));
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         followupOutcomeSummaryService.getFollowupOutcomeSummaryById(typeCode, offsetMonths)));
   }
@@ -387,6 +423,7 @@ public class AnalyticsSummaryController {
       @RequestParam("followupOffsetMonths") @PositiveOrZero Integer followupOffsetMonths,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("followupTypeCode", "followupOffsetMonths"));
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         followupOutcomeSummaryService.getFollowupOutcomeSummaryById(followupTypeCode, followupOffsetMonths)));
   }
@@ -399,11 +436,13 @@ public class AnalyticsSummaryController {
   public ResponseEntity<ApiResponse<List<ProgramOutcomeSummaryResponse>>> getAllProgramOutcomes(
       HttpServletRequest httpRequest) {
     validateNoQueryParameters(httpRequest);
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(programOutcomeSummaryService.getAllProgramOutcomes()));
   }
 
   @GetMapping("/program-outcomes/leaderboard")
   public ResponseEntity<ApiResponse<List<ProgramOutcomeSummaryResponse>>> getProgramOutcomeLeaderboard() {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         programOutcomeSummaryService.getAllProgramOutcomesOrderByEnrollmentCountDesc()));
   }
@@ -411,6 +450,7 @@ public class AnalyticsSummaryController {
   @GetMapping("/program-outcomes/{programId}")
   public ResponseEntity<ApiResponse<ProgramOutcomeSummaryResponse>> getProgramOutcomeById(
       @PathVariable @Positive Long programId) {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(programOutcomeSummaryService.getProgramOutcomeByProgramId(programId)));
   }
 
@@ -419,6 +459,7 @@ public class AnalyticsSummaryController {
       @RequestParam("programId") @Positive Long programId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "programId");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(programOutcomeSummaryService.getProgramOutcomeByProgramId(programId)));
   }
 
@@ -427,6 +468,7 @@ public class AnalyticsSummaryController {
       @RequestParam("schemeId") @Positive Long schemeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "schemeId");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(programOutcomeSummaryService.getProgramOutcomesBySchemeId(schemeId)));
   }
 
@@ -438,11 +480,13 @@ public class AnalyticsSummaryController {
   public ResponseEntity<ApiResponse<List<ProviderOutcomeSummaryResponse>>> getAllProviderOutcomes(
       HttpServletRequest httpRequest) {
     validateNoQueryParameters(httpRequest);
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(providerOutcomeSummaryService.getAllProviderOutcomes()));
   }
 
   @GetMapping("/provider-outcomes/leaderboard")
   public ResponseEntity<ApiResponse<List<ProviderOutcomeSummaryResponse>>> getProviderOutcomeLeaderboard() {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         providerOutcomeSummaryService.getAllProviderOutcomesOrderByEnrollmentCountDesc()));
   }
@@ -450,6 +494,7 @@ public class AnalyticsSummaryController {
   @GetMapping("/provider-outcomes/{providerId}")
   public ResponseEntity<ApiResponse<ProviderOutcomeSummaryResponse>> getProviderOutcomeById(
       @PathVariable @Positive Long providerId) {
+    scopeValidator.validateDashboardProviderScope(providerId);
     return ResponseEntity.ok(ApiResponse.ok(providerOutcomeSummaryService.getProviderOutcomeByProviderId(providerId)));
   }
 
@@ -458,6 +503,7 @@ public class AnalyticsSummaryController {
       @RequestParam("providerId") @Positive Long providerId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "providerId");
+    scopeValidator.validateDashboardProviderScope(providerId);
     return ResponseEntity.ok(ApiResponse.ok(providerOutcomeSummaryService.getProviderOutcomeByProviderId(providerId)));
   }
 
@@ -471,11 +517,13 @@ public class AnalyticsSummaryController {
   public ResponseEntity<ApiResponse<List<SkillGapSummaryResponse>>> getAllSkillGapSummaries(
       HttpServletRequest httpRequest) {
     validateNoQueryParameters(httpRequest);
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(skillGapSummaryService.getAllSkillGapSummaries()));
   }
 
   @GetMapping("/skill-gaps/leaderboard")
   public ResponseEntity<ApiResponse<List<SkillGapSummaryResponse>>> getSkillGapLeaderboard() {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         skillGapSummaryService.getAllSkillGapSummariesOrderByGapCountDesc()));
   }
@@ -484,6 +532,7 @@ public class AnalyticsSummaryController {
   public ResponseEntity<ApiResponse<SkillGapSummaryResponse>> getSkillGapSummaryById(
       @PathVariable @Positive Long skillId,
       @PathVariable @Positive Long severityId) {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(skillGapSummaryService.getSkillGapSummaryById(skillId, severityId)));
   }
 
@@ -494,6 +543,7 @@ public class AnalyticsSummaryController {
       @RequestParam("skillId") @Positive Long skillId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "skillId");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(skillGapSummaryService.getSkillGapSummariesBySkillId(skillId)));
   }
 
@@ -504,6 +554,7 @@ public class AnalyticsSummaryController {
       @RequestParam("severityId") @Positive Long severityId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "severityId");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(skillGapSummaryService.getSkillGapSummariesBySeverityId(severityId)));
   }
 
@@ -514,6 +565,7 @@ public class AnalyticsSummaryController {
       @RequestParam("skillGapSeverityId") @Positive Long skillGapSeverityId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "skillGapSeverityId");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(skillGapSummaryService.getSkillGapSummariesBySeverityId(skillGapSeverityId)));
   }
 
@@ -524,6 +576,7 @@ public class AnalyticsSummaryController {
       @RequestParam("severityCode") @NotBlank String severityCode,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "severityCode");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(skillGapSummaryService.getSkillGapSummariesBySeverityCode(severityCode)));
   }
 
@@ -535,6 +588,7 @@ public class AnalyticsSummaryController {
       @RequestParam("severityId") @Positive Long severityId,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("skillId", "severityId"));
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(skillGapSummaryService.getSkillGapSummaryById(skillId, severityId)));
   }
 
@@ -546,6 +600,7 @@ public class AnalyticsSummaryController {
       @RequestParam("skillGapSeverityId") @Positive Long skillGapSeverityId,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("skillId", "skillGapSeverityId"));
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(skillGapSummaryService.getSkillGapSummaryById(skillId, skillGapSeverityId)));
   }
 
@@ -559,12 +614,14 @@ public class AnalyticsSummaryController {
   public ResponseEntity<ApiResponse<List<TraineeOutcomeSummaryResponse>>> getAllTraineeOutcomes(
       HttpServletRequest httpRequest) {
     validateNoQueryParameters(httpRequest);
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(traineeOutcomeSummaryService.getAllTraineeOutcomes()));
   }
 
   @GetMapping("/trainee-outcomes/{traineeId}")
   public ResponseEntity<ApiResponse<TraineeOutcomeSummaryResponse>> getTraineeOutcomeById(
       @PathVariable @Positive Long traineeId) {
+    scopeValidator.validateDashboardTraineeScope(traineeId);
     return ResponseEntity.ok(ApiResponse.ok(traineeOutcomeSummaryService.getTraineeOutcomeByTraineeId(traineeId)));
   }
 
@@ -575,6 +632,7 @@ public class AnalyticsSummaryController {
       @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "traineeId");
+    scopeValidator.validateDashboardTraineeScope(traineeId);
     return ResponseEntity.ok(ApiResponse.ok(traineeOutcomeSummaryService.getTraineeOutcomeByTraineeId(traineeId)));
   }
 
@@ -585,6 +643,7 @@ public class AnalyticsSummaryController {
       @RequestParam("stateId") @Positive Long stateId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "stateId");
+    scopeValidator.validateStateScope(stateId);
     return ResponseEntity.ok(ApiResponse.ok(traineeOutcomeSummaryService.getTraineeOutcomesByStateId(stateId)));
   }
 
@@ -595,6 +654,7 @@ public class AnalyticsSummaryController {
       @RequestParam("districtId") @Positive Long districtId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "districtId");
+    scopeValidator.validateDistrictScope(districtId);
     return ResponseEntity.ok(ApiResponse.ok(traineeOutcomeSummaryService.getTraineeOutcomesByDistrictId(districtId)));
   }
 
@@ -605,6 +665,7 @@ public class AnalyticsSummaryController {
       @RequestParam("currentEmploymentStatusId") @Positive Long currentEmploymentStatusId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "currentEmploymentStatusId");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         traineeOutcomeSummaryService.getTraineeOutcomesByCurrentEmploymentStatusId(currentEmploymentStatusId)));
   }
@@ -616,6 +677,7 @@ public class AnalyticsSummaryController {
       @RequestParam("snapshotIsEmployedFlag") Boolean snapshotIsEmployedFlag,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "snapshotIsEmployedFlag");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         traineeOutcomeSummaryService.getTraineeOutcomesBySnapshotIsEmployedFlag(snapshotIsEmployedFlag)));
   }
@@ -630,11 +692,13 @@ public class AnalyticsSummaryController {
   public ResponseEntity<ApiResponse<List<UnemploymentReasonSummaryResponse>>> getAllUnemploymentReasonSummaries(
       HttpServletRequest httpRequest) {
     validateNoQueryParameters(httpRequest);
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(unemploymentReasonSummaryService.getAllUnemploymentReasonSummaries()));
   }
 
   @GetMapping("/unemployment-reasons/leaderboard")
   public ResponseEntity<ApiResponse<List<UnemploymentReasonSummaryResponse>>> getUnemploymentReasonLeaderboard() {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         unemploymentReasonSummaryService.getAllUnemploymentReasonSummariesOrderByPeriodCountDesc()));
   }
@@ -642,6 +706,7 @@ public class AnalyticsSummaryController {
   @GetMapping("/unemployment-reasons/{id}")
   public ResponseEntity<ApiResponse<UnemploymentReasonSummaryResponse>> getUnemploymentReasonSummaryById(
       @PathVariable @Positive Long id) {
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(unemploymentReasonSummaryService.getUnemploymentReasonSummaryById(id)));
   }
 
@@ -652,6 +717,7 @@ public class AnalyticsSummaryController {
       @RequestParam("unemploymentReasonId") @Positive Long unemploymentReasonId,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "unemploymentReasonId");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         unemploymentReasonSummaryService.getUnemploymentReasonSummaryById(unemploymentReasonId)));
   }
@@ -663,6 +729,7 @@ public class AnalyticsSummaryController {
       @RequestParam("code") @NotBlank String code,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "code");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         unemploymentReasonSummaryService.getUnemploymentReasonSummaryByCode(code)));
   }
@@ -674,6 +741,7 @@ public class AnalyticsSummaryController {
       @RequestParam("unemploymentReasonCode") @NotBlank String unemploymentReasonCode,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "unemploymentReasonCode");
+    scopeValidator.validateNationwideScope();
     return ResponseEntity.ok(ApiResponse.ok(
         unemploymentReasonSummaryService.getUnemploymentReasonSummaryByCode(unemploymentReasonCode)));
   }

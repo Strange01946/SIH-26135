@@ -50,23 +50,16 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
   private final GeographicDashboardRepository geographicDashboardRepository;
   private final WorkflowSecurityScopeValidator scopeValidator;
 
-  public GeographicDashboardServiceImpl(GeographicDashboardRepository geographicDashboardRepository) {
-    this(geographicDashboardRepository, null);
-  }
-
-  @Autowired
   public GeographicDashboardServiceImpl(
       GeographicDashboardRepository geographicDashboardRepository,
-      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
-    this.geographicDashboardRepository = geographicDashboardRepository;
-    this.scopeValidator = scopeValidator;
+      WorkflowSecurityScopeValidator scopeValidator) {
+    this.geographicDashboardRepository = java.util.Objects.requireNonNull(geographicDashboardRepository, "GeographicDashboardRepository is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
   @Override
   public GeographicOverviewResponse getNationalGeographicOverview() {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     List<StatePerformanceProjection> stateProjections = geographicDashboardRepository.getStateSummaries();
     List<DistrictPerformanceProjection> q06Projections = geographicDashboardRepository.getFormalQ06DistrictOutcomes();
 
@@ -122,9 +115,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
 
   @Override
   public StateGeographicResponse getStateGeographicAnalytics(Long stateId) {
-    if (scopeValidator != null) {
-      scopeValidator.validateStateScope(stateId);
-    }
+    scopeValidator.validateStateScope(stateId);
     if (!geographicDashboardRepository.existsStateById(stateId)) {
       throw new ResourceNotFoundException("State not found with ID: " + stateId);
     }
@@ -182,9 +173,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
 
   @Override
   public DistrictGeographicResponse getDistrictGeographicAnalytics(Long districtId) {
-    if (scopeValidator != null) {
-      scopeValidator.validateDistrictScope(districtId);
-    }
+    scopeValidator.validateDistrictScope(districtId);
     if (!geographicDashboardRepository.existsDistrictById(districtId)) {
       throw new ResourceNotFoundException("District not found with ID: " + districtId);
     }

@@ -51,23 +51,16 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
   private final EconomicOutcomeDashboardRepository repository;
   private final WorkflowSecurityScopeValidator scopeValidator;
 
-  public EconomicOutcomeDashboardServiceImpl(EconomicOutcomeDashboardRepository repository) {
-    this(repository, null);
-  }
-
-  @Autowired
   public EconomicOutcomeDashboardServiceImpl(
       EconomicOutcomeDashboardRepository repository,
-      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
-    this.repository = repository;
-    this.scopeValidator = scopeValidator;
+      WorkflowSecurityScopeValidator scopeValidator) {
+    this.repository = java.util.Objects.requireNonNull(repository, "EconomicOutcomeDashboardRepository is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
   @Override
   public LeaderboardResponse<EmployerHiringPerformanceResponse> getEmployerLeaderboard() {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     List<EmployerHiringProjection> projections = repository.getFormalQ07EmployerLeaderboard();
     if (projections == null || projections.isEmpty()) {
       return LeaderboardResponse.of(EMPLOYER_RANKING_METRIC, Collections.emptyList());
@@ -94,9 +87,7 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
 
   @Override
   public EconomicOutcomeSummaryResponse getEconomicOutcomeSummary() {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     // 1. Wage Progression KPIs (Q10)
     WageProgressionResponse wageProgression = mapWageProgression(repository.getFormalQ10WageProgression());
 

@@ -13,6 +13,7 @@ import in.gov.sih.sih26135.repository.analytics.ExecutiveDashboardRepository;
 import in.gov.sih.sih26135.repository.analytics.projection.DashboardKpiProjection;
 import in.gov.sih.sih26135.repository.analytics.projection.PipelineFunnelProjection;
 import in.gov.sih.sih26135.repository.analytics.projection.SchemeProgramPerformanceProjection;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.impl.ExecutiveDashboardServiceImpl;
 import java.math.BigDecimal;
 import java.util.Collections;
@@ -31,6 +32,9 @@ class ExecutiveDashboardServiceTest {
 
   @Mock
   private ExecutiveDashboardRepository executiveDashboardRepository;
+
+  @Mock
+  private WorkflowSecurityScopeValidator scopeValidator;
 
   @InjectMocks
   private ExecutiveDashboardServiceImpl executiveDashboardService;

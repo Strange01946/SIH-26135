@@ -30,16 +30,11 @@ public class DataIntegrityDashboardController {
   private final DataIntegrityDashboardService dataIntegrityDashboardService;
   private final WorkflowSecurityScopeValidator scopeValidator;
 
-  public DataIntegrityDashboardController(DataIntegrityDashboardService dataIntegrityDashboardService) {
-    this(dataIntegrityDashboardService, null);
-  }
-
-  @Autowired
   public DataIntegrityDashboardController(
       DataIntegrityDashboardService dataIntegrityDashboardService,
-      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
-    this.dataIntegrityDashboardService = dataIntegrityDashboardService;
-    this.scopeValidator = scopeValidator;
+      WorkflowSecurityScopeValidator scopeValidator) {
+    this.dataIntegrityDashboardService = java.util.Objects.requireNonNull(dataIntegrityDashboardService, "DataIntegrityDashboardService is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
   /**
@@ -52,9 +47,7 @@ public class DataIntegrityDashboardController {
   @GetMapping("/verifications")
   public ResponseEntity<ApiResponse<VerificationDashboardResponse>> getVerificationDashboard(
       HttpServletRequest httpRequest) {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     VerificationDashboardResponse response = dataIntegrityDashboardService.getVerificationDashboard();
     return ResponseEntity.ok(ApiResponse.success(
         "Verification integrity analytics retrieved successfully",
@@ -73,9 +66,7 @@ public class DataIntegrityDashboardController {
   @GetMapping("/followups")
   public ResponseEntity<ApiResponse<FollowupDashboardResponse>> getFollowupDashboard(
       HttpServletRequest httpRequest) {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     FollowupDashboardResponse response = dataIntegrityDashboardService.getFollowupDashboard();
     return ResponseEntity.ok(ApiResponse.success(
         "Follow-up outreach analytics retrieved successfully",
@@ -94,9 +85,7 @@ public class DataIntegrityDashboardController {
   @GetMapping("/surveys")
   public ResponseEntity<ApiResponse<SurveyDashboardResponse>> getSurveyDashboard(
       HttpServletRequest httpRequest) {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     SurveyDashboardResponse response = dataIntegrityDashboardService.getSurveyDashboard();
     return ResponseEntity.ok(ApiResponse.success(
         "Survey response pipeline analytics retrieved successfully",

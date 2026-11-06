@@ -10,6 +10,7 @@ import in.gov.sih.sih26135.dto.response.ProviderPerformanceResponse;
 import in.gov.sih.sih26135.repository.analytics.InstitutionalAnalyticsRepository;
 import in.gov.sih.sih26135.repository.analytics.projection.CourseEmployabilityProjection;
 import in.gov.sih.sih26135.repository.analytics.projection.ProviderPerformanceProjection;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.impl.InstitutionalAnalyticsServiceImpl;
 import java.math.BigDecimal;
 import java.util.Collections;
@@ -34,11 +35,14 @@ class InstitutionalAnalyticsServiceTest {
   @Mock
   private InstitutionalAnalyticsRepository institutionalAnalyticsRepository;
 
+  @Mock
+  private WorkflowSecurityScopeValidator scopeValidator;
+
   private InstitutionalAnalyticsServiceImpl institutionalAnalyticsService;
 
   @BeforeEach
   void setUp() {
-    institutionalAnalyticsService = new InstitutionalAnalyticsServiceImpl(institutionalAnalyticsRepository);
+    institutionalAnalyticsService = new InstitutionalAnalyticsServiceImpl(institutionalAnalyticsRepository, scopeValidator);
   }
 
   @Test

@@ -30,23 +30,16 @@ public class SkillGapDashboardServiceImpl implements SkillGapDashboardService {
   private final SkillGapDashboardRepository repository;
   private final WorkflowSecurityScopeValidator scopeValidator;
 
-  public SkillGapDashboardServiceImpl(SkillGapDashboardRepository repository) {
-    this(repository, null);
-  }
-
-  @Autowired
   public SkillGapDashboardServiceImpl(
       SkillGapDashboardRepository repository,
-      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
-    this.repository = repository;
-    this.scopeValidator = scopeValidator;
+      WorkflowSecurityScopeValidator scopeValidator) {
+    this.repository = java.util.Objects.requireNonNull(repository, "SkillGapDashboardRepository is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
   @Override
   public SkillGapDashboardResponse getSkillGapDashboard() {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     List<TopSkillGapProjection> topGapsProjections = repository.getFormalQ13TopSkillGaps();
     List<SkillGapSeverityMixProjection> severityProjections = repository.getFormalQ14SeverityAndUptakeMix();
     SkillGapSummaryProjection summaryProjection = repository.getFormalQ14OverallSummary();

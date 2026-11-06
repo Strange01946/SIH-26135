@@ -32,16 +32,11 @@ public class EconomicOutcomeDashboardController {
   private final EconomicOutcomeDashboardService economicOutcomeDashboardService;
   private final WorkflowSecurityScopeValidator scopeValidator;
 
-  public EconomicOutcomeDashboardController(EconomicOutcomeDashboardService economicOutcomeDashboardService) {
-    this(economicOutcomeDashboardService, null);
-  }
-
-  @Autowired
   public EconomicOutcomeDashboardController(
       EconomicOutcomeDashboardService economicOutcomeDashboardService,
-      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
-    this.economicOutcomeDashboardService = economicOutcomeDashboardService;
-    this.scopeValidator = scopeValidator;
+      WorkflowSecurityScopeValidator scopeValidator) {
+    this.economicOutcomeDashboardService = java.util.Objects.requireNonNull(economicOutcomeDashboardService, "EconomicOutcomeDashboardService is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
   /**
@@ -55,9 +50,7 @@ public class EconomicOutcomeDashboardController {
   @GetMapping("/employers")
   public ResponseEntity<ApiResponse<LeaderboardResponse<EmployerHiringPerformanceResponse>>> getEmployerLeaderboard(
       HttpServletRequest httpRequest) {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     LeaderboardResponse<EmployerHiringPerformanceResponse> response =
         economicOutcomeDashboardService.getEmployerLeaderboard();
     return ResponseEntity.ok(ApiResponse.success(
@@ -78,9 +71,7 @@ public class EconomicOutcomeDashboardController {
   @GetMapping("/economic-outcomes")
   public ResponseEntity<ApiResponse<EconomicOutcomeSummaryResponse>> getEconomicOutcomeSummary(
       HttpServletRequest httpRequest) {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     EconomicOutcomeSummaryResponse response =
         economicOutcomeDashboardService.getEconomicOutcomeSummary();
     return ResponseEntity.ok(ApiResponse.success(

@@ -45,23 +45,16 @@ public class DataIntegrityDashboardServiceImpl implements DataIntegrityDashboard
   private final DataIntegrityDashboardRepository repository;
   private final WorkflowSecurityScopeValidator scopeValidator;
 
-  public DataIntegrityDashboardServiceImpl(DataIntegrityDashboardRepository repository) {
-    this(repository, null);
-  }
-
-  @Autowired
   public DataIntegrityDashboardServiceImpl(
       DataIntegrityDashboardRepository repository,
-      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
-    this.repository = repository;
-    this.scopeValidator = scopeValidator;
+      WorkflowSecurityScopeValidator scopeValidator) {
+    this.repository = java.util.Objects.requireNonNull(repository, "DataIntegrityDashboardRepository is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
   @Override
   public VerificationDashboardResponse getVerificationDashboard() {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     List<VerificationOutcomeProjection> outcomes = repository.getFormalQ21VerificationOutcomes();
     List<VerificationMethodEfficacyProjection> methodProjections = repository.getFormalQ22VerificationMethodEfficacy();
     VerificationOverallSummaryProjection summary = repository.getFormalQ21Q22OverallSummary();
@@ -224,9 +217,7 @@ public class DataIntegrityDashboardServiceImpl implements DataIntegrityDashboard
 
   @Override
   public FollowupDashboardResponse getFollowupDashboard() {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     List<FollowupWaveProjection> waves = repository.getFormalQ19FollowupSuccessByWave();
     FollowupOverallSummaryProjection summary = repository.getFormalQ19OverallSummary();
 
@@ -349,9 +340,7 @@ public class DataIntegrityDashboardServiceImpl implements DataIntegrityDashboard
 
   @Override
   public SurveyDashboardResponse getSurveyDashboard() {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     List<SurveyResponsePipelineProjection> pipeline = repository.getFormalQ20SurveyResponsePipeline();
     SurveyOverallSummaryProjection summary = repository.getFormalQ20OverallSummary();
 

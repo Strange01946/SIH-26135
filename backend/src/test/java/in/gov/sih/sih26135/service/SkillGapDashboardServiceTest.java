@@ -10,6 +10,7 @@ import in.gov.sih.sih26135.repository.analytics.SkillGapDashboardRepository;
 import in.gov.sih.sih26135.repository.analytics.projection.SkillGapSeverityMixProjection;
 import in.gov.sih.sih26135.repository.analytics.projection.SkillGapSummaryProjection;
 import in.gov.sih.sih26135.repository.analytics.projection.TopSkillGapProjection;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.impl.SkillGapDashboardServiceImpl;
 import java.math.BigDecimal;
 import java.util.List;
@@ -26,6 +27,9 @@ class SkillGapDashboardServiceTest {
 
   @Mock
   private SkillGapDashboardRepository repository;
+
+  @Mock
+  private WorkflowSecurityScopeValidator scopeValidator;
 
   @InjectMocks
   private SkillGapDashboardServiceImpl service;

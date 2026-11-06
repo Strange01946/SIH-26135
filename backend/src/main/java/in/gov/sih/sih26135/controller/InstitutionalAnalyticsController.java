@@ -31,16 +31,11 @@ public class InstitutionalAnalyticsController {
   private final InstitutionalAnalyticsService institutionalAnalyticsService;
   private final WorkflowSecurityScopeValidator scopeValidator;
 
-  public InstitutionalAnalyticsController(InstitutionalAnalyticsService institutionalAnalyticsService) {
-    this(institutionalAnalyticsService, null);
-  }
-
-  @Autowired
   public InstitutionalAnalyticsController(
       InstitutionalAnalyticsService institutionalAnalyticsService,
-      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
-    this.institutionalAnalyticsService = institutionalAnalyticsService;
-    this.scopeValidator = scopeValidator;
+      WorkflowSecurityScopeValidator scopeValidator) {
+    this.institutionalAnalyticsService = java.util.Objects.requireNonNull(institutionalAnalyticsService, "InstitutionalAnalyticsService is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
   /**
@@ -54,9 +49,7 @@ public class InstitutionalAnalyticsController {
   @GetMapping("/providers")
   public ResponseEntity<ApiResponse<LeaderboardResponse<ProviderPerformanceResponse>>> getProviderLeaderboard(
       HttpServletRequest httpRequest) {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     LeaderboardResponse<ProviderPerformanceResponse> response =
         institutionalAnalyticsService.getProviderLeaderboard();
     return ResponseEntity.ok(ApiResponse.success(
@@ -77,9 +70,7 @@ public class InstitutionalAnalyticsController {
   @GetMapping("/courses")
   public ResponseEntity<ApiResponse<LeaderboardResponse<CourseEmployabilityResponse>>> getCourseLeaderboard(
       HttpServletRequest httpRequest) {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     LeaderboardResponse<CourseEmployabilityResponse> response =
         institutionalAnalyticsService.getCourseLeaderboard();
     return ResponseEntity.ok(ApiResponse.success(

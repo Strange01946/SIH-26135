@@ -34,16 +34,11 @@ public class ExecutiveDashboardController {
   private final ExecutiveDashboardService executiveDashboardService;
   private final WorkflowSecurityScopeValidator scopeValidator;
 
-  public ExecutiveDashboardController(ExecutiveDashboardService executiveDashboardService) {
-    this(executiveDashboardService, null);
-  }
-
-  @Autowired
   public ExecutiveDashboardController(
       ExecutiveDashboardService executiveDashboardService,
-      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
-    this.executiveDashboardService = executiveDashboardService;
-    this.scopeValidator = scopeValidator;
+      WorkflowSecurityScopeValidator scopeValidator) {
+    this.executiveDashboardService = java.util.Objects.requireNonNull(executiveDashboardService, "ExecutiveDashboardService is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
   /**
@@ -59,9 +54,7 @@ public class ExecutiveDashboardController {
   @GetMapping("/overview")
   public ResponseEntity<ApiResponse<ExecutiveDashboardResponse>> getExecutiveOverview(
       HttpServletRequest httpRequest) {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     ExecutiveDashboardResponse response = executiveDashboardService.getExecutiveDashboard();
     return ResponseEntity.ok(ApiResponse.success(
         "Executive dashboard overview retrieved successfully",
@@ -83,9 +76,7 @@ public class ExecutiveDashboardController {
   @GetMapping("/national")
   public ResponseEntity<ApiResponse<ExecutiveDashboardResponse>> getNationalOverview(
       HttpServletRequest httpRequest) {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     ExecutiveDashboardResponse response = executiveDashboardService.getExecutiveDashboard();
     return ResponseEntity.ok(ApiResponse.success(
         "National dashboard overview retrieved successfully",
@@ -104,9 +95,7 @@ public class ExecutiveDashboardController {
   @GetMapping("/kpis")
   public ResponseEntity<ApiResponse<DashboardKpiStripResponse>> getKpiStrip(
       HttpServletRequest httpRequest) {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     DashboardKpiStripResponse response = executiveDashboardService.getDashboardKpiStrip();
     return ResponseEntity.ok(ApiResponse.success(
         "Dashboard KPI strip retrieved successfully",
@@ -125,9 +114,7 @@ public class ExecutiveDashboardController {
   @GetMapping("/pipeline-funnel")
   public ResponseEntity<ApiResponse<PipelineFunnelResponse>> getPipelineFunnel(
       HttpServletRequest httpRequest) {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     PipelineFunnelResponse response = executiveDashboardService.getTrainingPipelineFunnel();
     return ResponseEntity.ok(ApiResponse.success(
         "Training pipeline conversion funnel retrieved successfully",
@@ -146,9 +133,7 @@ public class ExecutiveDashboardController {
   @GetMapping("/scheme-matrix")
   public ResponseEntity<ApiResponse<LeaderboardResponse<SchemeProgramPerformanceResponse>>> getSchemeMatrix(
       HttpServletRequest httpRequest) {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     LeaderboardResponse<SchemeProgramPerformanceResponse> response = executiveDashboardService.getSchemeProgramPerformanceMatrix();
     return ResponseEntity.ok(ApiResponse.success(
         "Scheme and program performance matrix retrieved successfully",

@@ -15,6 +15,7 @@ import in.gov.sih.sih26135.repository.analytics.GeographicDashboardRepository;
 import in.gov.sih.sih26135.repository.analytics.projection.DistrictPerformanceProjection;
 import in.gov.sih.sih26135.repository.analytics.projection.StatePerformanceProjection;
 import in.gov.sih.sih26135.repository.analytics.projection.TrainingCenterSummaryProjection;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.impl.GeographicDashboardServiceImpl;
 import java.math.BigDecimal;
 import java.util.List;
@@ -33,11 +34,14 @@ class GeographicDashboardServiceTest {
   @Mock
   private GeographicDashboardRepository geographicDashboardRepository;
 
+  @Mock
+  private WorkflowSecurityScopeValidator scopeValidator;
+
   private GeographicDashboardServiceImpl geographicDashboardService;
 
   @BeforeEach
   void setUp() {
-    geographicDashboardService = new GeographicDashboardServiceImpl(geographicDashboardRepository);
+    geographicDashboardService = new GeographicDashboardServiceImpl(geographicDashboardRepository, scopeValidator);
   }
 
   @Nested

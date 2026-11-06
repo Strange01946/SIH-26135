@@ -37,23 +37,16 @@ public class RetentionAttritionDashboardServiceImpl implements RetentionAttritio
   private final RetentionAttritionDashboardRepository repository;
   private final WorkflowSecurityScopeValidator scopeValidator;
 
-  public RetentionAttritionDashboardServiceImpl(RetentionAttritionDashboardRepository repository) {
-    this(repository, null);
-  }
-
-  @Autowired
   public RetentionAttritionDashboardServiceImpl(
       RetentionAttritionDashboardRepository repository,
-      @Autowired(required = false) WorkflowSecurityScopeValidator scopeValidator) {
-    this.repository = repository;
-    this.scopeValidator = scopeValidator;
+      WorkflowSecurityScopeValidator scopeValidator) {
+    this.repository = java.util.Objects.requireNonNull(repository, "RetentionAttritionDashboardRepository is required");
+    this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
   }
 
   @Override
   public LongitudinalRetentionResponse getLongitudinalRetention() {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     RetentionSurvivalProjection projection = repository.getFormalQ12RetentionSurvival();
     if (projection == null) {
       return new LongitudinalRetentionResponse(0L, null, List.of());
@@ -96,9 +89,7 @@ public class RetentionAttritionDashboardServiceImpl implements RetentionAttritio
 
   @Override
   public AttritionDashboardResponse getAttritionDashboard() {
-    if (scopeValidator != null) {
-      scopeValidator.validateNationwideScope();
-    }
+    scopeValidator.validateNationwideScope();
     UnemploymentSummaryProjection uProj = repository.getFormalQ15UnemploymentSummary();
     List<UnemploymentReasonProjection> reasonProjs = repository.getFormalQ16UnemploymentReasons();
     List<AttritionReasonProjection> exitProjs = repository.getFormalQ17AttritionReasons();

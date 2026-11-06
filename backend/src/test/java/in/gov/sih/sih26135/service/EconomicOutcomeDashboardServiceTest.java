@@ -20,6 +20,7 @@ import in.gov.sih.sih26135.repository.analytics.projection.EmploymentCategoryBre
 import in.gov.sih.sih26135.repository.analytics.projection.EmploymentMixProjection;
 import in.gov.sih.sih26135.repository.analytics.projection.SalaryBracketCountProjection;
 import in.gov.sih.sih26135.repository.analytics.projection.WageProgressionProjection;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.impl.EconomicOutcomeDashboardServiceImpl;
 import java.math.BigDecimal;
 import java.util.Collections;
@@ -36,12 +37,14 @@ import org.junit.jupiter.api.Test;
 class EconomicOutcomeDashboardServiceTest {
 
   private EconomicOutcomeDashboardRepository repository;
+  private WorkflowSecurityScopeValidator scopeValidator;
   private EconomicOutcomeDashboardServiceImpl service;
 
   @BeforeEach
   void setUp() {
     repository = mock(EconomicOutcomeDashboardRepository.class);
-    service = new EconomicOutcomeDashboardServiceImpl(repository);
+    scopeValidator = mock(WorkflowSecurityScopeValidator.class);
+    service = new EconomicOutcomeDashboardServiceImpl(repository, scopeValidator);
   }
 
   @Test
