@@ -695,4 +695,351 @@ public class AnalyticsFactPaginationTest {
       assertThat(page.getNumberOfElements()).isLessThanOrEqualTo(5);
     }
   }
+
+  // =========================================================================
+  // 6. Filtered Collection Routes Database-Level Pagination & Guardrails
+  // =========================================================================
+
+  @Nested
+  @DisplayName("6. Filtered Collection Pagination & Guardrails Tests")
+  class FilteredCollectionPaginationTests {
+
+    @Test
+    @DisplayName("Filtered route /employments?employerId returns default PagedResponse envelope")
+    void testFilteredRouteDefaultPagination() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments")
+              .param("employerId", "99986")
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.success", equalTo(true)))
+          .andExpect(jsonPath("$.data.page", equalTo(0)))
+          .andExpect(jsonPath("$.data.size", equalTo(20)))
+          .andExpect(jsonPath("$.data.totalElements", greaterThanOrEqualTo(0)))
+          .andExpect(jsonPath("$.data.totalPages", greaterThanOrEqualTo(0)))
+          .andExpect(jsonPath("$.data.first", equalTo(true)));
+    }
+
+    @Test
+    @DisplayName("Filtered route /employment-exits?traineeId returns default PagedResponse envelope")
+    void testFilteredExitRoutePagination() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employment-exits")
+              .param("traineeId", "99987")
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.success", equalTo(true)))
+          .andExpect(jsonPath("$.data.page", equalTo(0)))
+          .andExpect(jsonPath("$.data.size", equalTo(20)));
+    }
+
+    @Test
+    @DisplayName("Filtered route /employments?isCurrent=true returns default PagedResponse envelope")
+    void testFilteredCurrentEmploymentsPagination() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments")
+              .param("isCurrent", "true")
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.success", equalTo(true)))
+          .andExpect(jsonPath("$.data.page", equalTo(0)))
+          .andExpect(jsonPath("$.data.size", equalTo(20)));
+    }
+
+    @Test
+    @DisplayName("Filtered route accepts custom pagination and sort parameters")
+    void testFilteredRouteCustomPagination() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments")
+              .param("employerId", "99986")
+              .param("page", "0")
+              .param("size", "5")
+              .param("sort", "employmentId")
+              .param("direction", "ASC")
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.success", equalTo(true)))
+          .andExpect(jsonPath("$.data.page", equalTo(0)))
+          .andExpect(jsonPath("$.data.size", equalTo(5)));
+    }
+
+    @Test
+    @DisplayName("Filtered route rejects page size greater than 100 with HTTP 400 INVALID_PAGE_SIZE")
+    void testFilteredOversizedPageSizeRejection() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments")
+              .param("employerId", "99986")
+              .param("page", "0")
+              .param("size", "101")
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.status", equalTo(400)))
+          .andExpect(jsonPath("$.code", equalTo("INVALID_PAGE_SIZE")));
+    }
+
+    @Test
+    @DisplayName("Filtered route rejects negative page index with HTTP 400 INVALID_PAGE")
+    void testFilteredNegativePageIndexRejection() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments")
+              .param("employerId", "99986")
+              .param("page", "-1")
+              .param("size", "20")
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.status", equalTo(400)))
+          .andExpect(jsonPath("$.code", equalTo("INVALID_PAGE")));
+    }
+
+    @Test
+    @DisplayName("Filtered route rejects page size 0 with HTTP 400 INVALID_PAGE_SIZE")
+    void testFilteredZeroPageSizeRejection() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments")
+              .param("employerId", "99986")
+              .param("page", "0")
+              .param("size", "0")
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.status", equalTo(400)))
+          .andExpect(jsonPath("$.code", equalTo("INVALID_PAGE_SIZE")));
+    }
+
+    @Test
+    @DisplayName("Filtered route rejects unsupported query parameters with HTTP 400 UNSUPPORTED_PARAMETER")
+    void testFilteredUnsupportedQueryParamRejection() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments")
+              .param("employerId", "99986")
+              .param("limit", "50")
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.status", equalTo(400)))
+          .andExpect(jsonPath("$.code", equalTo("UNSUPPORTED_PARAMETER")));
+    }
+  }
+
+  // =========================================================================
+  // 7. Filtered Collection Routes Tenancy & Scope Validation Tests
+  // =========================================================================
+
+  @Nested
+  @DisplayName("7. Filtered Collection Tenancy & Scope Validation Tests")
+  class FilteredCollectionAuthorizationTests {
+
+    @Test
+    @DisplayName("Unauthenticated caller on filtered route rejected with HTTP 401 Unauthorized")
+    void testFilteredUnauthenticatedCallFails() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments")
+              .param("employerId", "99986")
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("State Administrator on filtered route rejected with HTTP 403 Forbidden")
+    void testFilteredStateAdminForbidden() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments")
+              .param("employerId", "99986")
+              .header(HttpHeaders.AUTHORIZATION, tokenStateAdmin)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isForbidden())
+          .andExpect(jsonPath("$.success", equalTo(false)));
+    }
+
+    @Test
+    @DisplayName("Training Provider on filtered route rejected with HTTP 403 Forbidden")
+    void testFilteredTrainingProviderForbidden() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments")
+              .param("employerId", "99986")
+              .header(HttpHeaders.AUTHORIZATION, tokenProvider)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isForbidden())
+          .andExpect(jsonPath("$.success", equalTo(false)));
+    }
+
+    @Test
+    @DisplayName("Employer on filtered route rejected with HTTP 403 Forbidden")
+    void testFilteredEmployerForbidden() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments")
+              .param("employerId", "99986")
+              .header(HttpHeaders.AUTHORIZATION, tokenEmployer)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isForbidden())
+          .andExpect(jsonPath("$.success", equalTo(false)));
+    }
+
+    @Test
+    @DisplayName("Trainee on filtered route rejected with HTTP 403 Forbidden")
+    void testFilteredTraineeForbidden() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments")
+              .param("employerId", "99986")
+              .header(HttpHeaders.AUTHORIZATION, tokenTrainee)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isForbidden())
+          .andExpect(jsonPath("$.success", equalTo(false)));
+    }
+
+    @Test
+    @DisplayName("Permission-only user on filtered route rejected with HTTP 403 Forbidden")
+    void testFilteredPermissionOnlyForbidden() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments")
+              .param("employerId", "99986")
+              .header(HttpHeaders.AUTHORIZATION, tokenPermissionOnly)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isForbidden())
+          .andExpect(jsonPath("$.success", equalTo(false)));
+    }
+
+    @Test
+    @DisplayName("National Administrator on filtered route permitted with HTTP 200 OK")
+    void testFilteredNationalAdminPermitted() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments")
+              .param("employerId", "99986")
+              .header(HttpHeaders.AUTHORIZATION, tokenNationalAdmin)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.success", equalTo(true)));
+    }
+
+    @Test
+    @DisplayName("Super Administrator on filtered route permitted with HTTP 200 OK")
+    void testFilteredSuperAdminPermitted() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments")
+              .param("employerId", "99986")
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.success", equalTo(true)));
+    }
+  }
+
+  // =========================================================================
+  // 8. Single-Record Lookups Nationwide Scope Validation Tests
+  // =========================================================================
+
+  @Nested
+  @DisplayName("8. Single-Record Lookups Scope Validation Tests")
+  class SingleRecordScopeAuthorizationTests {
+
+    @Test
+    @DisplayName("Unauthenticated caller on single-record /{id} rejected with HTTP 401 Unauthorized")
+    void testSingleRecordUnauthenticatedFails() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments/1")
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("Unauthenticated caller on single-record by number rejected with HTTP 401 Unauthorized")
+    void testSingleRecordByNumberUnauthenticatedFails() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments")
+              .param("employmentNumber", "EMP-P2712-NONEXISTENT")
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("State Administrator on single-record /{id} rejected with HTTP 403 Forbidden")
+    void testSingleRecordStateAdminForbidden() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments/1")
+              .header(HttpHeaders.AUTHORIZATION, tokenStateAdmin)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isForbidden())
+          .andExpect(jsonPath("$.success", equalTo(false)));
+    }
+
+    @Test
+    @DisplayName("Training Provider on single-record /{id} rejected with HTTP 403 Forbidden")
+    void testSingleRecordTrainingProviderForbidden() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments/1")
+              .header(HttpHeaders.AUTHORIZATION, tokenProvider)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isForbidden())
+          .andExpect(jsonPath("$.success", equalTo(false)));
+    }
+
+    @Test
+    @DisplayName("Employer on single-record /{id} rejected with HTTP 403 Forbidden")
+    void testSingleRecordEmployerForbidden() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments/1")
+              .header(HttpHeaders.AUTHORIZATION, tokenEmployer)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isForbidden())
+          .andExpect(jsonPath("$.success", equalTo(false)));
+    }
+
+    @Test
+    @DisplayName("Trainee on single-record /{id} rejected with HTTP 403 Forbidden")
+    void testSingleRecordTraineeForbidden() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments/1")
+              .header(HttpHeaders.AUTHORIZATION, tokenTrainee)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isForbidden())
+          .andExpect(jsonPath("$.success", equalTo(false)));
+    }
+
+    @Test
+    @DisplayName("Permission-only user on single-record /{id} rejected with HTTP 403 Forbidden")
+    void testSingleRecordPermissionOnlyForbidden() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments/1")
+              .header(HttpHeaders.AUTHORIZATION, tokenPermissionOnly)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isForbidden())
+          .andExpect(jsonPath("$.success", equalTo(false)));
+    }
+
+    @Test
+    @DisplayName("State Administrator on single-record by number rejected with HTTP 403 Forbidden")
+    void testSingleRecordByNumberStateAdminForbidden() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments")
+              .param("employmentNumber", "EMP-P2712-NONEXISTENT")
+              .header(HttpHeaders.AUTHORIZATION, tokenStateAdmin)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isForbidden())
+          .andExpect(jsonPath("$.success", equalTo(false)));
+    }
+
+    @Test
+    @DisplayName("Training Provider on single-record by number rejected with HTTP 403 Forbidden")
+    void testSingleRecordByNumberProviderForbidden() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments")
+              .param("employmentNumber", "EMP-P2712-NONEXISTENT")
+              .header(HttpHeaders.AUTHORIZATION, tokenProvider)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isForbidden())
+          .andExpect(jsonPath("$.success", equalTo(false)));
+    }
+
+    @Test
+    @DisplayName("National Administrator on single-record /{id} passes scope validation (not 403)")
+    void testSingleRecordNationalAdminPermitted() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments/999999999")
+              .header(HttpHeaders.AUTHORIZATION, tokenNationalAdmin)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isNotFound())
+          .andExpect(jsonPath("$.status", equalTo(404)));
+    }
+
+    @Test
+    @DisplayName("Super Administrator on single-record /{id} passes scope validation (not 403)")
+    void testSingleRecordSuperAdminPermitted() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments/999999999")
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isNotFound())
+          .andExpect(jsonPath("$.status", equalTo(404)));
+    }
+
+    @Test
+    @DisplayName("National Administrator on single-record by number passes scope validation (not 403)")
+    void testSingleRecordByNumberNationalAdminPermitted() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/facts/employments")
+              .param("employmentNumber", "EMP-P2712-NONEXISTENT")
+              .header(HttpHeaders.AUTHORIZATION, tokenNationalAdmin)
+              .accept(MediaType.APPLICATION_JSON))
+          .andExpect(status().isNotFound())
+          .andExpect(jsonPath("$.status", equalTo(404)));
+    }
+  }
 }
