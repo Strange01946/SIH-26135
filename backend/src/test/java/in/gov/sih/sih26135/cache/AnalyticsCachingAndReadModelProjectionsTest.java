@@ -75,6 +75,9 @@ public class AnalyticsCachingAndReadModelProjectionsTest {
   private AnalyticsCacheEvictionService evictionService;
 
   @Autowired
+  private org.springframework.transaction.PlatformTransactionManager transactionManager;
+
+  @Autowired
   private AnalyticsCacheKeyGenerator keyGenerator;
 
   @Autowired
@@ -349,6 +352,112 @@ public class AnalyticsCachingAndReadModelProjectionsTest {
       evictionService.evictOnSkillGapRemediation(this);
 
       assertThat(skillCache.getNativeCache().estimatedSize()).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("Training completion resolving skill gaps evicts skill-gap cache, while without gaps preserves it")
+    void trainingCompletionTargetedSkillGapEviction() {
+      CaffeineCache skillCache = (CaffeineCache) cacheManager.getCache(AnalyticsCacheConfig.CACHE_SKILL_GAP);
+      CaffeineCache natCache = (CaffeineCache) cacheManager.getCache(AnalyticsCacheConfig.CACHE_NATIONAL_OVERVIEW);
+      assertThat(skillCache).isNotNull();
+      assertThat(natCache).isNotNull();
+
+      // Case A: Certification without skill gap changes preserves skillCache
+      skillCache.put("sampleSkillKey", "sampleData");
+      natCache.put("sampleNatKey", "sampleData");
+      assertThat(skillCache.getNativeCache().estimatedSize()).isGreaterThan(0);
+      assertThat(natCache.getNativeCache().estimatedSize()).isGreaterThan(0);
+
+      evictionService.evictOnCertificationIssued(this, false);
+
+      assertThat(natCache.getNativeCache().estimatedSize()).isEqualTo(0);
+      assertThat(skillCache.getNativeCache().estimatedSize()).isGreaterThan(0); // preserved!
+
+      // Case B: Certification with skill gaps resolved evicts skillCache
+      evictionService.evictOnCertificationIssued(this, true);
+      assertThat(skillCache.getNativeCache().estimatedSize()).isEqualTo(0); // evicted!
+    }
+
+    @Test
+    @DisplayName("Followup engagement attempt invalidates verification and summary caches")
+    void engagementAttemptEviction() {
+      CaffeineCache verifCache = (CaffeineCache) cacheManager.getCache(AnalyticsCacheConfig.CACHE_VERIFICATION);
+      CaffeineCache summaryCache = (CaffeineCache) cacheManager.getCache(AnalyticsCacheConfig.CACHE_SUMMARIES);
+      assertThat(verifCache).isNotNull();
+      assertThat(summaryCache).isNotNull();
+
+      verifCache.put("verifKey", "verifVal");
+      summaryCache.put("sumKey", "sumVal");
+      assertThat(verifCache.getNativeCache().estimatedSize()).isGreaterThan(0);
+      assertThat(summaryCache.getNativeCache().estimatedSize()).isGreaterThan(0);
+
+      evictionService.evictOnEngagementAttempt(this);
+
+      assertThat(verifCache.getNativeCache().estimatedSize()).isEqualTo(0);
+      assertThat(summaryCache.getNativeCache().estimatedSize()).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("Committed transaction triggers cache invalidation whereas rolled-back transaction does NOT")
+    void committedVsRollbackTransactionEviction() {
+      org.springframework.transaction.support.TransactionTemplate txTemplate =
+          new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+
+      CaffeineCache verifCache = (CaffeineCache) cacheManager.getCache(AnalyticsCacheConfig.CACHE_VERIFICATION);
+      assertThat(verifCache).isNotNull();
+
+      // 1. Rollback test: warm cache, run in tx, roll back -> cache MUST remain populated
+      verifCache.put("rollbackTestKey", "preservedValue");
+      assertThat(verifCache.getNativeCache().estimatedSize()).isGreaterThan(0);
+
+      txTemplate.execute(status -> {
+        evictionService.evictOnEngagementAttempt(this);
+        status.setRollbackOnly();
+        return null;
+      });
+
+      // AFTER_COMMIT listener does NOT fire on rollback; cache is preserved
+      assertThat(verifCache.getNativeCache().estimatedSize()).isGreaterThan(0);
+      assertThat(verifCache.get("rollbackTestKey", String.class)).isEqualTo("preservedValue");
+
+      // 2. Commit test: run in tx, commit -> cache MUST be invalidated
+      txTemplate.execute(status -> {
+        evictionService.evictOnEngagementAttempt(this);
+        return null;
+      });
+
+      // AFTER_COMMIT listener fires on commit; cache is cleared
+      assertThat(verifCache.getNativeCache().estimatedSize()).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("Warm dashboard cache returns cached state and re-fetches updated state upon eviction")
+    void warmReadReflectsUpdatedStateAfterEviction() {
+      setNationalAdminContext();
+      CaffeineCache nationalCache = (CaffeineCache) cacheManager.getCache(AnalyticsCacheConfig.CACHE_NATIONAL_OVERVIEW);
+      assertThat(nationalCache).isNotNull();
+
+      // 1. Initial read: warm cache
+      DashboardKpiStripResponse initial = executiveDashboardService.getDashboardKpiStrip();
+      assertThat(initial).isNotNull();
+      assertThat(nationalCache.getNativeCache().estimatedSize()).isGreaterThan(0);
+
+      // 2. Verify subsequent warm call hits cache
+      long hitsBefore = nationalCache.getNativeCache().stats().hitCount();
+      DashboardKpiStripResponse cached = executiveDashboardService.getDashboardKpiStrip();
+      assertThat(cached).isNotNull();
+      assertThat(nationalCache.getNativeCache().stats().hitCount()).isGreaterThan(hitsBefore);
+
+      // 3. Trigger targeted eviction
+      evictionService.evictOnPlacementTransition(this);
+      assertThat(nationalCache.getNativeCache().estimatedSize()).isEqualTo(0);
+
+      // 4. Next read re-fetches fresh state from database and re-warms cache
+      long missesBefore = nationalCache.getNativeCache().stats().missCount();
+      DashboardKpiStripResponse refreshed = executiveDashboardService.getDashboardKpiStrip();
+      assertThat(refreshed).isNotNull();
+      assertThat(nationalCache.getNativeCache().stats().missCount()).isGreaterThan(missesBefore);
+      assertThat(nationalCache.getNativeCache().estimatedSize()).isGreaterThan(0);
     }
   }
 

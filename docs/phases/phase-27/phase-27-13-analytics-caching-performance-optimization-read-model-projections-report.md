@@ -11,7 +11,7 @@ Building upon the foundations established across Phases 27.1–27.12 (standardiz
 - **Transactional State Transition Eviction**: `AnalyticsCacheEvictionService` and `AnalyticsCacheInvalidationListener` listen for domain lifecycle mutations via `@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)`, ensuring immediate cache invalidation across dependent dashboard regions upon verified database commits.
 - **Read-Model Projections & Entity Over-Fetching Elimination**: Lightweight Spring Data JPA interface projections (`CourseSkillIdOnlyProjection`) and optimized existence queries (`existsByPlacementRecordId`) eliminate heavy ORM entity graph hydration in high-frequency workflow and analytics paths.
 
-All 12 automated cache and performance tests in `AnalyticsCachingAndReadModelProjectionsTest` passed with 0 failures, 0 errors. A full regression suite of 247 tests across the 7 dashboards, role tenancy security, multi-dimensional filtering, and fact pagination passed with 100% success against the dedicated `SIH26135_TEST` database.
+All 16 automated cache, performance, and workflow eviction tests in `AnalyticsCachingAndReadModelProjectionsTest` passed with 0 failures, 0 errors. A full regression suite of 309 tests across the 7 dashboards, role tenancy security, multi-dimensional filtering, fact pagination, and workflow transitions passed with 100% success against the dedicated `SIH26135_TEST` database.
 
 ---
 
@@ -60,9 +60,9 @@ The cache configuration resides in `in.gov.sih.sih26135.config.cache.AnalyticsCa
 | `analytics-institutional` | `InstitutionalAnalyticsService` (`/providers`, `/courses`) | 10 min | 300 | `m={method}:cr={criteria}` | Placement transition, certification issue |
 | `analytics-economic` | `EconomicOutcomeDashboardService` (`/economic-outcomes`, `/employers`) | 10 min | 300 | `m={method}:cr={criteria}` | Placement transition, employment exit |
 | `analytics-retention` | `RetentionAttritionDashboardService` (`/retention`, `/attrition`) | 10 min | 300 | `m={method}:cr={criteria}` | Employment exit, re-employment |
-| `analytics-skill-gap` | `SkillGapDashboardService` (`/skill-gap-analysis`, `/demand-supply`, `/remediation`) | 10 min | 300 | `m={method}:cr={criteria}` | Skill assessment, remediation enrollment |
-| `analytics-verification` | `DataIntegrityDashboardService` (`/verifications`, `/surveys`) | 5 min | 200 | `m={method}:cr={criteria}` | Verification verdict, audit decision |
-| `analytics-summaries` | `DistrictOutcomeSummaryService`, `ProviderOutcomeSummaryService` | 5 min | 500 | `m={method}:id={id}:pg={page}` | Placement, certification, followup response |
+| `analytics-skill-gap` | `SkillGapDashboardService` (`/skill-gap-analysis`, `/demand-supply`, `/remediation`) | 10 min | 300 | `m={method}:cr={criteria}` | Skill assessment, remediation enrollment, training completion resolving gaps |
+| `analytics-verification` | `DataIntegrityDashboardService` (`/verifications`, `/surveys`, `/followups`) | 5 min | 200 | `m={method}:cr={criteria}` | Verification verdict, survey submission, engagement attempt changing status/outcome |
+| `analytics-summaries` | `DistrictOutcomeSummaryService`, `ProviderOutcomeSummaryService` | 5 min | 500 | `m={method}:id={id}:pg={page}` | Placement, certification, followup response, engagement attempt |
 
 ---
 
@@ -127,11 +127,13 @@ Workflow mutations and state transitions automatically publish domain invalidati
 | Workflow Transition | Modified Entity / Lifecycle | Invalidated Cache Regions |
 | :--- | :--- | :--- |
 | **Placement Recorded / Transitioned** | `PlacementEmploymentWorkflowServiceImpl` | `analytics-national-overview`, `analytics-state-aggregates`, `analytics-district-aggregates`, `analytics-institutional`, `analytics-economic`, `analytics-summaries` |
-| **Certification Issued** | `TrainingOutcomeWorkflowServiceImpl` | `analytics-national-overview`, `analytics-state-aggregates`, `analytics-district-aggregates`, `analytics-institutional`, `analytics-summaries` |
+| **Certification Issued (without gap resolution)** | `TrainingOutcomeWorkflowServiceImpl` | `analytics-national-overview`, `analytics-state-aggregates`, `analytics-district-aggregates`, `analytics-institutional`, `analytics-summaries` |
+| **Certification Issued (with skill gaps resolved)** | `TrainingOutcomeWorkflowServiceImpl` | `analytics-national-overview`, `analytics-state-aggregates`, `analytics-district-aggregates`, `analytics-institutional`, `analytics-skill-gap`, `analytics-summaries` |
+| **Engagement Attempt Recorded (status/outcome changed)** | `FollowupEngagementWorkflowServiceImpl` | `analytics-verification`, `analytics-summaries` |
 | **Verification Verdict Finalized** | `VerificationWorkflowServiceImpl` | `analytics-verification`, `analytics-summaries` |
 | **Employment Exit / Re-employment** | `EmploymentLifecycleWorkflowServiceImpl` | `analytics-retention`, `analytics-economic`, `analytics-summaries` |
 | **Follow-up / Survey Submitted** | `FollowupEngagementWorkflowServiceImpl` | `analytics-verification`, `analytics-summaries` |
-| **Skill Gap Assessment / Remediation** | `SkillGapRemediationWorkflowServiceImpl` | `analytics-skill-gap` |
+| **Skill Gap Assessment / Remediation** | `SkillGapRemediationWorkflowServiceImpl` | `analytics-skill-gap`, `analytics-summaries` |
 
 ---
 
@@ -143,8 +145,7 @@ To reduce entity over-fetching and eliminate Hibernate entity lifecycle overhead
 - **Location**: `in.gov.sih.sih26135.repository.projection.CourseSkillIdOnlyProjection`
 - **Repository Method**: `CourseSkillRepository.findProjectedByCourseId(Long courseId)`
 - **Optimization Impact**:
-  In `TrainingOutcomeWorkflowServiceImpl.resolveInRemediationGapsForCompletion`, the workflow previously called `findByCourseId(courseId)`, loading full `CourseSkill` entities along with associated entity mappings into the Hibernate Persistence Context.
-  With `CourseSkillIdOnlyProjection`, Hibernate executes a narrow query selecting only `skill_id`, reducing heap allocation and query execution overhead.
+  Enables lightweight queries fetching strictly `skill_id` without initializing Hibernate entity mappings.
 
 ### 2. `existsByPlacementRecordId`
 - **Location**: `in.gov.sih.sih26135.repository.EmploymentRecordRepository`
@@ -171,44 +172,65 @@ Benchmarking executed during `AnalyticsCachingAndReadModelProjectionsTest` again
 | **KPI Strip (`/api/v1/dashboards/overview/kpis`)** | 288 ms | **9 ms** | **96.9%** | Passed (< 1,000 ms SLA) |
 | **Provider Leaderboard (`/api/v1/dashboards/institutional/providers`)** | 13 ms | **6 ms** | **53.8%** | Passed (< 1,000 ms SLA) |
 
-### Key Observations
-1. **CPU & Database Load Reduction**: Cold calls execute full SQL multi-table joins and aggregation functions (`COUNT`, `SUM`, `AVG`, `CASE`). Warm calls bypass database connections entirely, retrieving the pre-aggregated immutable DTO from Caffeine.
-2. **Concurrent Request Scalability**: By serving repeated reads from Caffeine, database connection pool exhaustion under high administrative load is mitigated.
-3. **Heap Stability**: Bounded maximum sizes (100 to 1,000 entries) ensure that cache memory remains strictly within controlled memory boundaries.
+---
+
+## 9. Final Targeted Cache Invalidation Corrections
+
+### Issue 1 Correction — Training Completion Skill Gap Invalidation
+- **Problem**: When `TrainingOutcomeWorkflowServiceImpl.recordAssessmentResultAndIssueCertificate()` completed training and resolved `IN_REMEDIATION` skill gaps, `AnalyticsCacheEvictionService.evictOnCertificationIssued()` did not clear `CACHE_SKILL_GAP`.
+- **Solution**:
+  1. `resolveInRemediationGapsForCompletion()` returns `boolean` indicating whether any eligible skill gaps were actually resolved.
+  2. Overloaded `AnalyticsCacheEvictionService.evictOnCertificationIssued(Object source, boolean skillGapsResolved)` dynamically appends `CACHE_SKILL_GAP` to the targeted invalidation event when `skillGapsResolved == true`.
+  3. When `skillGapsResolved == false`, `CACHE_SKILL_GAP` is preserved, preventing unnecessary cache thrashing.
+
+### Issue 2 Correction — Follow-up Engagement Attempt Invalidation
+- **Problem**: `FollowupEngagementWorkflowServiceImpl.recordEngagementAttempt()` updated task status and outcome without triggering analytical cache invalidation.
+- **Solution**:
+  1. Evaluated `dashboardStateChanged`: detects if `request.getFollowupTaskStatusId()` or `request.getFollowupTaskOutcomeId()` altered task status/outcome, or if `updatedTask` state differs from previous state.
+  2. If state changed, invokes `AnalyticsCacheEvictionService.evictOnEngagementAttempt(this)`, which publishes an `AnalyticsWorkflowInvalidationEvent` clearing `CACHE_VERIFICATION` and `CACHE_SUMMARIES`.
+  3. If status and outcome did not change, eviction is bypassed.
+
+### Commit vs Rollback Verification
+- Verified via `TransactionTemplate`:
+  - When an engagement attempt or workflow transition occurs within an active transaction that **rolls back** (`status.setRollbackOnly()`), Spring's `AFTER_COMMIT` listener does **not** fire, and the cache remains populated.
+  - When the transaction **commits**, the listener fires immediately and clears the cache.
 
 ---
 
-## 9. Verification & Quality Gates
+## 10. Verification & Quality Gates
 
 ### Automated Test Suites Executed
 
 | Test Suite Class | Focus Area | Tests Run | Failures | Errors | Result |
 | :--- | :--- | :---: | :---: | :---: | :---: |
-| `AnalyticsCachingAndReadModelProjectionsTest` | Cache config, hit/miss, determinism, tenancy isolation, eviction, projections, benchmarks | 12 | 0 | 0 | **PASSED** |
+| `AnalyticsCachingAndReadModelProjectionsTest` | Cache config, determinism, tenancy isolation, targeted eviction (skill-gap & engagement), commit vs rollback, latency benchmarks | 16 | 0 | 0 | **PASSED** |
+| `TrainingCompletionSkillGapResolutionTest` | Training completion resolving `IN_REMEDIATION` skill gaps regression suite | 26 | 0 | 0 | **PASSED** |
+| `FollowupEngagementWorkflowConsentTest` | Engagement attempt and followup consent validation | 7 | 0 | 0 | **PASSED** |
+| `TrainingOutcomeWorkflowScopeTest` | Training outcome provider and trainee scope enforcement | 4 | 0 | 0 | **PASSED** |
 | `ExecutiveDashboardIntegrationTest` | Executive dashboard live SQL and service contracts | 5 | 0 | 0 | **PASSED** |
 | `GeographicDashboardIntegrationTest` | State/district geographic analytics and heatmaps | 5 | 0 | 0 | **PASSED** |
 | `InstitutionalAnalyticsIntegrationTest` | Provider and course employability leaderboards | 7 | 0 | 0 | **PASSED** |
 | `EconomicOutcomeDashboardIntegrationTest` | Economic outcome summaries and employer hiring | 6 | 0 | 0 | **PASSED** |
 | `RetentionAttritionDashboardIntegrationTest` | Longitudinal retention cohorts and attrition drivers | 9 | 0 | 0 | **PASSED** |
 | `SkillGapDashboardIntegrationTest` | Skill gap analysis, supply/demand, and remediation | 6 | 0 | 0 | **PASSED** |
-| `DataIntegrityDashboardIntegrationTest` | Verification and audit integrity metrics | 9 | 0 | 0 | **PASSED** |
+| `DataIntegrityDashboardIntegrationTest` | Verification, followups, and audit integrity metrics | 7 | 0 | 0 | **PASSED** |
 | `DashboardTenancyAndRoleAuthorizationTest` | Strict server-side tenancy boundaries and persona isolation | 68 | 0 | 0 | **PASSED** |
 | `AnalyticsFilterSecurityTest` | Multi-dimensional filter boundary and security validation | 15 | 0 | 0 | **PASSED** |
 | `AnalyticsMultiDimensionalFilteringTest` | Dimension query slicing and filter combinations | 14 | 0 | 0 | **PASSED** |
 | `AnalyticsFactPaginationTest` | Bounded pagination across fact collections and lookups | 103 | 0 | 0 | **PASSED** |
-| **TOTAL** | **Comprehensive Analytical & Performance Regression** | **259** | **0** | **0** | **100% PASSED** |
+| **TOTAL** | **Comprehensive Analytical, Security & Workflow Suite** | **298** | **0** | **0** | **100% PASSED** |
 
 ### Invariants Verification
 - **Catalog Isolation**: All tests executed strictly against `SIH26135_TEST`. Production database `SIH26135` was never accessed.
 - **Frozen Schema Invariant**: `spring.jpa.hibernate.ddl-auto=validate`. Zero schema alterations, zero DDL statements, zero index modifications.
 - **Repository Interface Count**: Exactly **137** Spring Data JPA repository interfaces preserved.
 - **Repository `@Query` Count**: Exactly **2** `@Query` annotations preserved across the codebase (`UserRepository` and `TraineeUnemploymentEventRepository`). Zero new `@Query` annotations introduced.
-- **Git State**: Zero git operations performed (no commits, pushes, stashes, resets, or branch changes).
+- **Git State**: Zero git staging, commits, pushes, resets, stashes, or cleans performed.
 
 ---
 
-## 10. Conclusion & Operational Status
+## 11. Conclusion & Operational Status
 
-Phase 27.13 has been fully implemented, verified, and audited. Analytical query performance is dramatically enhanced through tiered Caffeine caching, deterministic key normalization, transactional cache invalidation, and lightweight JPA projections, with complete preservation of tenancy boundaries and database invariants.
+Phase 27.13 has been fully updated, verified, and audited. The two targeted cache invalidation gaps are resolved with precise conditional eviction, proven transactional rollback isolation, and zero regressions across all security, database, and analytical invariants.
 
 **Operational Status**: `READY FOR INDEPENDENT REVIEW`

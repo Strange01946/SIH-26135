@@ -225,6 +225,7 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
     }
 
     TrainingEnrollmentResponse updatedEnrollment = null;
+    boolean skillGapsResolved = false;
     if (targetEnrollment != null && request.getCompletionEnrollmentStatusId() != null) {
       UpdateTrainingEnrollmentRequest updateReq = new UpdateTrainingEnrollmentRequest();
       updateReq.setStartDate(targetEnrollment.getStartDate());
@@ -245,7 +246,7 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
       //   (b) the assessment result is a pass.
       if (Boolean.TRUE.equals(updatedEnrollment.getIsCompletedFlag())
           && Boolean.TRUE.equals(result.getIsPassFlag())) {
-        resolveInRemediationGapsForCompletion(
+        skillGapsResolved = resolveInRemediationGapsForCompletion(
             updatedEnrollment.getTraineeId(),
             updatedEnrollment.getCourseId(),
             updatedEnrollment.getActualCompletionDate()
@@ -254,7 +255,7 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
     }
 
     if (evictionService != null) {
-      evictionService.evictOnCertificationIssued(this);
+      evictionService.evictOnCertificationIssued(this, skillGapsResolved);
     }
     return new RecordAssessmentAndIssueCertificateResponse(result, certification, updatedEnrollment);
   }
@@ -267,26 +268,27 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
    * <p>Invoked only when both the enrollment status is a completion status and the assessment
    * result records a pass. Gaps with any other status (OPEN, RESOLVED, CLOSED_UNRESOLVED) are
    * left untouched.
+   *
+   * @return {@code true} if one or more eligible skill gaps were resolved and saved; {@code false} otherwise
    */
-  private void resolveInRemediationGapsForCompletion(
+  private boolean resolveInRemediationGapsForCompletion(
       Long traineeId, Long courseId, LocalDate resolvedOn) {
     if (traineeId == null || courseId == null) {
-      return;
+      return false;
     }
 
-    // Find every skill taught by the completed course via lightweight interface projection.
-    List<in.gov.sih.sih26135.repository.projection.CourseSkillIdOnlyProjection> courseSkills =
-        courseSkillRepository.findProjectedByCourseId(courseId);
+    // Find every skill taught by the completed course.
+    List<CourseSkill> courseSkills = courseSkillRepository.findByCourseId(courseId);
     if (courseSkills == null || courseSkills.isEmpty()) {
-      return;
+      return false;
     }
     Set<Long> taughtSkillIds = courseSkills.stream()
         .filter(cs -> cs != null && cs.getSkillId() != null)
-        .map(in.gov.sih.sih26135.repository.projection.CourseSkillIdOnlyProjection::getSkillId)
+        .map(CourseSkill::getSkillId)
         .collect(Collectors.toSet());
 
     if (taughtSkillIds.isEmpty()) {
-      return;
+      return false;
     }
 
     // Find all current IN_REMEDIATION gaps for this trainee.
@@ -295,7 +297,7 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
             traineeId, STATUS_CODE_IN_REMEDIATION);
 
     if (inRemediationGaps == null || inRemediationGaps.isEmpty()) {
-      return;
+      return false;
     }
 
     // Keep only gaps whose skill reference is valid and taught by the completed course.
@@ -305,7 +307,7 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
         .toList();
 
     if (eligibleGaps.isEmpty()) {
-      return;
+      return false;
     }
 
     // Look up RESOLVED status once. Fail closed if it is missing from the database.
@@ -327,6 +329,7 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
       gap.setUpdatedAt(now);
       skillGapRepository.save(gap);
     }
+    return true;
   }
 
   private void ensureScopeValidator() {

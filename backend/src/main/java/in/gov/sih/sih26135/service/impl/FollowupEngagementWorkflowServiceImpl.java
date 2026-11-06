@@ -233,6 +233,17 @@ public class FollowupEngagementWorkflowServiceImpl implements FollowupEngagement
 
     FollowupTaskResponse updatedTask = followupTaskService.updateFollowupTask(task.getId(), updateTask);
 
+    boolean dashboardStateChanged = (request.getFollowupTaskStatusId() != null
+            && !java.util.Objects.equals(task.getFollowupStatusId(), request.getFollowupTaskStatusId()))
+        || (request.getFollowupTaskOutcomeId() != null
+            && !java.util.Objects.equals(task.getFollowupOutcomeId(), request.getFollowupTaskOutcomeId()))
+        || !java.util.Objects.equals(task.getFollowupStatusId(), updatedTask.getFollowupStatusId())
+        || !java.util.Objects.equals(task.getFollowupOutcomeId(), updatedTask.getFollowupOutcomeId());
+
+    if (evictionService != null && dashboardStateChanged) {
+      evictionService.evictOnEngagementAttempt(this);
+    }
+
     return new RecordEngagementAttemptResponse(commLog, updatedTask);
   }
 

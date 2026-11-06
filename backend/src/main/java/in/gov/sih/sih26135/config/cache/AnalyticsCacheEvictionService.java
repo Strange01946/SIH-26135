@@ -55,19 +55,31 @@ public class AnalyticsCacheEvictionService {
 
   /**
    * Evicts caches affected by training completion and certificate issuance.
+   * If skill gaps were resolved during training completion, also evicts skill-gap cache.
    */
-  public void evictOnCertificationIssued(Object source) {
+  public void evictOnCertificationIssued(Object source, boolean skillGapsResolved) {
+    Set<String> caches = new java.util.HashSet<>(Set.of(
+        AnalyticsCacheConfig.CACHE_NATIONAL_OVERVIEW,
+        AnalyticsCacheConfig.CACHE_STATE_AGGREGATES,
+        AnalyticsCacheConfig.CACHE_DISTRICT_AGGREGATES,
+        AnalyticsCacheConfig.CACHE_INSTITUTIONAL,
+        AnalyticsCacheConfig.CACHE_SUMMARIES
+    ));
+    if (skillGapsResolved) {
+      caches.add(AnalyticsCacheConfig.CACHE_SKILL_GAP);
+    }
     eventPublisher.publishEvent(new AnalyticsWorkflowInvalidationEvent(
         source,
-        "CERTIFICATION_ISSUED",
-        Set.of(
-            AnalyticsCacheConfig.CACHE_NATIONAL_OVERVIEW,
-            AnalyticsCacheConfig.CACHE_STATE_AGGREGATES,
-            AnalyticsCacheConfig.CACHE_DISTRICT_AGGREGATES,
-            AnalyticsCacheConfig.CACHE_INSTITUTIONAL,
-            AnalyticsCacheConfig.CACHE_SUMMARIES
-        )
+        skillGapsResolved ? "CERTIFICATION_ISSUED_WITH_SKILL_GAPS_RESOLVED" : "CERTIFICATION_ISSUED",
+        caches
     ));
+  }
+
+  /**
+   * Evicts caches affected by training completion and certificate issuance.
+   */
+  public void evictOnCertificationIssued(Object source) {
+    evictOnCertificationIssued(source, false);
   }
 
   /**
@@ -93,6 +105,20 @@ public class AnalyticsCacheEvictionService {
     eventPublisher.publishEvent(new AnalyticsWorkflowInvalidationEvent(
         source,
         "FOLLOWUP_OR_SURVEY_SUBMISSION",
+        Set.of(
+            AnalyticsCacheConfig.CACHE_VERIFICATION,
+            AnalyticsCacheConfig.CACHE_SUMMARIES
+        )
+    ));
+  }
+
+  /**
+   * Evicts caches affected by follow-up engagement attempts that change task status or outcome.
+   */
+  public void evictOnEngagementAttempt(Object source) {
+    eventPublisher.publishEvent(new AnalyticsWorkflowInvalidationEvent(
+        source,
+        "FOLLOWUP_ENGAGEMENT_ATTEMPT",
         Set.of(
             AnalyticsCacheConfig.CACHE_VERIFICATION,
             AnalyticsCacheConfig.CACHE_SUMMARIES
