@@ -1,7 +1,10 @@
 package in.gov.sih.sih26135.repository.analytics;
 
+import in.gov.sih.sih26135.dto.request.AnalyticsFilterCriteria;
 import in.gov.sih.sih26135.repository.analytics.projection.CourseEmployabilityProjection;
 import in.gov.sih.sih26135.repository.analytics.projection.ProviderPerformanceProjection;
+import in.gov.sih.sih26135.repository.analytics.util.AnalyticsQueryFilterBuilder;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -142,6 +145,108 @@ public class InstitutionalAnalyticsRepository {
    */
   public List<CourseEmployabilityProjection> getFormalQ05CourseEmployability() {
     return jdbcTemplate.query(Q05_COURSE_EMPLOYABILITY_SQL, COURSE_ROW_MAPPER);
+  }
+
+  /**
+   * Q04: Training provider performance leaderboard with optional multi-dimensional filters.
+   */
+  public List<ProviderPerformanceProjection> getFormalQ04ProviderLeaderboard(AnalyticsFilterCriteria criteria) {
+    if (criteria == null || criteria.isEmpty()) {
+      return getFormalQ04ProviderLeaderboard();
+    }
+    AnalyticsQueryFilterBuilder.FilterPredicateResult filter =
+        AnalyticsQueryFilterBuilder.buildEnrollmentFactPredicates(criteria, "v");
+    String sql = """
+        SELECT
+          tp.provider_id AS providerId,
+          tp.provider_code AS providerCode,
+          tp.provider_name AS providerName,
+          COUNT(*) AS enrollmentCount,
+          COUNT(DISTINCT v.trainee_id) AS traineeCount,
+          SUM(v.is_completed_flag) AS completedCount,
+          SUM(v.has_issued_certificate_flag) AS certifiedCount,
+          SUM(v.has_joined_placement_flag) AS joinedPlacementCount,
+          SUM(v.has_employment_flag) AS employedCount,
+          ROUND(SUM(v.is_completed_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS completionRatePct,
+          ROUND(SUM(v.has_issued_certificate_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS certificationRatePct,
+          ROUND(SUM(v.has_joined_placement_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS placementRatePct,
+          ROUND(SUM(v.has_employment_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS employmentRatePct,
+          COALESCE(act_cap.active_batch_capacity, 0) AS activeBatchCapacity
+        FROM vw_enrollment_outcome_fact v
+        JOIN training_providers tp ON tp.provider_id = v.provider_id
+        LEFT JOIN (
+          SELECT
+            tb.provider_id,
+            SUM(tb.capacity) AS active_batch_capacity
+          FROM training_batches tb
+          JOIN ref_batch_status rbs ON rbs.batch_status_id = tb.batch_status_id
+          WHERE rbs.status_code IN ('OPEN', 'ONGOING')
+            AND tb.deleted_at IS NULL
+          GROUP BY tb.provider_id
+        ) act_cap ON act_cap.provider_id = tp.provider_id
+        WHERE tp.deleted_at IS NULL
+        """ + filter.getSqlFragment() + """
+        GROUP BY tp.provider_id, tp.provider_code, tp.provider_name, act_cap.active_batch_capacity
+        ORDER BY employmentRatePct IS NULL, employmentRatePct DESC, enrollmentCount DESC, tp.provider_code ASC, tp.provider_id ASC
+        """;
+    return jdbcTemplate.query(sql, PROVIDER_ROW_MAPPER, filter.getParameters().toArray());
+  }
+
+  /**
+   * Q05: Course outcome and employability scorecard with optional multi-dimensional filters.
+   */
+  public List<CourseEmployabilityProjection> getFormalQ05CourseEmployability(AnalyticsFilterCriteria criteria) {
+    if (criteria == null || criteria.isEmpty()) {
+      return getFormalQ05CourseEmployability();
+    }
+    AnalyticsQueryFilterBuilder.FilterPredicateResult filter =
+        AnalyticsQueryFilterBuilder.buildEnrollmentFactPredicates(criteria, "v");
+    AnalyticsQueryFilterBuilder.FilterPredicateResult salaryFilter =
+        AnalyticsQueryFilterBuilder.buildEnrollmentFactPredicates(criteria, "v_sal");
+
+    List<Object> allParams = new ArrayList<>();
+    allParams.addAll(salaryFilter.getParameters());
+    allParams.addAll(filter.getParameters());
+
+    String sql = """
+        SELECT
+          c.course_id AS courseId,
+          c.course_code AS courseCode,
+          c.course_name AS courseName,
+          ql.qualification_level_id AS qualificationLevelId,
+          ql.level_code AS qualificationLevelCode,
+          ql.level_name AS qualificationLevelName,
+          ql.nsqf_level AS nsqfLevel,
+          COUNT(*) AS enrollmentCount,
+          COUNT(DISTINCT v.trainee_id) AS traineeCount,
+          SUM(v.is_completed_flag) AS completedCount,
+          SUM(v.has_issued_certificate_flag) AS certifiedCount,
+          SUM(v.has_joined_placement_flag) AS joinedPlacementCount,
+          SUM(v.has_employment_flag) AS employedCount,
+          ROUND(SUM(v.is_completed_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS completionRatePct,
+          ROUND(SUM(v.has_issued_certificate_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS certificationRatePct,
+          ROUND(SUM(v.has_joined_placement_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS placementRatePct,
+          ROUND(SUM(v.has_employment_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS employmentRatePct,
+          wage.avg_starting_wage AS avgStartingWage
+        FROM vw_enrollment_outcome_fact v
+        JOIN courses c ON c.course_id = v.course_id
+        LEFT JOIN ref_qualification_level ql ON ql.qualification_level_id = c.qualification_level_id
+        LEFT JOIN (
+          SELECT
+            v_sal.course_id,
+            ROUND(AVG(sp.first_recorded_salary), 2) AS avg_starting_wage
+          FROM vw_salary_progression_fact sp
+          JOIN vw_enrollment_outcome_fact v_sal ON v_sal.enrollment_id = sp.enrollment_id
+          WHERE sp.first_recorded_salary IS NOT NULL
+        """ + salaryFilter.getSqlFragment() + """
+          GROUP BY v_sal.course_id
+        ) wage ON wage.course_id = c.course_id
+        WHERE c.deleted_at IS NULL
+        """ + filter.getSqlFragment() + """
+        GROUP BY c.course_id, c.course_code, c.course_name, ql.qualification_level_id, ql.level_code, ql.level_name, ql.nsqf_level, wage.avg_starting_wage
+        ORDER BY employmentRatePct IS NULL, employmentRatePct DESC, enrollmentCount DESC, c.course_code ASC, c.course_id ASC
+        """;
+    return jdbcTemplate.query(sql, COURSE_ROW_MAPPER, allParams.toArray());
   }
 
   /**

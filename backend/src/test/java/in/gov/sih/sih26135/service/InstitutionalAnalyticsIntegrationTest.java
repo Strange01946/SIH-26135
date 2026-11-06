@@ -4,6 +4,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import in.gov.sih.sih26135.dto.request.AnalyticsFilterCriteria;
 import in.gov.sih.sih26135.security.UserPrincipal;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -182,6 +183,73 @@ class InstitutionalAnalyticsIntegrationTest {
         if (prev.employmentRatePct() != null && c.employmentRatePct() != null) {
           assertThat(prev.employmentRatePct()).isGreaterThanOrEqualTo(c.employmentRatePct());
         }
+      }
+    }
+  }
+
+  @Test
+  @DisplayName("Regression: verify filtered and unfiltered salary populations in Q05 course employability")
+  void testFilteredVsUnfilteredCourseSalaryPopulation() {
+    // 1. Unfiltered baseline
+    List<CourseEmployabilityProjection> unfiltered =
+        institutionalAnalyticsRepository.getFormalQ05CourseEmployability(new AnalyticsFilterCriteria());
+    assertThat(unfiltered).isNotNull();
+
+    if (!unfiltered.isEmpty()) {
+      CourseEmployabilityProjection sample = unfiltered.get(0);
+      Long sampleCourseId = sample.courseId();
+
+      // 2. Filtered by course criteria
+      AnalyticsFilterCriteria courseCriteria = new AnalyticsFilterCriteria();
+      courseCriteria.setCourseId(sampleCourseId);
+
+      List<CourseEmployabilityProjection> filteredByCourse =
+          institutionalAnalyticsRepository.getFormalQ05CourseEmployability(courseCriteria);
+
+      assertThat(filteredByCourse).hasSize(1);
+      CourseEmployabilityProjection filteredSample = filteredByCourse.get(0);
+      assertThat(filteredSample.courseId()).isEqualTo(sampleCourseId);
+      assertThat(filteredSample.avgStartingWage()).isEqualTo(sample.avgStartingWage());
+
+      // 3. Filter with a non-existent spatial partition (stateId = 999999L)
+      // Must not leak unfiltered nationwide average; must return empty cohort
+      AnalyticsFilterCriteria nonExistentStateCriteria = new AnalyticsFilterCriteria();
+      nonExistentStateCriteria.setCourseId(sampleCourseId);
+      nonExistentStateCriteria.setStateId(999999L);
+
+      List<CourseEmployabilityProjection> emptyCohort =
+          institutionalAnalyticsRepository.getFormalQ05CourseEmployability(nonExistentStateCriteria);
+      assertThat(emptyCohort).isEmpty();
+
+      // 4. Verify cohort with specific demographic/temporal dimension
+      // Query database directly to check if different cohorts yield distinct or null salary averages
+      List<Map<String, Object>> genderSalaries = jdbcTemplate.queryForList("""
+          SELECT v.course_id, t.gender_id, ROUND(AVG(sp.first_recorded_salary), 2) AS avg_sal, COUNT(*) AS cnt
+          FROM vw_salary_progression_fact sp
+          JOIN vw_enrollment_outcome_fact v ON v.enrollment_id = sp.enrollment_id
+          JOIN trainees t ON t.trainee_id = v.trainee_id
+          WHERE sp.first_recorded_salary IS NOT NULL AND t.deleted_at IS NULL
+          GROUP BY v.course_id, t.gender_id
+          HAVING COUNT(*) > 0
+          """);
+
+      if (!genderSalaries.isEmpty()) {
+        Map<String, Object> row = genderSalaries.get(0);
+        Long targetCourseId = ((Number) row.get("course_id")).longValue();
+        Long targetGenderId = ((Number) row.get("gender_id")).longValue();
+        BigDecimal expectedFilteredWage = (BigDecimal) row.get("avg_sal");
+
+        AnalyticsFilterCriteria genderCriteria = new AnalyticsFilterCriteria();
+        genderCriteria.setCourseId(targetCourseId);
+        genderCriteria.setGender(targetGenderId == 1L ? "MALE" : targetGenderId == 2L ? "FEMALE" : "TRANSGENDER");
+
+        List<CourseEmployabilityProjection> genderFiltered =
+            institutionalAnalyticsRepository.getFormalQ05CourseEmployability(genderCriteria);
+
+        assertThat(genderFiltered).isNotEmpty();
+        CourseEmployabilityProjection matchedCourse = genderFiltered.get(0);
+        assertThat(matchedCourse.avgStartingWage())
+            .isEqualByComparingTo(expectedFilteredWage);
       }
     }
   }

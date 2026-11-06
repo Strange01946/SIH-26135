@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import in.gov.sih.sih26135.dto.request.AnalyticsFilterCriteria;
 import in.gov.sih.sih26135.dto.response.CourseEmployabilityResponse;
 import in.gov.sih.sih26135.dto.response.LeaderboardResponse;
 import in.gov.sih.sih26135.dto.response.ProviderPerformanceResponse;
@@ -7,6 +8,7 @@ import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.InstitutionalAnalyticsService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -48,10 +50,13 @@ public class InstitutionalAnalyticsController {
    */
   @GetMapping("/providers")
   public ResponseEntity<ApiResponse<LeaderboardResponse<ProviderPerformanceResponse>>> getProviderLeaderboard(
+      @Valid AnalyticsFilterCriteria criteria,
       HttpServletRequest httpRequest) {
     scopeValidator.validateNationwideScope();
-    LeaderboardResponse<ProviderPerformanceResponse> response =
-        institutionalAnalyticsService.getProviderLeaderboard();
+    scopeValidator.validateAnalyticsFilterScope(criteria);
+    LeaderboardResponse<ProviderPerformanceResponse> response = (criteria == null || criteria.isEmpty())
+        ? institutionalAnalyticsService.getProviderLeaderboard()
+        : institutionalAnalyticsService.getProviderLeaderboard(criteria);
     return ResponseEntity.ok(ApiResponse.success(
         "Training provider leaderboard retrieved successfully",
         response,
@@ -64,15 +69,19 @@ public class InstitutionalAnalyticsController {
    * Ranks courses by employment conversion rate descending, tie-broken by enrollment volume descending.
    * Restricted to National Administrators with nationwide authority.
    *
+   * @param criteria optional filter criteria
    * @param httpRequest HTTP servlet request for URI extraction
    * @return 200 OK with {@link LeaderboardResponse} of {@link CourseEmployabilityResponse} in {@link ApiResponse}
    */
   @GetMapping("/courses")
   public ResponseEntity<ApiResponse<LeaderboardResponse<CourseEmployabilityResponse>>> getCourseLeaderboard(
+      @Valid AnalyticsFilterCriteria criteria,
       HttpServletRequest httpRequest) {
     scopeValidator.validateNationwideScope();
-    LeaderboardResponse<CourseEmployabilityResponse> response =
-        institutionalAnalyticsService.getCourseLeaderboard();
+    scopeValidator.validateAnalyticsFilterScope(criteria);
+    LeaderboardResponse<CourseEmployabilityResponse> response = (criteria == null || criteria.isEmpty())
+        ? institutionalAnalyticsService.getCourseLeaderboard()
+        : institutionalAnalyticsService.getCourseLeaderboard(criteria);
     return ResponseEntity.ok(ApiResponse.success(
         "Course employability leaderboard retrieved successfully",
         response,

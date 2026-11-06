@@ -630,7 +630,15 @@ public class GlobalExceptionHandler {
       "Skill gap number already exists",
       "Skill gap assessment number already exists",
       "Skill gap recommendation number already exists",
-      "Training enrollment number already exists"
+      "Training enrollment number already exists",
+
+      // 6. Analytics Multi-Dimensional Filtering Constraints
+      "Demographic dimension 'socialCategory' is not supported by the existing database schema",
+      "Demographic dimension 'minority' is not supported by the existing database schema",
+      "Demographic dimension 'pwd' is not supported by the existing database schema",
+      "Cannot specify both fiscalYear and calendarYear.",
+      "Cannot specify custom date range alongside fiscalYear or calendarYear.",
+      "startDate must be before or equal to endDate."
   )));
 
   private String getSafeMessageForErrorCode(String errorCode, HttpStatus status) {
@@ -675,6 +683,10 @@ public class GlobalExceptionHandler {
       case "INVALID_DATE_RANGE" -> "Invalid date range";
       case "UNSUPPORTED_PARAMETER" -> "The request contains unsupported parameters";
       case "INVALID_FILTER_PARAMETER" -> "Invalid filter parameter provided";
+      case "UNSUPPORTED_FILTER" -> "The requested filter parameter is not supported in the current schema";
+      case "CONFLICTING_TEMPORAL_FILTERS" -> "Conflicting temporal filter parameters provided";
+      case "INVALID_TEMPORAL_FILTER" -> "Invalid temporal filter parameters provided";
+      case "INVALID_DEMOGRAPHIC_FILTER" -> "Invalid demographic filter parameter provided";
       case "ENDPOINT_NOT_FOUND" -> "The requested resource was not found";
       case "METHOD_NOT_ALLOWED" -> "HTTP method is not supported for this endpoint";
       case "UNSUPPORTED_MEDIA_TYPE" -> "Content type is not supported";

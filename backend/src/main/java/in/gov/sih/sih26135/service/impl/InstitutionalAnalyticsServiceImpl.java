@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.service.impl;
 
+import in.gov.sih.sih26135.dto.request.AnalyticsFilterCriteria;
 import in.gov.sih.sih26135.dto.response.CourseEmployabilityResponse;
 import in.gov.sih.sih26135.dto.response.LeaderboardResponse;
 import in.gov.sih.sih26135.dto.response.ProviderPerformanceResponse;
@@ -138,6 +139,121 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
   @Override
   public Map<String, List<CourseEmployabilityResponse>> getCourseLeaderboardByQualificationLevel() {
     List<CourseEmployabilityResponse> courses = getCourseLeaderboard().items();
+    if (courses.isEmpty()) {
+      return Collections.emptyMap();
+    }
+
+    return courses.stream()
+        .collect(Collectors.groupingBy(
+            c -> c.qualificationLevelName() != null ? c.qualificationLevelName() : "Unspecified",
+            LinkedHashMap::new,
+            Collectors.toList()
+        ));
+  }
+
+  @Override
+  public LeaderboardResponse<ProviderPerformanceResponse> getProviderLeaderboard(AnalyticsFilterCriteria criteria) {
+    if (criteria == null || criteria.isEmpty()) {
+      return getProviderLeaderboard();
+    }
+    scopeValidator.validateNationwideScope();
+    scopeValidator.validateAnalyticsFilterScope(criteria);
+    List<ProviderPerformanceProjection> projections =
+        institutionalAnalyticsRepository.getFormalQ04ProviderLeaderboard(criteria);
+
+    if (projections == null || projections.isEmpty()) {
+      return LeaderboardResponse.of(RANKING_METRIC, Collections.emptyList());
+    }
+
+    List<ProviderPerformanceResponse> items = new ArrayList<>(projections.size());
+    for (int i = 0; i < projections.size(); i++) {
+      ProviderPerformanceProjection p = projections.get(i);
+      items.add(new ProviderPerformanceResponse(
+          p.providerId(),
+          p.providerCode(),
+          p.providerName(),
+          toLong(p.enrollmentCount()),
+          toLong(p.traineeCount()),
+          toLong(p.completedCount()),
+          toLong(p.certifiedCount()),
+          toLong(p.joinedPlacementCount()),
+          toLong(p.employedCount()),
+          p.completionRatePct(),
+          p.certificationRatePct(),
+          p.placementRatePct(),
+          p.employmentRatePct(),
+          toLong(p.activeBatchCapacity()),
+          i + 1
+      ));
+    }
+
+    return LeaderboardResponse.of(RANKING_METRIC, items);
+  }
+
+  @Override
+  public LeaderboardResponse<CourseEmployabilityResponse> getCourseLeaderboard(AnalyticsFilterCriteria criteria) {
+    if (criteria == null || criteria.isEmpty()) {
+      return getCourseLeaderboard();
+    }
+    scopeValidator.validateNationwideScope();
+    scopeValidator.validateAnalyticsFilterScope(criteria);
+    List<CourseEmployabilityProjection> projections =
+        institutionalAnalyticsRepository.getFormalQ05CourseEmployability(criteria);
+
+    if (projections == null || projections.isEmpty()) {
+      return LeaderboardResponse.of(RANKING_METRIC, Collections.emptyList());
+    }
+
+    List<CourseEmployabilityResponse> items = new ArrayList<>(projections.size());
+    for (int i = 0; i < projections.size(); i++) {
+      CourseEmployabilityProjection c = projections.get(i);
+      Long rawEnrollmentCount = toNullableLong(c.enrollmentCount());
+      Long rawCompletedCount = toNullableLong(c.completedCount());
+
+      BigDecimal dropoutRatePct = null;
+      if (rawEnrollmentCount != null && rawEnrollmentCount > 0L) {
+        if (rawCompletedCount != null) {
+          long dropoutCount = Math.max(0L, rawEnrollmentCount - rawCompletedCount);
+          dropoutRatePct = AnalyticsCalculationUtils.calculatePercentage(dropoutCount, rawEnrollmentCount);
+        } else if (c.completionRatePct() != null) {
+          dropoutRatePct = AnalyticsCalculationUtils.HUNDRED.subtract(c.completionRatePct())
+              .setScale(AnalyticsCalculationUtils.DEFAULT_PERCENTAGE_SCALE, AnalyticsCalculationUtils.DEFAULT_ROUNDING_MODE);
+        }
+      }
+
+      items.add(new CourseEmployabilityResponse(
+          c.courseId(),
+          c.courseCode(),
+          c.courseName(),
+          c.qualificationLevelId(),
+          c.qualificationLevelCode(),
+          c.qualificationLevelName(),
+          c.nsqfLevel(),
+          toLong(c.enrollmentCount()),
+          toLong(c.traineeCount()),
+          toLong(c.completedCount()),
+          toLong(c.certifiedCount()),
+          toLong(c.joinedPlacementCount()),
+          toLong(c.employedCount()),
+          c.completionRatePct(),
+          c.certificationRatePct(),
+          c.placementRatePct(),
+          c.employmentRatePct(),
+          dropoutRatePct,
+          c.avgStartingWage(),
+          i + 1
+      ));
+    }
+
+    return LeaderboardResponse.of(RANKING_METRIC, items);
+  }
+
+  @Override
+  public Map<String, List<CourseEmployabilityResponse>> getCourseLeaderboardByQualificationLevel(AnalyticsFilterCriteria criteria) {
+    if (criteria == null || criteria.isEmpty()) {
+      return getCourseLeaderboardByQualificationLevel();
+    }
+    List<CourseEmployabilityResponse> courses = getCourseLeaderboard(criteria).items();
     if (courses.isEmpty()) {
       return Collections.emptyMap();
     }

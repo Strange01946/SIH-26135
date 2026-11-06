@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.security;
 
+import in.gov.sih.sih26135.dto.request.AnalyticsFilterCriteria;
 import in.gov.sih.sih26135.entity.Employer;
 import in.gov.sih.sih26135.entity.TrainingProvider;
 import in.gov.sih.sih26135.entity.Trainee;
@@ -492,6 +493,96 @@ public class WorkflowSecurityScopeValidator {
     if (districtStateId == null || !districtStateId.equals(userStateId)) {
       log.warn("District scope violation: user state {} attempted to access district {} in state {}",
           userStateId, requestedDistrictId, districtStateId);
+      throw new AccessDeniedException("Access denied");
+    }
+  }
+
+  /**
+   * Validates and applies tenancy boundary rules to an incoming analytics filter criteria.
+   *
+   * @param criteria filter criteria containing temporal, organizational, spatial, and demographic parameters
+   * @throws in.gov.sih.sih26135.exception.BadRequestException if criteria parameters are invalid or contradictory
+   * @throws AccessDeniedException if caller attempts cross-tenancy spatial slicing
+   */
+  public void validateAnalyticsFilterScope(AnalyticsFilterCriteria criteria) {
+    if (criteria == null) {
+      return;
+    }
+
+    // 1. Run intrinsic criteria validation (dates, years, formats, demographic schema restrictions)
+    criteria.validate();
+
+    // 2. Spatial tenancy checks
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    boolean isAuthenticated = authentication != null
+        && authentication.isAuthenticated()
+        && !"anonymousUser".equals(authentication.getPrincipal());
+
+    if (!isAuthenticated) {
+      if (criteria.hasSpatialFilter()) {
+        log.warn("Analytics filter scope violation: unauthenticated caller attempted spatial filtering");
+        throw new AccessDeniedException("Access denied");
+      }
+      return;
+    }
+
+    // If caller is National Admin
+    if (isNationwideAdmin()) {
+      // Validate contradictory state-district combination if both are provided
+      if (criteria.getStateId() != null && criteria.getDistrictId() != null) {
+        Long districtStateId = findDistrictStateId(criteria.getDistrictId());
+        if (districtStateId != null && !districtStateId.equals(criteria.getStateId())) {
+          log.warn("Contradictory spatial filter: district {} belongs to state {}, not requested state {}",
+              criteria.getDistrictId(), districtStateId, criteria.getStateId());
+          throw new in.gov.sih.sih26135.exception.BadRequestException(
+              "Requested district does not belong to requested state",
+              "CONTRADICTORY_SPATIAL_FILTER"
+          );
+        }
+      }
+      return;
+    }
+
+    // If caller is non-administrative persona (Provider, Employer, Trainee)
+    if (isTrainingProviderCaller() || isEmployerCaller() || isTraineeCaller()) {
+      if (criteria.hasSpatialFilter()) {
+        log.warn("Analytics filter scope violation: restricted persona attempted spatial filtering");
+        throw new AccessDeniedException("Access denied");
+      }
+      return;
+    }
+
+    // If caller is State Admin
+    if (isStateAdmin()) {
+      User user = resolveAuthenticatedUser().orElseThrow(() -> new AccessDeniedException("Access denied"));
+      Long callerStateId = user.getStateId();
+      if (callerStateId == null) {
+        throw new AccessDeniedException("Access denied");
+      }
+
+      if (criteria.getStateId() != null && !criteria.getStateId().equals(callerStateId)) {
+        log.warn("State admin {} attempted cross-state filter: requested state {}, assigned state {}",
+            user.getId(), criteria.getStateId(), callerStateId);
+        throw new AccessDeniedException("Access denied");
+      }
+
+      if (criteria.getDistrictId() != null) {
+        Long districtStateId = findDistrictStateId(criteria.getDistrictId());
+        if (districtStateId != null && !districtStateId.equals(callerStateId)) {
+          log.warn("State admin {} attempted cross-district filter: district {} belongs to state {}, assigned state {}",
+              user.getId(), criteria.getDistrictId(), districtStateId, callerStateId);
+          throw new AccessDeniedException("Access denied");
+        }
+      }
+
+      // Automatically intersect / enforce state boundary
+      criteria.setStateId(callerStateId);
+      return;
+    }
+
+    // If caller has no administrative scope at all but attempted spatial filtering
+    if (criteria.hasSpatialFilter()) {
+      log.warn("Analytics filter scope violation: caller without spatial authority attempted spatial filtering");
       throw new AccessDeniedException("Access denied");
     }
   }

@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.service;
 
+import in.gov.sih.sih26135.dto.request.AnalyticsFilterCriteria;
 import in.gov.sih.sih26135.dto.response.DashboardKpiStripResponse;
 import in.gov.sih.sih26135.dto.response.ExecutiveDashboardResponse;
 import in.gov.sih.sih26135.dto.response.LeaderboardResponse;
@@ -20,11 +21,31 @@ public interface ExecutiveDashboardService {
   DashboardKpiStripResponse getDashboardKpiStrip();
 
   /**
+   * Retrieves the executive dashboard KPI strip (Q01) with optional multi-dimensional filters.
+   *
+   * @param criteria validated filter criteria
+   * @return populated {@link DashboardKpiStripResponse}
+   */
+  default DashboardKpiStripResponse getDashboardKpiStrip(AnalyticsFilterCriteria criteria) {
+    return getDashboardKpiStrip();
+  }
+
+  /**
    * Retrieves the training pipeline conversion funnel (Q02).
    *
    * @return populated {@link PipelineFunnelResponse}
    */
   PipelineFunnelResponse getTrainingPipelineFunnel();
+
+  /**
+   * Retrieves the training pipeline conversion funnel (Q02) with optional multi-dimensional filters.
+   *
+   * @param criteria validated filter criteria
+   * @return populated {@link PipelineFunnelResponse}
+   */
+  default PipelineFunnelResponse getTrainingPipelineFunnel(AnalyticsFilterCriteria criteria) {
+    return getTrainingPipelineFunnel();
+  }
 
   /**
    * Retrieves the scheme & program comparative performance matrix (Q03).
@@ -34,9 +55,29 @@ public interface ExecutiveDashboardService {
   LeaderboardResponse<SchemeProgramPerformanceResponse> getSchemeProgramPerformanceMatrix();
 
   /**
+   * Retrieves the scheme & program comparative performance matrix (Q03) with optional multi-dimensional filters.
+   *
+   * @param criteria validated filter criteria
+   * @return populated {@link LeaderboardResponse} containing ranked scheme-program outcomes
+   */
+  default LeaderboardResponse<SchemeProgramPerformanceResponse> getSchemeProgramPerformanceMatrix(AnalyticsFilterCriteria criteria) {
+    return getSchemeProgramPerformanceMatrix();
+  }
+
+  /**
    * Retrieves the consolidated executive overview dashboard combining Q01, Q02, and Q03.
    *
    * @return populated {@link ExecutiveDashboardResponse}
    */
   ExecutiveDashboardResponse getExecutiveDashboard();
+
+  /**
+   * Retrieves the consolidated executive overview dashboard combining Q01, Q02, and Q03 with optional multi-dimensional filters.
+   *
+   * @param criteria validated filter criteria
+   * @return populated {@link ExecutiveDashboardResponse}
+   */
+  default ExecutiveDashboardResponse getExecutiveDashboard(AnalyticsFilterCriteria criteria) {
+    return getExecutiveDashboard();
+  }
 }

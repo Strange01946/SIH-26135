@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import in.gov.sih.sih26135.dto.request.AnalyticsFilterCriteria;
 import in.gov.sih.sih26135.dto.response.DashboardKpiStripResponse;
 import in.gov.sih.sih26135.dto.response.ExecutiveDashboardResponse;
 import in.gov.sih.sih26135.dto.response.LeaderboardResponse;
@@ -9,6 +10,7 @@ import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.ExecutiveDashboardService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -53,9 +55,13 @@ public class ExecutiveDashboardController {
    */
   @GetMapping("/overview")
   public ResponseEntity<ApiResponse<ExecutiveDashboardResponse>> getExecutiveOverview(
+      @Valid AnalyticsFilterCriteria criteria,
       HttpServletRequest httpRequest) {
     scopeValidator.validateNationwideScope();
-    ExecutiveDashboardResponse response = executiveDashboardService.getExecutiveDashboard();
+    scopeValidator.validateAnalyticsFilterScope(criteria);
+    ExecutiveDashboardResponse response = (criteria == null || criteria.isEmpty())
+        ? executiveDashboardService.getExecutiveDashboard()
+        : executiveDashboardService.getExecutiveDashboard(criteria);
     return ResponseEntity.ok(ApiResponse.success(
         "Executive dashboard overview retrieved successfully",
         response,
@@ -75,9 +81,13 @@ public class ExecutiveDashboardController {
    */
   @GetMapping("/national")
   public ResponseEntity<ApiResponse<ExecutiveDashboardResponse>> getNationalOverview(
+      @Valid AnalyticsFilterCriteria criteria,
       HttpServletRequest httpRequest) {
     scopeValidator.validateNationwideScope();
-    ExecutiveDashboardResponse response = executiveDashboardService.getExecutiveDashboard();
+    scopeValidator.validateAnalyticsFilterScope(criteria);
+    ExecutiveDashboardResponse response = (criteria == null || criteria.isEmpty())
+        ? executiveDashboardService.getExecutiveDashboard()
+        : executiveDashboardService.getExecutiveDashboard(criteria);
     return ResponseEntity.ok(ApiResponse.success(
         "National dashboard overview retrieved successfully",
         response,
@@ -94,9 +104,13 @@ public class ExecutiveDashboardController {
    */
   @GetMapping("/kpis")
   public ResponseEntity<ApiResponse<DashboardKpiStripResponse>> getKpiStrip(
+      @Valid AnalyticsFilterCriteria criteria,
       HttpServletRequest httpRequest) {
     scopeValidator.validateNationwideScope();
-    DashboardKpiStripResponse response = executiveDashboardService.getDashboardKpiStrip();
+    scopeValidator.validateAnalyticsFilterScope(criteria);
+    DashboardKpiStripResponse response = (criteria == null || criteria.isEmpty())
+        ? executiveDashboardService.getDashboardKpiStrip()
+        : executiveDashboardService.getDashboardKpiStrip(criteria);
     return ResponseEntity.ok(ApiResponse.success(
         "Dashboard KPI strip retrieved successfully",
         response,
@@ -113,9 +127,13 @@ public class ExecutiveDashboardController {
    */
   @GetMapping("/pipeline-funnel")
   public ResponseEntity<ApiResponse<PipelineFunnelResponse>> getPipelineFunnel(
+      @Valid AnalyticsFilterCriteria criteria,
       HttpServletRequest httpRequest) {
     scopeValidator.validateNationwideScope();
-    PipelineFunnelResponse response = executiveDashboardService.getTrainingPipelineFunnel();
+    scopeValidator.validateAnalyticsFilterScope(criteria);
+    PipelineFunnelResponse response = (criteria == null || criteria.isEmpty())
+        ? executiveDashboardService.getTrainingPipelineFunnel()
+        : executiveDashboardService.getTrainingPipelineFunnel(criteria);
     return ResponseEntity.ok(ApiResponse.success(
         "Training pipeline conversion funnel retrieved successfully",
         response,
@@ -132,9 +150,13 @@ public class ExecutiveDashboardController {
    */
   @GetMapping("/scheme-matrix")
   public ResponseEntity<ApiResponse<LeaderboardResponse<SchemeProgramPerformanceResponse>>> getSchemeMatrix(
+      @Valid AnalyticsFilterCriteria criteria,
       HttpServletRequest httpRequest) {
     scopeValidator.validateNationwideScope();
-    LeaderboardResponse<SchemeProgramPerformanceResponse> response = executiveDashboardService.getSchemeProgramPerformanceMatrix();
+    scopeValidator.validateAnalyticsFilterScope(criteria);
+    LeaderboardResponse<SchemeProgramPerformanceResponse> response = (criteria == null || criteria.isEmpty())
+        ? executiveDashboardService.getSchemeProgramPerformanceMatrix()
+        : executiveDashboardService.getSchemeProgramPerformanceMatrix(criteria);
     return ResponseEntity.ok(ApiResponse.success(
         "Scheme and program performance matrix retrieved successfully",
         response,

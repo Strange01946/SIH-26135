@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.service;
 
+import in.gov.sih.sih26135.dto.request.AnalyticsFilterCriteria;
 import in.gov.sih.sih26135.dto.response.CourseEmployabilityResponse;
 import in.gov.sih.sih26135.dto.response.LeaderboardResponse;
 import in.gov.sih.sih26135.dto.response.ProviderPerformanceResponse;
@@ -21,6 +22,16 @@ public interface InstitutionalAnalyticsService {
   LeaderboardResponse<ProviderPerformanceResponse> getProviderLeaderboard();
 
   /**
+   * Retrieves the training provider performance leaderboard (formal query Q04) with optional filters.
+   *
+   * @param criteria validated filter criteria
+   * @return strongly typed {@link LeaderboardResponse} of {@link ProviderPerformanceResponse}
+   */
+  default LeaderboardResponse<ProviderPerformanceResponse> getProviderLeaderboard(AnalyticsFilterCriteria criteria) {
+    return getProviderLeaderboard();
+  }
+
+  /**
    * Retrieves the course outcome and employability leaderboard (formal query Q05).
    * Ranks courses by employment conversion rate descending, tie-broken by enrollment volume descending.
    *
@@ -29,9 +40,29 @@ public interface InstitutionalAnalyticsService {
   LeaderboardResponse<CourseEmployabilityResponse> getCourseLeaderboard();
 
   /**
+   * Retrieves the course outcome and employability leaderboard (formal query Q05) with optional filters.
+   *
+   * @param criteria validated filter criteria
+   * @return strongly typed {@link LeaderboardResponse} of {@link CourseEmployabilityResponse}
+   */
+  default LeaderboardResponse<CourseEmployabilityResponse> getCourseLeaderboard(AnalyticsFilterCriteria criteria) {
+    return getCourseLeaderboard();
+  }
+
+  /**
    * Groups course outcome and employability performance by qualification level.
    *
    * @return map of qualification level name to ranked list of course performance items
    */
   Map<String, List<CourseEmployabilityResponse>> getCourseLeaderboardByQualificationLevel();
+
+  /**
+   * Groups course outcome and employability performance by qualification level with optional filters.
+   *
+   * @param criteria validated filter criteria
+   * @return map of qualification level name to ranked list of course performance items
+   */
+  default Map<String, List<CourseEmployabilityResponse>> getCourseLeaderboardByQualificationLevel(AnalyticsFilterCriteria criteria) {
+    return getCourseLeaderboardByQualificationLevel();
+  }
 }

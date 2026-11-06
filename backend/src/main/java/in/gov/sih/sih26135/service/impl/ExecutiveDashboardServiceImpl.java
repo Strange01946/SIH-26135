@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.service.impl;
 
+import in.gov.sih.sih26135.dto.request.AnalyticsFilterCriteria;
 import in.gov.sih.sih26135.dto.response.DashboardKpiStripResponse;
 import in.gov.sih.sih26135.dto.response.ExecutiveDashboardResponse;
 import in.gov.sih.sih26135.dto.response.LeaderboardResponse;
@@ -142,6 +143,130 @@ public class ExecutiveDashboardServiceImpl implements ExecutiveDashboardService 
     DashboardKpiStripResponse kpiStrip = getDashboardKpiStrip();
     PipelineFunnelResponse pipelineFunnel = getTrainingPipelineFunnel();
     LeaderboardResponse<SchemeProgramPerformanceResponse> schemeProgramMatrix = getSchemeProgramPerformanceMatrix();
+
+    return new ExecutiveDashboardResponse(kpiStrip, pipelineFunnel, schemeProgramMatrix);
+  }
+
+  @Override
+  public DashboardKpiStripResponse getDashboardKpiStrip(AnalyticsFilterCriteria criteria) {
+    if (criteria == null || criteria.isEmpty()) {
+      return getDashboardKpiStrip();
+    }
+    scopeValidator.validateNationwideScope();
+    scopeValidator.validateAnalyticsFilterScope(criteria);
+    DashboardKpiProjection proj = executiveDashboardRepository.getExecutiveDashboardKpiStrip(criteria);
+
+    Long traineeCount = toLong(proj != null ? proj.getTraineeCount() : null);
+    Long enrollmentCount = toLong(proj != null ? proj.getEnrollmentCount() : null);
+    Long enrolledTraineeCount = toLong(proj != null ? proj.getEnrolledTraineeCount() : null);
+    Long completedEnrollmentCount = toLong(proj != null ? proj.getCompletedEnrollmentCount() : null);
+    Long certifiedEnrollmentCount = toLong(proj != null ? proj.getCertifiedEnrollmentCount() : null);
+    Long placementCount = toLong(proj != null ? proj.getPlacementCount() : null);
+    Long joinedPlacementCount = toLong(proj != null ? proj.getJoinedPlacementCount() : null);
+    Long employmentSpellCount = toLong(proj != null ? proj.getEmploymentSpellCount() : null);
+    Long employedTraineeCount = toLong(proj != null ? proj.getEmployedTraineeCount() : null);
+    Long currentEmploymentSpellCount = toLong(proj != null ? proj.getCurrentEmploymentSpellCount() : null);
+    Long currentSelfEmploymentCount = toLong(proj != null ? proj.getCurrentSelfEmploymentCount() : null);
+    Long currentApprenticeshipCount = toLong(proj != null ? proj.getCurrentApprenticeshipCount() : null);
+
+    BigDecimal completionRatePct = AnalyticsCalculationUtils.calculatePercentage(completedEnrollmentCount, enrollmentCount);
+    BigDecimal certificationRatePct = AnalyticsCalculationUtils.calculatePercentage(certifiedEnrollmentCount, enrollmentCount);
+    BigDecimal placementRatePct = AnalyticsCalculationUtils.calculatePercentage(joinedPlacementCount, enrollmentCount);
+    BigDecimal employmentRatePct = AnalyticsCalculationUtils.calculatePercentage(employedTraineeCount, enrollmentCount);
+
+    return new DashboardKpiStripResponse(
+        traineeCount,
+        enrollmentCount,
+        enrolledTraineeCount,
+        completedEnrollmentCount,
+        certifiedEnrollmentCount,
+        placementCount,
+        joinedPlacementCount,
+        employmentSpellCount,
+        employedTraineeCount,
+        currentEmploymentSpellCount,
+        currentSelfEmploymentCount,
+        currentApprenticeshipCount,
+        completionRatePct,
+        certificationRatePct,
+        placementRatePct,
+        employmentRatePct
+    );
+  }
+
+  @Override
+  public PipelineFunnelResponse getTrainingPipelineFunnel(AnalyticsFilterCriteria criteria) {
+    if (criteria == null || criteria.isEmpty()) {
+      return getTrainingPipelineFunnel();
+    }
+    scopeValidator.validateNationwideScope();
+    scopeValidator.validateAnalyticsFilterScope(criteria);
+    PipelineFunnelProjection proj = executiveDashboardRepository.getTrainingPipelineConversionFunnel(criteria);
+
+    Long enrollmentCount = toLong(proj != null ? proj.getEnrollmentCount() : null);
+    Long completedCount = toLong(proj != null ? proj.getCompletedCount() : null);
+    Long certifiedCount = toLong(proj != null ? proj.getCertifiedCount() : null);
+    Long joinedPlacementCount = toLong(proj != null ? proj.getJoinedPlacementCount() : null);
+    Long employedCount = toLong(proj != null ? proj.getEmployedCount() : null);
+
+    BigDecimal completionRatePct = proj != null && proj.getCompletionRatePct() != null
+        ? AnalyticsCalculationUtils.round(proj.getCompletionRatePct())
+        : AnalyticsCalculationUtils.calculatePercentage(completedCount, enrollmentCount);
+
+    BigDecimal certificationRatePct = proj != null && proj.getCertificationRatePct() != null
+        ? AnalyticsCalculationUtils.round(proj.getCertificationRatePct())
+        : AnalyticsCalculationUtils.calculatePercentage(certifiedCount, enrollmentCount);
+
+    BigDecimal placementRatePct = proj != null && proj.getPlacementRatePct() != null
+        ? AnalyticsCalculationUtils.round(proj.getPlacementRatePct())
+        : AnalyticsCalculationUtils.calculatePercentage(joinedPlacementCount, enrollmentCount);
+
+    BigDecimal employmentRatePct = proj != null && proj.getEmploymentRatePct() != null
+        ? AnalyticsCalculationUtils.round(proj.getEmploymentRatePct())
+        : AnalyticsCalculationUtils.calculatePercentage(employedCount, enrollmentCount);
+
+    return new PipelineFunnelResponse(
+        enrollmentCount,
+        completedCount,
+        certifiedCount,
+        joinedPlacementCount,
+        employedCount,
+        completionRatePct,
+        certificationRatePct,
+        placementRatePct,
+        employmentRatePct
+    );
+  }
+
+  @Override
+  public LeaderboardResponse<SchemeProgramPerformanceResponse> getSchemeProgramPerformanceMatrix(AnalyticsFilterCriteria criteria) {
+    if (criteria == null || criteria.isEmpty()) {
+      return getSchemeProgramPerformanceMatrix();
+    }
+    scopeValidator.validateNationwideScope();
+    scopeValidator.validateAnalyticsFilterScope(criteria);
+    List<SchemeProgramPerformanceProjection> projections = executiveDashboardRepository.getSchemeProgramPerformanceMatrix(criteria);
+    if (projections == null || projections.isEmpty()) {
+      return LeaderboardResponse.of("employmentRatePct", Collections.emptyList());
+    }
+
+    List<SchemeProgramPerformanceResponse> items = projections.stream()
+        .map(this::toSchemeProgramResponse)
+        .toList();
+
+    return LeaderboardResponse.of("employmentRatePct", items);
+  }
+
+  @Override
+  public ExecutiveDashboardResponse getExecutiveDashboard(AnalyticsFilterCriteria criteria) {
+    if (criteria == null || criteria.isEmpty()) {
+      return getExecutiveDashboard();
+    }
+    scopeValidator.validateNationwideScope();
+    scopeValidator.validateAnalyticsFilterScope(criteria);
+    DashboardKpiStripResponse kpiStrip = getDashboardKpiStrip(criteria);
+    PipelineFunnelResponse pipelineFunnel = getTrainingPipelineFunnel(criteria);
+    LeaderboardResponse<SchemeProgramPerformanceResponse> schemeProgramMatrix = getSchemeProgramPerformanceMatrix(criteria);
 
     return new ExecutiveDashboardResponse(kpiStrip, pipelineFunnel, schemeProgramMatrix);
   }

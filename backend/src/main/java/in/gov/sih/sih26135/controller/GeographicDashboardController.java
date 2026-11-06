@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.controller;
 
+import in.gov.sih.sih26135.dto.request.AnalyticsFilterCriteria;
 import in.gov.sih.sih26135.dto.response.DistrictGeographicResponse;
 import in.gov.sih.sih26135.dto.response.GeographicOverviewResponse;
 import in.gov.sih.sih26135.dto.response.StateGeographicResponse;
@@ -7,6 +8,7 @@ import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.GeographicDashboardService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -51,9 +53,13 @@ public class GeographicDashboardController {
    */
   @GetMapping("/geography")
   public ResponseEntity<ApiResponse<GeographicOverviewResponse>> getNationalGeography(
+      @Valid AnalyticsFilterCriteria criteria,
       HttpServletRequest httpRequest) {
     scopeValidator.validateNationwideScope();
-    GeographicOverviewResponse response = geographicDashboardService.getNationalGeographicOverview();
+    scopeValidator.validateAnalyticsFilterScope(criteria);
+    GeographicOverviewResponse response = (criteria == null || criteria.isEmpty())
+        ? geographicDashboardService.getNationalGeographicOverview()
+        : geographicDashboardService.getNationalGeographicOverview(criteria);
     return ResponseEntity.ok(ApiResponse.success(
         "National geographic overview retrieved successfully",
         response,
@@ -67,15 +73,27 @@ public class GeographicDashboardController {
    * National administrators have cross-state access; state administrators are restricted to their assigned state.
    *
    * @param stateId unique identifier of the state
+   * @param criteria optional filter criteria
    * @param httpRequest HTTP servlet request for URI extraction
    * @return 200 OK with {@link StateGeographicResponse} enveloped in {@link ApiResponse}
    */
   @GetMapping("/states/{stateId}")
   public ResponseEntity<ApiResponse<StateGeographicResponse>> getStateGeography(
       @PathVariable @Positive Long stateId,
+      @Valid AnalyticsFilterCriteria criteria,
       HttpServletRequest httpRequest) {
     scopeValidator.validateStateScope(stateId);
-    StateGeographicResponse response = geographicDashboardService.getStateGeographicAnalytics(stateId);
+    scopeValidator.validateAnalyticsFilterScope(criteria);
+    boolean hasFiltering = criteria != null && (
+        criteria.hasTemporalFilter()
+        || criteria.hasOrganizationalFilter()
+        || criteria.hasDemographicFilter()
+        || criteria.getDistrictId() != null
+        || (criteria.getStateId() != null && !criteria.getStateId().equals(stateId))
+    );
+    StateGeographicResponse response = hasFiltering
+        ? geographicDashboardService.getStateGeographicAnalytics(stateId, criteria)
+        : geographicDashboardService.getStateGeographicAnalytics(stateId);
     return ResponseEntity.ok(ApiResponse.success(
         "State geographic analytics retrieved successfully",
         response,
@@ -90,15 +108,27 @@ public class GeographicDashboardController {
    * districts belonging to their assigned state; district officers are restricted to their specific district.
    *
    * @param districtId unique identifier of the district
+   * @param criteria optional filter criteria
    * @param httpRequest HTTP servlet request for URI extraction
    * @return 200 OK with {@link DistrictGeographicResponse} enveloped in {@link ApiResponse}
    */
   @GetMapping("/districts/{districtId}")
   public ResponseEntity<ApiResponse<DistrictGeographicResponse>> getDistrictGeography(
       @PathVariable @Positive Long districtId,
+      @Valid AnalyticsFilterCriteria criteria,
       HttpServletRequest httpRequest) {
     scopeValidator.validateDistrictScope(districtId);
-    DistrictGeographicResponse response = geographicDashboardService.getDistrictGeographicAnalytics(districtId);
+    scopeValidator.validateAnalyticsFilterScope(criteria);
+    boolean hasFiltering = criteria != null && (
+        criteria.hasTemporalFilter()
+        || criteria.hasOrganizationalFilter()
+        || criteria.hasDemographicFilter()
+        || criteria.getStateId() != null
+        || (criteria.getDistrictId() != null && !criteria.getDistrictId().equals(districtId))
+    );
+    DistrictGeographicResponse response = hasFiltering
+        ? geographicDashboardService.getDistrictGeographicAnalytics(districtId, criteria)
+        : geographicDashboardService.getDistrictGeographicAnalytics(districtId);
     return ResponseEntity.ok(ApiResponse.success(
         "District geographic analytics retrieved successfully",
         response,

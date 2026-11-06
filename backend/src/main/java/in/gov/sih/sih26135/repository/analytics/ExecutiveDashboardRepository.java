@@ -1,8 +1,10 @@
 package in.gov.sih.sih26135.repository.analytics;
 
+import in.gov.sih.sih26135.dto.request.AnalyticsFilterCriteria;
 import in.gov.sih.sih26135.repository.analytics.projection.DashboardKpiProjection;
 import in.gov.sih.sih26135.repository.analytics.projection.PipelineFunnelProjection;
 import in.gov.sih.sih26135.repository.analytics.projection.SchemeProgramPerformanceProjection;
+import in.gov.sih.sih26135.repository.analytics.util.AnalyticsQueryFilterBuilder;
 import java.math.BigDecimal;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -100,6 +102,106 @@ public class ExecutiveDashboardRepository {
    */
   public List<SchemeProgramPerformanceProjection> getSchemeProgramPerformanceMatrix() {
     return jdbcTemplate.query(Q03_SQL, MATRIX_ROW_MAPPER);
+  }
+
+  /**
+   * Q01: Dashboard KPI strip consolidated counts across analytical outcome views with optional multi-dimensional filters.
+   */
+  public DashboardKpiProjection getExecutiveDashboardKpiStrip(AnalyticsFilterCriteria criteria) {
+    if (criteria == null || criteria.isEmpty()) {
+      return getExecutiveDashboardKpiStrip();
+    }
+    AnalyticsQueryFilterBuilder.FilterPredicateResult filter =
+        AnalyticsQueryFilterBuilder.buildEnrollmentFactPredicates(criteria, "v");
+    String sql = """
+        SELECT
+          COUNT(DISTINCT v.trainee_id) AS traineeCount,
+          COUNT(*) AS enrollmentCount,
+          COUNT(DISTINCT v.trainee_id) AS enrolledTraineeCount,
+          SUM(v.is_completed_flag) AS completedEnrollmentCount,
+          SUM(v.has_issued_certificate_flag) AS certifiedEnrollmentCount,
+          SUM(v.placement_count) AS placementCount,
+          SUM(v.joined_placement_count) AS joinedPlacementCount,
+          SUM(v.employment_count) AS employmentSpellCount,
+          COUNT(DISTINCT CASE WHEN v.has_employment_flag = 1 THEN v.trainee_id ELSE NULL END) AS employedTraineeCount,
+          SUM(v.current_employment_count) AS currentEmploymentSpellCount,
+          SUM(v.self_employment_count) AS currentSelfEmploymentCount,
+          SUM(v.apprenticeship_count) AS currentApprenticeshipCount
+        FROM vw_enrollment_outcome_fact v
+        WHERE 1=1
+        """ + filter.getSqlFragment();
+
+    List<DashboardKpiProjection> results = jdbcTemplate.query(sql, KPI_ROW_MAPPER, filter.getParameters().toArray());
+    return results.isEmpty() ? null : results.get(0);
+  }
+
+  /**
+   * Q02: Training pipeline conversion funnel stages and conversion rates with optional multi-dimensional filters.
+   */
+  public PipelineFunnelProjection getTrainingPipelineConversionFunnel(AnalyticsFilterCriteria criteria) {
+    if (criteria == null || criteria.isEmpty()) {
+      return getTrainingPipelineConversionFunnel();
+    }
+    AnalyticsQueryFilterBuilder.FilterPredicateResult filter =
+        AnalyticsQueryFilterBuilder.buildEnrollmentFactPredicates(criteria, "v");
+    String sql = """
+        SELECT
+          COUNT(*) AS enrollmentCount,
+          SUM(v.is_completed_flag) AS completedCount,
+          SUM(v.has_issued_certificate_flag) AS certifiedCount,
+          SUM(v.has_joined_placement_flag) AS joinedPlacementCount,
+          SUM(v.has_employment_flag) AS employedCount,
+          ROUND(SUM(v.is_completed_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS completionRatePct,
+          ROUND(SUM(v.has_issued_certificate_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS certificationRatePct,
+          ROUND(SUM(v.has_joined_placement_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS placementRatePct,
+          ROUND(SUM(v.has_employment_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS employmentRatePct
+        FROM vw_enrollment_outcome_fact v
+        WHERE 1=1
+        """ + filter.getSqlFragment();
+
+    List<PipelineFunnelProjection> results = jdbcTemplate.query(sql, FUNNEL_ROW_MAPPER, filter.getParameters().toArray());
+    return results.isEmpty() ? null : results.get(0);
+  }
+
+  /**
+   * Q03: Scheme & Program comparative performance matrix with display codes and employment efficacy with optional filters.
+   */
+  public List<SchemeProgramPerformanceProjection> getSchemeProgramPerformanceMatrix(AnalyticsFilterCriteria criteria) {
+    if (criteria == null || criteria.isEmpty()) {
+      return getSchemeProgramPerformanceMatrix();
+    }
+    AnalyticsQueryFilterBuilder.FilterPredicateResult filter =
+        AnalyticsQueryFilterBuilder.buildEnrollmentFactPredicates(criteria, "v");
+    String sql = """
+        SELECT
+          p.program_id AS programId,
+          p.program_code AS programCode,
+          p.program_name AS programName,
+          s.scheme_id AS schemeId,
+          s.scheme_code AS schemeCode,
+          s.scheme_name AS schemeName,
+          COUNT(*) AS enrollmentCount,
+          COUNT(DISTINCT v.trainee_id) AS traineeCount,
+          SUM(v.is_completed_flag) AS completedCount,
+          SUM(v.has_issued_certificate_flag) AS certifiedCount,
+          SUM(v.has_joined_placement_flag) AS joinedPlacementCount,
+          SUM(v.has_employment_flag) AS employedCount,
+          SUM(v.self_employment_count) AS selfEmploymentSpellCount,
+          SUM(v.apprenticeship_count) AS apprenticeshipSpellCount,
+          ROUND(SUM(v.is_completed_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS completionRatePct,
+          ROUND(SUM(v.has_issued_certificate_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS certificationRatePct,
+          ROUND(SUM(v.has_joined_placement_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS placementRatePct,
+          ROUND(SUM(v.has_employment_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS employmentRatePct
+        FROM vw_enrollment_outcome_fact v
+        JOIN programs p ON p.program_id = v.program_id
+        JOIN schemes s ON s.scheme_id = v.scheme_id
+        WHERE 1=1
+        """ + filter.getSqlFragment() + """
+        GROUP BY p.program_id, p.program_code, p.program_name, s.scheme_id, s.scheme_code, s.scheme_name
+        ORDER BY employmentRatePct IS NULL, employmentRatePct DESC, enrollmentCount DESC
+        """;
+
+    return jdbcTemplate.query(sql, MATRIX_ROW_MAPPER, filter.getParameters().toArray());
   }
 
   private static final RowMapper<DashboardKpiProjection> KPI_ROW_MAPPER = (rs, rowNum) ->
