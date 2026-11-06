@@ -63,7 +63,8 @@ public class DataIntegrityDashboardRepository {
   }
 
   /**
-   * Executes formal Query Q22 to retrieve current/latest verification per employment spell, by method.
+   * Executes formal Query Q22 to retrieve current/latest verification per employment spell, by method,
+   * computing database-side distinct trainee counts and outcome distributions at the method grouping level.
    *
    * @return list of current verification method projections
    */
@@ -74,9 +75,11 @@ public class DataIntegrityDashboardRepository {
           COALESCE(m.method_name, v.verification_method_code) AS method_name,
           v.is_trainee_self_reported,
           v.is_official_flag,
-          v.record_verification_status_code,
           COUNT(*) AS current_verification_count,
-          COUNT(DISTINCT v.trainee_id) AS trainee_count
+          COUNT(DISTINCT v.trainee_id) AS trainee_count,
+          SUM(CASE WHEN v.record_verification_status_code = 'VERIFIED' THEN 1 ELSE 0 END) AS verified_count,
+          SUM(CASE WHEN v.record_verification_status_code = 'PENDING' THEN 1 ELSE 0 END) AS pending_count,
+          SUM(CASE WHEN v.record_verification_status_code = 'REJECTED' THEN 1 ELSE 0 END) AS rejected_count
         FROM vw_employment_verification_fact v
         LEFT JOIN ref_employment_verification_method m
           ON m.method_code = v.verification_method_code
@@ -86,7 +89,6 @@ public class DataIntegrityDashboardRepository {
           m.method_name,
           v.is_trainee_self_reported,
           v.is_official_flag,
-          v.record_verification_status_code,
           m.sort_order
         ORDER BY current_verification_count DESC, m.sort_order ASC, v.verification_method_code ASC
         """;
@@ -96,14 +98,20 @@ public class DataIntegrityDashboardRepository {
         rs.getString("method_name"),
         rs.getInt("is_trainee_self_reported") == 1,
         rs.getInt("is_official_flag") == 1,
-        rs.getString("record_verification_status_code"),
         getNullableLong(rs, "current_verification_count"),
-        getNullableLong(rs, "trainee_count")
+        getNullableLong(rs, "trainee_count"),
+        getNullableLong(rs, "verified_count"),
+        getNullableLong(rs, "pending_count"),
+        getNullableLong(rs, "rejected_count")
     ));
   }
 
   /**
    * Executes overall summary aggregation over {@code vw_employment_verification_fact}.
+   * Total verification records capture all historical cycles, while current claim status metrics
+   * and distinct employment/trainee denominators are evaluated over {@code is_current = 1}
+   * to ensure denominator consistency and prevent historical attempts or historical-only employments
+   * from distorting current claim verification rates.
    *
    * @return authoritative overall verification summary
    */
@@ -111,14 +119,14 @@ public class DataIntegrityDashboardRepository {
     String sql = """
         SELECT
           COUNT(*) AS total_verifications,
-          COUNT(DISTINCT employment_id) AS total_employments,
-          COUNT(DISTINCT trainee_id) AS total_trainees,
-          SUM(CASE WHEN record_verification_status_code = 'VERIFIED' THEN 1 ELSE 0 END) AS verified_count,
-          SUM(CASE WHEN is_official_flag = 1 AND record_verification_status_code = 'VERIFIED' THEN 1 ELSE 0 END) AS official_verified_count,
-          SUM(CASE WHEN is_trainee_self_reported = 1 THEN 1 ELSE 0 END) AS self_reported_count,
-          SUM(CASE WHEN record_verification_status_code = 'PENDING' THEN 1 ELSE 0 END) AS pending_count,
-          SUM(CASE WHEN record_verification_status_code = 'REJECTED' THEN 1 ELSE 0 END) AS rejected_count,
-          SUM(CASE WHEN record_verification_status_code = 'UNVERIFIED' THEN 1 ELSE 0 END) AS unverified_count
+          COUNT(DISTINCT CASE WHEN is_current = 1 THEN employment_id END) AS total_employments,
+          COUNT(DISTINCT CASE WHEN is_current = 1 THEN trainee_id END) AS total_trainees,
+          SUM(CASE WHEN is_current = 1 AND record_verification_status_code = 'VERIFIED' THEN 1 ELSE 0 END) AS verified_count,
+          SUM(CASE WHEN is_current = 1 AND is_official_flag = 1 AND record_verification_status_code = 'VERIFIED' THEN 1 ELSE 0 END) AS official_verified_count,
+          SUM(CASE WHEN is_current = 1 AND is_trainee_self_reported = 1 THEN 1 ELSE 0 END) AS self_reported_count,
+          SUM(CASE WHEN is_current = 1 AND record_verification_status_code = 'PENDING' THEN 1 ELSE 0 END) AS pending_count,
+          SUM(CASE WHEN is_current = 1 AND record_verification_status_code = 'REJECTED' THEN 1 ELSE 0 END) AS rejected_count,
+          SUM(CASE WHEN is_current = 1 AND record_verification_status_code = 'UNVERIFIED' THEN 1 ELSE 0 END) AS unverified_count
         FROM vw_employment_verification_fact
         """;
 

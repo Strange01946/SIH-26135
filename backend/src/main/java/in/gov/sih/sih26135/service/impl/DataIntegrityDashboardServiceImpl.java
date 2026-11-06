@@ -116,21 +116,25 @@ public class DataIntegrityDashboardServiceImpl implements DataIntegrityDashboard
       }
     }
 
+    // Denominator for current employment claim rates: total distinct employments with current verification claim.
+    // Must NEVER silently substitute historical attempt counts (totalVerifications) as the denominator.
+    Long claimRateDenominator = totalEmployments;
+
     BigDecimal verificationCompletionRatePct = AnalyticsCalculationUtils.calculatePercentage(
         verifiedCount != null && rejectedCount != null ? verifiedCount + rejectedCount : verifiedCount,
-        totalVerifications
+        claimRateDenominator
     );
     BigDecimal verificationSuccessRatePct = AnalyticsCalculationUtils.calculatePercentage(
-        verifiedCount, totalVerifications
+        verifiedCount, claimRateDenominator
     );
     BigDecimal officialVerificationRatePct = AnalyticsCalculationUtils.calculatePercentage(
-        officialVerifiedCount, totalVerifications
+        officialVerifiedCount, claimRateDenominator
     );
     BigDecimal selfReportedRatePct = AnalyticsCalculationUtils.calculatePercentage(
-        selfReportedCount, totalVerifications
+        selfReportedCount, claimRateDenominator
     );
     BigDecimal pendingRatePct = AnalyticsCalculationUtils.calculatePercentage(
-        pendingCount, totalVerifications
+        pendingCount, claimRateDenominator
     );
 
     List<VerificationStatusBreakdownResponse> statusBreakdown = new ArrayList<>();
@@ -151,51 +155,33 @@ public class DataIntegrityDashboardServiceImpl implements DataIntegrityDashboard
       }
     }
 
-    // Aggregate Q22 by method code across statuses to produce method-level efficacy
+    // Method-level efficacy breakdown using database-side COUNT(DISTINCT trainee_id)
     List<VerificationMethodEfficacyResponse> methodEfficacyBreakdown = new ArrayList<>();
     if (methodProjections != null) {
-      Map<String, MethodAccumulator> methodMap = new LinkedHashMap<>();
       long totalCurrent = 0L;
-
       for (VerificationMethodEfficacyProjection mp : methodProjections) {
-        MethodAccumulator acc = methodMap.computeIfAbsent(
-            mp.verificationMethodCode(),
-            k -> new MethodAccumulator(mp.verificationMethodCode(), mp.methodName(), mp.isOfficialFlag(), mp.isTraineeSelfReported())
-        );
-        long count = mp.currentVerificationCount() != null ? mp.currentVerificationCount() : 0L;
-        acc.currentVerificationCount += count;
-        totalCurrent += count;
-
-        if (mp.traineeCount() != null) {
-          acc.traineeCount = Math.max(acc.traineeCount, mp.traineeCount());
-        }
-
-        if ("VERIFIED".equalsIgnoreCase(mp.recordVerificationStatusCode())) {
-          acc.verifiedCount += count;
-        } else if ("PENDING".equalsIgnoreCase(mp.recordVerificationStatusCode())) {
-          acc.pendingCount += count;
-        } else if ("REJECTED".equalsIgnoreCase(mp.recordVerificationStatusCode())) {
-          acc.rejectedCount += count;
+        if (mp.currentVerificationCount() != null) {
+          totalCurrent += mp.currentVerificationCount();
         }
       }
 
-      for (MethodAccumulator acc : methodMap.values()) {
+      for (VerificationMethodEfficacyProjection mp : methodProjections) {
         BigDecimal successRatePct = AnalyticsCalculationUtils.calculatePercentage(
-            acc.verifiedCount, acc.currentVerificationCount
+            mp.verifiedCount(), mp.currentVerificationCount()
         );
         BigDecimal sharePct = AnalyticsCalculationUtils.calculatePercentage(
-            acc.currentVerificationCount, totalCurrent
+            mp.currentVerificationCount(), totalCurrent
         );
         methodEfficacyBreakdown.add(new VerificationMethodEfficacyResponse(
-            acc.methodCode,
-            acc.methodName,
-            acc.isOfficial,
-            acc.isTraineeSelfReported,
-            acc.currentVerificationCount,
-            acc.traineeCount,
-            acc.verifiedCount,
-            acc.pendingCount,
-            acc.rejectedCount,
+            mp.verificationMethodCode(),
+            mp.methodName(),
+            mp.isOfficialFlag(),
+            mp.isTraineeSelfReported(),
+            mp.currentVerificationCount(),
+            mp.traineeCount(), // Exact database-side distinct trainee count (no Math.max or sum)
+            mp.verifiedCount(),
+            mp.pendingCount(),
+            mp.rejectedCount(),
             successRatePct,
             sharePct
         ));

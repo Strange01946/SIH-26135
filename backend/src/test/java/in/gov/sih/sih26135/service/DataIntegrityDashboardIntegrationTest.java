@@ -145,6 +145,9 @@ class DataIntegrityDashboardIntegrationTest {
 
     VerificationOverallSummaryProjection vSummary = dataIntegrityDashboardRepository.getFormalQ21Q22OverallSummary();
     assertThat(vSummary).isNotNull();
+    if (vSummary.totalVerifications() != null && vSummary.totalEmployments() != null) {
+      assertThat(vSummary.totalEmployments()).isLessThanOrEqualTo(vSummary.totalVerifications());
+    }
 
     List<FollowupWaveProjection> q19 = dataIntegrityDashboardRepository.getFormalQ19FollowupSuccessByWave();
     assertThat(q19).isNotNull();

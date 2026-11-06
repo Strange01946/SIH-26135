@@ -63,26 +63,18 @@ class DataIntegrityDashboardServiceTest {
     );
     when(repository.getFormalQ21VerificationOutcomes()).thenReturn(List.of(o1, o2, o3, o4));
 
-    // Current method efficacy projections (Q22)
+    // Current method efficacy projections (Q22) with database-side distinct trainee counting
     VerificationMethodEfficacyProjection m1 = new VerificationMethodEfficacyProjection(
         "GOVERNMENT_DATABASE", "Government / departmental database match",
-        false, true, "VERIFIED", 300L, 290L
+        false, true, 350L, 320L, 300L, 50L, 0L
     );
     VerificationMethodEfficacyProjection m2 = new VerificationMethodEfficacyProjection(
-        "GOVERNMENT_DATABASE", "Government / departmental database match",
-        false, true, "PENDING", 50L, 48L
-    );
-    VerificationMethodEfficacyProjection m3 = new VerificationMethodEfficacyProjection(
         "TRAINEE_SELF_ATTESTATION", "Trainee self-attestation",
-        true, false, "VERIFIED", 150L, 140L
+        true, false, 200L, 185L, 150L, 0L, 50L
     );
-    VerificationMethodEfficacyProjection m4 = new VerificationMethodEfficacyProjection(
-        "TRAINEE_SELF_ATTESTATION", "Trainee self-attestation",
-        true, false, "REJECTED", 50L, 45L
-    );
-    when(repository.getFormalQ22VerificationMethodEfficacy()).thenReturn(List.of(m1, m2, m3, m4));
+    when(repository.getFormalQ22VerificationMethodEfficacy()).thenReturn(List.of(m1, m2));
 
-    // Total: 1000 verifications, 900 distinct employments, 850 distinct trainees
+    // Total: 1000 verifications (attempts), 900 distinct employments (claims), 850 distinct trainees
     VerificationOverallSummaryProjection summary = new VerificationOverallSummaryProjection(
         1000L, 900L, 850L, 600L, 300L, 200L, 200L, 100L, 0L
     );
@@ -100,14 +92,17 @@ class DataIntegrityDashboardServiceTest {
     assertThat(response.pendingCount()).isEqualTo(200L);
     assertThat(response.rejectedCount()).isEqualTo(100L);
 
-    // Completion rate: (600 + 100) / 1000 = 70.00%
-    assertThat(response.verificationCompletionRatePct()).isEqualByComparingTo(new BigDecimal("70.00"));
-    // Success rate: 600 / 1000 = 60.00%
-    assertThat(response.verificationSuccessRatePct()).isEqualByComparingTo(new BigDecimal("60.00"));
-    // Official rate: 300 / 1000 = 30.00%
-    assertThat(response.officialVerificationRatePct()).isEqualByComparingTo(new BigDecimal("30.00"));
-    // Pending rate: 200 / 1000 = 20.00%
-    assertThat(response.pendingRatePct()).isEqualByComparingTo(new BigDecimal("20.00"));
+    // Headline claim rates divide by total distinct employments (claims population = 900)
+    // Completion rate: (600 + 100) / 900 = 77.78%
+    assertThat(response.verificationCompletionRatePct()).isEqualByComparingTo(new BigDecimal("77.78"));
+    // Success rate: 600 / 900 = 66.67%
+    assertThat(response.verificationSuccessRatePct()).isEqualByComparingTo(new BigDecimal("66.67"));
+    // Official rate: 300 / 900 = 33.33%
+    assertThat(response.officialVerificationRatePct()).isEqualByComparingTo(new BigDecimal("33.33"));
+    // Pending rate: 200 / 900 = 22.22%
+    assertThat(response.pendingRatePct()).isEqualByComparingTo(new BigDecimal("22.22"));
+    // Self-reported rate: 200 / 900 = 22.22%
+    assertThat(response.selfReportedRatePct()).isEqualByComparingTo(new BigDecimal("22.22"));
 
     // Status breakdown assertions
     List<VerificationStatusBreakdownResponse> statuses = response.statusBreakdown();
@@ -118,25 +113,31 @@ class DataIntegrityDashboardServiceTest {
     // Method efficacy assertions
     List<VerificationMethodEfficacyResponse> methods = response.methodEfficacyBreakdown();
     assertThat(methods).hasSize(2);
-    // Method 1: GOVERNMENT_DATABASE (300 verified, 50 pending -> total 350, 300/350 = 85.71%)
+    // Method 1: GOVERNMENT_DATABASE (300 verified, 50 pending, 0 rejected -> total 350, 300/350 = 85.71%)
     VerificationMethodEfficacyResponse gov = methods.get(0);
     assertThat(gov.methodCode()).isEqualTo("GOVERNMENT_DATABASE");
     assertThat(gov.isOfficial()).isTrue();
     assertThat(gov.isTraineeSelfReported()).isFalse();
     assertThat(gov.currentVerificationCount()).isEqualTo(350L);
+    assertThat(gov.traineeCount()).isEqualTo(320L);
     assertThat(gov.verifiedCount()).isEqualTo(300L);
     assertThat(gov.pendingCount()).isEqualTo(50L);
+    assertThat(gov.rejectedCount()).isEqualTo(0L);
     assertThat(gov.successRatePct()).isEqualByComparingTo(new BigDecimal("85.71"));
+    assertThat(gov.sharePct()).isEqualByComparingTo(new BigDecimal("63.64"));
 
-    // Method 2: TRAINEE_SELF_ATTESTATION (150 verified, 50 rejected -> total 200, 150/200 = 75.00%)
+    // Method 2: TRAINEE_SELF_ATTESTATION (150 verified, 0 pending, 50 rejected -> total 200, 150/200 = 75.00%)
     VerificationMethodEfficacyResponse self = methods.get(1);
     assertThat(self.methodCode()).isEqualTo("TRAINEE_SELF_ATTESTATION");
     assertThat(self.isOfficial()).isFalse();
     assertThat(self.isTraineeSelfReported()).isTrue();
     assertThat(self.currentVerificationCount()).isEqualTo(200L);
+    assertThat(self.traineeCount()).isEqualTo(185L);
     assertThat(self.verifiedCount()).isEqualTo(150L);
+    assertThat(self.pendingCount()).isEqualTo(0L);
     assertThat(self.rejectedCount()).isEqualTo(50L);
     assertThat(self.successRatePct()).isEqualByComparingTo(new BigDecimal("75.00"));
+    assertThat(self.sharePct()).isEqualByComparingTo(new BigDecimal("36.36"));
   }
 
   @Test
@@ -161,6 +162,14 @@ class DataIntegrityDashboardServiceTest {
     // Distinct counts must NOT be summed across statuses (550 + 380 = 930 would be fabricated)
     assertThat(response.totalEmployments()).isNull();
     assertThat(response.totalTrainees()).isNull();
+
+    // The service must NEVER silently substitute totalVerifications (1000L) as claimRateDenominator
+    // Since current claim population is unobservable without summary, claim rates must be strictly null
+    assertThat(response.verificationSuccessRatePct()).isNull();
+    assertThat(response.verificationCompletionRatePct()).isNull();
+    assertThat(response.officialVerificationRatePct()).isNull();
+    assertThat(response.selfReportedRatePct()).isNull();
+    assertThat(response.pendingRatePct()).isNull();
   }
 
   @Test
@@ -200,6 +209,177 @@ class DataIntegrityDashboardServiceTest {
     assertThat(response.verificationSuccessRatePct()).isNull();
     assertThat(response.statusBreakdown()).isEmpty();
     assertThat(response.methodEfficacyBreakdown()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("Verification Integrity: Historical re-verification attempts do not inflate current claim counts or distort rates")
+  void testHistoricalVerificationAttemptsDoNotInflateCurrentClaims() {
+    // 1500 total verification attempts recorded historically across lifecycle re-verification cycles
+    // 1000 distinct employment records (current claims where is_current = 1)
+    // 950 distinct trainees
+    // Current claim counts reflect ONLY is_current = 1 records (superseded attempts excluded)
+    VerificationOverallSummaryProjection summary = new VerificationOverallSummaryProjection(
+        1500L, // total_verifications (historical attempts across all cycles)
+        1000L, // total_employments (current claims population)
+        950L,  // total_trainees
+        600L,  // verified_count (current is_current = 1 verified)
+        300L,  // official_verified_count (current is_current = 1 official)
+        200L,  // self_reported_count (current is_current = 1 self-reported)
+        200L,  // pending_count (current is_current = 1 pending)
+        150L,  // rejected_count (current is_current = 1 rejected)
+        50L    // unverified_count (current is_current = 1 unverified)
+    );
+    when(repository.getFormalQ21Q22OverallSummary()).thenReturn(summary);
+    when(repository.getFormalQ21VerificationOutcomes()).thenReturn(List.of());
+    when(repository.getFormalQ22VerificationMethodEfficacy()).thenReturn(List.of());
+
+    VerificationDashboardResponse response = service.getVerificationDashboard();
+
+    assertThat(response).isNotNull();
+    // Verification attempt history preserved without loss
+    assertThat(response.totalVerifications()).isEqualTo(1500L);
+    // Current claim population correctly identified
+    assertThat(response.totalEmployments()).isEqualTo(1000L);
+    assertThat(response.totalTrainees()).isEqualTo(950L);
+
+    // Current claim status counts reflect current state only (is_current = 1)
+    assertThat(response.verifiedCount()).isEqualTo(600L);
+    assertThat(response.officialVerifiedCount()).isEqualTo(300L);
+    assertThat(response.selfReportedCount()).isEqualTo(200L);
+    assertThat(response.pendingCount()).isEqualTo(200L);
+    assertThat(response.rejectedCount()).isEqualTo(150L);
+    assertThat(response.unverifiedCount()).isEqualTo(50L);
+
+    // Headline claim rates divide by current claims population (totalEmployments = 1000L)
+    // Success rate: 600 / 1000 = 60.00% (NOT 600 / 1500 = 40.00%)
+    assertThat(response.verificationSuccessRatePct()).isEqualByComparingTo(new BigDecimal("60.00"));
+    // Completion rate: (600 + 150) / 1000 = 75.00% (NOT 750 / 1500 = 50.00%)
+    assertThat(response.verificationCompletionRatePct()).isEqualByComparingTo(new BigDecimal("75.00"));
+    // Official rate: 300 / 1000 = 30.00% (NOT 300 / 1500 = 20.00%)
+    assertThat(response.officialVerificationRatePct()).isEqualByComparingTo(new BigDecimal("30.00"));
+    // Pending rate: 200 / 1000 = 20.00% (NOT 200 / 1500 = 13.33%)
+    assertThat(response.pendingRatePct()).isEqualByComparingTo(new BigDecimal("20.00"));
+    // Self-reported rate: 200 / 1000 = 20.00%
+    assertThat(response.selfReportedRatePct()).isEqualByComparingTo(new BigDecimal("20.00"));
+  }
+
+  @Test
+  @DisplayName("Verification Integrity: Method efficacy distinct trainee count uses exact database COUNT(DISTINCT) without Math.max or sum")
+  void testMethodEfficacyDistinctTraineeCountNeverUsesMathMaxOrNaiveSum() {
+    // 300 current verifications under DOCUMENT_REVIEW, with 200 verified, 70 pending, 30 rejected
+    // Exact database COUNT(DISTINCT v.trainee_id) is 285 (some trainees have multiple employments)
+    VerificationMethodEfficacyProjection proj = new VerificationMethodEfficacyProjection(
+        "DOCUMENT_REVIEW",
+        "Physical/digital document review",
+        false, // isTraineeSelfReported
+        true,  // isOfficialFlag
+        300L,  // currentVerificationCount
+        285L,  // traineeCount (authoritative database distinct count)
+        200L,  // verifiedCount
+        70L,   // pendingCount
+        30L    // rejectedCount
+    );
+    when(repository.getFormalQ22VerificationMethodEfficacy()).thenReturn(List.of(proj));
+    when(repository.getFormalQ21VerificationOutcomes()).thenReturn(List.of());
+    when(repository.getFormalQ21Q22OverallSummary()).thenReturn(
+        new VerificationOverallSummaryProjection(300L, 300L, 285L, 200L, 200L, 0L, 70L, 30L, 0L)
+    );
+
+    VerificationDashboardResponse response = service.getVerificationDashboard();
+
+    assertThat(response).isNotNull();
+    assertThat(response.methodEfficacyBreakdown()).hasSize(1);
+
+    VerificationMethodEfficacyResponse methodResp = response.methodEfficacyBreakdown().get(0);
+    assertThat(methodResp.methodCode()).isEqualTo("DOCUMENT_REVIEW");
+    assertThat(methodResp.currentVerificationCount()).isEqualTo(300L);
+    // Trainee count must equal the exact database distinct trainee count (285)
+    // It must NOT be the naive sum of status-level verifications (300)
+    // and must NOT be an erroneous Math.max across statuses (e.g. 200)
+    assertThat(methodResp.traineeCount()).isEqualTo(285L);
+    assertThat(methodResp.traineeCount()).isNotEqualTo(300L);
+    assertThat(methodResp.traineeCount()).isNotEqualTo(200L);
+    assertThat(methodResp.verifiedCount()).isEqualTo(200L);
+    assertThat(methodResp.pendingCount()).isEqualTo(70L);
+    assertThat(methodResp.rejectedCount()).isEqualTo(30L);
+    assertThat(methodResp.successRatePct()).isEqualByComparingTo(new BigDecimal("66.67"));
+  }
+
+  @Test
+  @DisplayName("Verification Denominator Integrity: Historical-only employments excluded from claim denominator and attempts never substituted")
+  void testHistoricalOnlyEmploymentsExcludedFromCurrentClaimDenominatorAndNeverSubstitutesAttemptCount() {
+    // Scenario:
+    // - 1200 total verification attempt records across all cycles (including historical-only employments)
+    // - 1000 active employment records with current verification claim (is_current = 1)
+    // - 100 historical-only employment records exist (is_current = 0 only; no is_current = 1 record)
+    //   They contribute to totalVerifications (1200L), but must NOT be included in totalEmployments (1000L)
+    // - 900 distinct trainees with current claims
+    // - Current status counts: 600 VERIFIED, 250 PENDING, 100 REJECTED, 50 UNVERIFIED (sum = 1000 = totalEmployments)
+    VerificationOverallSummaryProjection summary = new VerificationOverallSummaryProjection(
+        1200L, // totalVerifications (all cycles, including historical-only)
+        1000L, // totalEmployments (strictly distinct employments with is_current = 1)
+        900L,  // totalTrainees (strictly distinct trainees with is_current = 1)
+        600L,  // verifiedCount (is_current = 1)
+        300L,  // officialVerifiedCount
+        200L,  // selfReportedCount
+        250L,  // pendingCount (is_current = 1)
+        100L,  // rejectedCount (is_current = 1)
+        50L    // unverifiedCount (is_current = 1)
+    );
+    when(repository.getFormalQ21Q22OverallSummary()).thenReturn(summary);
+    when(repository.getFormalQ21VerificationOutcomes()).thenReturn(List.of());
+    when(repository.getFormalQ22VerificationMethodEfficacy()).thenReturn(List.of());
+
+    VerificationDashboardResponse response = service.getVerificationDashboard();
+
+    assertThat(response).isNotNull();
+    // Historical attempt count preserved without row loss
+    assertThat(response.totalVerifications()).isEqualTo(1200L);
+    // Denominator captures only active/current employment claims (1000, excluding the 100 historical-only records)
+    assertThat(response.totalEmployments()).isEqualTo(1000L);
+    assertThat(response.totalTrainees()).isEqualTo(900L);
+
+    // Current claim rates must divide by totalEmployments (1000L), NOT totalVerifications (1200L)
+    // and NOT an inflated denominator including historical-only employments (e.g. 1100L)
+    // Success rate: 600 / 1000 = 60.00% (NOT 600 / 1200 = 50.00% and NOT 600 / 1100 = 54.55%)
+    assertThat(response.verificationSuccessRatePct()).isEqualByComparingTo(new BigDecimal("60.00"));
+    // Completion rate: (600 + 100) / 1000 = 70.00% (NOT 700 / 1200 = 58.33% and NOT 700 / 1100 = 63.64%)
+    assertThat(response.verificationCompletionRatePct()).isEqualByComparingTo(new BigDecimal("70.00"));
+    // Official rate: 300 / 1000 = 30.00%
+    assertThat(response.officialVerificationRatePct()).isEqualByComparingTo(new BigDecimal("30.00"));
+    // Self-reported rate: 200 / 1000 = 20.00%
+    assertThat(response.selfReportedRatePct()).isEqualByComparingTo(new BigDecimal("20.00"));
+    // Pending rate: 250 / 1000 = 25.00% (NOT 250 / 1200 = 20.83% and NOT 250 / 1100 = 22.73%)
+    assertThat(response.pendingRatePct()).isEqualByComparingTo(new BigDecimal("25.00"));
+  }
+
+  @Test
+  @DisplayName("Verification Denominator Integrity: Zero current employments with non-zero historical attempts returns null rates")
+  void testZeroCurrentEmploymentsWithHistoricalAttemptsReturnsNullRates() {
+    // 500 historical verification rows exist, but 0 employments have a current verification (is_current = 1)
+    VerificationOverallSummaryProjection summary = new VerificationOverallSummaryProjection(
+        500L, // totalVerifications
+        0L,   // totalEmployments (0 current claims)
+        0L,   // totalTrainees
+        0L, 0L, 0L, 0L, 0L, 0L
+    );
+    when(repository.getFormalQ21Q22OverallSummary()).thenReturn(summary);
+    when(repository.getFormalQ21VerificationOutcomes()).thenReturn(List.of());
+    when(repository.getFormalQ22VerificationMethodEfficacy()).thenReturn(List.of());
+
+    VerificationDashboardResponse response = service.getVerificationDashboard();
+
+    assertThat(response).isNotNull();
+    assertThat(response.totalVerifications()).isEqualTo(500L);
+    assertThat(response.totalEmployments()).isEqualTo(0L);
+    assertThat(response.totalTrainees()).isEqualTo(0L);
+
+    // The service must NEVER substitute totalVerifications (500L) as the denominator
+    assertThat(response.verificationSuccessRatePct()).isNull();
+    assertThat(response.verificationCompletionRatePct()).isNull();
+    assertThat(response.officialVerificationRatePct()).isNull();
+    assertThat(response.selfReportedRatePct()).isNull();
+    assertThat(response.pendingRatePct()).isNull();
   }
 
   // =========================================================================
@@ -393,7 +573,7 @@ class DataIntegrityDashboardServiceTest {
         new VerificationOutcomeProjection("VERIFIED", "Verified", true, 0L, 0L, 0L)
     ));
     when(repository.getFormalQ22VerificationMethodEfficacy()).thenReturn(List.of(
-        new VerificationMethodEfficacyProjection("METHOD_1", "Method 1", false, true, "VERIFIED", 0L, 0L)
+        new VerificationMethodEfficacyProjection("METHOD_1", "Method 1", false, true, 0L, 0L, 0L, 0L, 0L)
     ));
     when(repository.getFormalQ21Q22OverallSummary()).thenReturn(
         new VerificationOverallSummaryProjection(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L)
