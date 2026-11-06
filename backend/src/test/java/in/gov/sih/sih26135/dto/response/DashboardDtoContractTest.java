@@ -958,4 +958,112 @@ class DashboardDtoContractTest {
         objectMapper.readValue(json, SkillGapDashboardResponse.class);
     assertThat(deserialized).isEqualTo(dashboard);
   }
+
+  @Test
+  @DisplayName("VerificationDashboardResponse and breakdown DTOs: instantiation, immutability, and JSON roundtrip")
+  void testVerificationDashboardResponseContract() throws Exception {
+    VerificationStatusBreakdownResponse statusItem = new VerificationStatusBreakdownResponse(
+        "VERIFIED", "Verified", true, 500L, 450L, 480L, new BigDecimal("62.50")
+    );
+
+    VerificationMethodEfficacyResponse methodItem = new VerificationMethodEfficacyResponse(
+        "GOVERNMENT_DATABASE", "Government / departmental database match",
+        true, false, 300L, 280L, 270L, 20L, 10L,
+        new BigDecimal("90.00"), new BigDecimal("37.50")
+    );
+
+    VerificationDashboardResponse dashboard = new VerificationDashboardResponse(
+        800L, 750L, 700L, 500L, 350L, 150L, 100L, 50L, 0L,
+        new BigDecimal("68.75"), new BigDecimal("62.50"), new BigDecimal("43.75"),
+        new BigDecimal("18.75"), new BigDecimal("12.50"),
+        List.of(statusItem), List.of(methodItem)
+    );
+
+    assertThat(dashboard.totalVerifications()).isEqualTo(800L);
+    assertThat(dashboard.totalEmployments()).isEqualTo(750L);
+    assertThat(dashboard.totalTrainees()).isEqualTo(700L);
+    assertThat(dashboard.verifiedCount()).isEqualTo(500L);
+    assertThat(dashboard.verificationSuccessRatePct()).isEqualByComparingTo(new BigDecimal("62.50"));
+    assertThat(dashboard.statusBreakdown()).hasSize(1).containsExactly(statusItem);
+    assertThat(dashboard.methodEfficacyBreakdown()).hasSize(1).containsExactly(methodItem);
+
+    String json = objectMapper.writeValueAsString(dashboard);
+    assertThat(json).contains("\"totalVerifications\":800");
+    assertThat(json).contains("\"verificationSuccessRatePct\":62.50");
+    assertThat(json).contains("\"statusBreakdown\"");
+    assertThat(json).contains("\"methodEfficacyBreakdown\"");
+
+    VerificationDashboardResponse deserialized =
+        objectMapper.readValue(json, VerificationDashboardResponse.class);
+    assertThat(deserialized).isEqualTo(dashboard);
+  }
+
+  @Test
+  @DisplayName("FollowupDashboardResponse and wave/SLA DTOs: instantiation, immutability, and JSON roundtrip")
+  void testFollowupDashboardResponseContract() throws Exception {
+    FollowupWavePerformanceResponse waveItem = new FollowupWavePerformanceResponse(
+        "MONTH_3", "3-month follow-up", 3, 200L, 190L, 150L, 30L, 20L, 0L,
+        new BigDecimal("75.00"), new BigDecimal("10.00"), new BigDecimal("40.00")
+    );
+
+    FollowupSlaResponse sla = new FollowupSlaResponse(
+        false, "SLA tracking deferred: schema unconfigured", null, null, null, null
+    );
+
+    FollowupDashboardResponse dashboard = new FollowupDashboardResponse(
+        500L, 450L, 420L, 80L, 350L, 40L, 30L,
+        new BigDecimal("70.00"), new BigDecimal("6.00"), new BigDecimal("84.00"),
+        List.of(waveItem), sla
+    );
+
+    assertThat(dashboard.totalTasks()).isEqualTo(500L);
+    assertThat(dashboard.totalTrainees()).isEqualTo(450L);
+    assertThat(dashboard.contactSuccessRatePct()).isEqualByComparingTo(new BigDecimal("70.00"));
+    assertThat(dashboard.slaPerformance().isAvailable()).isFalse();
+    assertThat(dashboard.wavePerformance()).hasSize(1).containsExactly(waveItem);
+
+    String json = objectMapper.writeValueAsString(dashboard);
+    assertThat(json).contains("\"totalTasks\":500");
+    assertThat(json).contains("\"contactSuccessRatePct\":70.00");
+    assertThat(json).contains("\"slaPerformance\"");
+    assertThat(json).contains("\"wavePerformance\"");
+
+    FollowupDashboardResponse deserialized =
+        objectMapper.readValue(json, FollowupDashboardResponse.class);
+    assertThat(deserialized).isEqualTo(dashboard);
+  }
+
+  @Test
+  @DisplayName("SurveyDashboardResponse and pipeline/satisfaction DTOs: instantiation, immutability, and JSON roundtrip")
+  void testSurveyDashboardResponseContract() throws Exception {
+    SurveyPurposePipelineResponse pipelineItem = new SurveyPurposePipelineResponse(
+        "EMPLOYMENT_OUTCOME", "Employment outcome", null,
+        250L, 230L, 200L, 50L, new BigDecimal("80.00"), new BigDecimal("50.00")
+    );
+
+    SurveySatisfactionResponse satisfaction = new SurveySatisfactionResponse(
+        false, "Satisfaction rating metrics deferred: dynamic questions", null, null
+    );
+
+    SurveyDashboardResponse dashboard = new SurveyDashboardResponse(
+        500L, 450L, 380L, 120L, new BigDecimal("76.00"),
+        List.of(pipelineItem), satisfaction
+    );
+
+    assertThat(dashboard.totalResponseRows()).isEqualTo(500L);
+    assertThat(dashboard.totalTrainees()).isEqualTo(450L);
+    assertThat(dashboard.overallSubmissionRatePct()).isEqualByComparingTo(new BigDecimal("76.00"));
+    assertThat(dashboard.satisfactionPerformance().isAvailable()).isFalse();
+    assertThat(dashboard.purposePipeline()).hasSize(1).containsExactly(pipelineItem);
+
+    String json = objectMapper.writeValueAsString(dashboard);
+    assertThat(json).contains("\"totalResponseRows\":500");
+    assertThat(json).contains("\"overallSubmissionRatePct\":76.00");
+    assertThat(json).contains("\"purposePipeline\"");
+    assertThat(json).contains("\"satisfactionPerformance\"");
+
+    SurveyDashboardResponse deserialized =
+        objectMapper.readValue(json, SurveyDashboardResponse.class);
+    assertThat(deserialized).isEqualTo(dashboard);
+  }
 }
