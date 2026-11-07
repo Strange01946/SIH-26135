@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.service.impl;
 
+import in.gov.sih.sih26135.annotation.AuditTrail;
 import in.gov.sih.sih26135.dto.request.CreateEmploymentRecordRequest;
 import in.gov.sih.sih26135.dto.request.CreateSalaryHistoryRequest;
 import in.gov.sih.sih26135.dto.request.PlacementToEmploymentTransitionRequest;
@@ -87,6 +88,7 @@ public class PlacementEmploymentWorkflowServiceImpl implements PlacementEmployme
 
   @Override
   @Transactional
+  @AuditTrail(action = "STATUS_CHANGE", entityType = "Placement", summary = "Placement transitioned to employment")
   public PlacementToEmploymentTransitionResponse transitionPlacementToEmployment(
       PlacementToEmploymentTransitionRequest request) {
     if (request == null) {

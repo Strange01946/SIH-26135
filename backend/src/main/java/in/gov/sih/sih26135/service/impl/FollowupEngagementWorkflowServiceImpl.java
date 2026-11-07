@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.service.impl;
 
+import in.gov.sih.sih26135.annotation.AuditTrail;
+
 import in.gov.sih.sih26135.dto.request.CreateCommunicationLogRequest;
 import in.gov.sih.sih26135.dto.request.CreateSurveyResponseRequest;
 import in.gov.sih.sih26135.dto.request.RecordEngagementAttemptRequest;
@@ -71,6 +73,7 @@ public class FollowupEngagementWorkflowServiceImpl implements FollowupEngagement
 
   @Override
   @Transactional
+  @AuditTrail(action = "STATUS_CHANGE", entityType = "FollowupTask", summary = "Follow-up survey response recorded")
   public RecordFollowupSurveyResponseResponse recordFollowupSurveyResponse(
       RecordFollowupSurveyResponseRequest request) {
     if (request == null) {

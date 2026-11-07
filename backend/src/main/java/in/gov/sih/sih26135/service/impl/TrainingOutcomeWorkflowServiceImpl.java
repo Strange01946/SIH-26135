@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.service.impl;
 
+import in.gov.sih.sih26135.annotation.AuditTrail;
+
 import in.gov.sih.sih26135.dto.request.CreateCertificationRequest;
 import in.gov.sih.sih26135.dto.request.RecordAssessmentAndIssueCertificateRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTrainingEnrollmentRequest;
@@ -97,6 +99,7 @@ public class TrainingOutcomeWorkflowServiceImpl implements TrainingOutcomeWorkfl
 
   @Override
   @Transactional
+  @AuditTrail(action = "STATUS_CHANGE", entityType = "TrainingEnrollment", summary = "Assessment recorded and certificate issued")
   public RecordAssessmentAndIssueCertificateResponse recordAssessmentResultAndIssueCertificate(
       RecordAssessmentAndIssueCertificateRequest request) {
     if (request == null) {

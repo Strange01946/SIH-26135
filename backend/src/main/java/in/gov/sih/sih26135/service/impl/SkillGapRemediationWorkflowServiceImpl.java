@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.service.impl;
 
+import in.gov.sih.sih26135.annotation.AuditTrail;
+
 import in.gov.sih.sih26135.dto.request.CreateSkillGapRecommendationRequest;
 import in.gov.sih.sih26135.dto.request.CreateSkillGapRequest;
 import in.gov.sih.sih26135.dto.request.CreateTrainingEnrollmentRequest;
@@ -462,6 +464,7 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
 
   @Override
   @Transactional
+  @AuditTrail(action = "STATUS_CHANGE", entityType = "SkillGapRecommendation", summary = "Trainee enrolled in remediation course")
   public SkillGapRemediationEnrollmentResponse enrollTraineeInRemediationCourse(
       SkillGapRemediationEnrollmentRequest request) {
     if (request == null) {

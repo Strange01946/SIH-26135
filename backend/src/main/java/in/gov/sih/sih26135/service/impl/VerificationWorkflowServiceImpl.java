@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.service.impl;
 
+import in.gov.sih.sih26135.annotation.AuditTrail;
+
 import in.gov.sih.sih26135.dto.request.CreateEmploymentVerificationEvidenceRequest;
 import in.gov.sih.sih26135.dto.request.CreateEmploymentVerificationRequest;
 import in.gov.sih.sih26135.dto.request.CreateEmploymentVerificationRequestRequest;
@@ -292,6 +294,7 @@ public class VerificationWorkflowServiceImpl implements VerificationWorkflowServ
 
   @Override
   @Transactional
+  @AuditTrail(action = "STATUS_CHANGE", entityType = "EmploymentVerification", summary = "Employment verification verdict recorded")
   public RecordVerificationVerdictResponse recordVerificationVerdictAndSynchronize(
       RecordVerificationVerdictRequest request) {
     if (request == null) {

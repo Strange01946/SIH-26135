@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.service.impl;
 
+import in.gov.sih.sih26135.annotation.AuditTrail;
+
 import in.gov.sih.sih26135.dto.request.CreateEmploymentRecordRequest;
 import in.gov.sih.sih26135.dto.request.CreateSalaryHistoryRequest;
 import in.gov.sih.sih26135.dto.request.CreateTraineeUnemploymentEventRequest;
@@ -80,6 +82,7 @@ public class EmploymentLifecycleWorkflowServiceImpl implements EmploymentLifecyc
 
   @Override
   @Transactional
+  @AuditTrail(action = "STATUS_CHANGE", entityType = "EmploymentRecord", summary = "Employment exit recorded and unemployment initiated")
   public EmploymentExitAndUnemploymentResponse recordExitAndInitiateUnemployment(
       EmploymentExitAndUnemploymentRequest request) {
     if (request == null) {

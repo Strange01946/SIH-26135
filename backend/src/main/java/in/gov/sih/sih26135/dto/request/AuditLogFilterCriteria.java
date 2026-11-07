@@ -17,6 +17,9 @@ public class AuditLogFilterCriteria {
   @Positive(message = "actorUserId must be positive")
   private Long actorUserId;
 
+  @Positive(message = "auditActionId must be positive")
+  private Long auditActionId;
+
   @Size(max = 64, message = "auditActionCode cannot exceed 64 characters")
   private String auditActionCode;
 
@@ -86,6 +89,14 @@ public class AuditLogFilterCriteria {
 
   public void setActorUserId(Long actorUserId) {
     this.actorUserId = actorUserId;
+  }
+
+  public Long getAuditActionId() {
+    return auditActionId;
+  }
+
+  public void setAuditActionId(Long auditActionId) {
+    this.auditActionId = auditActionId;
   }
 
   public String getAuditActionCode() {

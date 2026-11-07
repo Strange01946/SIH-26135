@@ -38,4 +38,8 @@ public interface AuditLogService {
   List<AuditLogResponse> getAuditLogsByOccurredAtBetween(LocalDateTime start, LocalDateTime end);
 
   Page<AuditLogResponse> getAuditLogsByOccurredAtBetween(LocalDateTime start, LocalDateTime end, Pageable pageable);
+
+  Page<AuditLogResponse> searchAuditLogs(in.gov.sih.sih26135.dto.request.AuditLogFilterCriteria criteria);
+
+  in.gov.sih.sih26135.dto.response.AuditTrailTimelineResponse getEntityTimeline(String entityType, Long entityId);
 }
