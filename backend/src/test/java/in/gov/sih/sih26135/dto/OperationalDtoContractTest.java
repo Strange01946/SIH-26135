@@ -45,6 +45,7 @@ class OperationalDtoContractTest {
   static void setUp() {
     objectMapper = new ObjectMapper();
     objectMapper.registerModule(new JavaTimeModule());
+    objectMapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
     ValidatorFactory factory = Validation.buildDefaultValidatorFactory();
     validator = factory.getValidator();
@@ -193,32 +194,96 @@ class OperationalDtoContractTest {
 
     @Test
     @DisplayName("Valid resolution passes validation and preserves backward-compatible defaults")
-    void testValidResolution() throws Exception {
-      LocalDateTime now = LocalDateTime.now();
-      ResolveDataQualityIssueRequest request = new ResolveDataQualityIssueRequest(
-          15L, "Corrected typographical error in trainee father name.", now, false
-      );
-
+    void testValidResolution() {
+      ResolveDataQualityIssueRequest request = new ResolveDataQualityIssueRequest("Corrected typographical error.");
       Set<ConstraintViolation<ResolveDataQualityIssueRequest>> violations = validator.validate(request);
       assertThat(violations).isEmpty();
       assertThat(request.getIsDismissed()).isFalse();
-
-      String json = objectMapper.writeValueAsString(request);
-      ResolveDataQualityIssueRequest deserialized = objectMapper.readValue(json, ResolveDataQualityIssueRequest.class);
-      assertThat(deserialized.getResolvedByUserId()).isEqualTo(15L);
-      assertThat(deserialized.getResolutionNotes()).isEqualTo("Corrected typographical error in trainee father name.");
-      assertThat(deserialized.getIsDismissed()).isFalse();
     }
 
     @Test
-    @DisplayName("Excessive notes length or negative user ID fails validation")
-    void testValidationViolations() {
-      ResolveDataQualityIssueRequest request = new ResolveDataQualityIssueRequest(
-          -10L, "X".repeat(501), true
+    @DisplayName("Client JSON cannot supply trusted attribution fields (resolvedByUserId, resolvedAt)")
+    void testClientJsonCannotSetAttributionFields() throws Exception {
+      String maliciousClientJson = """
+          {
+            "resolvedByUserId": 9999,
+            "resolvedAt": "2020-01-01T00:00:00",
+            "resolutionNotes": "Attributed resolution note",
+            "isDismissed": true
+          }
+          """;
+
+      ResolveDataQualityIssueRequest deserialized = objectMapper.readValue(
+          maliciousClientJson, ResolveDataQualityIssueRequest.class
       );
 
-      Set<ConstraintViolation<ResolveDataQualityIssueRequest>> violations = validator.validate(request);
-      assertThat(violations).hasSize(2);
+      // Attribution fields must remain null when supplied via client JSON
+      assertThat(deserialized.getResolvedByUserId())
+          .as("resolvedByUserId must be ignored from client JSON input")
+          .isNull();
+      assertThat(deserialized.getResolvedAt())
+          .as("resolvedAt must be ignored from client JSON input")
+          .isNull();
+
+      // Client-permitted fields must deserialize cleanly
+      assertThat(deserialized.getResolutionNotes()).isEqualTo("Attributed resolution note");
+      assertThat(deserialized.getIsDismissed()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Server-side attribution fields can be programmatically set and serialized")
+    void testServerSideAttributionSettingAndSerialization() throws Exception {
+      LocalDateTime serverTimestamp = LocalDateTime.of(2026, 11, 7, 15, 30, 0);
+      ResolveDataQualityIssueRequest request = new ResolveDataQualityIssueRequest(
+          "Verified against State Council database."
+      );
+      request.setResolvedByUserId(42L);
+      request.setResolvedAt(serverTimestamp);
+
+      assertThat(request.getResolvedByUserId()).isEqualTo(42L);
+      assertThat(request.getResolvedAt()).isEqualTo(serverTimestamp);
+
+      String json = objectMapper.writeValueAsString(request);
+      assertThat(json).contains("\"resolvedByUserId\":42");
+      assertThat(json).contains("2026-11-07T15:30:00");
+    }
+
+    @Test
+    @DisplayName("resolutionNotes rejects null, empty, whitespace-only, and oversized values")
+    void testResolutionNotesValidation() {
+      // 1. Null resolutionNotes
+      ResolveDataQualityIssueRequest nullNotes = new ResolveDataQualityIssueRequest();
+      nullNotes.setResolutionNotes(null);
+      Set<ConstraintViolation<ResolveDataQualityIssueRequest>> nullViolations = validator.validate(nullNotes);
+      assertThat(nullViolations)
+          .anyMatch(v -> v.getPropertyPath().toString().equals("resolutionNotes") &&
+                         v.getMessage().contains("resolutionNotes cannot be blank"));
+
+      // 2. Empty resolutionNotes
+      ResolveDataQualityIssueRequest emptyNotes = new ResolveDataQualityIssueRequest("");
+      Set<ConstraintViolation<ResolveDataQualityIssueRequest>> emptyViolations = validator.validate(emptyNotes);
+      assertThat(emptyViolations)
+          .anyMatch(v -> v.getPropertyPath().toString().equals("resolutionNotes") &&
+                         v.getMessage().contains("resolutionNotes cannot be blank"));
+
+      // 3. Whitespace-only resolutionNotes
+      ResolveDataQualityIssueRequest wsNotes = new ResolveDataQualityIssueRequest("   \t\n   ");
+      Set<ConstraintViolation<ResolveDataQualityIssueRequest>> wsViolations = validator.validate(wsNotes);
+      assertThat(wsViolations)
+          .anyMatch(v -> v.getPropertyPath().toString().equals("resolutionNotes") &&
+                         v.getMessage().contains("resolutionNotes cannot be blank"));
+
+      // 4. Oversized resolutionNotes (> 500 chars)
+      ResolveDataQualityIssueRequest oversizedNotes = new ResolveDataQualityIssueRequest("A".repeat(501));
+      Set<ConstraintViolation<ResolveDataQualityIssueRequest>> oversizedViolations = validator.validate(oversizedNotes);
+      assertThat(oversizedViolations)
+          .anyMatch(v -> v.getPropertyPath().toString().equals("resolutionNotes") &&
+                         v.getMessage().contains("resolutionNotes cannot exceed 500 characters"));
+
+      // 5. Valid resolutionNotes
+      ResolveDataQualityIssueRequest validNotes = new ResolveDataQualityIssueRequest("Valid resolution note");
+      Set<ConstraintViolation<ResolveDataQualityIssueRequest>> validViolations = validator.validate(validNotes);
+      assertThat(validViolations).isEmpty();
     }
   }
 

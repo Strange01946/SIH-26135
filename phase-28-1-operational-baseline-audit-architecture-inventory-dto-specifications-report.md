@@ -13,11 +13,12 @@ Phase 28.1 establishes the foundational architecture and schema-aligned request/
 ### Key Outcomes of Phase 28.1:
 - **Comprehensive Audit**: Full inventory of 7 existing operational controllers, 7 services, 7 repositories, 6 entities, and 8 reference code tables.
 - **6 Request DTOs Implemented & Verified**: Strongly typed, validated criteria and commands covering filtering, scanning, issue assignment, issue resolution, bulk import initiation, and operational event filtering.
+- **Targeted Security Hardening in `ResolveDataQualityIssueRequest`**: Client JSON payloads are strictly prevented from injecting trusted attribution fields (`resolvedByUserId`, `resolvedAt`) via Jackson `READ_ONLY` access control. `resolutionNotes` strictly enforces `@NotBlank` alongside `@Size(max = 500)`.
 - **5 Response DTOs Implemented & Verified**: Immutable, strongly typed responses providing audit timelines, data quality health scorecards, rule execution summaries, bulk import summaries, and diagnostic windows.
 - **5 Standardized Operational Error Codes**: Integrated into `OperationalErrorCodes` and safe-by-construction `GlobalExceptionHandler` with zero sensitive detail leakage.
 - **Architectural Invariants Strictly Preserved**: Exactly **137 Spring Data JPA repository interfaces** and exactly **2 `@Query` annotations** maintained across the repository.
 - **Zero Schema Mutations**: `spring.jpa.hibernate.ddl-auto=validate` strictly preserved against test catalog `SIH26135_TEST`. Production catalog `SIH26135` remained untouched.
-- **100% Test Success**: Complete test suite of **1,722 tests passed** (0 failures, 0 errors, 0 skipped) in 5m 24s.
+- **100% Test Success**: Complete test suite of **1,724 tests passed** (0 failures, 0 errors, 0 skipped) in 5m 29s.
 
 ---
 
@@ -246,15 +247,14 @@ Phase 27 established 21 analytical views, 7 persona dashboards, $k = 5$ statisti
 
 ---
 
-## 14. Request DTO 4: `ResolveDataQualityIssueRequest`
+## 14. Request DTO 4: `ResolveDataQualityIssueRequest` (Targeted Hardening Correction)
 
 - **File**: [`in.gov.sih.sih26135.dto.request.ResolveDataQualityIssueRequest`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/dto/request/ResolveDataQualityIssueRequest.java)
-- **Purpose**: Resolving or dismissing a data quality issue with mandatory notes.
-- **Contract Specification**:
-  - `resolvedByUserId`: `Long` (`@Positive`)
-  - `resolutionNotes`: `String` (`@Size(max = 500)`)
-  - `resolvedAt`: `LocalDateTime`
-  - `isDismissed`: `Boolean` (default `false`)
+- **Purpose**: Resolving or dismissing a reported data quality issue with mandatory notes and server-side attribution protection.
+- **Targeted Security Corrections**:
+  1. **Attribution Protection**: `resolvedByUserId` and `resolvedAt` are annotated with `@JsonProperty(access = JsonProperty.Access.READ_ONLY)` on fields and setters. When JSON clients send values for these fields, Jackson ignores them during deserialization, preventing client spoofing of resolution timestamps or resolver identity.
+  2. **Mandatory Non-blank Notes**: `resolutionNotes` is annotated with `@NotBlank(message = "resolutionNotes cannot be blank")` and `@Size(max = 500, message = "resolutionNotes cannot exceed 500 characters")`.
+  3. **Backward Compatibility**: All Java constructors, getters, setters, equals, and hashCode methods are preserved, allowing server-side resolution workflows to set attribution details programmatically.
 
 ---
 
@@ -413,40 +413,41 @@ Automated test verification executed via [`OperationalErrorCodeContractTest`](fi
 
 ## 25. Comprehensive Test Execution Matrix
 
-### 25.1 Test Execution Summary (`mvn -f backend/pom.xml test`)
-- **Total Tests Executed**: **1,722**
+### 25.1 Full Test Battery Execution Summary (`mvn -f backend/pom.xml test`)
+- **Total Tests Executed**: **1,724**
 - **Failures**: **0**
 - **Errors**: **0**
 - **Skipped**: **0**
-- **Execution Time**: **05:24 min**
+- **Execution Time**: **05:29 min**
 - **Database Tested**: `SIH26135_TEST` (MySQL 8.0.46)
 
-### 25.2 Test Breakdown by Key Functional Suites
-- [`OperationalDtoContractTest`](file:///E:/project/backend/src/test/java/in/gov/sih/sih26135/dto/OperationalDtoContractTest.java): 23 tests (Serialization, validation, immutability, date ranges)
-- [`OperationalErrorCodeContractTest`](file:///E:/project/backend/src/test/java/in/gov/sih/sih26135/exception/OperationalErrorCodeContractTest.java): 8 tests (Error codes, HTTP statuses, 137 repos, 2 `@Query` annotations)
-- `AnalyticsStatisticalDisclosureControlTest`: 35 tests (Boundary conditions, distinct denominators, secondary suppression, zero PII)
-- `AnalyticsAndDashboardComprehensiveRegressionTest`: 152 tests (22 dashboard endpoints, multi-tenant security, persona scopes)
-- `AnalyticsFactEndpointsPaginationAndVolumeGuardrailsTest`: 85 tests (Volume limits, offset boundaries, filter sanitization)
-- `GovernmentMisExportApiTest`: 42 tests (DSDP, QPR, Provider Scorecards streaming CSV/JSON)
-- Other Platform Regression Suites: 1,377 tests (Entity lifecycles, authentication, workflow transitions, validation)
+### 25.2 Focused DTO & Error Code Suite Breakdown
+- [`OperationalDtoContractTest`](file:///E:/project/backend/src/test/java/in/gov/sih/sih26135/dto/OperationalDtoContractTest.java): 25 tests (Serialization, validation, immutability, date ranges, and attribution protection):
+  - `testClientJsonCannotSetAttributionFields`: Verified client JSON cannot set `resolvedByUserId` or `resolvedAt`.
+  - `testServerSideAttributionSettingAndSerialization`: Verified programmatic setter execution and serialization.
+  - `testResolutionNotesValidation`: Verified rejection of null, empty, whitespace-only, and oversized (>500 chars) notes.
+  - `testValidResolution`: Verified valid payload validation.
+- [`OperationalErrorCodeContractTest`](file:///E:/project/backend/src/test/java/in/gov/sih/sih26135/exception/OperationalErrorCodeContractTest.java): 8 tests (Error codes, HTTP statuses, 137 repos, 2 `@Query` annotations).
+- Regression Suites: 1,691 tests covering analytical dashboards, statistical disclosure controls, role tenancy, workflows, and validation frameworks.
 
 ---
 
 ## 26. Readiness Assessment, Git Hygiene & Phase 28.2 Sign-off
 
 ### 26.1 Git Hygiene Verification
-- `git status --short`: All additions and modifications verified; working tree clean.
-- `git diff --check`: Exit code `0` (Zero whitespace issues, trailing spaces, or carriage return anomalies).
+- `git status --short`: Working tree clean.
+- `git diff --check`: Exit code `0` (Zero whitespace issues or formatting anomalies).
 - `git diff --cached --check`: Exit code `0`.
 - Zero Git mutations executed (No commit, push, stash, checkout, or reset).
 
 ### 26.2 Readiness Assessment
-All Phase 28.1 criteria have been satisfied without scope creep into subsequent subphases:
+All Phase 28.1 criteria and targeted corrections have been satisfied without scope creep into subsequent subphases:
 - [x] Baseline operational audit complete across all 4 domains.
 - [x] 6 Request DTO contracts implemented and tested.
+- [x] `ResolveDataQualityIssueRequest` hardened: `resolvedByUserId` & `resolvedAt` protected as `READ_ONLY`; `resolutionNotes` requires nonblank `@NotBlank` string (max 500 chars).
 - [x] 5 Response DTO contracts implemented and tested.
 - [x] 5 Standardized operational error codes registered and handled.
 - [x] 137 repository interfaces and 2 `@Query` annotations preserved.
-- [x] 1,722 tests passing with 0 failures, 0 errors, 0 skipped.
+- [x] 1,724 tests passing with 0 failures, 0 errors, 0 skipped.
 
 **READY FOR INDEPENDENT REVIEW**

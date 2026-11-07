@@ -1,5 +1,8 @@
 package in.gov.sih.sih26135.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDateTime;
@@ -7,20 +10,36 @@ import java.util.Objects;
 
 /**
  * Request payload for resolving or dismissing a reported data quality issue.
+ * Attribution fields (resolvedByUserId, resolvedAt) are restricted from client JSON input
+ * (marked READ_ONLY) and must be set server-side by the authenticated resolution workflow.
  */
 public class ResolveDataQualityIssueRequest {
 
+  @JsonProperty(access = JsonProperty.Access.READ_ONLY)
   @Positive(message = "resolvedByUserId must be positive")
   private Long resolvedByUserId;
 
+  @NotBlank(message = "resolutionNotes cannot be blank")
   @Size(max = 500, message = "resolutionNotes cannot exceed 500 characters")
   private String resolutionNotes;
 
+  @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+  @JsonProperty(access = JsonProperty.Access.READ_ONLY)
   private LocalDateTime resolvedAt;
 
   private Boolean isDismissed = false;
 
   public ResolveDataQualityIssueRequest() {}
+
+  public ResolveDataQualityIssueRequest(String resolutionNotes) {
+    this.resolutionNotes = resolutionNotes;
+    this.isDismissed = false;
+  }
+
+  public ResolveDataQualityIssueRequest(String resolutionNotes, Boolean isDismissed) {
+    this.resolutionNotes = resolutionNotes;
+    this.isDismissed = isDismissed != null ? isDismissed : false;
+  }
 
   public ResolveDataQualityIssueRequest(Long resolvedByUserId, String resolutionNotes, Boolean isDismissed) {
     this.resolvedByUserId = resolvedByUserId;
@@ -39,6 +58,7 @@ public class ResolveDataQualityIssueRequest {
     return resolvedByUserId;
   }
 
+  @JsonProperty(access = JsonProperty.Access.READ_ONLY)
   public void setResolvedByUserId(Long resolvedByUserId) {
     this.resolvedByUserId = resolvedByUserId;
   }
@@ -55,6 +75,7 @@ public class ResolveDataQualityIssueRequest {
     return resolvedAt;
   }
 
+  @JsonProperty(access = JsonProperty.Access.READ_ONLY)
   public void setResolvedAt(LocalDateTime resolvedAt) {
     this.resolvedAt = resolvedAt;
   }
