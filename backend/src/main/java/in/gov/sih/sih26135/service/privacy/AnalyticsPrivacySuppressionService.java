@@ -33,6 +33,9 @@ import in.gov.sih.sih26135.dto.response.SurveyDashboardResponse;
 import in.gov.sih.sih26135.dto.response.SurveyPurposePipelineResponse;
 import in.gov.sih.sih26135.dto.response.TopSkillGapResponse;
 import in.gov.sih.sih26135.dto.response.UnemploymentReasonBreakdownResponse;
+import in.gov.sih.sih26135.dto.response.export.DsdpExportRow;
+import in.gov.sih.sih26135.dto.response.export.ProviderScorecardExportRow;
+import in.gov.sih.sih26135.dto.response.export.QprExportRow;
 import in.gov.sih.sih26135.dto.response.UnemploymentSummaryResponse;
 import in.gov.sih.sih26135.dto.response.VerificationDashboardResponse;
 import in.gov.sih.sih26135.dto.response.VerificationMethodEfficacyResponse;
@@ -1808,5 +1811,357 @@ public class AnalyticsPrivacySuppressionService {
         safePipelines,
         response.satisfactionPerformance()
     );
+  }
+
+  // =========================================================================
+  // 13. Phase 27.15 Government MIS Export Privacy Guardrails
+  // =========================================================================
+
+  public DsdpExportRow applyPrivacyGuardrail(DsdpExportRow row) {
+    if (row == null) {
+      return null;
+    }
+    if (isSparse(row.traineeCount())) {
+      return new DsdpExportRow(
+          row.districtId(), row.districtCode(), row.districtName(),
+          row.stateId(), row.stateCode(), row.stateName(),
+          row.courseId(), row.courseCode(), row.courseName(), row.sectorName(),
+          null, null, null, null, null, null,
+          null, null, null, null,
+          null
+      );
+    }
+
+    Long enrollmentCount = isSparse(row.enrollmentCount()) ? null : row.enrollmentCount();
+    Long traineeCount = row.traineeCount();
+
+    boolean sComp = isSparse(row.completedCount());
+    Long completedCount = sComp ? null : row.completedCount();
+    BigDecimal completionRatePct = sComp || completedCount == null ? null : row.completionRatePct();
+
+    boolean sCert = isSparse(row.certifiedCount());
+    Long certifiedCount = sCert ? null : row.certifiedCount();
+    BigDecimal certificationRatePct = sCert || certifiedCount == null ? null : row.certificationRatePct();
+
+    boolean sJoin = isSparse(row.joinedPlacementCount());
+    Long joinedPlacementCount = sJoin ? null : row.joinedPlacementCount();
+    BigDecimal placementRatePct = sJoin || joinedPlacementCount == null ? null : row.placementRatePct();
+
+    boolean sEmp = isSparse(row.employedCount());
+    Long employedCount = sEmp ? null : row.employedCount();
+    BigDecimal employmentRatePct = sEmp || employedCount == null ? null : row.employmentRatePct();
+
+    BigDecimal avgStartingWage = row.avgStartingWage();
+
+    return new DsdpExportRow(
+        row.districtId(), row.districtCode(), row.districtName(),
+        row.stateId(), row.stateCode(), row.stateName(),
+        row.courseId(), row.courseCode(), row.courseName(), row.sectorName(),
+        enrollmentCount, traineeCount, completedCount, certifiedCount,
+        joinedPlacementCount, employedCount,
+        completionRatePct, certificationRatePct, placementRatePct, employmentRatePct,
+        avgStartingWage
+    );
+  }
+
+  public List<DsdpExportRow> applyPrivacyGuardrailsToDsdp(List<DsdpExportRow> rows) {
+    if (rows == null || rows.isEmpty()) {
+      return rows != null ? rows : Collections.emptyList();
+    }
+    List<DsdpExportRow> safeList = new ArrayList<>(rows.size());
+    for (DsdpExportRow row : rows) {
+      safeList.add(applyPrivacyGuardrail(row));
+    }
+    return safeList;
+  }
+
+  public QprExportRow applyPrivacyGuardrail(QprExportRow row) {
+    if (row == null) {
+      return null;
+    }
+    if (isSparse(row.traineeCount())) {
+      return new QprExportRow(
+          row.stateId(), row.stateCode(), row.stateName(),
+          row.fiscalYear(), row.quarter(),
+          null, null, null, null, null, null,
+          null, null, null, null,
+          row.rank()
+      );
+    }
+
+    Long enrollmentCount = isSparse(row.enrollmentCount()) ? null : row.enrollmentCount();
+    Long traineeCount = row.traineeCount();
+
+    boolean sComp = isSparse(row.completedCount());
+    Long completedCount = sComp ? null : row.completedCount();
+    BigDecimal completionRatePct = sComp || completedCount == null ? null : row.completionRatePct();
+
+    boolean sCert = isSparse(row.certifiedCount());
+    Long certifiedCount = sCert ? null : row.certifiedCount();
+    BigDecimal certificationRatePct = sCert || certifiedCount == null ? null : row.certificationRatePct();
+
+    boolean sJoin = isSparse(row.joinedPlacementCount());
+    Long joinedPlacementCount = sJoin ? null : row.joinedPlacementCount();
+    BigDecimal placementRatePct = sJoin || joinedPlacementCount == null ? null : row.placementRatePct();
+
+    boolean sEmp = isSparse(row.employedCount());
+    Long employedCount = sEmp ? null : row.employedCount();
+    BigDecimal employmentRatePct = sEmp || employedCount == null ? null : row.employmentRatePct();
+
+    return new QprExportRow(
+        row.stateId(), row.stateCode(), row.stateName(),
+        row.fiscalYear(), row.quarter(),
+        enrollmentCount, traineeCount, completedCount, certifiedCount,
+        joinedPlacementCount, employedCount,
+        completionRatePct, certificationRatePct, placementRatePct, employmentRatePct,
+        row.rank()
+    );
+  }
+
+  public List<QprExportRow> applyPrivacyGuardrailsToQpr(List<QprExportRow> responses) {
+    if (responses == null || responses.isEmpty()) {
+      return responses != null ? responses : Collections.emptyList();
+    }
+    List<QprExportRow> step1 = new ArrayList<>(responses.size());
+    for (QprExportRow r : responses) {
+      step1.add(applyPrivacyGuardrail(r));
+    }
+
+    // 1. Secondary suppression on traineeCount if exactly 1 state was primary-suppressed:
+    int primarySuppressedTrainees = 0;
+    for (int i = 0; i < responses.size(); i++) {
+      QprExportRow r = responses.get(i);
+      QprExportRow s = step1.get(i);
+      if (isSparse(r.traineeCount()) || (s.traineeCount() == null && r.traineeCount() != null && r.traineeCount() > 0)) {
+        primarySuppressedTrainees++;
+      }
+    }
+
+    if (primarySuppressedTrainees == 1) {
+      int minIdx = -1;
+      Long minVal = null;
+      for (int i = 0; i < step1.size(); i++) {
+        QprExportRow s = step1.get(i);
+        if (s.traineeCount() != null && s.traineeCount() >= MIN_ANONYMITY_THRESHOLD) {
+          if (minVal == null || s.traineeCount() < minVal) {
+            minVal = s.traineeCount();
+            minIdx = i;
+          }
+        }
+      }
+      if (minIdx != -1) {
+        QprExportRow target = step1.get(minIdx);
+        step1.set(minIdx, new QprExportRow(
+            target.stateId(), target.stateCode(), target.stateName(),
+            target.fiscalYear(), target.quarter(),
+            null, null, null, null, null, null,
+            null, null, null, null,
+            target.rank()
+        ));
+      }
+    }
+
+    // 2. Secondary suppression on completedCount
+    int primarySuppressedCompleted = 0;
+    for (int i = 0; i < responses.size(); i++) {
+      QprExportRow r = responses.get(i);
+      QprExportRow s = step1.get(i);
+      if (isSparse(r.completedCount())
+          || (s.completedCount() == null && r.completedCount() != null && r.completedCount() > 0)
+          || (s.completedCount() == null && r.completedCount() == null && r.traineeCount() != null && r.traineeCount() > 0 && r.completionRatePct() != null)) {
+        primarySuppressedCompleted++;
+      }
+    }
+    if (primarySuppressedCompleted == 1) {
+      int minIdx = -1;
+      Long minVal = null;
+      for (int i = 0; i < step1.size(); i++) {
+        QprExportRow s = step1.get(i);
+        if (s.completedCount() != null && s.completedCount() >= MIN_ANONYMITY_THRESHOLD) {
+          if (minVal == null || s.completedCount() < minVal) {
+            minVal = s.completedCount();
+            minIdx = i;
+          }
+        }
+      }
+      if (minIdx != -1) {
+        QprExportRow target = step1.get(minIdx);
+        step1.set(minIdx, new QprExportRow(
+            target.stateId(), target.stateCode(), target.stateName(),
+            target.fiscalYear(), target.quarter(),
+            target.enrollmentCount(), target.traineeCount(), null, target.certifiedCount(),
+            target.joinedPlacementCount(), target.employedCount(),
+            null, target.certificationRatePct(), target.placementRatePct(), target.employmentRatePct(),
+            target.rank()
+        ));
+      }
+    }
+
+    // 3. Secondary suppression on certifiedCount
+    int primarySuppressedCertified = 0;
+    for (int i = 0; i < responses.size(); i++) {
+      QprExportRow r = responses.get(i);
+      QprExportRow s = step1.get(i);
+      if (isSparse(r.certifiedCount())
+          || (s.certifiedCount() == null && r.certifiedCount() != null && r.certifiedCount() > 0)
+          || (s.certifiedCount() == null && r.certifiedCount() == null && r.traineeCount() != null && r.traineeCount() > 0 && r.certificationRatePct() != null)) {
+        primarySuppressedCertified++;
+      }
+    }
+    if (primarySuppressedCertified == 1) {
+      int minIdx = -1;
+      Long minVal = null;
+      for (int i = 0; i < step1.size(); i++) {
+        QprExportRow s = step1.get(i);
+        if (s.certifiedCount() != null && s.certifiedCount() >= MIN_ANONYMITY_THRESHOLD) {
+          if (minVal == null || s.certifiedCount() < minVal) {
+            minVal = s.certifiedCount();
+            minIdx = i;
+          }
+        }
+      }
+      if (minIdx != -1) {
+        QprExportRow target = step1.get(minIdx);
+        step1.set(minIdx, new QprExportRow(
+            target.stateId(), target.stateCode(), target.stateName(),
+            target.fiscalYear(), target.quarter(),
+            target.enrollmentCount(), target.traineeCount(), target.completedCount(), null,
+            target.joinedPlacementCount(), target.employedCount(),
+            target.completionRatePct(), null, target.placementRatePct(), target.employmentRatePct(),
+            target.rank()
+        ));
+      }
+    }
+
+    // 4. Secondary suppression on joinedPlacementCount
+    int primarySuppressedJoined = 0;
+    for (int i = 0; i < responses.size(); i++) {
+      QprExportRow r = responses.get(i);
+      QprExportRow s = step1.get(i);
+      if (isSparse(r.joinedPlacementCount())
+          || (s.joinedPlacementCount() == null && r.joinedPlacementCount() != null && r.joinedPlacementCount() > 0)
+          || (s.joinedPlacementCount() == null && r.joinedPlacementCount() == null && r.traineeCount() != null && r.traineeCount() > 0 && r.placementRatePct() != null)) {
+        primarySuppressedJoined++;
+      }
+    }
+    if (primarySuppressedJoined == 1) {
+      int minIdx = -1;
+      Long minVal = null;
+      for (int i = 0; i < step1.size(); i++) {
+        QprExportRow s = step1.get(i);
+        if (s.joinedPlacementCount() != null && s.joinedPlacementCount() >= MIN_ANONYMITY_THRESHOLD) {
+          if (minVal == null || s.joinedPlacementCount() < minVal) {
+            minVal = s.joinedPlacementCount();
+            minIdx = i;
+          }
+        }
+      }
+      if (minIdx != -1) {
+        QprExportRow target = step1.get(minIdx);
+        step1.set(minIdx, new QprExportRow(
+            target.stateId(), target.stateCode(), target.stateName(),
+            target.fiscalYear(), target.quarter(),
+            target.enrollmentCount(), target.traineeCount(), target.completedCount(), target.certifiedCount(),
+            null, target.employedCount(),
+            target.completionRatePct(), target.certificationRatePct(), null, target.employmentRatePct(),
+            target.rank()
+        ));
+      }
+    }
+
+    // 5. Secondary suppression on sensitive outcome: employedCount
+    int primarySuppressedEmployed = 0;
+    for (int i = 0; i < responses.size(); i++) {
+      QprExportRow r = responses.get(i);
+      QprExportRow s = step1.get(i);
+      if (isSparse(r.employedCount())
+          || (s.employedCount() == null && r.employedCount() != null && r.employedCount() > 0)
+          || (s.employedCount() == null && r.employedCount() == null && r.traineeCount() != null && r.traineeCount() > 0 && r.employmentRatePct() != null)) {
+        primarySuppressedEmployed++;
+      }
+    }
+    if (primarySuppressedEmployed == 1) {
+      int minIdx = -1;
+      Long minVal = null;
+      for (int i = 0; i < step1.size(); i++) {
+        QprExportRow s = step1.get(i);
+        if (s.employedCount() != null && s.employedCount() >= MIN_ANONYMITY_THRESHOLD) {
+          if (minVal == null || s.employedCount() < minVal) {
+            minVal = s.employedCount();
+            minIdx = i;
+          }
+        }
+      }
+      if (minIdx != -1) {
+        QprExportRow target = step1.get(minIdx);
+        step1.set(minIdx, new QprExportRow(
+            target.stateId(), target.stateCode(), target.stateName(),
+            target.fiscalYear(), target.quarter(),
+            target.enrollmentCount(), target.traineeCount(), target.completedCount(), target.certifiedCount(),
+            target.joinedPlacementCount(), null,
+            target.completionRatePct(), target.certificationRatePct(), target.placementRatePct(),
+            null,
+            target.rank()
+        ));
+      }
+    }
+
+    return step1;
+  }
+
+  public ProviderScorecardExportRow applyPrivacyGuardrail(ProviderScorecardExportRow row) {
+    if (row == null) {
+      return null;
+    }
+    if (isSparse(row.traineeCount())) {
+      return new ProviderScorecardExportRow(
+          row.providerId(), row.providerCode(), row.providerName(),
+          row.stateName(), row.districtName(),
+          row.activeBatchCapacity(),
+          null, null, null, null, null, null,
+          null, null, null, null,
+          row.rank()
+      );
+    }
+
+    Long enrollmentCount = isSparse(row.enrollmentCount()) ? null : row.enrollmentCount();
+    Long traineeCount = row.traineeCount();
+
+    boolean sComp = isSparse(row.completedCount());
+    Long completedCount = sComp ? null : row.completedCount();
+    BigDecimal completionRatePct = sComp || completedCount == null ? null : row.completionRatePct();
+
+    boolean sCert = isSparse(row.certifiedCount());
+    Long certifiedCount = sCert ? null : row.certifiedCount();
+    BigDecimal certificationRatePct = sCert || certifiedCount == null ? null : row.certificationRatePct();
+
+    boolean sJoin = isSparse(row.joinedPlacementCount());
+    Long joinedPlacementCount = sJoin ? null : row.joinedPlacementCount();
+    BigDecimal placementRatePct = sJoin || joinedPlacementCount == null ? null : row.placementRatePct();
+
+    boolean sEmp = isSparse(row.employedCount());
+    Long employedCount = sEmp ? null : row.employedCount();
+    BigDecimal employmentRatePct = sEmp || employedCount == null ? null : row.employmentRatePct();
+
+    return new ProviderScorecardExportRow(
+        row.providerId(), row.providerCode(), row.providerName(),
+        row.stateName(), row.districtName(),
+        row.activeBatchCapacity(),
+        enrollmentCount, traineeCount, completedCount, certifiedCount,
+        joinedPlacementCount, employedCount,
+        completionRatePct, certificationRatePct, placementRatePct, employmentRatePct,
+        row.rank()
+    );
+  }
+
+  public List<ProviderScorecardExportRow> applyPrivacyGuardrailsToProviderScorecards(List<ProviderScorecardExportRow> rows) {
+    if (rows == null || rows.isEmpty()) {
+      return rows != null ? rows : Collections.emptyList();
+    }
+    List<ProviderScorecardExportRow> safeList = new ArrayList<>(rows.size());
+    for (ProviderScorecardExportRow row : rows) {
+      safeList.add(applyPrivacyGuardrail(row));
+    }
+    return safeList;
   }
 }

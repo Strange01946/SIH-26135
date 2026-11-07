@@ -693,6 +693,9 @@ public class GlobalExceptionHandler {
       case "NOT_ACCEPTABLE" -> "Requested media type is not acceptable";
       case "DATABASE_ERROR" -> "An unexpected database error occurred. Please try again later.";
       case "INTERNAL_SERVER_ERROR" -> "An unexpected error occurred. Please try again later.";
+      case "EXPORT_RATE_LIMIT_EXCEEDED" -> "Export rate limit exceeded. Please retry later.";
+      case "EXPORT_ROW_LIMIT_EXCEEDED" -> "Requested export exceeds maximum allowed row limit";
+      case "EXPORT_CONCURRENCY_LIMIT_EXCEEDED" -> "Concurrent export limit exceeded. Please retry when active export completes.";
       default -> {
         if (status == null || status.is5xxServerError()) {
           yield "An unexpected error occurred. Please try again later.";
@@ -869,6 +872,26 @@ public class GlobalExceptionHandler {
       }
     }
     return new ResponseEntity<>(response, responseHeaders, status);
+  }
+
+  @ExceptionHandler(RateLimitExceededException.class)
+  public ResponseEntity<ErrorResponse> handleRateLimitExceededException(RateLimitExceededException ex, HttpServletRequest request) {
+    String clientMessage = resolveSafeClientMessage(ex);
+    String uri = sanitizeUri(request);
+    log.warn("Rate limit exception on {}: status={}, code={}, retryAfter={}",
+        uri, ex.getStatus().value(), ex.getErrorCode(), ex.getRetryAfterSeconds());
+    ErrorResponse errorResponse = new ErrorResponse(
+        ex.getStatus().value(),
+        ex.getStatus().getReasonPhrase(),
+        ex.getErrorCode(),
+        clientMessage,
+        uri
+    );
+    HttpHeaders headers = new HttpHeaders();
+    if (ex.getRetryAfterSeconds() > 0) {
+      headers.set(HttpHeaders.RETRY_AFTER, String.valueOf(ex.getRetryAfterSeconds()));
+    }
+    return buildSanitizedResponse(errorResponse, headers, ex.getStatus());
   }
 
   @ExceptionHandler(BaseException.class)
