@@ -712,7 +712,11 @@ public class AnalyticsStatisticalDisclosureControlTest {
       assertThat(jsonContent).doesNotContain("aadhaar");
       assertThat(jsonContent).doesNotContain("traineeName");
       assertThat(jsonContent).doesNotContain("panNumber");
-      var matcher = PII_PATTERN.matcher(jsonContent);
+      // Strip metadata envelope fields (correlationId random UUIDs and ISO timestamps) to prevent false-positive PII matches
+      String payload = jsonContent
+          .replaceAll("\"correlationId\"\\s*:\\s*\"[^\"]*\"", "")
+          .replaceAll("\"timestamp\"\\s*:\\s*\"[^\"]*\"", "");
+      var matcher = PII_PATTERN.matcher(payload);
       if (matcher.find()) {
         org.junit.jupiter.api.Assertions.fail("Response JSON contains sensitive pattern match: '" + matcher.group() + "' in " + jsonContent);
       }

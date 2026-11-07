@@ -638,7 +638,14 @@ public class GlobalExceptionHandler {
       "Demographic dimension 'pwd' is not supported by the existing database schema",
       "Cannot specify both fiscalYear and calendarYear.",
       "Cannot specify custom date range alongside fiscalYear or calendarYear.",
-      "startDate must be before or equal to endDate."
+      "startDate must be before or equal to endDate.",
+
+      // 7. Operational Management & Governance Constraints
+      "Audit log records are immutable and cannot be modified or deleted",
+      "Data quality rule not found",
+      "Invalid data quality issue state transition",
+      "Import batch is in a terminal state and cannot be modified",
+      "Requested import exceeds maximum allowed row limit"
   )));
 
   private String getSafeMessageForErrorCode(String errorCode, HttpStatus status) {
@@ -696,6 +703,11 @@ public class GlobalExceptionHandler {
       case "EXPORT_RATE_LIMIT_EXCEEDED" -> "Export rate limit exceeded. Please retry later.";
       case "EXPORT_ROW_LIMIT_EXCEEDED" -> "Requested export exceeds maximum allowed row limit";
       case "EXPORT_CONCURRENCY_LIMIT_EXCEEDED" -> "Concurrent export limit exceeded. Please retry when active export completes.";
+      case OperationalErrorCodes.AUDIT_LOG_IMMUTABLE -> "Audit log records are immutable and cannot be modified or deleted";
+      case OperationalErrorCodes.DQ_RULE_NOT_FOUND -> "Data quality rule not found";
+      case OperationalErrorCodes.INVALID_DQ_TRANSITION -> "Invalid data quality issue state transition";
+      case OperationalErrorCodes.IMPORT_BATCH_TERMINAL -> "Import batch is in a terminal state and cannot be modified";
+      case OperationalErrorCodes.IMPORT_ROW_LIMIT_EXCEEDED -> "Requested import exceeds maximum allowed row limit";
       default -> {
         if (status == null || status.is5xxServerError()) {
           yield "An unexpected error occurred. Please try again later.";
