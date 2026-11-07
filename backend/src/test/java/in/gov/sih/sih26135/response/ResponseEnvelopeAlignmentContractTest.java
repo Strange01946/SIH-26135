@@ -150,10 +150,10 @@ public class ResponseEnvelopeAlignmentContractTest {
           .sorted(Comparator.comparing(Class::getName))
           .toList();
 
-      // Baseline comparison: User specification noted 54 as baseline; verified actual production count is 62 (55 baseline + ExecutiveDashboardController + GeographicDashboardController + InstitutionalAnalyticsController + EconomicOutcomeDashboardController + RetentionAttritionDashboardController + SkillGapDashboardController + DataIntegrityDashboardController).
+      // Baseline comparison: User specification noted 54 as baseline; verified actual production count is 63 (55 baseline + ExecutiveDashboardController + GeographicDashboardController + InstitutionalAnalyticsController + EconomicOutcomeDashboardController + RetentionAttritionDashboardController + SkillGapDashboardController + DataIntegrityDashboardController + AnalyticsExportController).
       assertThat(productionControllers)
-          .as("Audit must discover exactly 62 production REST controllers across core domain, analytics, auth, and workflows")
-          .hasSize(62);
+          .as("Audit must discover exactly 63 production REST controllers across core domain, analytics, auth, workflows, and exports")
+          .hasSize(63);
 
       int totalAuditedEndpoints = 0;
       List<String> violations = new ArrayList<>();
@@ -181,7 +181,7 @@ public class ResponseEnvelopeAlignmentContractTest {
             continue;
           }
 
-          // Check generic return type is ApiResponse
+          // Check generic return type is ApiResponse or StreamingResponseBody for streaming exports
           Type genericReturnType = method.getGenericReturnType();
           if (!(genericReturnType instanceof ParameterizedType parameterizedType)) {
             violations.add(String.format("%s.%s has raw ResponseEntity return type without ApiResponse generic",
@@ -197,7 +197,7 @@ public class ResponseEnvelopeAlignmentContractTest {
           }
 
           String genericTypeName = typeArgs[0].getTypeName();
-          if (!genericTypeName.contains("ApiResponse")) {
+          if (!genericTypeName.contains("ApiResponse") && !genericTypeName.contains("StreamingResponseBody")) {
             violations.add(String.format("%s.%s returns ResponseEntity<%s>, expected ResponseEntity<ApiResponse<...>>",
                 controllerClass.getSimpleName(), method.getName(), genericTypeName));
           }
@@ -210,7 +210,7 @@ public class ResponseEnvelopeAlignmentContractTest {
 
       assertThat(totalAuditedEndpoints)
           .as("Audit must inspect and verify all endpoints across all controllers")
-          .isEqualTo(647);
+          .isEqualTo(653);
     }
 
     @Test

@@ -34,7 +34,10 @@ public final class AnalyticsQueryFilterBuilder {
     }
 
     public String getSqlFragment() {
-      return sqlFragment;
+      if (sqlFragment == null || sqlFragment.isBlank()) {
+        return "";
+      }
+      return (sqlFragment.endsWith("\n") || sqlFragment.endsWith(" ")) ? sqlFragment : sqlFragment + "\n";
     }
 
     public List<Object> getParameters() {

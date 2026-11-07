@@ -83,7 +83,7 @@ class PlacementToEmploymentTransitionTest {
   void testTransitionPlacement_validSourceStatusOffered_success() {
     PlacementRecordResponse placement = buildPlacementResponse("OFFERED", "PENDING", null);
     when(placementRecordService.getPlacementRecordById(10L)).thenReturn(placement);
-    when(employmentRecordRepository.findByPlacementRecordId(10L)).thenReturn(Optional.empty());
+    when(employmentRecordRepository.existsByPlacementRecordId(10L)).thenReturn(false);
 
     CreateEmploymentRecordRequest empReq = new CreateEmploymentRecordRequest();
     empReq.setEmploymentNumber("EMP-OFFERED");
@@ -122,7 +122,7 @@ class PlacementToEmploymentTransitionTest {
   void testTransitionPlacement_validSourceStatusAccepted_success() {
     PlacementRecordResponse placement = buildPlacementResponse("ACCEPTED", "PENDING", null);
     when(placementRecordService.getPlacementRecordById(10L)).thenReturn(placement);
-    when(employmentRecordRepository.findByPlacementRecordId(10L)).thenReturn(Optional.empty());
+    when(employmentRecordRepository.existsByPlacementRecordId(10L)).thenReturn(false);
 
     CreateEmploymentRecordRequest empReq = new CreateEmploymentRecordRequest();
     empReq.setEmploymentNumber("EMP-ACCEPTED");
@@ -161,7 +161,7 @@ class PlacementToEmploymentTransitionTest {
   void testTransitionPlacement_validSourceStatusJoined_success() {
     PlacementRecordResponse placement = buildPlacementResponse("JOINED", "JOINED", null);
     when(placementRecordService.getPlacementRecordById(10L)).thenReturn(placement);
-    when(employmentRecordRepository.findByPlacementRecordId(10L)).thenReturn(Optional.empty());
+    when(employmentRecordRepository.existsByPlacementRecordId(10L)).thenReturn(false);
 
     CreateEmploymentRecordRequest empReq = new CreateEmploymentRecordRequest();
     empReq.setEmploymentNumber("EMP-JOINED");
@@ -312,7 +312,7 @@ class PlacementToEmploymentTransitionTest {
   void testTransitionPlacement_alreadyTransitioned_rejected() {
     PlacementRecordResponse placement = buildPlacementResponse("JOINED", "JOINED", null);
     when(placementRecordService.getPlacementRecordById(10L)).thenReturn(placement);
-    when(employmentRecordRepository.findByPlacementRecordId(10L)).thenReturn(Optional.of(new EmploymentRecord()));
+    when(employmentRecordRepository.existsByPlacementRecordId(10L)).thenReturn(true);
 
     PlacementToEmploymentTransitionRequest request = new PlacementToEmploymentTransitionRequest();
     request.setPlacementId(10L);
@@ -351,7 +351,7 @@ class PlacementToEmploymentTransitionTest {
   void testTransitionPlacement_initialSalaryTraineeMismatch_rejectedUpfront() {
     PlacementRecordResponse placement = buildPlacementResponse("OFFERED", "PENDING", null);
     when(placementRecordService.getPlacementRecordById(10L)).thenReturn(placement);
-    when(employmentRecordRepository.findByPlacementRecordId(10L)).thenReturn(Optional.empty());
+    when(employmentRecordRepository.existsByPlacementRecordId(10L)).thenReturn(false);
 
     CreateEmploymentRecordRequest empReq = new CreateEmploymentRecordRequest();
     empReq.setTraineeId(100L);
@@ -377,7 +377,7 @@ class PlacementToEmploymentTransitionTest {
   void testTransitionPlacement_salaryCreationFailure_propagatesException() {
     PlacementRecordResponse placement = buildPlacementResponse("OFFERED", "PENDING", null);
     when(placementRecordService.getPlacementRecordById(10L)).thenReturn(placement);
-    when(employmentRecordRepository.findByPlacementRecordId(10L)).thenReturn(Optional.empty());
+    when(employmentRecordRepository.existsByPlacementRecordId(10L)).thenReturn(false);
 
     CreateEmploymentRecordRequest empReq = new CreateEmploymentRecordRequest();
     empReq.setTraineeId(100L);

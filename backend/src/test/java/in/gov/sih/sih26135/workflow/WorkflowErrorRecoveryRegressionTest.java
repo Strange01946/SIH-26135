@@ -218,7 +218,7 @@ class WorkflowErrorRecoveryRegressionTest {
       when(placement.employerId()).thenReturn(20L);
       when(placement.placementStatusCode()).thenReturn("OFFERED");
       when(placementRecordService.getPlacementRecordById(10L)).thenReturn(placement);
-      when(employmentRecordRepository.findByPlacementRecordId(10L)).thenReturn(Optional.empty());
+      when(employmentRecordRepository.existsByPlacementRecordId(10L)).thenReturn(false);
 
       assertThatThrownBy(() -> service.transitionPlacementToEmployment(req))
           .isInstanceOf(BadRequestException.class)
@@ -243,7 +243,7 @@ class WorkflowErrorRecoveryRegressionTest {
       when(placementRecordService.getPlacementRecordById(10L)).thenReturn(placement);
 
       // Simulate that this placement already transitioned into an employment record
-      when(employmentRecordRepository.findByPlacementRecordId(10L)).thenReturn(Optional.of(mock(in.gov.sih.sih26135.entity.EmploymentRecord.class)));
+      when(employmentRecordRepository.existsByPlacementRecordId(10L)).thenReturn(true);
 
       assertThatThrownBy(() -> service.transitionPlacementToEmployment(req))
           .isInstanceOf(ConflictException.class)
@@ -269,7 +269,7 @@ class WorkflowErrorRecoveryRegressionTest {
       when(placement.employerId()).thenReturn(20L);
       when(placement.placementStatusCode()).thenReturn("JOINED");
       when(placementRecordService.getPlacementRecordById(10L)).thenReturn(placement);
-      when(employmentRecordRepository.findByPlacementRecordId(10L)).thenReturn(Optional.empty());
+      when(employmentRecordRepository.existsByPlacementRecordId(10L)).thenReturn(false);
 
       EmploymentRecordResponse createdEmp = mock(EmploymentRecordResponse.class);
       when(createdEmp.id()).thenReturn(100L);

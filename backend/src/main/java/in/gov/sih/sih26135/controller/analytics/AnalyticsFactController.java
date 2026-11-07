@@ -3,6 +3,8 @@ package in.gov.sih.sih26135.controller.analytics;
 import org.springframework.validation.annotation.Validated;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 import in.gov.sih.sih26135.dto.response.EmploymentExitFactResponse;
 import in.gov.sih.sih26135.dto.response.EmploymentFactResponse;
 import in.gov.sih.sih26135.dto.response.EmploymentRetentionFactResponse;
@@ -109,8 +111,8 @@ public class AnalyticsFactController {
       "!isVoluntaryFlag", "!isInvoluntaryFlag"
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentExitFactResponse>>> getAllEmploymentExits(
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -138,8 +140,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentExitFactResponse>>> getEmploymentExitsByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -160,8 +162,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentExitFactResponse>>> getEmploymentExitsByEmploymentId(
       @RequestParam("employmentId") @Positive Long employmentId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -182,8 +184,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentExitFactResponse>>> getEmploymentExitsByExitReasonId(
       @RequestParam("employmentExitReasonId") @Positive Long employmentExitReasonId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -204,8 +206,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentExitFactResponse>>> getEmploymentExitsBySeparationNatureId(
       @RequestParam("separationNatureId") @Positive Long separationNatureId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -226,8 +228,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentExitFactResponse>>> getEmploymentExitsByIsVoluntaryFlag(
       @RequestParam("isVoluntaryFlag") Boolean isVoluntaryFlag,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -248,8 +250,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentExitFactResponse>>> getEmploymentExitsByIsInvoluntaryFlag(
       @RequestParam("isInvoluntaryFlag") Boolean isInvoluntaryFlag,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -273,8 +275,8 @@ public class AnalyticsFactController {
       "!placementId", "!jobRoleId", "!isCurrent", "!engagementTypeId", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentFactResponse>>> getAllEmployments(
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -314,8 +316,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentFactResponse>>> getEmploymentsByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -336,8 +338,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentFactResponse>>> getEmploymentsByEmployerId(
       @RequestParam("employerId") @Positive Long employerId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -358,8 +360,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentFactResponse>>> getEmploymentsByEnrollmentId(
       @RequestParam("enrollmentId") @Positive Long enrollmentId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -380,8 +382,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentFactResponse>>> getEmploymentsByPlacementId(
       @RequestParam("placementId") @Positive Long placementId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -402,8 +404,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentFactResponse>>> getEmploymentsByJobRoleId(
       @RequestParam("jobRoleId") @Positive Long jobRoleId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -424,8 +426,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentFactResponse>>> getCurrentEmployments(
       @RequestParam("isCurrent") boolean isCurrent,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -449,8 +451,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentFactResponse>>> getEmploymentsByEngagementTypeId(
       @RequestParam("engagementTypeId") @Positive Long engagementTypeId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -471,8 +473,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentFactResponse>>> getEmploymentsByTraineeDistrictId(
       @RequestParam("traineeDistrictId") @Positive Long traineeDistrictId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -495,8 +497,8 @@ public class AnalyticsFactController {
       "!traineeId", "!enrollmentId", "!engagementTypeId", "!isCurrent"
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentRetentionFactResponse>>> getAllEmploymentRetentions(
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -523,8 +525,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentRetentionFactResponse>>> getEmploymentRetentionsByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -544,8 +546,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentRetentionFactResponse>>> getEmploymentRetentionsByEnrollmentId(
       @RequestParam("enrollmentId") @Positive Long enrollmentId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -565,8 +567,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentRetentionFactResponse>>> getEmploymentRetentionsByEngagementTypeId(
       @RequestParam("engagementTypeId") @Positive Long engagementTypeId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -586,8 +588,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentRetentionFactResponse>>> getCurrentEmploymentRetentions(
       @RequestParam("isCurrent") boolean isCurrent,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -614,8 +616,8 @@ public class AnalyticsFactController {
       "!employerId", "!statusId", "!methodId", "!isCurrent", "!isVerifiedFlag"
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationFactResponse>>> getAllEmploymentVerifications(
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -656,8 +658,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -678,8 +680,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByEmploymentId(
       @RequestParam("employmentId") @Positive Long employmentId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -700,8 +702,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByPlacementId(
       @RequestParam("placementId") @Positive Long placementId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -722,8 +724,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByEmployerId(
       @RequestParam("employerId") @Positive Long employerId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -744,8 +746,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByStatusId(
       @RequestParam("statusId") @Positive Long statusId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -766,8 +768,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByMethodId(
       @RequestParam("methodId") @Positive Long methodId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -788,8 +790,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationFactResponse>>> getCurrentEmploymentVerifications(
       @RequestParam("isCurrent") boolean isCurrent,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -813,8 +815,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EmploymentVerificationFactResponse>>> getEmploymentVerificationsByIsVerifiedFlag(
       @RequestParam("isVerifiedFlag") Boolean isVerifiedFlag,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -838,8 +840,8 @@ public class AnalyticsFactController {
       "!providerId", "!batchId", "!traineeDistrictId", "!traineeStateId"
   })
   public ResponseEntity<ApiResponse<PagedResponse<EnrollmentOutcomeFactResponse>>> getAllEnrollmentOutcomes(
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -880,8 +882,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -902,8 +904,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByProgramId(
       @RequestParam("programId") @Positive Long programId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -924,8 +926,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByCourseId(
       @RequestParam("courseId") @Positive Long courseId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -946,8 +948,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByProviderId(
       @RequestParam("providerId") @Positive Long providerId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -968,8 +970,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByBatchId(
       @RequestParam("batchId") @Positive Long batchId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -990,8 +992,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByTraineeDistrictId(
       @RequestParam("traineeDistrictId") @Positive Long traineeDistrictId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1012,8 +1014,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<EnrollmentOutcomeFactResponse>>> getEnrollmentOutcomesByTraineeStateId(
       @RequestParam("traineeStateId") @Positive Long traineeStateId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1037,8 +1039,8 @@ public class AnalyticsFactController {
       "!statusId", "!outcomeId", "!isOpenFlag"
   })
   public ResponseEntity<ApiResponse<PagedResponse<FollowupFactResponse>>> getAllFollowupFacts(
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1066,8 +1068,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<FollowupFactResponse>>> getFollowupFactsByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1088,8 +1090,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<FollowupFactResponse>>> getFollowupFactsByCampaignId(
       @RequestParam("campaignId") @Positive Long campaignId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1110,8 +1112,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<FollowupFactResponse>>> getFollowupFactsByTypeId(
       @RequestParam("typeId") @Positive Long typeId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1132,8 +1134,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<FollowupFactResponse>>> getFollowupFactsByTypeCode(
       @RequestParam("typeCode") @NotBlank String typeCode,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1154,8 +1156,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<FollowupFactResponse>>> getFollowupFactsByStatusId(
       @RequestParam("statusId") @Positive Long statusId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1176,8 +1178,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<FollowupFactResponse>>> getFollowupFactsByOutcomeId(
       @RequestParam("outcomeId") @Positive Long outcomeId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1198,8 +1200,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<FollowupFactResponse>>> getFollowupFactsByIsOpenFlag(
       @RequestParam("isOpenFlag") Boolean isOpenFlag,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1223,8 +1225,8 @@ public class AnalyticsFactController {
       "!courseId", "!programId", "!providerId", "!jobRoleId", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<PagedResponse<PlacementFactResponse>>> getAllPlacements(
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1264,8 +1266,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<PlacementFactResponse>>> getPlacementsByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1286,8 +1288,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<PlacementFactResponse>>> getPlacementsByEnrollmentId(
       @RequestParam("enrollmentId") @Positive Long enrollmentId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1308,8 +1310,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<PlacementFactResponse>>> getPlacementsByEmployerId(
       @RequestParam("employerId") @Positive Long employerId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1330,8 +1332,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<PlacementFactResponse>>> getPlacementsByCourseId(
       @RequestParam("courseId") @Positive Long courseId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1352,8 +1354,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<PlacementFactResponse>>> getPlacementsByProgramId(
       @RequestParam("programId") @Positive Long programId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1374,8 +1376,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<PlacementFactResponse>>> getPlacementsByProviderId(
       @RequestParam("providerId") @Positive Long providerId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1396,8 +1398,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<PlacementFactResponse>>> getPlacementsByJobRoleId(
       @RequestParam("jobRoleId") @Positive Long jobRoleId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1418,8 +1420,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<PlacementFactResponse>>> getPlacementsByTraineeDistrictId(
       @RequestParam("traineeDistrictId") @Positive Long traineeDistrictId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1442,8 +1444,8 @@ public class AnalyticsFactController {
       "!traineeId", "!enrollmentId", "!courseId", "!providerId", "!engagementTypeId"
   })
   public ResponseEntity<ApiResponse<PagedResponse<SalaryProgressionFactResponse>>> getAllSalaryProgressions(
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1470,8 +1472,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SalaryProgressionFactResponse>>> getSalaryProgressionsByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1491,8 +1493,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SalaryProgressionFactResponse>>> getSalaryProgressionsByEnrollmentId(
       @RequestParam("enrollmentId") @Positive Long enrollmentId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1512,8 +1514,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SalaryProgressionFactResponse>>> getSalaryProgressionsByCourseId(
       @RequestParam("courseId") @Positive Long courseId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1533,8 +1535,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SalaryProgressionFactResponse>>> getSalaryProgressionsByProviderId(
       @RequestParam("providerId") @Positive Long providerId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1554,8 +1556,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SalaryProgressionFactResponse>>> getSalaryProgressionsByEngagementTypeId(
       @RequestParam("engagementTypeId") @Positive Long engagementTypeId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1579,8 +1581,8 @@ public class AnalyticsFactController {
       "!jobRoleId", "!severityId", "!statusId", "!isCurrent", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<PagedResponse<SkillGapFactResponse>>> getAllSkillGaps(
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1620,8 +1622,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SkillGapFactResponse>>> getSkillGapsByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1642,8 +1644,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SkillGapFactResponse>>> getSkillGapsBySkillId(
       @RequestParam("skillId") @Positive Long skillId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1664,8 +1666,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SkillGapFactResponse>>> getSkillGapsByCourseId(
       @RequestParam("courseId") @Positive Long courseId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1686,8 +1688,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SkillGapFactResponse>>> getSkillGapsByJobRoleId(
       @RequestParam("jobRoleId") @Positive Long jobRoleId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1708,8 +1710,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SkillGapFactResponse>>> getSkillGapsBySeverityId(
       @RequestParam("severityId") @Positive Long severityId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1730,8 +1732,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SkillGapFactResponse>>> getSkillGapsByStatusId(
       @RequestParam("statusId") @Positive Long statusId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1752,8 +1754,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SkillGapFactResponse>>> getCurrentSkillGaps(
       @RequestParam("isCurrent") boolean isCurrent,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1777,8 +1779,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SkillGapFactResponse>>> getSkillGapsByTraineeDistrictId(
       @RequestParam("traineeDistrictId") @Positive Long traineeDistrictId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1802,8 +1804,8 @@ public class AnalyticsFactController {
       "!programId", "!courseId", "!batchId", "!enrollmentId", "!followupTaskId", "!isSubmittedFlag"
   })
   public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getAllSurveyResponses(
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1831,8 +1833,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getSurveyResponsesByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1853,8 +1855,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getSurveyResponsesBySurveyId(
       @RequestParam("surveyId") @Positive Long surveyId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1875,8 +1877,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getSurveyResponsesBySurveyPurposeId(
       @RequestParam("surveyPurposeId") @Positive Long surveyPurposeId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1897,8 +1899,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getSurveyResponsesBySurveyPurposeCode(
       @RequestParam("surveyPurposeCode") @NotBlank String surveyPurposeCode,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1919,8 +1921,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getSurveyResponsesByProgramId(
       @RequestParam("programId") @Positive Long programId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1941,8 +1943,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getSurveyResponsesByCourseId(
       @RequestParam("courseId") @Positive Long courseId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1963,8 +1965,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getSurveyResponsesByBatchId(
       @RequestParam("batchId") @Positive Long batchId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -1985,8 +1987,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getSurveyResponsesByEnrollmentId(
       @RequestParam("enrollmentId") @Positive Long enrollmentId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -2007,8 +2009,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getSurveyResponsesByFollowupTaskId(
       @RequestParam("followupTaskId") @Positive Long followupTaskId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -2029,8 +2031,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<SurveyResponseFactResponse>>> getSurveyResponsesByIsSubmittedFlag(
       @RequestParam("isSubmittedFlag") Boolean isSubmittedFlag,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -2053,8 +2055,8 @@ public class AnalyticsFactController {
       "!traineeId", "!unemploymentReasonId", "!labourStatusId", "!isCurrent", "!traineeDistrictId"
   })
   public ResponseEntity<ApiResponse<PagedResponse<UnemploymentFactResponse>>> getAllUnemploymentFacts(
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -2081,8 +2083,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<UnemploymentFactResponse>>> getUnemploymentFactsByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -2102,8 +2104,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<UnemploymentFactResponse>>> getUnemploymentFactsByUnemploymentReasonId(
       @RequestParam("unemploymentReasonId") @Positive Long unemploymentReasonId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -2123,8 +2125,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<UnemploymentFactResponse>>> getUnemploymentFactsByLabourStatusId(
       @RequestParam("labourStatusId") @Positive Long labourStatusId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -2144,8 +2146,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<UnemploymentFactResponse>>> getCurrentUnemploymentFacts(
       @RequestParam("isCurrent") boolean isCurrent,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
@@ -2168,8 +2170,8 @@ public class AnalyticsFactController {
   })
   public ResponseEntity<ApiResponse<PagedResponse<UnemploymentFactResponse>>> getUnemploymentFactsByTraineeDistrictId(
       @RequestParam("traineeDistrictId") @Positive Long traineeDistrictId,
-      @RequestParam(name = "page", defaultValue = "0") int page,
-      @RequestParam(name = "size", defaultValue = "20") int size,
+      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(name = "sort", required = false) String sort,
       @RequestParam(name = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {

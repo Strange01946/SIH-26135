@@ -340,10 +340,10 @@ class DuplicateRequestsAndConcurrencySafetyTest {
           null
       );
       when(placementService.getPlacementRecordById(10L)).thenReturn(placement);
-      when(empRepo.findByPlacementRecordId(10L)).thenReturn(Optional.of(new in.gov.sih.sih26135.entity.EmploymentRecord()));
+      when(empRepo.existsByPlacementRecordId(10L)).thenReturn(true);
 
       PlacementEmploymentWorkflowServiceImpl workflowService = new PlacementEmploymentWorkflowServiceImpl(
-          placementService, null, null, empRepo, null, null, mock(WorkflowSecurityScopeValidator.class)
+          placementService, mock(EmploymentRecordService.class), null, empRepo, null, null, mock(WorkflowSecurityScopeValidator.class)
       );
 
       PlacementToEmploymentTransitionRequest req = new PlacementToEmploymentTransitionRequest();
@@ -414,7 +414,7 @@ class DuplicateRequestsAndConcurrencySafetyTest {
 
       // Thread 1 succeeds; Thread 2 encounters database unique constraint during race
       AtomicInteger callCount = new AtomicInteger(0);
-      when(employmentRecordRepository.findByPlacementRecordId(10L)).thenReturn(Optional.empty());
+      when(employmentRecordRepository.existsByPlacementRecordId(10L)).thenReturn(false);
       when(employmentRecordService.createEmploymentRecord(any())).thenAnswer(invocation -> {
         if (callCount.incrementAndGet() == 1) {
           return successResponse;
