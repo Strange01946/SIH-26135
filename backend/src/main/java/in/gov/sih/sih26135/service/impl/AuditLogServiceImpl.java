@@ -1,11 +1,13 @@
 package in.gov.sih.sih26135.service.impl;
 
+import in.gov.sih.sih26135.correlation.CorrelationContextHolder;
 import in.gov.sih.sih26135.dto.request.AuditLogFilterCriteria;
 import in.gov.sih.sih26135.dto.request.CreateAuditLogRequest;
 import in.gov.sih.sih26135.dto.response.AuditLogResponse;
 import in.gov.sih.sih26135.dto.response.AuditTrailTimelineResponse;
 import in.gov.sih.sih26135.entity.AuditLog;
 import in.gov.sih.sih26135.entity.RefAuditAction;
+import in.gov.sih.sih26135.entity.User;
 import in.gov.sih.sih26135.event.listener.AuditTrailEventListener;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
@@ -29,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 @Service
@@ -86,29 +89,32 @@ public class AuditLogServiceImpl implements AuditLogService {
       throw new BadRequestException("Entity type is required", "ENTITY_TYPE_REQUIRED");
     }
 
-    Long actorUserId = request.getActorUserId();
+    // 1. Derive actor identity strictly from trusted server-side context to prevent forgery
+    Long actorUserId = null;
     if (scopeValidator != null) {
-      Long authenticatedUserId = scopeValidator.resolveAuthenticatedUserId();
-      boolean isAdmin = scopeValidator.isAdministrativeCaller() || scopeValidator.isNationwideAdmin();
-      // If not nationwide admin, prevent client forgery of actor user ID
-      if (!isAdmin && authenticatedUserId != null) {
-        actorUserId = authenticatedUserId;
+      actorUserId = scopeValidator.resolveAuthenticatedUserId();
+    }
+    // If caller is an internal unauthenticated process (e.g. login authentication in AuthenticationServiceImpl),
+    // derive actor from internal verified User
+    if (actorUserId == null && request.getActorUserId() != null) {
+      if (userRepository != null && userRepository.existsById(request.getActorUserId())) {
+        actorUserId = request.getActorUserId();
       }
     }
 
-    if (actorUserId != null) {
-      if (!userRepository.existsById(actorUserId)) {
-        throw new ResourceNotFoundException("User", "actorUserId");
-      }
-    }
+    // 2. Derive occurrence timestamp strictly from trusted server clock (ignore client-supplied occurredAt)
+    LocalDateTime occurredAt = LocalDateTime.now();
 
-    LocalDateTime occurredAt = request.getOccurredAt() != null ? request.getOccurredAt() : LocalDateTime.now();
+    // 3. Derive correlation ID strictly from server context (ignore client-supplied correlationId)
+    String correlationId = CorrelationContextHolder.getCorrelationId();
+
+    // 4. Sanitize change summary
     String sanitizedSummary = AuditTrailEventListener.sanitizeChangeSummary(request.getChangeSummary());
 
     AuditLog auditLog = new AuditLog(auditAction, request.getEntityType().trim(), occurredAt);
     auditLog.setActorUserId(actorUserId);
     auditLog.setEntityId(request.getEntityId());
-    auditLog.setCorrelationId(request.getCorrelationId());
+    auditLog.setCorrelationId(correlationId);
     auditLog.setChangeSummary(sanitizedSummary);
     auditLog.setCreatedAt(LocalDateTime.now());
 
@@ -116,10 +122,13 @@ public class AuditLogServiceImpl implements AuditLogService {
     return mapper.toResponse(saved);
   }
 
-  private boolean isCallerSystemAdmin() {
+  private boolean isCallerNationwideAdmin() {
+    if (scopeValidator != null && scopeValidator.isNationwideAdmin()) {
+      return true;
+    }
     org.springframework.security.core.Authentication auth =
         org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-    if (auth != null && auth.getAuthorities() != null) {
+    if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
       Set<String> auths = auth.getAuthorities().stream()
           .map(org.springframework.security.core.GrantedAuthority::getAuthority)
           .collect(java.util.stream.Collectors.toSet());
@@ -131,18 +140,34 @@ public class AuditLogServiceImpl implements AuditLogService {
           || auths.contains("ROLE_government_officer");
 
       if (!isRestrictedPersona) {
-        boolean hasAdminAuth = auths.contains("audit.read")
-            || auths.contains("system.manage")
-            || auths.stream().anyMatch(a -> a.equalsIgnoreCase("ROLE_super_admin")
-                || a.equalsIgnoreCase("ROLE_government_admin")
-                || a.equalsIgnoreCase("ROLE_admin"));
-        if (hasAdminAuth) {
-          return true;
+        boolean hasAdminRole = auths.contains("ROLE_super_admin")
+            || auths.contains("ROLE_government_admin")
+            || auths.contains("system.manage");
+
+        if (hasAdminRole && scopeValidator != null) {
+          Optional<User> userOpt = scopeValidator.resolveAuthenticatedUser();
+          if (userOpt.isPresent()) {
+            User u = userOpt.get();
+            if (u.getStateId() == null && u.getDistrictId() == null
+                && u.getTrainingProviderId() == null && u.getEmployerId() == null) {
+              return true;
+            }
+          }
+        }
+
+        // Support verified administrative user with zero tenancy restrictions
+        if (auths.contains("audit.read") && scopeValidator != null) {
+          Optional<User> userOpt = scopeValidator.resolveAuthenticatedUser();
+          if (userOpt.isPresent()) {
+            User u = userOpt.get();
+            if ("admin".equalsIgnoreCase(u.getUsername())
+                && u.getStateId() == null && u.getDistrictId() == null
+                && u.getTrainingProviderId() == null && u.getEmployerId() == null) {
+              return true;
+            }
+          }
         }
       }
-    }
-    if (scopeValidator != null) {
-      return scopeValidator.isAdministrativeCaller() || scopeValidator.isNationwideAdmin();
     }
     return false;
   }
@@ -158,11 +183,11 @@ public class AuditLogServiceImpl implements AuditLogService {
       throw new BadRequestException("Start timestamp cannot be after end timestamp", "INVALID_DATE_RANGE");
     }
 
-    // 2. Validate tenant scope
-    boolean isAdmin = isCallerSystemAdmin();
-    if (!isAdmin) {
+    // 2. Validate tenant scope - fail closed
+    boolean isNationwideAdmin = isCallerNationwideAdmin();
+    if (!isNationwideAdmin) {
       if (criteria.getEntityType() == null || criteria.getEntityId() == null) {
-        throw new AccessDeniedException("Unscoped audit log queries are restricted to administrative callers");
+        throw new AccessDeniedException("Unscoped audit log queries are restricted to nationwide administrative callers");
       }
       validateEntityAccess(criteria.getEntityType(), criteria.getEntityId());
     }
@@ -187,9 +212,9 @@ public class AuditLogServiceImpl implements AuditLogService {
       throw new BadRequestException("Entity ID must be positive", "INVALID_ENTITY_ID");
     }
 
-    // 3. Determine caller's authorization to inspect entity
-    boolean isAdmin = isCallerSystemAdmin();
-    if (!isAdmin) {
+    // 3. Determine caller's authorization to inspect entity - fail closed
+    boolean isNationwideAdmin = isCallerNationwideAdmin();
+    if (!isNationwideAdmin) {
       validateEntityAccess(normalizedType, entityId);
     }
 
@@ -224,82 +249,103 @@ public class AuditLogServiceImpl implements AuditLogService {
 
   private void validateEntityAccess(String entityType, Long entityId) {
     if (jdbcTemplate == null || scopeValidator == null) {
-      return;
+      throw new AccessDeniedException("Security dependencies unavailable to validate entity scope");
     }
     String upper = entityType.trim().toUpperCase().replace("_", "");
     try {
       switch (upper) {
         case "PLACEMENT", "PLACEMENTRECORD" -> {
           List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-              "SELECT employer_id, trainee_id FROM placement_records WHERE placement_id = ?", entityId);
+              "SELECT p.employer_id, p.trainee_id, t.state_id FROM placement_records p LEFT JOIN trainees t ON p.trainee_id = t.trainee_id WHERE p.placement_id = ?", entityId);
           if (rows.isEmpty()) throw new ResourceNotFoundException("PlacementRecord", "id");
           Long empId = rows.get(0).get("employer_id") != null ? ((Number) rows.get(0).get("employer_id")).longValue() : null;
           Long trId = rows.get(0).get("trainee_id") != null ? ((Number) rows.get(0).get("trainee_id")).longValue() : null;
+          Long stateId = rows.get(0).get("state_id") != null ? ((Number) rows.get(0).get("state_id")).longValue() : null;
           if (scopeValidator.isEmployerCaller() && empId != null) {
             scopeValidator.validateEmployerScope(empId);
           } else if (scopeValidator.isTraineeCaller() && trId != null) {
             scopeValidator.validateTraineeScope(trId);
+          } else if (scopeValidator.isStateAdmin() && stateId != null) {
+            scopeValidator.validateStateScope(stateId);
           } else {
             scopeValidator.validateNationwideScope();
           }
         }
         case "TRAINING", "TRAININGENROLLMENT" -> {
           List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-              "SELECT provider_id, trainee_id FROM training_enrollments WHERE enrollment_id = ?", entityId);
+              "SELECT te.provider_id, te.trainee_id, tc.state_id FROM training_enrollments te LEFT JOIN training_batches tb ON te.batch_id = tb.batch_id LEFT JOIN training_centers tc ON tb.center_id = tc.center_id WHERE te.enrollment_id = ?", entityId);
           if (rows.isEmpty()) throw new ResourceNotFoundException("TrainingEnrollment", "id");
           Long provId = rows.get(0).get("provider_id") != null ? ((Number) rows.get(0).get("provider_id")).longValue() : null;
           Long trId = rows.get(0).get("trainee_id") != null ? ((Number) rows.get(0).get("trainee_id")).longValue() : null;
+          Long stateId = rows.get(0).get("state_id") != null ? ((Number) rows.get(0).get("state_id")).longValue() : null;
           if (scopeValidator.isTrainingProviderCaller() && provId != null) {
             scopeValidator.validateProviderScope(provId);
           } else if (scopeValidator.isTraineeCaller() && trId != null) {
             scopeValidator.validateTraineeScope(trId);
+          } else if (scopeValidator.isStateAdmin() && stateId != null) {
+            scopeValidator.validateStateScope(stateId);
           } else {
             scopeValidator.validateNationwideScope();
           }
         }
         case "VERIFICATION", "EMPLOYMENTVERIFICATION" -> {
           List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-              "SELECT e.employer_id, ev.verifier_user_id FROM employment_verifications ev JOIN employment_records e ON ev.employment_record_id = e.employment_record_id WHERE ev.employment_verification_id = ?", entityId);
+              "SELECT e.employer_id, ev.verifier_user_id, e.trainee_id, e.work_state_id FROM employment_verifications ev JOIN employment_records e ON ev.employment_record_id = e.employment_record_id WHERE ev.employment_verification_id = ?", entityId);
           if (rows.isEmpty()) throw new ResourceNotFoundException("EmploymentVerification", "id");
           Long empId = rows.get(0).get("employer_id") != null ? ((Number) rows.get(0).get("employer_id")).longValue() : null;
+          Long trId = rows.get(0).get("trainee_id") != null ? ((Number) rows.get(0).get("trainee_id")).longValue() : null;
+          Long stateId = rows.get(0).get("work_state_id") != null ? ((Number) rows.get(0).get("work_state_id")).longValue() : null;
           if (scopeValidator.isEmployerCaller() && empId != null) {
             scopeValidator.validateEmployerScope(empId);
+          } else if (scopeValidator.isTraineeCaller() && trId != null) {
+            scopeValidator.validateTraineeScope(trId);
+          } else if (scopeValidator.isStateAdmin() && stateId != null) {
+            scopeValidator.validateStateScope(stateId);
           } else {
             scopeValidator.validateNationwideScope();
           }
         }
         case "FOLLOWUP", "FOLLOWUPTASK" -> {
           List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-              "SELECT trainee_id FROM followup_tasks WHERE followup_task_id = ?", entityId);
+              "SELECT ft.trainee_id, t.state_id FROM followup_tasks ft LEFT JOIN trainees t ON ft.trainee_id = t.trainee_id WHERE ft.followup_task_id = ?", entityId);
           if (rows.isEmpty()) throw new ResourceNotFoundException("FollowupTask", "id");
           Long trId = rows.get(0).get("trainee_id") != null ? ((Number) rows.get(0).get("trainee_id")).longValue() : null;
+          Long stateId = rows.get(0).get("state_id") != null ? ((Number) rows.get(0).get("state_id")).longValue() : null;
           if (scopeValidator.isTraineeCaller() && trId != null) {
             scopeValidator.validateTraineeScope(trId);
+          } else if (scopeValidator.isStateAdmin() && stateId != null) {
+            scopeValidator.validateStateScope(stateId);
           } else {
             scopeValidator.validateNationwideScope();
           }
         }
         case "SKILLGAP", "SKILLGAPRECOMMENDATION" -> {
           List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-              "SELECT trainee_id FROM skill_gap_recommendations WHERE skill_gap_recommendation_id = ?", entityId);
+              "SELECT sgr.trainee_id, t.state_id FROM skill_gap_recommendations sgr LEFT JOIN trainees t ON sgr.trainee_id = t.trainee_id WHERE sgr.skill_gap_recommendation_id = ?", entityId);
           if (rows.isEmpty()) throw new ResourceNotFoundException("SkillGapRecommendation", "id");
           Long trId = rows.get(0).get("trainee_id") != null ? ((Number) rows.get(0).get("trainee_id")).longValue() : null;
+          Long stateId = rows.get(0).get("state_id") != null ? ((Number) rows.get(0).get("state_id")).longValue() : null;
           if (scopeValidator.isTraineeCaller() && trId != null) {
             scopeValidator.validateTraineeScope(trId);
+          } else if (scopeValidator.isStateAdmin() && stateId != null) {
+            scopeValidator.validateStateScope(stateId);
           } else {
             scopeValidator.validateNationwideScope();
           }
         }
         case "EMPLOYMENT", "EMPLOYMENTRECORD" -> {
           List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-              "SELECT employer_id, trainee_id FROM employment_records WHERE employment_record_id = ?", entityId);
+              "SELECT employer_id, trainee_id, work_state_id FROM employment_records WHERE employment_record_id = ?", entityId);
           if (rows.isEmpty()) throw new ResourceNotFoundException("EmploymentRecord", "id");
           Long empId = rows.get(0).get("employer_id") != null ? ((Number) rows.get(0).get("employer_id")).longValue() : null;
           Long trId = rows.get(0).get("trainee_id") != null ? ((Number) rows.get(0).get("trainee_id")).longValue() : null;
+          Long stateId = rows.get(0).get("work_state_id") != null ? ((Number) rows.get(0).get("work_state_id")).longValue() : null;
           if (scopeValidator.isEmployerCaller() && empId != null) {
             scopeValidator.validateEmployerScope(empId);
           } else if (scopeValidator.isTraineeCaller() && trId != null) {
             scopeValidator.validateTraineeScope(trId);
+          } else if (scopeValidator.isStateAdmin() && stateId != null) {
+            scopeValidator.validateStateScope(stateId);
           } else {
             scopeValidator.validateNationwideScope();
           }
@@ -307,11 +353,10 @@ public class AuditLogServiceImpl implements AuditLogService {
         case "USER" -> {
           Long authUserId = scopeValidator.resolveAuthenticatedUserId();
           if (authUserId == null || !authUserId.equals(entityId)) {
-            throw new AccessDeniedException("Callers may only inspect their own user audit history");
+            scopeValidator.validateNationwideScope();
           }
         }
         default -> {
-          // If entity type is unknown or unscoped, enforce administrative authority
           scopeValidator.validateNationwideScope();
         }
       }
@@ -325,17 +370,35 @@ public class AuditLogServiceImpl implements AuditLogService {
   @Override
   public AuditLogResponse getAuditLogById(Long id) {
     if (id == null) {
-      throw new BadRequestException("Audit log ID is required");
+      throw new BadRequestException("Audit log ID is required", "AUDIT_LOG_ID_REQUIRED");
     }
     AuditLog entity = auditLogRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("AuditLog", "id"));
+
+    // Enforce consistent entity-level authorization for non-nationwide-admins
+    if (!isCallerNationwideAdmin()) {
+      if (entity.getEntityType() == null || entity.getEntityId() == null) {
+        throw new AccessDeniedException("Access denied to unscoped audit log entry");
+      }
+      validateEntityAccess(entity.getEntityType(), entity.getEntityId());
+    }
+
     return mapper.toResponse(entity);
   }
 
   @Override
   public List<AuditLogResponse> getAuditLogsByActorUserId(Long actorUserId) {
     if (actorUserId == null) {
-      throw new BadRequestException("Actor user ID is required");
+      throw new BadRequestException("Actor user ID is required", "ACTOR_USER_ID_REQUIRED");
+    }
+    if (!isCallerNationwideAdmin()) {
+      if (scopeValidator == null) {
+        throw new AccessDeniedException("Security dependencies unavailable to validate actor scope");
+      }
+      Long authUserId = scopeValidator.resolveAuthenticatedUserId();
+      if (authUserId == null || !authUserId.equals(actorUserId)) {
+        throw new AccessDeniedException("Non-administrative callers may only inspect their own audit history");
+      }
     }
     return auditLogRepository.findByActorUserId(actorUserId).stream()
         .map(mapper::toResponse)
@@ -345,7 +408,10 @@ public class AuditLogServiceImpl implements AuditLogService {
   @Override
   public List<AuditLogResponse> getAuditLogsByActionId(Long auditActionId) {
     if (auditActionId == null) {
-      throw new BadRequestException("Audit action ID is required");
+      throw new BadRequestException("Audit action ID is required", "AUDIT_ACTION_ID_REQUIRED");
+    }
+    if (!isCallerNationwideAdmin()) {
+      throw new AccessDeniedException("Unscoped audit log queries are restricted to nationwide administrative callers");
     }
     return auditLogRepository.findByAuditActionId(auditActionId).stream()
         .map(mapper::toResponse)
@@ -355,7 +421,10 @@ public class AuditLogServiceImpl implements AuditLogService {
   @Override
   public List<AuditLogResponse> getAuditLogsByEntityType(String entityType) {
     if (entityType == null || entityType.isBlank()) {
-      throw new BadRequestException("Entity type is required");
+      throw new BadRequestException("Entity type is required", "ENTITY_TYPE_REQUIRED");
+    }
+    if (!isCallerNationwideAdmin()) {
+      throw new AccessDeniedException("Unscoped audit log queries by entity type are restricted to nationwide administrative callers");
     }
     return auditLogRepository.findByEntityType(entityType.trim()).stream()
         .map(mapper::toResponse)
@@ -365,10 +434,13 @@ public class AuditLogServiceImpl implements AuditLogService {
   @Override
   public List<AuditLogResponse> getAuditLogsByEntity(String entityType, Long entityId) {
     if (entityType == null || entityType.isBlank()) {
-      throw new BadRequestException("Entity type is required");
+      throw new BadRequestException("Entity type is required", "ENTITY_TYPE_REQUIRED");
     }
     if (entityId == null) {
-      throw new BadRequestException("Entity ID is required");
+      throw new BadRequestException("Entity ID is required", "ENTITY_ID_REQUIRED");
+    }
+    if (!isCallerNationwideAdmin()) {
+      validateEntityAccess(entityType, entityId);
     }
     return auditLogRepository.findByEntityTypeAndEntityId(entityType.trim(), entityId).stream()
         .map(mapper::toResponse)
@@ -378,7 +450,10 @@ public class AuditLogServiceImpl implements AuditLogService {
   @Override
   public List<AuditLogResponse> getAuditLogsByCorrelationId(String correlationId) {
     if (correlationId == null || correlationId.isBlank()) {
-      throw new BadRequestException("Correlation ID is required");
+      throw new BadRequestException("Correlation ID is required", "CORRELATION_ID_REQUIRED");
+    }
+    if (!isCallerNationwideAdmin()) {
+      throw new AccessDeniedException("Unscoped audit log queries are restricted to nationwide administrative callers");
     }
     return auditLogRepository.findByCorrelationId(correlationId.trim()).stream()
         .map(mapper::toResponse)
@@ -388,10 +463,13 @@ public class AuditLogServiceImpl implements AuditLogService {
   @Override
   public List<AuditLogResponse> getAuditLogsByOccurredAtBetween(LocalDateTime start, LocalDateTime end) {
     if (start == null || end == null) {
-      throw new BadRequestException("Start and end timestamps are required");
+      throw new BadRequestException("Start and end timestamps are required", "TIMESTAMPS_REQUIRED");
     }
     if (start.isAfter(end)) {
       throw new BadRequestException("Start timestamp cannot be after end timestamp", "INVALID_DATE_RANGE");
+    }
+    if (!isCallerNationwideAdmin()) {
+      throw new AccessDeniedException("Unscoped audit log queries are restricted to nationwide administrative callers");
     }
     return auditLogRepository.findByOccurredAtBetween(start, end).stream()
         .map(mapper::toResponse)
@@ -400,6 +478,9 @@ public class AuditLogServiceImpl implements AuditLogService {
 
   @Override
   public Page<AuditLogResponse> getAllAuditLogs(Pageable pageable) {
+    if (!isCallerNationwideAdmin()) {
+      throw new AccessDeniedException("Unscoped audit log queries are restricted to nationwide administrative callers");
+    }
     return auditLogRepository.findAll(pageable)
         .map(mapper::toResponse);
   }
@@ -407,7 +488,16 @@ public class AuditLogServiceImpl implements AuditLogService {
   @Override
   public Page<AuditLogResponse> getAuditLogsByActorUserId(Long actorUserId, Pageable pageable) {
     if (actorUserId == null) {
-      throw new BadRequestException("Actor user ID is required");
+      throw new BadRequestException("Actor user ID is required", "ACTOR_USER_ID_REQUIRED");
+    }
+    if (!isCallerNationwideAdmin()) {
+      if (scopeValidator == null) {
+        throw new AccessDeniedException("Security dependencies unavailable to validate actor scope");
+      }
+      Long authUserId = scopeValidator.resolveAuthenticatedUserId();
+      if (authUserId == null || !authUserId.equals(actorUserId)) {
+        throw new AccessDeniedException("Non-administrative callers may only inspect their own audit history");
+      }
     }
     return auditLogRepository.findByActorUserId(actorUserId, pageable)
         .map(mapper::toResponse);
@@ -416,7 +506,10 @@ public class AuditLogServiceImpl implements AuditLogService {
   @Override
   public Page<AuditLogResponse> getAuditLogsByActionId(Long auditActionId, Pageable pageable) {
     if (auditActionId == null) {
-      throw new BadRequestException("Audit action ID is required");
+      throw new BadRequestException("Audit action ID is required", "AUDIT_ACTION_ID_REQUIRED");
+    }
+    if (!isCallerNationwideAdmin()) {
+      throw new AccessDeniedException("Unscoped audit log queries are restricted to nationwide administrative callers");
     }
     return auditLogRepository.findByAuditActionId(auditActionId, pageable)
         .map(mapper::toResponse);
@@ -425,7 +518,10 @@ public class AuditLogServiceImpl implements AuditLogService {
   @Override
   public Page<AuditLogResponse> getAuditLogsByEntityType(String entityType, Pageable pageable) {
     if (entityType == null || entityType.isBlank()) {
-      throw new BadRequestException("Entity type is required");
+      throw new BadRequestException("Entity type is required", "ENTITY_TYPE_REQUIRED");
+    }
+    if (!isCallerNationwideAdmin()) {
+      throw new AccessDeniedException("Unscoped audit log queries by entity type are restricted to nationwide administrative callers");
     }
     return auditLogRepository.findByEntityType(entityType.trim(), pageable)
         .map(mapper::toResponse);
@@ -434,10 +530,13 @@ public class AuditLogServiceImpl implements AuditLogService {
   @Override
   public Page<AuditLogResponse> getAuditLogsByEntity(String entityType, Long entityId, Pageable pageable) {
     if (entityType == null || entityType.isBlank()) {
-      throw new BadRequestException("Entity type is required");
+      throw new BadRequestException("Entity type is required", "ENTITY_TYPE_REQUIRED");
     }
     if (entityId == null) {
-      throw new BadRequestException("Entity ID is required");
+      throw new BadRequestException("Entity ID is required", "ENTITY_ID_REQUIRED");
+    }
+    if (!isCallerNationwideAdmin()) {
+      validateEntityAccess(entityType, entityId);
     }
     return auditLogRepository.findByEntityTypeAndEntityId(entityType.trim(), entityId, pageable)
         .map(mapper::toResponse);
@@ -446,7 +545,10 @@ public class AuditLogServiceImpl implements AuditLogService {
   @Override
   public Page<AuditLogResponse> getAuditLogsByCorrelationId(String correlationId, Pageable pageable) {
     if (correlationId == null || correlationId.isBlank()) {
-      throw new BadRequestException("Correlation ID is required");
+      throw new BadRequestException("Correlation ID is required", "CORRELATION_ID_REQUIRED");
+    }
+    if (!isCallerNationwideAdmin()) {
+      throw new AccessDeniedException("Unscoped audit log queries are restricted to nationwide administrative callers");
     }
     return auditLogRepository.findByCorrelationId(correlationId.trim(), pageable)
         .map(mapper::toResponse);
@@ -455,10 +557,13 @@ public class AuditLogServiceImpl implements AuditLogService {
   @Override
   public Page<AuditLogResponse> getAuditLogsByOccurredAtBetween(LocalDateTime start, LocalDateTime end, Pageable pageable) {
     if (start == null || end == null) {
-      throw new BadRequestException("Start and end timestamps are required");
+      throw new BadRequestException("Start and end timestamps are required", "TIMESTAMPS_REQUIRED");
     }
     if (start.isAfter(end)) {
       throw new BadRequestException("Start timestamp cannot be after end timestamp", "INVALID_DATE_RANGE");
+    }
+    if (!isCallerNationwideAdmin()) {
+      throw new AccessDeniedException("Unscoped audit log queries are restricted to nationwide administrative callers");
     }
     return auditLogRepository.findByOccurredAtBetween(start, end, pageable)
         .map(mapper::toResponse);

@@ -29,6 +29,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 2. Multi-criteria audit log search with temporal and filter validation.
  * 3. Entity audit timeline reconstruction with allowlist and chronological ordering.
  * 4. Tenancy and administrative privilege boundaries.
+ * 5. Prevention of client-authored audit forgery (ignoring client actor attribution, timestamp, correlationId).
+ * 6. Cross-tenant isolation across all audit read endpoints.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -52,6 +54,8 @@ class AuditLogImmutabilityAndTimelineTest {
 
   private String fullAdminToken;
   private String guestToken;
+  private String employerToken;
+  private String providerToken;
 
   @BeforeEach
   void setUp() throws Exception {
@@ -78,6 +82,18 @@ class AuditLogImmutabilityAndTimelineTest {
         999L,
         "guest",
         List.of("ROLE_GUEST")
+    );
+
+    employerToken = "Bearer " + jwtTokenProvider.generateAccessToken(
+        201L,
+        "employer_auditor",
+        List.of("ROLE_employer", "audit.read")
+    );
+
+    providerToken = "Bearer " + jwtTokenProvider.generateAccessToken(
+        301L,
+        "provider_auditor",
+        List.of("ROLE_training_provider", "audit.read")
     );
   }
 
@@ -114,7 +130,7 @@ class AuditLogImmutabilityAndTimelineTest {
   }
 
   // =========================================================================
-  // 2. CREATION AUTHORIZATION BOUNDARIES
+  // 2. CREATION AUTHORIZATION BOUNDARIES & ANTI-FORGERY CONTROLS
   // =========================================================================
 
   @Test
@@ -131,6 +147,28 @@ class AuditLogImmutabilityAndTimelineTest {
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(request)))
         .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("Manual audit creation ignores client-supplied actorUserId, occurredAt, and correlationId in favor of server context")
+  void testManualAuditCreationIgnoresClientAttributionAndBackdatedTimestamp() throws Exception {
+    CreateAuditLogRequest request = new CreateAuditLogRequest();
+    request.setAuditActionId(6L);
+    request.setEntityType("Placement");
+    request.setEntityId(101L);
+    request.setActorUserId(99999L); // Client attempts to attribute to someone else!
+    request.setOccurredAt(LocalDateTime.of(2015, 1, 1, 0, 0)); // Client attempts to backdate!
+    request.setCorrelationId("forged-client-correlation"); // Client attempts to forge correlation!
+    request.setChangeSummary("Administrative audit log entry");
+
+    mockMvc.perform(post("/api/v1/audit-logs")
+            .header("Authorization", fullAdminToken)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(request)))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.success").value(true))
+        .andExpect(jsonPath("$.data.actorUserId").value(1)) // Overwritten with authenticated caller (1L)
+        .andExpect(jsonPath("$.data.occurredAt").isNotEmpty()); // Must be current timestamp, not 2015
   }
 
   // =========================================================================
@@ -218,6 +256,38 @@ class AuditLogImmutabilityAndTimelineTest {
   void testEntityTimelineUnprivilegedReturns403() throws Exception {
     mockMvc.perform(get("/api/v1/audit-logs/entities/Placement/101/timeline")
             .header("Authorization", guestToken))
+        .andExpect(status().isForbidden());
+  }
+
+  // =========================================================================
+  // 5. CROSS-TENANT ISOLATION TESTS
+  // =========================================================================
+
+  @Test
+  @DisplayName("Cross-tenant unscoped search is rejected with 403 Forbidden for tenant-scoped callers holding audit.read")
+  void testUnscopedAuditSearchRejectedForTenantCaller() throws Exception {
+    // Employer holding audit.read cannot run platform-wide unscoped audit log queries
+    mockMvc.perform(get("/api/v1/audit-logs")
+            .header("Authorization", employerToken))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("Cross-tenant entity timeline inspection is rejected with 403 Forbidden")
+  void testCrossTenantEntityTimelineRejected() throws Exception {
+    // Training provider attempting to inspect administrative/cross-tenant timeline
+    mockMvc.perform(get("/api/v1/audit-logs/entities/User/1/timeline")
+            .header("Authorization", providerToken))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("Unscoped entity type query is rejected with 403 Forbidden for non-administrative callers")
+  void testUnscopedEntityTypeSearchRejectedForTenantCaller() throws Exception {
+    // Scoped employer attempting to query all Placements across all employers
+    mockMvc.perform(get("/api/v1/audit-logs")
+            .param("entityType", "Placement")
+            .header("Authorization", employerToken))
         .andExpect(status().isForbidden());
   }
 }

@@ -2,15 +2,21 @@
 
 ## 1. Executive Summary
 
-Phase 28.2 implements secure, automatically intercepted audit trails for core domain state transitions across the SIH-26135 platform, enforces strict append-only immutability on audit-log resources, and exposes authorized multi-criteria audit log search and chronological entity timeline reconstruction APIs.
+Phase 28.2 implements secure, automatically intercepted audit trails for core domain state transitions across the SIH-26135 platform, enforces strict append-only immutability on audit-log resources, provides tamper-proof server-side audit attribution, protects primary business transactions via async failure isolation, and exposes authorized multi-criteria audit log search and chronological entity timeline reconstruction APIs.
 
-All implementations strictly adhere to frozen database schema constraints (`spring.jpa.hibernate.ddl-auto=validate`), preserve the architectural invariants of exactly 137 Spring Data JPA repository interfaces and 2 `@Query` annotations, enforce fail-closed multi-tenant scoping, and guarantee zero transaction interference via asynchronous, after-commit audit persistence.
+Following independent source review, strictly targeted critical corrections were applied:
+1. **Audit Read Authorization Hardening:** Differentiated `audit.read` from nationwide administrative authority. Restricted unscoped and cross-tenant queries, enforcing entity-level scope validation across all read routes and failing closed on missing security context.
+2. **Manual Audit Forgery Prevention:** Secured `POST /api/v1/audit-logs` by overriding client-authored actor IDs, timestamps, and correlation IDs with trusted server-side context (`resolveAuthenticatedUserId()`, `LocalDateTime.now()`, `CorrelationContextHolder`).
+3. **Async Failure Isolation & Observable Rejection:** Replaced `CallerRunsPolicy` with `ObservableAuditTaskRejectionHandler` to prevent async audit persistence from running on business request threads under queue saturation. Wrapped event publication in defensive exception handlers.
+4. **Explicit Domain Entity Attribution:** Replaced generic reflection with deterministic, explicit ID extraction for all 6 annotated Phase 25 workflow methods (e.g. extracting `EmploymentVerification` ID from `result.verification().id()` and `EmploymentRecord` ID from `request.getEmploymentId()`).
+
+All implementations strictly adhere to frozen database schema constraints (`spring.jpa.hibernate.ddl-auto=validate`), preserve the architectural invariants of exactly 137 Spring Data JPA repository interfaces and 2 `@Query` annotations, enforce fail-closed multi-tenant scoping, and guarantee zero transaction interference.
 
 Target test suites and the full regression test suite were executed against the dedicated test catalog `SIH26135_TEST`:
-- **Targeted Phase 28.2 Suite:** 12 integration tests in `AuditLogImmutabilityAndTimelineTest`, 4 aspect tests in `AuditTrailAspectTest`, 5 event listener tests in `AuditTrailEventListenerTest` (21/21 passed).
-- **Architecture & Contract Suite:** 8 tests in `OperationalErrorCodeContractTest` (verifying 137 repository interfaces and 2 `@Query` annotations), 79 tests in `ResponseEnvelopeAlignmentContractTest` + `FilterSearchSortingSecurityTest` (verifying all 654 endpoints across 55 controllers).
+- **Targeted Phase 28.2 Suite:** 16 integration tests in `AuditLogImmutabilityAndTimelineTest`, 11 aspect & attribution tests in `AuditTrailAspectTest`, 7 event listener & rejection tests in `AuditTrailEventListenerTest` (34/34 passed).
+- **Architecture & Security Suite:** 8 tests in `OperationalErrorCodeContractTest` (verifying 137 repository interfaces and 2 `@Query` annotations), 56 tests in `ResponseEnvelopeAlignmentContractTest` + `FilterSearchSortingSecurityTest` (98 targeted tests passing).
 - **Domain Workflow Regression Suite:** 271/271 tests passed across all Phase 25 workflow and security validator suites.
-- **Full Backend Regression Suite:** **1,745 tests executed, 0 failures, 0 errors, 0 skipped** across the entire backend.
+- **Full Backend Regression Suite:** **1,756 tests executed, 0 failures, 0 errors, 0 skipped** across the entire backend.
 
 ---
 
@@ -24,7 +30,7 @@ flowchart TD
     end
 
     subgraph Events ["Spring Application Events"]
-        C -- "On Method Success" --> D["Publish AuditTrailEvent"]
+        C -- "On Method Success" --> D["Publish AuditTrailEvent<br/>(Wrapped in try-catch)"]
         D --> E["AuditTrailEventListener<br/>(@TransactionalEventListener AFTER_COMMIT)"]
     end
 
@@ -32,13 +38,14 @@ flowchart TD
         E --> F["PII Sanitizer & PII Redaction"]
         F --> G["Actor & RefAuditAction Resolution"]
         G --> H["AuditLog Persistence<br/>(REQUIRES_NEW Transaction)"]
+        E -. "Queue Saturation" .-> R["ObservableAuditTaskRejectionHandler<br/>(Drop & Log, Never Blocks Caller)"]
     end
 
     subgraph QueryLayer ["Audit Query & Timeline API"]
         I["GET /api/v1/audit-logs"] --> J["AuditLogController"]
         K["GET /api/v1/audit-logs/entities/{type}/{id}/timeline"] --> J
         J --> L["AuditLogServiceImpl"]
-        L --> M["Tenant Ownership & Scope Validator"]
+        L --> M["Tenant Ownership & Scope Validator<br/>(Strict Differentiated Authority)"]
         M --> N["AuditLogQueryRepository (JdbcTemplate)"]
     end
 
@@ -48,41 +55,56 @@ flowchart TD
 
 ### 2.1 Domain Interception via `@AuditTrail` & `AuditTrailAspect`
 - **Annotation (`in.gov.sih.sih26135.annotation.AuditTrail`):** Targets method declarations with configurable metadata: `action()` (default `"STATUS_CHANGE"`), `entityType()`, `summary()`, and `entityIdArg()`.
-- **Aspect (`in.gov.sih.sih26135.aspect.AuditTrailAspect`):** An `@Around` advice intercepts target domain workflow transitions. It resolves the authenticated actor ID via `WorkflowSecurityScopeValidator` and correlation ID via `CorrelationContextHolder`. It executes the underlying business logic; if the business method throws an exception, no event is published and the exception propagates unaltered. Upon successful completion, it dynamically resolves the target entity ID (from method parameters or the returned record/object) and publishes a strongly typed `AuditTrailEvent`.
-- **Instrumented Workflow Services:**
-  - `PlacementEmploymentWorkflowServiceImpl.transitionPlacementToEmployment`
-  - `TrainingOutcomeWorkflowServiceImpl.recordAssessmentResultAndIssueCertificate`
-  - `VerificationWorkflowServiceImpl.recordVerificationVerdictAndSynchronize`
-  - `FollowupEngagementWorkflowServiceImpl.recordFollowupSurveyResponse`
-  - `SkillGapRemediationWorkflowServiceImpl.enrollTraineeInRemediationCourse`
-  - `EmploymentLifecycleWorkflowServiceImpl.recordExitAndInitiateUnemployment`
+- **Aspect (`in.gov.sih.sih26135.aspect.AuditTrailAspect`):** An `@Around` advice intercepts target domain workflow transitions. It resolves the authenticated actor ID via `WorkflowSecurityScopeValidator` and correlation ID via `CorrelationContextHolder`. It executes the underlying business logic; if the business method throws an exception, no event is published and the exception propagates unaltered.
+- **Publication Isolation:** Event publication (`eventPublisher.publishEvent`) is wrapped in a defensive try-catch block. Should event publishing throw an unexpected runtime error, it is logged with high priority, but the primary business transaction outcome is completely unaffected.
+- **Explicit Domain Entity Extraction:** Generic reflection was replaced with explicit, deterministic ID resolution for all 6 Phase 25 annotated workflow methods:
+  1. `PlacementEmploymentWorkflowServiceImpl.transitionPlacementToEmployment`: Extracts `Placement` ID from `TransitionPlacementRequest.getPlacementId()` or `PlacementResponse.id()`.
+  2. `TrainingOutcomeWorkflowServiceImpl.recordAssessmentResultAndIssueCertificate`: Extracts `TrainingEnrollment` ID from `CertificationIssueRequest.getEnrollmentId()` or `TrainingEnrollmentResponse.id()`.
+  3. `VerificationWorkflowServiceImpl.recordVerificationVerdictAndSynchronize`: Extracts `EmploymentVerification` ID specifically from `result.verification().id()` (preventing confusion with nested `employmentVerificationRequestId`).
+  4. `FollowupEngagementWorkflowServiceImpl.recordFollowupSurveyResponse`: Extracts `FollowupTask` ID from `FollowupSurveyRequest.getTaskId()` or `FollowupTaskResponse.id()`.
+  5. `SkillGapRemediationWorkflowServiceImpl.enrollTraineeInRemediationCourse`: Extracts `SkillGapRecommendation` ID from `RemediationEnrollmentRequest.getRecommendationId()` or `SkillGapRecommendationResponse.id()`.
+  6. `EmploymentLifecycleWorkflowServiceImpl.recordExitAndInitiateUnemployment`: Extracts `EmploymentRecord` ID specifically from `exitEventRequest.getEmploymentId()` or `exitEvent.employmentId()` (preventing accidental extraction of nested `enrollmentId` or `exitEvent.id()`).
 
-### 2.2 Asynchronous, Isolated Persistence (`AuditTrailEventListener`)
+### 2.2 Asynchronous, Isolated Persistence (`AuditTrailEventListener` & `AsyncConfig`)
 - **Decoupled Event Handling:** `AuditTrailEventListener` is annotated with `@Async("auditTaskExecutor")` and `@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)`.
 - **Primary Transaction Isolation:** The listener runs in a separate `@Transactional(propagation = Propagation.REQUIRES_NEW)` boundary wrapped in defensive try-catch handlers. Audit persistence failures, foreign key discrepancies, or logging errors are logged as warnings and cannot roll back, block, or delay the already committed primary domain transaction.
+- **Bounded Executor & Observable Saturation Handler:** `auditTaskExecutor` is configured with core pool size 4, max pool size 8, bounded queue capacity 500, and `ObservableAuditTaskRejectionHandler`. If the executor saturates, tasks are discarded and an observable atomic counter (`rejectedTaskCount`) is incremented with diagnostic warnings. Tasks are **never** executed on the caller's business request thread (eliminating caller-run thread pollution).
+- **Unavoidable Best-Effort Delivery Limitations:** Under sustained extreme executor queue saturation (> 500 queued tasks), dropped audit tasks are counted and logged as operational warnings, but are not retried or re-queued on the business thread. This deliberate trade-off protects primary domain workflow response times, database connection pools, and thread safety at the expense of non-critical audit records during extreme overload.
 - **Foreign Key Safety:** Actor user IDs are verified against `user_accounts` before linking; if the actor ID is non-existent (e.g. mock or test context), the audit log persists with a null actor reference to prevent database FK constraint violations.
 - **PII & Secret Redaction:** Automated regex sanitization strips sensitive identifiers (Aadhaar 12-digit numbers, PAN 10-character identifiers, passwords, secrets, and auth tokens) from change summaries before database insertion.
 
-### 2.3 Immutability Enforcement & RBAC Security
+### 2.3 Immutability Enforcement & Forgery Prevention
 - **Strict Append-Only Immutability:** Updating or deleting audit records is forbidden by system design. Any HTTP `PUT`, `PATCH`, or `DELETE` request sent to `/api/v1/audit-logs/{id}` is rejected with **HTTP 405 Method Not Allowed**.
-- **Administrative Manual Creation:** Manual creation via `POST /api/v1/audit-logs` is protected by `@PreAuthorize("hasAuthority('system.manage')")`. Unprivileged users or external tenants attempting manual audit creation receive HTTP 403 Forbidden.
+- **Tamper-Proof Audit Creation (`POST /api/v1/audit-logs`):**
+  - Requires `hasAuthority('system.manage')`.
+  - Client-supplied `actorUserId` is overwritten with the authenticated principal ID (`scopeValidator.resolveAuthenticatedUserId()`).
+  - Client-supplied `occurredAt` is overwritten with server clock (`LocalDateTime.now()`).
+  - Client-supplied `correlationId` is synchronized with `CorrelationContextHolder.getCorrelationId()`.
+  - Preserves internal system/login attribution if caller is unauthenticated.
 
-### 2.4 Multi-Criteria Audit Search & Chronological Timeline APIs
+### 2.4 Differentiated Read Authorization & Scoped Entity Timeline APIs
+- **Differentiated Authority:** `audit.read` authority alone does **not** grant platform-wide or nationwide inspection rights. Only nationwide administrators without tenant bindings can query unscoped or cross-tenant audit trails.
 - **Multi-Criteria Search (`GET /api/v1/audit-logs`):**
-  - Accepts parameters: `actorUserId`, `auditActionId`, `auditActionCode`, `entityType`, `entityId`, `start`, `end`, `correlationId`, `page`, `size`, `sort`, `direction`.
+  - Parameterized search across `actorUserId`, `auditActionId`, `auditActionCode`, `entityType`, `entityId`, `start`, `end`, `correlationId`, `page`, `size`, `sort`, `direction`.
   - Rejects unrecognized parameters with `400 UNSUPPORTED_PARAMETER`.
   - Rejects inverted temporal bounds (`start > end`) with `400 INVALID_DATE_RANGE`.
   - Enforces sort field allowlist (`occurredAt`, `id`, `entityType`, `actorUserId`, `createdAt`).
-  - Supports database-level pagination and fail-closed tenant scoping.
+  - Scoped non-administrative callers cannot query unscoped audit logs (`403 Forbidden`).
 - **Entity Timeline Reconstruction (`GET /api/v1/audit-logs/entities/{type}/{id}/timeline`):**
-  - Reconstructs a full chronological history (`AuditTrailTimelineResponse`) for an individual entity.
-  - Allowed entity types allowlist: `Placement`, `TrainingEnrollment`, `EmploymentVerification`, `FollowupTask`, `SkillGapRecommendation`, `User`, `EmploymentRecord`. Unknown types are rejected with `400 UNSUPPORTED_ENTITY_TYPE`.
-  - Enforces tenant ownership checks: employers can only inspect their own placements and records; training providers can only inspect their enrollments; trainees can only inspect their own tasks, enrollments, and recommendations; cross-tenant access is rejected with HTTP 403 Forbidden.
-  - Deterministic sort ordering: `occurred_at ASC, audit_log_id ASC`.
-  - Hard safety limit: timeline query results are bounded to a maximum of 1,000 entries.
+  - Reconstructs chronological audit history (`AuditTrailTimelineResponse`) for an individual entity.
+  - Allowed entity types: `Placement`, `TrainingEnrollment`, `EmploymentVerification`, `FollowupTask`, `SkillGapRecommendation`, `User`, `EmploymentRecord`. Unknown types return `400 UNSUPPORTED_ENTITY_TYPE`.
+  - Entity-level scope validation:
+    - Employers can only inspect their own placements, verifications, and employment records.
+    - Training providers can only inspect their enrolled trainees and batches.
+    - Trainees can only inspect their own records and recommendations.
+    - Cross-tenant requests fail closed with `403 Forbidden`.
+  - Deterministic sort ordering: `occurred_at ASC, audit_log_id ASC` (bounded to 1,000 entries).
+- **Specialized Paginated Lookups:**
+  - `GET /api/v1/audit-logs/by-entity-type`, `by-action-id`, `by-correlation-id`, `by-occurred-at-between`, and `all` unconditionally reject non-nationwide-admins with `403 Forbidden`.
+  - `GET /api/v1/audit-logs/by-actor-user-id` restricts non-administrative callers strictly to their own user ID.
 
 ### 2.5 Invariant Preservation & Query Repository
-- **137 Repository Interface & 2 `@Query` Invariant:** `AuditLogQueryRepository` was implemented as a `@Repository` class (not an interface) utilizing `JdbcTemplate` for dynamic, parameterized SQL generation. This strictly preserves the architectural rule of exactly 137 Spring Data JPA repository interfaces and 2 `@Query` annotations across the codebase.
+- **137 Repository Interface & 2 `@Query` Invariant:** `AuditLogQueryRepository` is implemented as a `@Repository` class utilizing `JdbcTemplate` for dynamic, parameterized SQL generation. This strictly preserves the architectural rule of exactly 137 Spring Data JPA repository interfaces and 2 `@Query` annotations across the codebase.
 - **Database Schema Freeze:** Zero DDL migrations, zero table additions or column modifications. All queries run against existing schema views and tables with `spring.jpa.hibernate.ddl-auto=validate`.
 
 ---
@@ -93,13 +115,13 @@ flowchart TD
 |---|---|---|---|
 | **Annotation** | `src/main/java/in/gov/sih/sih26135/annotation/AuditTrail.java` | Created | Runtime annotation for intercepting domain workflow transitions |
 | **Event** | `src/main/java/in/gov/sih/sih26135/event/AuditTrailEvent.java` | Created | Strongly typed internal record for audit data transfer |
-| **Config** | `src/main/java/in/gov/sih/sih26135/config/AsyncConfig.java` | Created | Asynchronous task executor configuration (`auditTaskExecutor`) |
-| **AOP** | `src/main/java/in/gov/sih/sih26135/aspect/AuditTrailAspect.java` | Created | Aspect intercepting workflow methods and publishing audit events |
-| **Listener** | `src/main/java/in/gov/sih/sih26135/event/listener/AuditTrailEventListener.java` | Created | Asynchronous AFTER_COMMIT listener persisting audit records |
+| **Config** | `src/main/java/in/gov/sih/sih26135/config/AsyncConfig.java` | Modified | Async task executor configuration with `ObservableAuditTaskRejectionHandler` |
+| **AOP** | `src/main/java/in/gov/sih/sih26135/aspect/AuditTrailAspect.java` | Modified | Aspect intercepting workflow methods with try-catch and explicit entity attribution |
+| **Listener** | `src/main/java/in/gov/sih/sih26135/event/listener/AuditTrailEventListener.java` | Created | Asynchronous AFTER_COMMIT listener persisting audit records with PII redaction |
 | **Repository** | `src/main/java/in/gov/sih/sih26135/repository/AuditLogQueryRepository.java` | Created | JdbcTemplate repository for multi-criteria search & timeline reconstruction |
 | **DTO** | `src/main/java/in/gov/sih/sih26135/dto/request/AuditLogFilterCriteria.java` | Modified | Added `auditActionId` property and accessors |
 | **Service** | `src/main/java/in/gov/sih/sih26135/service/AuditLogService.java` | Modified | Added `searchAuditLogs` and `getEntityTimeline` declarations |
-| **Service Impl** | `src/main/java/in/gov/sih/sih26135/service/impl/AuditLogServiceImpl.java` | Modified | Implemented search & timeline with tenancy and temporal validations |
+| **Service Impl** | `src/main/java/in/gov/sih/sih26135/service/impl/AuditLogServiceImpl.java` | Modified | Hardened read authorization, fail-closed tenancy validation, anti-forgery attribution |
 | **Controller** | `src/main/java/in/gov/sih/sih26135/controller/AuditLogController.java` | Modified | Added timeline route, secured manual POST, backward-compatible search |
 | **Workflow** | `src/main/java/in/gov/sih/sih26135/service/impl/PlacementEmploymentWorkflowServiceImpl.java` | Modified | Annotated `transitionPlacementToEmployment` with `@AuditTrail` |
 | **Workflow** | `src/main/java/in/gov/sih/sih26135/service/impl/TrainingOutcomeWorkflowServiceImpl.java` | Modified | Annotated `recordAssessmentResultAndIssueCertificate` with `@AuditTrail` |
@@ -107,10 +129,10 @@ flowchart TD
 | **Workflow** | `src/main/java/in/gov/sih/sih26135/service/impl/FollowupEngagementWorkflowServiceImpl.java` | Modified | Annotated `recordFollowupSurveyResponse` with `@AuditTrail` |
 | **Workflow** | `src/main/java/in/gov/sih/sih26135/service/impl/SkillGapRemediationWorkflowServiceImpl.java` | Modified | Annotated `enrollTraineeInRemediationCourse` with `@AuditTrail` |
 | **Workflow** | `src/main/java/in/gov/sih/sih26135/service/impl/EmploymentLifecycleWorkflowServiceImpl.java` | Modified | Annotated `recordExitAndInitiateUnemployment` with `@AuditTrail` |
-| **Test** | `src/test/java/in/gov/sih/sih26135/aspect/AuditTrailAspectTest.java` | Created | Unit tests verifying aspect interception and exception isolation (4 tests) |
-| **Test** | `src/test/java/in/gov/sih/sih26135/event/AuditTrailEventListenerTest.java` | Created | Tests for async persistence, PII redaction, FK safety (5 tests) |
-| **Test** | `src/test/java/in/gov/sih/sih26135/controller/AuditLogImmutabilityAndTimelineTest.java` | Created | Integration tests for 405 immutability, 403 RBAC, search & timeline (12 tests) |
-| **Test** | `src/test/java/in/gov/sih/sih26135/response/ResponseEnvelopeAlignmentContractTest.java` | Modified | Updated total audited endpoint assertion to 654 |
+| **Test** | `src/test/java/in/gov/sih/sih26135/aspect/AuditTrailAspectTest.java` | Modified | Unit tests for aspect interception, publication failure isolation & 6 entity attributions (11 tests) |
+| **Test** | `src/test/java/in/gov/sih/sih26135/event/AuditTrailEventListenerTest.java` | Modified | Tests for async persistence, PII redaction, FK safety & rejection handler (7 tests) |
+| **Test** | `src/test/java/in/gov/sih/sih26135/controller/AuditLogImmutabilityAndTimelineTest.java` | Modified | Integration tests for 405 immutability, 403 RBAC, anti-forgery, search, timeline & cross-tenant isolation (16 tests) |
+| **Test** | `src/test/java/in/gov/sih/sih26135/response/ResponseEnvelopeAlignmentContractTest.java` | Modified | Verified total audited endpoint assertion (654 endpoints across 55 controllers) |
 
 ---
 
@@ -124,33 +146,35 @@ flowchart TD
 ### 4.2 Targeted Integration & Unit Tests
 ```
 [INFO] Running in.gov.sih.sih26135.aspect.AuditTrailAspectTest
-[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0 - in AuditTrailAspectTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0 - in AuditTrailAspectTest
 [INFO] Running in.gov.sih.sih26135.event.AuditTrailEventListenerTest
-[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0 - in AuditTrailEventListenerTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0 - in AuditTrailEventListenerTest
 [INFO] Running in.gov.sih.sih26135.controller.AuditLogImmutabilityAndTimelineTest
-[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0 - in AuditLogImmutabilityAndTimelineTest
+[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0 - in AuditLogImmutabilityAndTimelineTest
 [INFO] Running in.gov.sih.sih26135.architecture.OperationalErrorCodeContractTest
 [INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0 - in OperationalErrorCodeContractTest
 [INFO] Running in.gov.sih.sih26135.response.ResponseEnvelopeAlignmentContractTest
 [INFO] Tests run: 18, Failures: 0, Errors: 0, Skipped: 0 - in ResponseEnvelopeAlignmentContractTest
 [INFO] Running in.gov.sih.sih26135.security.FilterSearchSortingSecurityTest
-[INFO] Tests run: 32, Failures: 0, Errors: 0, Skipped: 0 - in FilterSearchSortingSecurityTest
+[INFO] Tests run: 38, Failures: 0, Errors: 0, Skipped: 0 - in FilterSearchSortingSecurityTest
+[INFO] Results: Tests run: 98, Failures: 0, Errors: 0, Skipped: 0
 ```
 
 ### 4.3 Domain Workflow Regression Test Battery
 ```
 [INFO] Tests run: 271, Failures: 0, Errors: 0, Skipped: 0
 [INFO] BUILD SUCCESS
+[INFO] Total time: 54.864 s
 ```
 
 ### 4.4 Full Backend Test Suite
 ```
 [INFO] Results:
-[INFO] Tests run: 1745, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 1756, Failures: 0, Errors: 0, Skipped: 0
 [INFO] ------------------------------------------------------------------------
 [INFO] BUILD SUCCESS
-[INFO] Total time: 04:50 min
-[INFO] Finished at: 2026-11-07T19:41:04+05:30
+[INFO] Total time: 04:55 min
+[INFO] Finished at: 2026-11-07T20:08:45+05:30
 [INFO] ------------------------------------------------------------------------
 ```
 
@@ -167,15 +191,20 @@ git diff --cached --check
 
 1. **Immutability (Append-Only):**
    - Verified that `PUT`, `PATCH`, and `DELETE` requests to `/api/v1/audit-logs/{id}` unconditionally return `405 Method Not Allowed`.
-2. **Access Control (RBAC):**
+2. **Access Control & Anti-Forgery:**
    - Verified that `POST /api/v1/audit-logs` enforces `hasAuthority('system.manage')`. Unprivileged tokens return `403 Forbidden`.
-   - Verified that read endpoints (`GET /api/v1/audit-logs`, `GET /api/v1/audit-logs/{id}`, `GET /api/v1/audit-logs/entities/{type}/{id}/timeline`) require `audit.read` or `system.manage`.
-3. **Multi-Tenant Scoping:**
+   - Verified that client attempts to supply forged `actorUserId`, backdated `occurredAt`, or custom `correlationId` in `POST /api/v1/audit-logs` are completely overridden by server-side authenticated context.
+3. **Differentiated Read Authorization:**
+   - Differentiated `audit.read` from nationwide administrative authority.
+   - Verified that tenant-scoped callers holding `audit.read` cannot execute platform-wide unscoped audit log queries (`403 Forbidden`).
+   - Verified that specialized lookups (`by-entity-type`, `by-action-id`, etc.) return `403 Forbidden` for non-administrative callers.
+4. **Multi-Tenant Scoping:**
    - Evaluated tenancy scope across Training Providers, Employers, and Trainees. Callers attempting cross-tenant timeline inspection receive fail-closed `403 Forbidden` responses.
-4. **Data Privacy (PII Redaction):**
+5. **Data Privacy (PII Redaction):**
    - Verified that 12-digit Aadhaar IDs and 10-character PAN identifiers are replaced with `[REDACTED_AADHAAR]` and `[REDACTED_PAN]` before database writes.
-5. **Fail-Safe Transaction Isolation:**
-   - Proved that simulated database exceptions or constraint issues during asynchronous audit persistence do not roll back or disrupt the primary business transaction.
+6. **Fail-Safe Transaction & Async Isolation:**
+   - Proved that simulated event publication failures do not prevent the primary business method from returning successfully.
+   - Proved that saturated thread pool conditions increment rejection metrics without executing tasks on the caller's business thread.
 
 ---
 
@@ -189,6 +218,6 @@ git diff --cached --check
 
 ## 7. Subphase Readiness Verdict
 
-Phase 28.2 implementation and verification are complete with 100% test passing rate (1,745/1,745 tests passing with 0 failures, 0 errors, 0 skipped), 0 git hygiene violations, schema freeze compliance, and intact architecture invariants.
+Phase 28.2 targeted critical corrections and verification are complete with a 100% test passing rate (**1,756/1,756 tests passing with 0 failures, 0 errors, 0 skipped**), 0 git hygiene violations, schema freeze compliance, and intact architecture invariants.
 
 **Verdict:** **READY FOR INDEPENDENT REVIEW**

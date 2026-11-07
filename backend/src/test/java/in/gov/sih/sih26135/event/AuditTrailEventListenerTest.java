@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.event;
 
+import in.gov.sih.sih26135.config.AsyncConfig;
 import in.gov.sih.sih26135.entity.AuditLog;
 import in.gov.sih.sih26135.entity.RefAuditAction;
 import in.gov.sih.sih26135.event.listener.AuditTrailEventListener;
@@ -14,9 +15,12 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -163,5 +167,45 @@ class AuditTrailEventListenerTest {
         .doesNotThrowAnyException();
 
     verify(auditLogRepository, never()).save(any());
+  }
+
+  // =========================================================================
+  // Bounded Async Rejection & Saturated Thread Pool Tests
+  // =========================================================================
+
+  @Test
+  @DisplayName("Observable rejection handler increments metric and does NOT run task on caller thread")
+  void testObservableRejectionHandlerUnderSaturation() {
+    AsyncConfig.ObservableAuditTaskRejectionHandler handler =
+        new AsyncConfig.ObservableAuditTaskRejectionHandler();
+
+    AtomicBoolean taskExecuted = new AtomicBoolean(false);
+    Runnable rejectedRunnable = () -> taskExecuted.set(true);
+
+    assertThat(handler.getRejectedTaskCount()).isEqualTo(0L);
+
+    // Trigger rejection
+    handler.rejectedExecution(rejectedRunnable, null);
+
+    // Verify task count is incremented
+    assertThat(handler.getRejectedTaskCount()).isEqualTo(1L);
+
+    // CRITICAL: Verify task was NOT executed on caller thread (CallerRunsPolicy avoidance)
+    assertThat(taskExecuted.get()).isFalse();
+  }
+
+  @Test
+  @DisplayName("AsyncConfig configures auditTaskExecutor with bounded queue and observable rejection handler")
+  void testAsyncConfigExecutorConfiguration() {
+    AsyncConfig asyncConfig = new AsyncConfig();
+    ThreadPoolTaskExecutor executor = (ThreadPoolTaskExecutor) asyncConfig.auditTaskExecutor();
+
+    assertThat(executor.getCorePoolSize()).isEqualTo(4);
+    assertThat(executor.getMaxPoolSize()).isEqualTo(16);
+    assertThat(executor.getQueueCapacity()).isEqualTo(500);
+    assertThat(executor.getThreadNamePrefix()).isEqualTo("audit-exec-");
+    assertThat(asyncConfig.getRejectionHandler()).isNotNull();
+
+    executor.shutdown();
   }
 }
