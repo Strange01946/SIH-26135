@@ -13,16 +13,24 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
 
 import javax.sql.DataSource;
 import java.math.BigDecimal;
 import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @DisplayName("Phase 28.3 - Data Quality Anomaly Detectors Unit & Boundary Tests")
@@ -54,6 +62,9 @@ class DataQualityAnomalyDetectorsTest {
 
   @Autowired
   private DuplicateTraineeCandidateQualityDetector duplicateDetector;
+
+  @Autowired
+  private DataQualityIssueRegistrationService registrationService;
 
   @Autowired
   private DataQualityIssueRepository issueRepository;
@@ -274,6 +285,138 @@ class DataQualityAnomalyDetectorsTest {
   }
 
   @Test
+  @DisplayName("DQ-DUPLICATE-005: More than 50 candidate matches accurately reports count and states schema truncation disclaimer")
+  void testMoreThan50DuplicateCandidatesAndRepresentationLimit() {
+    setupLargeDuplicateTraineeFixtures(55);
+
+    DataQualityRule rule = catalogService.resolveRuleByCode("DQ-DUPLICATE-005");
+    DataQualityScanRequest request = new DataQualityScanRequest();
+    request.setRuleCode("DQ-DUPLICATE-005");
+    request.setEntityId(888701L);
+
+    ScanScopeContext scope = ScanScopeContext.nationwide(1L);
+    DataQualityRuleExecutionSummary summary = duplicateDetector.executeScan(rule, request, scope);
+
+    assertThat(summary.status()).isEqualTo("SUCCESS");
+    assertThat(summary.violationCount()).isEqualTo(55L);
+    assertThat(summary.newIssuesCreated()).isEqualTo(1L);
+    assertThat(summary.deduplicatedIssuesSkipped()).isEqualTo(0L);
+
+    String issueSummary = jdbcTemplate.queryForObject(
+        "SELECT issue_summary FROM data_quality_issues WHERE data_quality_rule_id = ? AND entity_type = 'Trainee' AND entity_id = 888701",
+        String.class, rule.getId()
+    );
+    assertThat(issueSummary).isNotNull();
+    // Invariant: issue_summary MUST fit within VARCHAR(500)
+    assertThat(issueSummary.length()).isLessThanOrEqualTo(500);
+
+    // Accurately reports total candidate count without claiming complete ID enumeration
+    assertThat(issueSummary).contains("Total matching candidates detected: 55");
+    // Explicitly states schema representation limitation
+    assertThat(issueSummary).contains("Representation limit reached (schema max 500 chars): complete candidate enumeration truncated");
+    assertThat(issueSummary).endsWith("]...");
+
+    // Raw PII must never be exposed
+    assertThat(issueSummary).doesNotContain("9876543210");
+    assertThat(issueSummary).doesNotContain("1995-05-15");
+  }
+
+  @Test
+  @DisplayName("DQ-DUPLICATE-005: Newly discovered candidate after OPEN issue already exists updates issue summary without losing relationships")
+  void testNewlyDiscoveredCandidateAfterOpenIssueExistsUpdatesSummary() {
+    // 1. Initial setup with exactly 1 candidate (888702)
+    setupLargeDuplicateTraineeFixtures(1);
+
+    DataQualityRule rule = catalogService.resolveRuleByCode("DQ-DUPLICATE-005");
+    DataQualityScanRequest request = new DataQualityScanRequest();
+    request.setRuleCode("DQ-DUPLICATE-005");
+    request.setEntityId(888701L);
+
+    ScanScopeContext scope = ScanScopeContext.nationwide(1L);
+    DataQualityRuleExecutionSummary summary1 = duplicateDetector.executeScan(rule, request, scope);
+
+    assertThat(summary1.status()).isEqualTo("SUCCESS");
+    assertThat(summary1.newIssuesCreated()).isEqualTo(1L);
+    assertThat(summary1.deduplicatedIssuesSkipped()).isEqualTo(0L);
+
+    String initialSummary = jdbcTemplate.queryForObject(
+        "SELECT issue_summary FROM data_quality_issues WHERE data_quality_rule_id = ? AND entity_type = 'Trainee' AND entity_id = 888701",
+        String.class, rule.getId()
+    );
+    assertThat(initialSummary).contains("888702");
+    assertThat(initialSummary).doesNotContain("888703");
+
+    // 2. A new duplicate candidate (888703) is enrolled in Center 8872
+    jdbcTemplate.update("INSERT INTO trainees (trainee_id, registration_number, first_name, last_name, phone, email, date_of_birth, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at) " +
+        "VALUES (888703, 'REG-DQ-888703', 'Aditya', 'Sharma', '9876543210', 'aditya888703@example.gov.in', '1995-05-15', 1, 8871, 8871, 1, 1, NOW(), NOW())");
+    jdbcTemplate.update("INSERT INTO training_enrollments (enrollment_id, enrollment_number, trainee_id, program_id, course_id, provider_id, center_id, batch_id, enrollment_date, enrollment_status_id, created_at, updated_at) " +
+        "VALUES (888703, 'ENR-DQ-888703', 888703, 8871, 8871, 8871, 8872, 8872, '2026-01-01', 1, NOW(), NOW())");
+
+    // 3. Re-run scan: must not create a duplicate row, but MUST update existing OPEN issue with new candidate 888703
+    DataQualityRuleExecutionSummary summary2 = duplicateDetector.executeScan(rule, request, scope);
+
+    assertThat(summary2.status()).isEqualTo("SUCCESS");
+    assertThat(summary2.violationCount()).isEqualTo(2L);
+    assertThat(summary2.newIssuesCreated()).isEqualTo(0L);
+    assertThat(summary2.deduplicatedIssuesSkipped()).isEqualTo(1L);
+
+    Integer issueRowCount = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM data_quality_issues WHERE data_quality_rule_id = ? AND entity_type = 'Trainee' AND entity_id = 888701",
+        Integer.class, rule.getId()
+    );
+    assertThat(issueRowCount).isEqualTo(1);
+
+    String updatedSummary = jdbcTemplate.queryForObject(
+        "SELECT issue_summary FROM data_quality_issues WHERE data_quality_rule_id = ? AND entity_type = 'Trainee' AND entity_id = 888701",
+        String.class, rule.getId()
+    );
+    // Newly discovered candidate 888703 must NOT be lost!
+    assertThat(updatedSummary).contains("888702");
+    assertThat(updatedSummary).contains("888703");
+    assertThat(updatedSummary).contains("Total matching candidates detected: 2");
+  }
+
+  @Test
+  @DisplayName("DQ-DUPLICATE-005: Candidate SQL query failure does not produce a misleading SUCCESS summary and stops scan")
+  void testCandidateQueryFailureDoesNotProduceMisleadingSuccessSummary() {
+    DataQualityRule rule = catalogService.resolveRuleByCode("DQ-DUPLICATE-005");
+    DataQualityScanRequest request = new DataQualityScanRequest();
+    request.setRuleCode("DQ-DUPLICATE-005");
+
+    JdbcTemplate mockJdbc = mock(JdbcTemplate.class);
+    // 1. First call for chunk returns 1 trainee
+    when(mockJdbc.queryForList(anyString(), any(Object[].class)))
+        .thenReturn(List.of(Map.of(
+            "trainee_id", 888701L,
+            "phone", "9876543210",
+            "email", "candidate.test@example.gov.in",
+            "first_name", "Test",
+            "last_name", "User"
+        )));
+
+    // 2. Candidate duplicate lookup query fails with SQL error
+    when(mockJdbc.queryForList(anyString(), eq(Long.class), any(Object[].class)))
+        .thenThrow(new BadSqlGrammarException("Candidate query failed", "SELECT ...", new SQLException("Simulated database table corruption")));
+
+    DuplicateTraineeCandidateQualityDetector failingDetector = new DuplicateTraineeCandidateQualityDetector(
+        mockJdbc,
+        registrationService,
+        properties
+    );
+
+    ScanScopeContext scope = ScanScopeContext.nationwide(1L);
+    DataQualityRuleExecutionSummary summary = failingDetector.executeScan(rule, request, scope);
+
+    assertThat(summary).isNotNull();
+    assertThat(summary.status()).isEqualTo("FAILED");
+    assertThat(summary.status()).isNotEqualTo("SUCCESS");
+    // Evaluated count must NOT claim record was successfully evaluated
+    assertThat(summary.evaluatedRecordCount()).isEqualTo(0L);
+    assertThat(summary.newIssuesCreated()).isEqualTo(0L);
+    assertThat(summary.deduplicatedIssuesSkipped()).isEqualTo(0L);
+  }
+
+  @Test
   @DisplayName("All detectors reject employer persona on unauthorized domain entities with AccessDeniedException")
   void testDetectorsRejectEmployerOnUnauthorizedRules() {
     ScanScopeContext employerScope = ScanScopeContext.employerScoped(10L, 8871L);
@@ -341,18 +484,32 @@ class DataQualityAnomalyDetectorsTest {
   // =========================================================================
 
   private void setupDuplicateTraineeFixtures() {
+    setupLargeDuplicateTraineeFixtures(7);
+
+    // Cross-state candidate T9 (888709) in State 8872 with identical phone and DOB for isolation test
+    jdbcTemplate.update("INSERT INTO states (state_id, state_code, state_name, lifecycle_status_id, created_at, updated_at) " +
+        "VALUES (8872, 'S2', 'DQ State 2', 1, NOW(), NOW())");
+    jdbcTemplate.update("INSERT INTO districts (district_id, state_id, district_code, district_name, lifecycle_status_id, created_at, updated_at) " +
+        "VALUES (8872, 8872, 'D8872', 'DQ District 2', 1, NOW(), NOW())");
+    jdbcTemplate.update("INSERT INTO training_centers (center_id, provider_id, center_code, center_name, state_id, district_id, lifecycle_status_id, created_at, updated_at) " +
+        "VALUES (8873, 8871, 'CTR-DQ-8873', 'Center 8873', 8872, 8872, 1, NOW(), NOW())");
+    jdbcTemplate.update("INSERT INTO training_batches (batch_id, batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at) " +
+        "VALUES (8873, 'BAT-DQ-8873', 8871, 8871, 8873, 8871, '2026-01-01', 30, 1, NOW(), NOW())");
+
+    jdbcTemplate.update("INSERT INTO trainees (trainee_id, registration_number, first_name, last_name, phone, email, date_of_birth, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at) " +
+        "VALUES (888709, 'REG-DQ-888709', 'Aditya', 'Sharma', '9876543210', 'aditya888709@example.gov.in', '1995-05-15', 1, 8872, 8872, 1, 1, NOW(), NOW())");
+    jdbcTemplate.update("INSERT INTO training_enrollments (enrollment_id, enrollment_number, trainee_id, program_id, course_id, provider_id, center_id, batch_id, enrollment_date, enrollment_status_id, created_at, updated_at) " +
+        "VALUES (888709, 'ENR-DQ-888709', 888709, 8871, 8871, 8871, 8873, 8873, '2026-01-01', 1, NOW(), NOW())");
+  }
+
+  private void setupLargeDuplicateTraineeFixtures(int candidateCount) {
     cleanUpDuplicateTraineeFixtures();
 
     // 1. States & Districts
     jdbcTemplate.update("INSERT INTO states (state_id, state_code, state_name, lifecycle_status_id, created_at, updated_at) " +
         "VALUES (8871, 'S1', 'DQ State 1', 1, NOW(), NOW())");
-    jdbcTemplate.update("INSERT INTO states (state_id, state_code, state_name, lifecycle_status_id, created_at, updated_at) " +
-        "VALUES (8872, 'S2', 'DQ State 2', 1, NOW(), NOW())");
-
     jdbcTemplate.update("INSERT INTO districts (district_id, state_id, district_code, district_name, lifecycle_status_id, created_at, updated_at) " +
         "VALUES (8871, 8871, 'D8871', 'DQ District 1', 1, NOW(), NOW())");
-    jdbcTemplate.update("INSERT INTO districts (district_id, state_id, district_code, district_name, lifecycle_status_id, created_at, updated_at) " +
-        "VALUES (8872, 8872, 'D8872', 'DQ District 2', 1, NOW(), NOW())");
 
     // 2. Training Provider & Centers
     jdbcTemplate.update("INSERT INTO training_providers (provider_id, provider_code, provider_name, registration_number, organization_type_id, state_id, district_id, accreditation_status_id, lifecycle_status_id, created_at, updated_at) " +
@@ -362,8 +519,6 @@ class DataQualityAnomalyDetectorsTest {
         "VALUES (8871, 8871, 'CTR-DQ-8871', 'Center 8871', 8871, 8871, 1, NOW(), NOW())");
     jdbcTemplate.update("INSERT INTO training_centers (center_id, provider_id, center_code, center_name, state_id, district_id, lifecycle_status_id, created_at, updated_at) " +
         "VALUES (8872, 8871, 'CTR-DQ-8872', 'Center 8872', 8871, 8871, 1, NOW(), NOW())");
-    jdbcTemplate.update("INSERT INTO training_centers (center_id, provider_id, center_code, center_name, state_id, district_id, lifecycle_status_id, created_at, updated_at) " +
-        "VALUES (8873, 8871, 'CTR-DQ-8873', 'Center 8873', 8872, 8872, 1, NOW(), NOW())");
 
     // 3. Organization, Department, Scheme, Program, Sector, Course, Batch
     jdbcTemplate.update("INSERT INTO organizations (organization_id, organization_code, organization_name, organization_type_id, lifecycle_status_id, created_at, updated_at) " +
@@ -382,47 +537,34 @@ class DataQualityAnomalyDetectorsTest {
     jdbcTemplate.update("INSERT INTO training_batches (batch_id, batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at) " +
         "VALUES (8871, 'BAT-DQ-8871', 8871, 8871, 8871, 8871, '2026-01-01', 30, 1, NOW(), NOW())");
     jdbcTemplate.update("INSERT INTO training_batches (batch_id, batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at) " +
-        "VALUES (8872, 'BAT-DQ-8872', 8871, 8871, 8872, 8871, '2026-01-01', 30, 1, NOW(), NOW())");
-    jdbcTemplate.update("INSERT INTO training_batches (batch_id, batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at) " +
-        "VALUES (8873, 'BAT-DQ-8873', 8871, 8871, 8873, 8871, '2026-01-01', 30, 1, NOW(), NOW())");
+        "VALUES (8872, 'BAT-DQ-8872', 8871, 8871, 8872, 8871, '2026-01-01', 100, 1, NOW(), NOW())");
 
-    // 4. Seed Trainees
-    // Primary Trainee T1 (888701) in State 8871
+    // 4. Primary Trainee T1 (888701) in State 8871
     jdbcTemplate.update("INSERT INTO trainees (trainee_id, registration_number, first_name, last_name, phone, email, date_of_birth, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at) " +
         "VALUES (888701, 'REG-DQ-888701', 'Aditya', 'Sharma', '9876543210', 'aditya.sharma@example.gov.in', '1995-05-15', 1, 8871, 8871, 1, 1, NOW(), NOW())");
 
-    // Candidate Trainees T2..T8 (888702..888708) in State 8871 with identical phone and DOB
-    for (long tid = 888702L; tid <= 888708L; tid++) {
-      jdbcTemplate.update("INSERT INTO trainees (trainee_id, registration_number, first_name, last_name, phone, email, date_of_birth, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at) " +
-          "VALUES (?, ?, 'Aditya', 'Sharma', '9876543210', ?, '1995-05-15', 1, 8871, 8871, 1, 1, NOW(), NOW())",
-          tid, "REG-DQ-" + tid, "aditya" + tid + "@example.gov.in");
-    }
-
-    // Candidate Trainee T9 (888709) in State 8872 with identical phone and DOB
-    jdbcTemplate.update("INSERT INTO trainees (trainee_id, registration_number, first_name, last_name, phone, email, date_of_birth, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at) " +
-        "VALUES (888709, 'REG-DQ-888709', 'Aditya', 'Sharma', '9876543210', 'aditya888709@example.gov.in', '1995-05-15', 1, 8872, 8872, 1, 1, NOW(), NOW())");
-
-    // 5. Seed Enrollments
     // T1 enrolled in Center 8871
     jdbcTemplate.update("INSERT INTO training_enrollments (enrollment_id, enrollment_number, trainee_id, program_id, course_id, provider_id, center_id, batch_id, enrollment_date, enrollment_status_id, created_at, updated_at) " +
         "VALUES (888701, 'ENR-DQ-888701', 888701, 8871, 8871, 8871, 8871, 8871, '2026-01-01', 1, NOW(), NOW())");
 
-    // T2..T8 enrolled in Center 8872 (Center 8872 != 8871!)
-    for (long tid = 888702L; tid <= 888708L; tid++) {
+    // 5. Seed Candidate Trainees (888702 .. 888701 + candidateCount) with matching phone & DOB
+    for (int i = 1; i <= candidateCount; i++) {
+      long tid = 888701L + i;
+      jdbcTemplate.update("INSERT INTO trainees (trainee_id, registration_number, first_name, last_name, phone, email, date_of_birth, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at) " +
+          "VALUES (?, ?, 'Aditya', 'Sharma', '9876543210', ?, '1995-05-15', 1, 8871, 8871, 1, 1, NOW(), NOW())",
+          tid, "REG-DQ-" + tid, "aditya" + tid + "@example.gov.in");
+
+      // Candidate enrolled in Center 8872 (Center 8872 != 8871!)
       jdbcTemplate.update("INSERT INTO training_enrollments (enrollment_id, enrollment_number, trainee_id, program_id, course_id, provider_id, center_id, batch_id, enrollment_date, enrollment_status_id, created_at, updated_at) " +
           "VALUES (?, ?, ?, 8871, 8871, 8871, 8872, 8872, '2026-01-01', 1, NOW(), NOW())",
           tid, "ENR-DQ-" + tid, tid);
     }
-
-    // T9 enrolled in Center 8873
-    jdbcTemplate.update("INSERT INTO training_enrollments (enrollment_id, enrollment_number, trainee_id, program_id, course_id, provider_id, center_id, batch_id, enrollment_date, enrollment_status_id, created_at, updated_at) " +
-        "VALUES (888709, 'ENR-DQ-888709', 888709, 8871, 8871, 8871, 8873, 8873, '2026-01-01', 1, NOW(), NOW())");
   }
 
   private void cleanUpDuplicateTraineeFixtures() {
-    jdbcTemplate.update("DELETE FROM data_quality_issues WHERE entity_id BETWEEN 888701 AND 888709 AND entity_type = 'Trainee'");
-    jdbcTemplate.update("DELETE FROM training_enrollments WHERE enrollment_id BETWEEN 888701 AND 888709");
-    jdbcTemplate.update("DELETE FROM trainees WHERE trainee_id BETWEEN 888701 AND 888709");
+    jdbcTemplate.update("DELETE FROM data_quality_issues WHERE entity_id BETWEEN 888701 AND 888799 AND entity_type = 'Trainee'");
+    jdbcTemplate.update("DELETE FROM training_enrollments WHERE enrollment_id BETWEEN 888701 AND 888799");
+    jdbcTemplate.update("DELETE FROM trainees WHERE trainee_id BETWEEN 888701 AND 888799");
     jdbcTemplate.update("DELETE FROM training_batches WHERE batch_id IN (8871, 8872, 8873)");
     jdbcTemplate.update("DELETE FROM training_centers WHERE center_id IN (8871, 8872, 8873)");
     jdbcTemplate.update("DELETE FROM training_providers WHERE provider_id = 8871");

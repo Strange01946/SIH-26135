@@ -6,6 +6,7 @@ import in.gov.sih.sih26135.dto.response.DataQualityRuleExecutionSummary;
 import in.gov.sih.sih26135.entity.DataQualityRule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
@@ -29,6 +30,7 @@ import java.util.Map;
  *   <li>Does not invent statutory minimum wages; uses authoritative configuration properties or safely skips.</li>
  *   <li>Flags salaries exceeding realistic operational boundaries (maximumMonthlySalaryThreshold).</li>
  *   <li>Enforces strict, non-null tenant boundaries for state administrators, providers, and employers.</li>
+ *   <li>Distinguishes registration lock failures from deduplication and preserves partial progress on error.</li>
  * </ul>
  */
 @Component
@@ -67,6 +69,7 @@ public class EmploymentSalaryQualityDetector implements DataQualityDetector {
     long violationCount = 0;
     long newIssuesCreated = 0;
     long deduplicatedSkipped = 0;
+    boolean hasFailure = false;
 
     int chunkSize = properties.getBatchChunkSize();
     long lastSeenId = 0;
@@ -117,7 +120,15 @@ public class EmploymentSalaryQualityDetector implements DataQualityDetector {
       sql.append("ORDER BY er.employment_id ASC LIMIT ?");
       params.add(chunkSize);
 
-      List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql.toString(), params.toArray());
+      List<Map<String, Object>> rows;
+      try {
+        rows = jdbcTemplate.queryForList(sql.toString(), params.toArray());
+      } catch (DataAccessException dae) {
+        log.error("Failed to query employment chunk for rule {}: {}", RULE_CODE, dae.getMessage(), dae);
+        hasFailure = true;
+        break;
+      }
+
       if (rows.isEmpty()) {
         hasMore = false;
         break;
@@ -129,24 +140,20 @@ public class EmploymentSalaryQualityDetector implements DataQualityDetector {
         lastSeenId = employmentId;
 
         Object salaryObj = row.get("starting_salary");
-        if (salaryObj == null) {
-          continue; // Missing salary is evaluated by missing data rules if required
-        }
-
-        BigDecimal salary = (salaryObj instanceof BigDecimal bd)
-            ? bd
-            : BigDecimal.valueOf(((Number) salaryObj).doubleValue());
-
         String frequencyCode = (String) row.get("frequency_code");
         Long workStateId = row.get("work_state_id") != null ? ((Number) row.get("work_state_id")).longValue() : null;
 
-        // Determine if there is an authoritative statutory minimum wage for this jurisdiction
+        if (salaryObj == null) {
+          continue;
+        }
+
+        BigDecimal salary = new BigDecimal(salaryObj.toString());
         BigDecimal minWageThreshold = resolveStateMinimumWage(workStateId);
 
         boolean isViolation = false;
         String summary = null;
 
-        // 1. Non-positive salary violation (applies regardless of pay frequency)
+        // 1. Non-positive salary detection
         if (salary.compareTo(BigDecimal.ZERO) <= 0) {
           isViolation = true;
           summary = "Employment record contains invalid non-positive salary amount: " + salary;
@@ -176,18 +183,30 @@ public class EmploymentSalaryQualityDetector implements DataQualityDetector {
 
         if (isViolation) {
           violationCount++;
-          boolean created = registrationService.registerIssueIfAbsent(
+          RegistrationResult result = registrationService.registerOrUpdateIssue(
               rule,
               "EmploymentRecord",
               employmentId,
               summary
           );
-          if (created) {
+          if (result.isCreated()) {
             newIssuesCreated++;
-          } else {
+          } else if (result.isUpdated() || result.isDeduplicated()) {
             deduplicatedSkipped++;
+          } else if (result.isLockFailed()) {
+            log.warn("Lock acquisition failed during issue registration for EmploymentRecord {}: {}", employmentId, result.message());
+            hasFailure = true;
+            break;
+          } else if (result.isDatabaseError()) {
+            log.error("Database error during issue registration for EmploymentRecord {}: {}", employmentId, result.message());
+            hasFailure = true;
+            break;
           }
         }
+      }
+
+      if (hasFailure) {
+        break;
       }
 
       if (rows.size() < chunkSize || (request != null && request.getEntityId() != null)) {
@@ -196,6 +215,7 @@ public class EmploymentSalaryQualityDetector implements DataQualityDetector {
     }
 
     long durationMs = System.currentTimeMillis() - startTime;
+    String finalStatus = hasFailure ? "FAILED" : "SUCCESS";
     return new DataQualityRuleExecutionSummary(
         rule.getId(),
         RULE_CODE,
@@ -206,7 +226,7 @@ public class EmploymentSalaryQualityDetector implements DataQualityDetector {
         deduplicatedSkipped,
         executedAt,
         durationMs,
-        "SUCCESS"
+        finalStatus
     );
   }
 

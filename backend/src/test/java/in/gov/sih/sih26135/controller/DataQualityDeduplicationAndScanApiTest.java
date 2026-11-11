@@ -8,6 +8,8 @@ import in.gov.sih.sih26135.entity.DataQualityRule;
 import in.gov.sih.sih26135.security.jwt.JwtTokenProvider;
 import in.gov.sih.sih26135.service.DataQualityRuleCatalogService;
 import in.gov.sih.sih26135.service.dq.DataQualityIssueRegistrationService;
+import in.gov.sih.sih26135.service.dq.RegistrationResult;
+import in.gov.sih.sih26135.service.dq.RegistrationStatus;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -72,6 +74,9 @@ class DataQualityDeduplicationAndScanApiTest {
 
   @Autowired
   private DataQualityIssueRegistrationService issueRegistrationService;
+
+  @Autowired
+  private in.gov.sih.sih26135.service.dq.TraineeContactQualityDetector traineeDetector;
 
   @Autowired
   private DataQualityEngineProperties properties;
@@ -363,6 +368,82 @@ class DataQualityDeduplicationAndScanApiTest {
     assertThat(count).isEqualTo(2);
   }
 
+  @Test
+  @DisplayName("5b. Registration lock timeout produces FAILED scan summary, is not counted as deduplicated, and throws on legacy method")
+  void testRegistrationLockTimeoutProducesFailedSummaryAndIsNotCountedAsDeduplicated() throws Exception {
+    DataQualityRule rule = catalogService.resolveRuleByCode("DQ-TRAINEE-001");
+    Long testEntityId = 888199L;
+    String entityType = "Trainee";
+
+    // Clean up
+    jdbcTemplate.update("DELETE FROM data_quality_issues WHERE data_quality_rule_id = ? AND entity_type = ? AND entity_id = ?",
+        rule.getId(), entityType, testEntityId);
+
+    String lockKey = "dq_lock:" + rule.getId() + ":" + entityType + ":" + testEntityId;
+
+    // Acquire lock from a separate external Connection to simulate lock conflict / timeout
+    try (Connection blockerConn = dataSource.getConnection()) {
+      boolean locked = DataQualityIssueRegistrationService.acquireNamedLock(blockerConn, lockKey, 5);
+      assertThat(locked).isTrue();
+
+      try {
+        // Temporarily configure 1 second timeout
+        int originalTimeout = properties.getLockTimeoutSeconds();
+        properties.setLockTimeoutSeconds(1);
+
+        try {
+          // 1. Direct call to registerOrUpdateIssue returns LOCK_FAILED
+          in.gov.sih.sih26135.service.dq.RegistrationResult result = issueRegistrationService.registerOrUpdateIssue(
+              rule, entityType, testEntityId, "Trainee contact missing info"
+          );
+          assertThat(result.isLockFailed()).isTrue();
+          assertThat(result.status()).isEqualTo(in.gov.sih.sih26135.service.dq.RegistrationStatus.LOCK_FAILED);
+          assertThat(result.isCreated()).isFalse();
+          assertThat(result.isDeduplicated()).isFalse();
+
+          // 2. Legacy registerIssueIfAbsent throws DataQualityLockAcquisitionException rather than returning false
+          assertThatThrownBy(() -> issueRegistrationService.registerIssueIfAbsent(
+              rule, entityType, testEntityId, "Trainee contact missing info"
+          )).isInstanceOf(in.gov.sih.sih26135.exception.DataQualityLockAcquisitionException.class)
+            .hasMessageContaining("Failed to acquire distributed registration lock");
+
+          // 3. Scan execution on this entity reports FAILED status and 0 deduplicated skipped
+          DataQualityScanRequest request = new DataQualityScanRequest();
+          request.setRuleCode("DQ-TRAINEE-001");
+          request.setEntityId(testEntityId);
+
+          // Seed state and district if not present
+          jdbcTemplate.update("INSERT IGNORE INTO states (state_id, state_code, state_name, lifecycle_status_id, created_at, updated_at) " +
+              "VALUES (8881, 'S8', 'State 8881', 1, NOW(), NOW())");
+          jdbcTemplate.update("INSERT IGNORE INTO districts (district_id, state_id, district_code, district_name, lifecycle_status_id, created_at, updated_at) " +
+              "VALUES (8881, 8881, 'D8881', 'District 8881', 1, NOW(), NOW())");
+
+          // Insert trainee with missing contact
+          jdbcTemplate.update("INSERT INTO trainees (trainee_id, registration_number, first_name, last_name, phone, email, date_of_birth, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at) " +
+              "VALUES (888199, 'REG-DQ-888199', 'Lock', 'Test', NULL, NULL, '1995-01-01', 1, 8881, 8881, 1, 1, NOW(), NOW())");
+
+          in.gov.sih.sih26135.dto.response.DataQualityRuleExecutionSummary summary = traineeDetector.executeScan(
+              rule, request, in.gov.sih.sih26135.service.dq.ScanScopeContext.nationwide(1L)
+          );
+
+          assertThat(summary.status()).isEqualTo("FAILED");
+          assertThat(summary.status()).isNotEqualTo("SUCCESS");
+          // Crucial: named lock timeout MUST NOT be counted as deduplicated!
+          assertThat(summary.deduplicatedIssuesSkipped()).isEqualTo(0L);
+          assertThat(summary.newIssuesCreated()).isEqualTo(0L);
+
+        } finally {
+          properties.setLockTimeoutSeconds(originalTimeout);
+          jdbcTemplate.update("DELETE FROM trainees WHERE trainee_id = 888199");
+          jdbcTemplate.update("DELETE FROM data_quality_issues WHERE data_quality_rule_id = ? AND entity_type = ? AND entity_id = ?",
+              rule.getId(), entityType, testEntityId);
+        }
+      } finally {
+        DataQualityIssueRegistrationService.releaseNamedLock(blockerConn, lockKey);
+      }
+    }
+  }
+
   // =========================================================================
   // 2. SCAN REST API (POST /api/v1/data-quality/scan) INTEGRATION TESTS
   // =========================================================================
@@ -523,14 +604,17 @@ class DataQualityDeduplicationAndScanApiTest {
 
       try {
         ExecutorService exec = Executors.newSingleThreadExecutor();
-        Future<Boolean> future = exec.submit(() ->
-            issueRegistrationService.registerIssueIfAbsent(rule, entityType, testEntityId, "Contended registration attempt")
+        Future<RegistrationResult> future = exec.submit(() ->
+            issueRegistrationService.registerOrUpdateIssue(rule, entityType, testEntityId, "Contended registration attempt")
         );
-        Boolean created = future.get();
+        RegistrationResult result = future.get();
         exec.shutdown();
 
-        // Must return false due to lock timeout
-        assertThat(created).isFalse();
+        // Must fail closed due to lock timeout without claiming creation or deduplication
+        assertThat(result.isLockFailed()).isTrue();
+        assertThat(result.status()).isEqualTo(RegistrationStatus.LOCK_FAILED);
+        assertThat(result.isCreated()).isFalse();
+        assertThat(result.isDeduplicated()).isFalse();
 
         // Must have created 0 issues in the database
         Integer count = jdbcTemplate.queryForObject(

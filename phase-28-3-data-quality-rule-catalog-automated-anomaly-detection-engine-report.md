@@ -2,18 +2,21 @@
 
 ## 1. Executive Summary
 
-Phase 28.3 introduces an automated, concurrency-safe, schema-compliant Data Quality Rule Catalog and Anomaly Detection Engine for the SIH-26135 platform. Building directly on the operational DTO contracts and error codes established in Phase 28.1, this phase operationalizes the pre-existing `data_quality_rules` and `data_quality_issues` schema tables without adding any database tables, columns, indexes, or JPA repository interfaces.
+Phase 28.3 establishes an automated, concurrency-safe, schema-compliant Data Quality Rule Catalog and Anomaly Detection Engine for the SIH-26135 platform. Building directly on the verified operational baseline and DTO specifications from Phase 28.1 and the frozen audit trail infrastructure of Phase 28.2, this phase operationalizes the pre-existing `data_quality_rules` and `data_quality_issues` schema tables without adding any database tables, columns, indexes, or JPA repository interfaces.
 
-Five core production anomaly detection rules have been implemented and validated:
-1. `DQ-TRAINEE-001` (Category: MISSING, Severity: MEDIUM) — Missing trainee contact information (phone number or email address).
-2. `DQ-PLACEMENT-002` (Category: INCONSISTENT, Severity: HIGH) — Temporal incoherence across placement and employment records (offer date preceding enrollment date, or joining date preceding offer date).
-3. `DQ-EMPLOYMENT-003` (Category: INVALID, Severity: HIGH) — Invalid or suspicious salary (non-positive values, amounts below verified state minimum wages when configured, and values exceeding realistic operational upper limits). Zero statutory wages are invented or fabricated; unconfigured jurisdictions safely bypass statutory comparison.
-4. `DQ-ATTENDANCE-004` (Category: INCONSISTENT, Severity: MEDIUM) — Attendance recorded outside batch operational boundaries, respecting inclusive start and end dates.
-5. `DQ-DUPLICATE-005` (Category: DUPLICATE, Severity: HIGH) — Duplicate trainee registrations across training centers, utilizing deterministic matching signals, canonical identity ordering ($T_1 < T_2$), and strict PII redaction in issue summaries.
+Five core production anomaly detection rules are implemented and validated:
+1. `DQ-TRAINEE-001` (Category: MISSING, Severity: MEDIUM) — Missing trainee contact information (phone number or email address), treating empty, blank, and null values as missing.
+2. `DQ-PLACEMENT-002` (Category: INCONSISTENT, Severity: HIGH) — Temporal incoherence across placement and training records (offer date preceding enrollment date, joining date preceding offer date, or joining date preceding enrollment date).
+3. `DQ-EMPLOYMENT-003` (Category: INVALID, Severity: HIGH) — Invalid or suspicious salary (non-positive values, amounts below verified state minimum wages when configured, and values exceeding realistic operational upper limits). Pay periods are normalized across `MONTHLY`, `ANNUAL`, `YEARLY`, `WEEKLY`, `DAILY`, and `HOURLY` (using 208 working hours/month). Unsupported frequency codes safely bypass monthly benchmarks without generating false legal violations. Zero statutory minimum wages are invented or fabricated.
+4. `DQ-ATTENDANCE-004` (Category: INCONSISTENT, Severity: MEDIUM) — Attendance recorded outside batch operational boundaries, strictly respecting inclusive start and end dates.
+5. `DQ-DUPLICATE-005` (Category: DUPLICATE, Severity: HIGH) — Candidate duplicate trainee registrations across distinct training centers based on deterministic matching signals, canonical identity ordering ($T_1 < T_2$), bounded deterministic pagination discovering all candidate matches without arbitrary cutoffs, and strict PII redaction.
 
-Issue registration enforces concurrency-safe deduplication via database named locks (`GET_LOCK`/`RELEASE_LOCK`) combined with JVM monitor synchronization and transaction boundary management. Active `OPEN` issues are never duplicated, while historical `RESOLVED` and `DISMISSED` issues are preserved without being overwritten or reopened. The authenticated scan trigger API (`POST /api/v1/data-quality/scan`) provides granular, tenant-scoped scanning for nationwide administrators, state administrators, training providers, and employers.
+### Targeted Correctness Hardening (Final Phase 28.3 Resolution)
+- **Duplicate Candidate Relationship Preservation:** Arbitrary candidate cutoffs (such as stopping after 1,000 matches) have been eliminated. When candidates exceed schema `VARCHAR(500)` capacity (e.g. >50 candidates), a conservative aggregate representation accurately reports total matching candidates and explicitly states representation truncation without claiming to store complete candidate lists.
+- **Relationship Preservation on Existing OPEN Issues:** When an active OPEN issue already exists and new candidates are enrolled/discovered, `registerOrUpdateIssue` updates the existing OPEN issue's summary and timestamp in place, avoiding duplicate rows while preventing loss of newly discovered relationships.
+- **Accurate Failure Reporting & Lock Separation:** Introduced `RegistrationStatus` (`CREATED`, `UPDATED`, `DEDUPLICATED`, `LOCK_FAILED`, `DATABASE_ERROR`) and `RegistrationResult`. MySQL named lock timeouts/failures return `LOCK_FAILED` and are never counted in `deduplicatedIssuesSkipped`. Candidate SQL errors and lock timeouts cause scans to terminate with `status = "FAILED"` and accurate partial `evaluatedRecordCount`, preserving already committed valid issues.
 
-All 1,800 tests in the full backend regression suite pass with 0 failures, 0 errors, and 0 skipped. Exactly 137 JPA repositories and 2 `@Query` annotations are preserved.
+All 1,804 tests across the full backend regression suite pass with 0 failures, 0 errors, and 0 skipped. Exactly 137 JPA repositories and 2 `@Query` annotations are preserved.
 
 ---
 
@@ -47,19 +50,23 @@ flowchart TD
     subgraph Registration & Deduplication
         D1 & D2 & D3 & D4 & D5 --> Reg["DataQualityIssueRegistrationService"]
         Reg --> Lock["MySQL Named Lock + JVM Monitor Synchronization"]
-        Reg --> Check{"Active OPEN Issue Exists? (is_open_flag=1)"}
-        Check -->|Yes| Skip["Skip & Increment deduplicatedIssuesSkipped"]
-        Check -->|No| Insert["Create OPEN DataQualityIssue (Sanitized Summary)"]
+        Lock --> ResultCheck{"Registration Result"}
+        ResultCheck -->|No Open Issue| Insert["Create OPEN DataQualityIssue (CREATED)"]
+        ResultCheck -->|Open Issue with New Findings| Update["Update Existing OPEN Issue Summary (UPDATED)"]
+        ResultCheck -->|Open Issue with Identical Findings| Dedup["Skip Issue Creation (DEDUPLICATED)"]
+        ResultCheck -->|Lock Timeout or Failure| Fail["Return LOCK_FAILED (Never Deduplicated)"]
     end
 
     Engine --> Summary["ApiResponse<List<DataQualityRuleExecutionSummary>>"]
 ```
 
 ### Core Components
-- **`DataQualityEngineProperties`**: Configuration properties (`data-quality.batch-chunk-size`, `data-quality.maximum-monthly-salary-threshold`, `data-quality.state-minimum-wages`).
+- **`DataQualityEngineProperties`**: Configuration properties (`data-quality.batch-chunk-size`, `data-quality.maximum-monthly-salary-threshold`, `data-quality.state-minimum-wages`, `data-quality.lock-timeout-seconds`).
 - **`DataQualityRuleCatalogService` / `DataQualityRuleCatalogServiceImpl`**: Idempotent provisioning and lookup of rules in `data_quality_rules`.
 - **`DataQualityEngineService` / `DataQualityEngineServiceImpl`**: Scan orchestration, tenant scope validation, parameter checks, and partial failure isolation.
-- **`DataQualityIssueRegistrationService`**: Concurrency-safe issue creation with MySQL named locks (`GET_LOCK`), JVM monitor lock, and active status deduplication (`s.is_open_flag = 1`).
+- **`DataQualityIssueRegistrationService`**: Concurrency-safe issue creation/update with MySQL named locks (`GET_LOCK`), JVM monitor lock, and active status deduplication (`s.is_open_flag = 1`).
+- **`RegistrationStatus` & `RegistrationResult`**: Structured outcome model distinguishing `CREATED`, `UPDATED`, `DEDUPLICATED`, `LOCK_FAILED`, and `DATABASE_ERROR`.
+- **`DataQualityLockAcquisitionException`**: Exception thrown when distributed named lock cannot be acquired during issue registration.
 - **Detectors (`DataQualityDetector` implementations)**: Modular strategy implementations for each rule code with keyset pagination and tenant filtering.
 - **`DataQualityRuleController`**: Exposes `POST /api/v1/data-quality/scan` and `/api/v1/data-quality-rules/scan`.
 
@@ -111,9 +118,10 @@ Codebase invariants strictly maintained:
 - **Category:** `MISSING` (ID 2), **Severity:** `MEDIUM` (ID 2)
 - **Detection Logic:**
   - Identifies active trainees (`deleted_at IS NULL`) where `phone` is `NULL`, empty, or whitespace-only, OR `email` is `NULL`, empty, or whitespace-only.
-  - Respects state scope when caller is a state administrator: `WHERE t.state_id = ?`.
+  - Enforces non-null state scope: `WHERE t.state_id = ?` and training provider scope: `t.trainee_id IN (SELECT te.trainee_id FROM training_enrollments te WHERE te.provider_id = ?)`.
+  - Rejects employer callers with 403 `AccessDeniedException`.
   - Uses bounded keyset batching (`t.trainee_id > ? ORDER BY t.trainee_id ASC LIMIT ?`).
-  - Summaries indicate missing attributes without logging sensitive raw PII (e.g., `"Trainee is missing contact information: phone number is missing; email address is missing"`).
+  - Distinguishes lock timeouts from deduplication: on lock timeout or database query failure, terminates scan with `status = "FAILED"`, preserves committed valid issues, and does not increment `deduplicatedIssuesSkipped`.
 
 ---
 
@@ -125,10 +133,11 @@ Codebase invariants strictly maintained:
 - **Detection Logic:**
   - Evaluates active placement records joining training enrollments:
     1. Offer Date preceding Enrollment Date: `p.offer_date < e.enrollment_date`
-    2. Joining Date preceding Offer Date: `p.joining_date < p.offer_date`
-    3. Joining Date preceding Enrollment Date: `p.joining_date < e.enrollment_date`
+    2. Joining Date preceding Offer Date: `p.actual_joining_date < p.offer_date`
+    3. Joining Date preceding Enrollment Date: `p.actual_joining_date < e.enrollment_date`
   - Null dates are safely treated as unknown and do not trigger false anomalies.
-  - Scope filtering: Filters by `employer_id` for employer callers and `training_provider_id` for provider callers.
+  - Enforces non-null scope: `pr.work_state_id = ?` for state administrators, `pr.provider_id = ?` for training providers, and `pr.employer_id = ?` for employers.
+  - Uses `registerOrUpdateIssue`: on lock timeout, immediately halts scan and returns `status = "FAILED"` with accurate partial progress.
 
 ---
 
@@ -143,7 +152,8 @@ Codebase invariants strictly maintained:
     - `ANNUAL` / `YEARLY`: $S_{norm} = S / 12$
     - `DAILY`: $S_{norm} = S \times 26$
     - `WEEKLY`: $S_{norm} = (S \times 52) / 12$
-    - `HOURLY`: $S_{norm} = S \times 8 \times 26$
+    - `HOURLY`: $S_{norm} = S \times 208$ (8 hours/day $\times$ 26 working days/month)
+    - Unsupported / null / blank frequency codes: returns `null` to safely skip monthly comparisons without generating false legal violations.
 - **Absence of Invented Wages:**
   - No statutory wage table exists in the database. `DataQualityEngineProperties` holds state-to-minimum-wage benchmarks.
   - If a state or jurisdiction has no configured minimum wage, statutory evaluation is **safely skipped** without fabricating violations.
@@ -151,6 +161,7 @@ Codebase invariants strictly maintained:
   - Flags unrealistic operational values exceeding `maximumMonthlySalaryThreshold` (default INR 5,000,000 / month).
 - **Non-Positive Values:**
   - Flags non-positive salaries ($S \le 0$).
+- **Column Mapping:** Reads `starting_salary` from `employment_records` table.
 
 ---
 
@@ -160,12 +171,12 @@ Codebase invariants strictly maintained:
 - **Target Entity:** `AttendanceRecord`
 - **Category:** `INCONSISTENT` (ID 3), **Severity:** `MEDIUM` (ID 2)
 - **Detection Logic:**
-  - Joins `training_batches` on `training_batch_id`.
-  - Flags attendance records where `attendance_date < b.start_date` or `attendance_date > b.end_date`.
+  - Joins `training_batches` on `batch_id`.
+  - Flags attendance records where `session_date < tb.start_date` or `session_date > tb.end_date`.
   - **Inclusive Boundaries:** Attendance on `start_date` or `end_date` is valid and not flagged.
-  - Open-ended batches (`b.end_date IS NULL`) only validate `attendance_date >= b.start_date`.
-  - Null attendance dates are skipped.
-  - Tenant scope: Restricts by `training_provider_id` for provider callers.
+  - Open-ended batches (`tb.end_date IS NULL`) only validate `session_date >= tb.start_date`.
+  - Rejects employer callers with 403 `AccessDeniedException`.
+  - Enforces non-null state scope: `tb.center_id IN (SELECT tc.center_id FROM training_centers tc WHERE tc.state_id = ?)` and training provider scope: `ar.enrollment_id IN (SELECT te.enrollment_id FROM training_enrollments te WHERE te.provider_id = ?)`.
 
 ---
 
@@ -174,13 +185,24 @@ Codebase invariants strictly maintained:
 - **Class:** [`DuplicateTraineeCandidateQualityDetector.java`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/service/dq/DuplicateTraineeCandidateQualityDetector.java)
 - **Target Entity:** `Trainee`
 - **Category:** `DUPLICATE` (ID 1), **Severity:** `HIGH` (ID 3)
-- **Candidate Pair Matching:**
-  - Identifies distinct trainees registered across distinct training centers having matching deterministic identity signals (phone hash or email hash).
+- **Deterministic Candidate Signals:**
+  - Identifies distinct trainees registered across distinct training centers having matching deterministic identity signals (phone + DOB, phone + Name, email + DOB, email + Name, or phone + email).
+  - Weak identity guard: trainees lacking both phone and email are bypassed for duplicate matching.
 - **Canonical Ordering:**
-  - Enforces canonical pair identity $T_1 < T_2$ via SQL `ON t1.trainee_id < t2.trainee_id`.
-  - Issue registration is pinned to the primary entity $T_1$ with reference to $T_2$, preventing symmetric duplicate issue generation.
-- **Sensitive-Data Protection:**
-  - Summaries state the detection signals (e.g., `"Possible duplicate trainee registration detected across distinct training centers (Center 10 vs Center 20). Matching signals: Contact phone match. Paired trainee: ID 888302"`) with zero raw Aadhaar, PAN, phone numbers, or email addresses.
+  - Enforces canonical pair identity $T_1 < T_2$ via `WHERE t2.trainee_id > ?`, preventing symmetric duplicate issue generation.
+- **Elimination of Arbitrary Match Cutoffs:**
+  - Arbitrary stopping limits (e.g. `allCandidateIds.size() >= 1000`) removed. Bounded pagination continues until candidate records are exhausted (`page.size() < candidateBatchSize`).
+- **Conservative Aggregate Representation with Truncation Disclaimer:**
+  - Implemented in `formatDuplicateTraineeSummary(int totalCandidates, List<Long> candidateIds)`.
+  - When candidate count fits within 500 characters, all candidate IDs are enumerated.
+  - When candidate count exceeds 500 characters (e.g. >50 candidates), the summary explicitly declares:
+    `Candidate duplicate trainee registrations across distinct training centers. Total matching candidates detected: N. Representation limit reached (schema max 500 chars): complete candidate enumeration truncated; initial candidate IDs: [...]...`
+  - Explicitly states truncation without claiming complete candidate ID storage and never exposes raw PII.
+- **Preservation of Newly Discovered Candidate Relationships:**
+  - When an active OPEN issue already exists and subsequent scans detect newly enrolled duplicate candidates, `registerOrUpdateIssue` updates the existing OPEN issue's `issue_summary` and `updated_at` in place.
+  - Prevents creating duplicate issue rows while ensuring newly discovered relationships are never silently discarded.
+- **SQL Error & Lock Timeout Propagation:**
+  - `findCrossCenterDuplicateCandidates` does not swallow `DataAccessException`. Candidate lookup errors trigger failure handling, stopping the scan and returning `status = "FAILED"` with accurate partial `evaluatedRecordCount`.
 
 ---
 
@@ -189,42 +211,48 @@ Codebase invariants strictly maintained:
 - **Interface:** [`DataQualityEngineService.java`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/service/DataQualityEngineService.java)
 - **Implementation:** [`DataQualityEngineServiceImpl.java`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/service/impl/DataQualityEngineServiceImpl.java)
 - **Responsibilities:**
-  1. Validates authenticated caller and tenant boundary.
-  2. Resolves executable rules matching scan filters (`ruleCode`, `ruleId`, `targetEntityType`, `categoryId`, `severityId`).
-  3. Executes detectors with bounded keyset batching.
-  4. Isolates partial detector failures so remaining rules continue evaluation.
-  5. Aggregates metrics into `List<DataQualityRuleExecutionSummary>`.
+  1. Authorizes caller and determines tenancy boundary (fails closed on unresolvable scope).
+  2. Enforces employer restrictions: employers are restricted to rules `DQ-PLACEMENT-002` and `DQ-EMPLOYMENT-003`.
+  3. Resolves executable rules matching scan filters (`ruleCode`, `ruleId`, `targetEntityType`, `categoryId`, `severityId`).
+  4. Executes detectors with bounded keyset batching.
+  5. Isolates partial detector failures so remaining rules continue evaluation.
+  6. Aggregates metrics into `List<DataQualityRuleExecutionSummary>`.
 
 ---
 
-## 12. Issue Registration, Deduplication and Idempotency
+## 12. Issue Registration, Deduplication and Lock Isolation
 
 - **Class:** [`DataQualityIssueRegistrationService.java`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/service/dq/DataQualityIssueRegistrationService.java)
 - **Deduplication Key:** `(data_quality_rule_id, entity_type, entity_id, is_open_flag = 1)`
-- **Behavior:**
-  - **Active OPEN Issue Exists:** If `is_open_flag = 1` for the tuple, registration is skipped (`registerIssueIfAbsent` returns `false`) and `deduplicatedIssuesSkipped` is incremented.
-  - **Historical RESOLVED / DISMISSED Issue Exists:** If prior issues for this entity are in terminal status (`is_terminal_flag = 1`, status ID 4 or 5), they are **never overwritten or reopened**. A new issue record is registered, preserving the audit trail and resolution notes of prior closures.
-  - **Distinct Rules:** Distinct rules flag the same entity independently without collisions.
-  - **Distinct Entities:** Distinct entities are flagged independently without collisions.
+- **Key Methods:**
+  - `registerOrUpdateIssue(rule, entityType, entityId, rawSummary)`: Returns structured `RegistrationResult` indicating `CREATED`, `UPDATED`, `DEDUPLICATED`, `LOCK_FAILED`, or `DATABASE_ERROR`.
+  - `registerIssueIfAbsent(rule, entityType, entityId, rawSummary)`: Legacy compatibility method that throws `DataQualityLockAcquisitionException` on lock failure rather than returning `false`.
+- **Lock & Transaction Ordering:**
+  - Dedicated connection `lockConn` acquires MySQL named lock (`GET_LOCK(lockKey, timeout)`).
+  - Transaction executes via `transactionTemplate.execute(REQUIRES_NEW)`.
+  - Named lock is released in `finally` block **strictly after** the transaction has committed (`saveAndFlush`).
+- **Separation of Lock Failure from Deduplication:**
+  - Lock acquisition timeout/failure returns `RegistrationStatus.LOCK_FAILED`. It is never treated as successful deduplication (`deduplicatedIssuesSkipped` is not incremented).
+- **Preservation of Historical Issues:**
+  - Historical `RESOLVED` and `DISMISSED` issues (`is_terminal_flag = 1`) are never overwritten or reopened.
 
 ---
 
 ## 13. Concurrency Safety and Race Condition Handling
 
-To guarantee that concurrent background scans or distributed nodes never create duplicate `OPEN` issues:
-1. **JVM Monitor Synchronization:** `synchronized (lockKey.intern())` ensures threads within the same JVM process sequentially enter the transaction block.
-2. **Dedicated Transaction Boundary:** `TransactionTemplate` with `PROPAGATION_REQUIRES_NEW` guarantees that each registration commits independently and immediately flushes (`saveAndFlush`). Subsequent threads immediately see committed rows in their transactional read.
-3. **MySQL Named Advisory Locks:** Uses `GET_LOCK(lockKey, 10)` and `RELEASE_LOCK(lockKey)` with key `dq_lock:<ruleId>:<entityType>:<entityId>` for distributed safety across multiple cluster instances.
+1. **JVM Monitor Synchronization:** `synchronized (lockKey.intern())` ensures threads within the same JVM process sequentially enter the transaction block, preventing thread thrashing.
+2. **Dedicated Transaction Boundary:** `TransactionTemplate` with `PROPAGATION_REQUIRES_NEW` guarantees that each registration commits independently and immediately flushes (`saveAndFlush`).
+3. **MySQL Named Advisory Locks:** Uses `GET_LOCK(lockKey, timeout)` on a dedicated connection, held across commit visibility, ensuring distributed cluster safety.
 
 ---
 
 ## 14. Scan Trigger API Implementation
 
 - **Controller:** [`DataQualityRuleController.java`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/controller/DataQualityRuleController.java)
-- **Route:** `POST /api/v1/data-quality/scan` and `POST /api/v1/data-quality-rules/scan`
+- **Routes:** `POST /api/v1/data-quality/scan` and `POST /api/v1/data-quality-rules/scan`
 - **Request DTO:** [`DataQualityScanRequest.java`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/dto/request/DataQualityScanRequest.java)
 - **Response DTO:** `ApiResponse<List<DataQualityRuleExecutionSummary>>`
-- **Controller Uniformity:** Integrated into `DataQualityRuleController`, preserving the exact 63 production REST controllers baseline expected by `ResponseEnvelopeAlignmentContractTest`.
+- **Controller Uniformity:** Folded into `DataQualityRuleController`, maintaining the exact 63 production REST controllers baseline.
 - **PreAuthorize:** `@PreAuthorize("hasAnyAuthority('audit.read', 'system.manage')")`
 
 ---
@@ -233,248 +261,98 @@ To guarantee that concurrent background scans or distributed nodes never create 
 
 - **Security Enforcement:** Integrated with `WorkflowSecurityScopeValidator`.
 - **Nationwide Administrators:** `ROLE_super_admin` or `ROLE_government_admin` with verified unrestricted database scope are permitted unscoped platform-wide scans.
-- **State Administrators:** Scans are automatically scoped to `user.getStateId()`. Cross-state scans are rejected.
-- **Training Providers:** Scans are scoped to `user.getTrainingProviderId()`. Cross-institution scans are rejected.
-- **Employers:** Scans are scoped to `user.getEmployerId()`. Unrelated placement/employment records are excluded.
-- **Unprivileged Users:** Users lacking administrative roles or tenancy scope receive `403 Forbidden`. Unauthenticated requests receive `401 Unauthorized`.
+- **State Administrators:** Scans are automatically scoped to `user.getStateId()`. Null state scope fails closed with 403 `AccessDeniedException`.
+- **Training Providers:** Scans are scoped to `user.getTrainingProviderId()`. Null provider scope fails closed with 403 `AccessDeniedException`.
+- **Employers:** Scans are scoped to `user.getEmployerId()`. Employer access on unauthorized entities/rules is rejected with 403 `AccessDeniedException`.
+- **Unprivileged Users:** Users lacking required authorities receive `403 Forbidden`. Unauthenticated requests receive `401 Unauthorized`.
 
 ---
 
 ## 16. Bounded Batch and Chunk Processing
 
 - **Chunk Size:** Configurable via `data-quality.batch-chunk-size` (default 500).
-- **Pagination Strategy:** Strictly keyset pagination (e.g. `WHERE id > ? ORDER BY id ASC LIMIT ?`). No unbounded `OFFSET` queries that degrade performance on large tables.
-- **Memory Footprint:** Only 500 entity IDs/records are loaded into memory per chunk, processed, and immediately registered.
+- **Pagination Strategy:** Strictly keyset pagination (e.g. `WHERE id > ? ORDER BY id ASC LIMIT ?`).
+- **Memory Footprint:** Bounded keyset chunks prevent memory exhaustion.
 
 ---
 
 ## 17. Error Codes and Partial Failure Handling
 
-- **Error Codes:**
+- **Standardized Error Codes:**
   - `DQ_RULE_NOT_FOUND` (404 Not Found): Requested rule code or rule ID does not exist.
-  - `UNSUPPORTED_ENTITY_TYPE` (400 Bad Request): Client requested scanning an unapproved entity type (allowlist: `Trainee`, `PlacementRecord`, `EmploymentRecord`, `AttendanceRecord`).
-- **Partial Failure Isolation:**
-  - If one detector encounters an unexpected database timeout or exception, `DataQualityEngineServiceImpl` logs the error, records status `"FAILED"` in that rule's summary, and proceeds to evaluate all remaining rules.
+  - `UNSUPPORTED_ENTITY_TYPE` (400 Bad Request): Client requested scanning an unapproved entity type.
+- **Scan Failure Representation:**
+  - When candidate query fails or named lock times out, the detector stops further chunk processing, preserves valid committed issues (`newIssuesCreated`), and returns `status = "FAILED"`.
+  - Evaluated record count reflects only records evaluated up to the point of failure, never falsely claiming that all records were evaluated.
 
 ---
 
-## 18. Sensitive-Data Protection
+## 18. Comprehensive Verification and Test Battery
 
-- Issue summaries pass through `DataQualityIssueRegistrationService.sanitizeIssueSummary()`, calling `AuditTrailEventListener.sanitizeChangeSummary()`.
-- Deterministic 12-digit numbers (potential Aadhaar) and 10-character alphanumeric strings (potential PAN) are masked.
-- Raw phone numbers and email addresses are excluded from issue descriptions.
-- Summaries are capped at 500 characters, strictly respecting the `issue_summary VARCHAR(500)` database column limit.
-
----
-
-## 19. Files Created and Modified
-
-### Created Files
-1. [`DataQualityEngineProperties.java`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/config/DataQualityEngineProperties.java)
-2. [`DataQualityRuleCatalogService.java`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/service/DataQualityRuleCatalogService.java)
-3. [`DataQualityRuleCatalogServiceImpl.java`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/service/impl/DataQualityRuleCatalogServiceImpl.java)
-4. [`DataQualityEngineService.java`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/service/DataQualityEngineService.java)
-5. [`DataQualityEngineServiceImpl.java`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/service/impl/DataQualityEngineServiceImpl.java)
-6. [`ScanScopeContext.java`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/service/dq/ScanScopeContext.java)
-7. [`DataQualityDetector.java`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/service/dq/DataQualityDetector.java)
-8. [`DataQualityIssueRegistrationService.java`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/service/dq/DataQualityIssueRegistrationService.java)
-9. [`TraineeContactQualityDetector.java`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/service/dq/TraineeContactQualityDetector.java)
-10. [`PlacementChronologyQualityDetector.java`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/service/dq/PlacementChronologyQualityDetector.java)
-11. [`EmploymentSalaryQualityDetector.java`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/service/dq/EmploymentSalaryQualityDetector.java)
-12. [`BatchAttendanceBoundsQualityDetector.java`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/service/dq/BatchAttendanceBoundsQualityDetector.java)
-13. [`DuplicateTraineeCandidateQualityDetector.java`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/service/dq/DuplicateTraineeCandidateQualityDetector.java)
-14. [`DataQualityRuleCatalogTest.java`](file:///E:/project/backend/src/test/java/in/gov/sih/sih26135/service/dq/DataQualityRuleCatalogTest.java)
-15. [`DataQualityAnomalyDetectorsTest.java`](file:///E:/project/backend/src/test/java/in/gov/sih/sih26135/service/dq/DataQualityAnomalyDetectorsTest.java)
-16. [`DataQualityDeduplicationAndScanApiTest.java`](file:///E:/project/backend/src/test/java/in/gov/sih/sih26135/controller/DataQualityDeduplicationAndScanApiTest.java)
-
-### Modified Files
-1. [`DataQualityRuleController.java`](file:///E:/project/backend/src/main/java/in/gov/sih/sih26135/controller/DataQualityRuleController.java): Added `/api/v1/data-quality` mapping and `POST /scan` endpoint wiring `DataQualityEngineService`.
-2. [`OperationalLogEventPaginationTest.java`](file:///E:/project/backend/src/test/java/in/gov/sih/sih26135/pagination/OperationalLogEventPaginationTest.java): Updated `fullAdminToken` with `ROLE_super_admin` to comply with Phase 28.2 nationwide audit authorization policy.
-3. [`FilterSearchSortingSecurityTest.java`](file:///E:/project/backend/src/test/java/in/gov/sih/sih26135/security/FilterSearchSortingSecurityTest.java): Updated `adminToken` with `ROLE_super_admin` to comply with Phase 28.2 nationwide audit authorization policy.
-4. [`ResponseEnvelopeAlignmentContractTest.java`](file:///E:/project/backend/src/test/java/in/gov/sih/sih26135/response/ResponseEnvelopeAlignmentContractTest.java): Updated total audited endpoints count from 654 to 655.
-
----
-
-## 20. Tests Added and Updated
-
-- **`DataQualityRuleCatalogTest`** (5 tests): Rule resolution by code, idempotent rule provisioning, category and severity mapping, disabled rule filtering, and rule query isolation.
-- **`DataQualityAnomalyDetectorsTest`** (10 tests): Unit, boundary, and tenant isolation tests for:
-  - `DQ-TRAINEE-001` missing phone/email detection and whitespace validation.
-  - `DQ-PLACEMENT-002` temporal incoherence detection.
-  - `DQ-EMPLOYMENT-003` salary frequency normalization (`MONTHLY`, `ANNUAL`, `YEARLY`, `WEEKLY`, `DAILY`, `HOURLY`), safe handling of unsupported frequencies, and realistic operational upper limit.
-  - `DQ-ATTENDANCE-004` inclusive batch operational boundary evaluation.
-  - `DQ-DUPLICATE-005` cross-center duplicate candidates detection, canonical pair ordering ($T_1 < T_2$), and strict PII redaction.
-  - Bounded pagination and aggregate issue strategy preserving $>5$ candidate IDs without truncation.
-  - Cross-state duplicate candidate exclusion under state administrator tenant scope.
-  - Repeated scan deduplication on duplicate candidates.
-  - Rejection of employer persona across unauthorized domain rules (`DQ-ATTENDANCE-004`, `DQ-TRAINEE-001`, `DQ-DUPLICATE-005`) with `AccessDeniedException`.
-  - Rejection of unresolvable/null scope identifiers on non-nationwide scans across all detectors.
-- **`DataQualityDeduplicationAndScanApiTest`** (22 tests):
-  - Deduplication idempotency and concurrent registration safety across separate connections.
-  - Distributed named lock timeout fail-closed behavior (returns false without issue creation).
-  - Database query failure propagation without swallowing exceptions or assuming issue absence.
-  - Preservation of historical `RESOLVED` and `DISMISSED` issues without reopening or mutation.
-  - Independent rule and entity flagging.
-  - Admin full scan 200 OK.
-  - RuleCode filter and targetEntityType filter execution.
-  - 401 unauthenticated and 403 unprivileged guest.
-  - 403 unscoped auditor and 404 non-existent rule code (`DQ_RULE_NOT_FOUND`).
-  - 400 unsupported entity type (`UNSUPPORTED_ENTITY_TYPE`).
-  - Disabled rule skipping.
-  - Employer persona rejection on attendance, trainee, and duplicate trainee scans (403 Forbidden).
-  - Employer persona rejection when targeting `AttendanceRecord` or `Trainee` entity types (403 Forbidden).
-  - Employer unscoped scan filtering to only authorized placement and employment rules (200 OK).
-  - Non-nationwide callers with null scope IDs failing closed with 403 Forbidden.
-- **Updated Existing Tests**:
-  - `OperationalLogEventPaginationTest`: 23 tests passing.
-  - `FilterSearchSortingSecurityTest`: 36 tests passing.
-  - `ResponseEnvelopeAlignmentContractTest`: 22 tests passing.
-
----
-
-## 21. Targeted Critical Corrections Verification
-
-An independent source review identified four targeted areas requiring correction, all of which have been resolved and verified:
-
-### 1. Tenant Isolation Across All Five Detectors
-- **Authoritative Scope Validation:** `ScanScopeContext.validateAuthoritativeScope()` and `DataQualityEngineServiceImpl.resolveAndValidateScope()` strictly require non-null scope identifiers for non-nationwide callers. Callers with null `stateId`, `trainingProviderId`, or `employerId` immediately fail closed with 403 `AccessDeniedException`.
-- **Detector-Level Scoping:** All five detectors enforce non-null database-level predicates (`pr.work_state_id = ?`, `er.work_state_id = ?`, `t.state_id = ?`, `er.employer_id = ?`, `pr.employer_id = ?`, `te.provider_id = ?`).
-- **Employer Boundary Hardening:** Employers only possess authority over `PlacementRecord` and `EmploymentRecord`. Employer attempts to scan attendance (`DQ-ATTENDANCE-004`), trainee contact info (`DQ-TRAINEE-001`), duplicate trainees (`DQ-DUPLICATE-005`), or pass `targetEntityType` as `AttendanceRecord` or `Trainee` fail closed with 403 `AccessDeniedException`. Unscoped scans from employers automatically filter out unauthorized rules and execute only `DQ-PLACEMENT-002` and `DQ-EMPLOYMENT-003`.
-- **Candidate Scope Guardrails:** In `DuplicateTraineeCandidateQualityDetector`, candidate query for $T_2$ strictly enforces the caller's tenant boundary (`t2.state_id = ?` for state admin; provider-scoped enrollment for training provider). Cross-tenant candidate matches are never inspected or exposed.
-
-### 2. Concurrent OPEN-Issue Deduplication & Distributed Lock Holding
-- **Distributed Named Lock Scope:** In `DataQualityIssueRegistrationService`, the MySQL named lock (`GET_LOCK`) is acquired on a dedicated `Connection lockConn` from `DataSource` *before* the issue-creation transaction begins (`TransactionDefinition.PROPAGATION_REQUIRES_NEW`).
-- **Commit Visibility Guarantee:** The distributed named lock remains held across the entire transaction and is released via `RELEASE_LOCK` on `lockConn` in a `finally` block strictly *after* transaction commit visibility is guaranteed.
-- **Fail-Closed on Contention/Timeout:** If `GET_LOCK` fails, times out, or returns null, issue creation aborts immediately (returns `false`) without creating an issue.
-- **No Exception Swallowing:** In `checkActiveOpenIssueExists`, database exceptions are no longer caught and swallowed; any database error fails closed and rolls back the transaction.
-- **Preserved Invariant:** Historical `RESOLVED` / `DISMISSED` issues are retained; active deduplication is strictly keyed to `(data_quality_rule_id, entity_type, entity_id, s.is_open_flag = 1)`.
-
-### 3. Salary Frequency Handling & Boundary Standards
-- **Standardized Frequencies:** `EmploymentSalaryQualityDetector` supports all `ref_salary_frequency` codes: `MONTHLY`, `ANNUAL`, `WEEKLY`, `DAILY`, plus `HOURLY` and `YEARLY`.
-- **Approved Conversion Assumptions:**
-  - `HOURLY`: Multiplied by 208 (8 hours/day $\times$ 26 working days/month).
-  - `ANNUAL` / `YEARLY`: Divided by 12.
-  - `WEEKLY`: Multiplied by 52, divided by 12.
-  - `DAILY`: Multiplied by 26 working days.
-  - `MONTHLY`: 1:1.
-- **Unsupported Frequency Safety:** Frequency codes not in the approved catalog (or null/blank) return `null` and safely skip monthly and statutory benchmark comparisons without raising false legal violations.
-- **Zero Invented Wages:** Jurisdictions without configured minimum wages bypass statutory evaluation cleanly.
-- **Column Mapping Alignment:** Updated SQL query to select `er.starting_salary` aligned with the entity schema.
-
-### 4. Distinct Duplicate Candidate Relationships & Aggregate Strategy
-- **Removal of Truncation:** Removed hardcoded `LIMIT 5` from `findCrossCenterDuplicateCandidates`.
-- **Bounded Deterministic Pagination:** Implemented deterministic pagination with `ORDER BY t2.trainee_id ASC LIMIT 100` and `t2.trainee_id > lastSeenCandidateId`.
-- **Aggregate Issue Strategy:** When multiple candidate matches are detected for primary trainee $T_1$, all candidate IDs are aggregated into a single issue summary (e.g., `Matching candidate trainee IDs: [888702, 888703, ...]`) preserving the complete relationship graph while redacting raw PII (names, phone numbers, emails, dates of birth).
-- **Pair Symmetry & Canonical Ordering:** Pair symmetry enforced via $T_1 < T_2$. Repeated scans detect existing active issue and increment `deduplicatedIssuesSkipped`.
-
----
-
-## 22. Focused Test Results
+### Test Execution Summary
+- **Focused Test Suite:**
+  - `DataQualityAnomalyDetectorsTest`: 13 tests passed.
+  - `DataQualityDeduplicationAndScanApiTest`: 24 tests passed.
+  - `OperationalErrorCodeContractTest`: 8 tests passed.
+  - `DataQualityRuleCatalogTest`: 5 tests passed.
+  - Focused Suite Total: 49 / 49 passed (100%).
+- **Full Backend Regression Suite:**
+  - Total Tests Run: **1,804**
+  - Failures: **0**
+  - Errors: **0**
+  - Skipped: **0**
+  - Build Status: **BUILD SUCCESS**
+  - Total Execution Time: 05:26 min.
 
 ```
-[INFO] Running in.gov.sih.sih26135.service.dq.DataQualityRuleCatalogTest
-[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.417 s
-[INFO] Running in.gov.sih.sih26135.service.dq.DataQualityAnomalyDetectorsTest
-[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 13.51 s
-[INFO] Running in.gov.sih.sih26135.controller.DataQualityDeduplicationAndScanApiTest
-[INFO] Tests run: 22, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.258 s
-[INFO] Running in.gov.sih.sih26135.exception.OperationalErrorCodeContractTest
-[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.511 s
-[INFO] ------------------------------------------------------------------------
-[INFO] BUILD SUCCESS - Tests run: 45, Failures: 0, Errors: 0, Skipped: 0
-[INFO] ------------------------------------------------------------------------
-```
-
----
-
-## 23. Full Regression Results
-
-```
-[INFO] -------------------------------------------------------
-[INFO]  T E S T S
-[INFO] -------------------------------------------------------
-...
 [INFO] Results:
 [INFO] 
-[INFO] Tests run: 1800, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 1804, Failures: 0, Errors: 0, Skipped: 0
 [INFO] 
 [INFO] ------------------------------------------------------------------------
 [INFO] BUILD SUCCESS
 [INFO] ------------------------------------------------------------------------
-[INFO] Total time:  05:40 min
-[INFO] Finished at: 2026-11-11T11:03:40+05:30
+[INFO] Total time:  05:26 min
+[INFO] Finished at: 2026-11-11T16:07:25+05:30
 [INFO] ------------------------------------------------------------------------
 ```
 
-- **Total Tests Executed:** 1,800
-- **Failures:** 0
-- **Errors:** 0
-- **Skipped:** 0
-- **Pass Rate:** 100.0%
-
 ---
 
-## 24. Database Isolation Evidence
+## 19. Database Isolation Evidence
 
 Every test suite verifies dedicated database catalog isolation via `MysqlConnectionTest.assertDedicatedTestCatalog(catalog)`:
 - Connected Catalog: `SIH26135_TEST`
 - Production Catalog `SIH26135`: 0 connections, 0 queries, 0 writes.
-- Validated in all test setup routines:
-```java
-try (Connection conn = dataSource.getConnection()) {
-  String catalog = conn.getCatalog();
-  MysqlConnectionTest.assertDedicatedTestCatalog(catalog);
-  assertThat(catalog).isEqualToIgnoringCase(MysqlConnectionTest.EXPECTED_TEST_CATALOG);
-}
-```
+- Hibernate Mode: `spring.jpa.hibernate.ddl-auto=validate`.
 
 ---
 
-## 25. Repository and `@Query` Counts
+## 20. Architectural Invariants
 
-Verified via `OperationalErrorCodeContractTest`:
-- **Repository Count:** Exactly **137** Spring Data JPA repositories.
-- **`@Query` Count:** Exactly **2** `@Query` annotations.
-
----
-
-## 26. Hibernate Schema Validation
-
-- Property: `spring.jpa.hibernate.ddl-auto=validate`
-- Entity Validation: All 144 mapped tables, including `data_quality_rules`, `data_quality_issues`, and reference tables, validated successfully without errors on test application startup.
+- **Spring Data JPA Repositories:** Exactly **137** interfaces (0 added).
+- **Spring Data `@Query` Annotations:** Exactly **2** annotations (0 added).
+- **REST Controllers:** Exactly **63** controllers.
 
 ---
 
-## 27. Git Hygiene Results
+## 21. Git Hygiene Results
 
-- `git status --short`:
-```
- M backend/src/main/java/in/gov/sih/sih26135/config/DataQualityEngineProperties.java
- M backend/src/main/java/in/gov/sih/sih26135/service/dq/BatchAttendanceBoundsQualityDetector.java
- M backend/src/main/java/in/gov/sih/sih26135/service/dq/DataQualityIssueRegistrationService.java
- M backend/src/main/java/in/gov/sih/sih26135/service/dq/DuplicateTraineeCandidateQualityDetector.java
- M backend/src/main/java/in/gov/sih/sih26135/service/dq/EmploymentSalaryQualityDetector.java
- M backend/src/main/java/in/gov/sih/sih26135/service/dq/PlacementChronologyQualityDetector.java
- M backend/src/main/java/in/gov/sih/sih26135/service/dq/ScanScopeContext.java
- M backend/src/main/java/in/gov/sih/sih26135/service/dq/TraineeContactQualityDetector.java
- M backend/src/main/java/in/gov/sih/sih26135/service/impl/DataQualityEngineServiceImpl.java
- M backend/src/test/java/in/gov/sih/sih26135/controller/DataQualityDeduplicationAndScanApiTest.java
- M backend/src/test/java/in/gov/sih/sih26135/service/dq/DataQualityAnomalyDetectorsTest.java
-```
-- `git diff --check`: Exit code 0 (zero whitespace errors).
-- `git diff --cached --check`: Exit code 0.
-- Zero Git commits or pushes made.
+- `git diff --check`: Exit code **0** (no whitespace errors).
+- `git diff --cached --check`: Exit code **0**.
+- Zero Git commits, pushes, stashes, or resets performed.
 
 ---
 
-## 28. Unresolved Blockers or Documented Limitations
+## 22. Schema Limitations and Documented Constraints
 
+- **`data_quality_issues.issue_summary` (VARCHAR 500):** In the frozen database schema, `issue_summary` is limited to 500 characters. For trainees with large duplicate candidate pools (>50 candidates), storing complete pair-specific rows is impossible without altering the schema or deduplication key. The conservative aggregate representation accurately records the total candidate count, lists initial matching candidate IDs, and explicitly disclaims schema representation truncation.
 - **Statutory Wage Data:** No statutory minimum wage table exists in the database schema. Minimum wage thresholds are maintained in `DataQualityEngineProperties`. For jurisdictions lacking configured thresholds, statutory comparisons safely skip without failing or inventing values.
-- **Scope Limit:** Phase 28.3 strictly encompasses anomaly detection and issue registration. Issue remediation, assignment, and status transitions belong to Phase 28.4.
+- **Phase Boundary:** Phase 28.3 strictly encompasses anomaly detection and issue registration. Issue remediation, assignment, and status transitions belong to Phase 28.4.
 
 ---
 
-## 29. Acceptance Checklist
+## 23. Acceptance Checklist
 
 - [x] All 5 core rules provisioned idempotently without overwriting manual edits.
 - [x] `DQ-TRAINEE-001` detects missing phone or email with strict tenant scope filtering.
@@ -482,26 +360,22 @@ Verified via `OperationalErrorCodeContractTest`:
 - [x] `DQ-EMPLOYMENT-003` normalizes salary frequencies (`MONTHLY`, `ANNUAL`, `YEARLY`, `WEEKLY`, `DAILY`, `HOURLY`), safely skips unsupported codes, avoids invented statutory wages, and flags upper limits.
 - [x] `DQ-ATTENDANCE-004` evaluates attendance dates with inclusive batch boundaries.
 - [x] `DQ-DUPLICATE-005` detects cross-center trainee duplicate candidates with canonical pair identity ($T_1 < T_2$), bounded pagination, and redacted PII.
-- [x] Duplicate candidate queries strictly enforce caller's tenant scope (cross-tenant records are never matched).
-- [x] Aggregate duplicate issue strategy preserves all matching candidate IDs in issue summary without raw PII.
-- [x] Employer persona rejected on attendance, trainee, and duplicate trainee rules with 403 `AccessDeniedException`.
-- [x] Non-nationwide callers with null/unresolvable tenant IDs fail closed with 403 `AccessDeniedException`.
+- [x] Arbitrary 1,000-candidate cutoff removed from duplicate detection; bounded pagination continues until exhausted.
+- [x] Aggregate duplicate issue strategy accurately identifies total candidates and disclaims schema truncation when exceeding 500 characters.
+- [x] Newly discovered candidate relationships on existing OPEN issues are updated in place without duplicate row creation or data loss.
+- [x] Candidate SQL errors propagate and do not produce misleading `SUCCESS` summaries.
+- [x] MySQL named lock timeout/failure returns `LOCK_FAILED`, is distinguished from deduplication, and does not increment `deduplicatedIssuesSkipped`.
+- [x] Detectors report `status = "FAILED"` with accurate partial progress upon operational errors.
 - [x] Concurrency-safe deduplication with MySQL named locks (`GET_LOCK`) held across commit visibility on dedicated connections.
-- [x] Distributed lock timeout fails closed without creating duplicate issues.
-- [x] Database query failures propagate and cause transaction rollback without swallowing exceptions.
-- [x] Active `OPEN` issues are never duplicated; historical `RESOLVED`/`DISMISSED` issues are untouched.
-- [x] Bounded keyset batch processing with configurable chunk size (500).
-- [x] `POST /api/v1/data-quality/scan` and `/api/v1/data-quality-rules/scan` authenticated and scoped.
-- [x] Error codes `DQ_RULE_NOT_FOUND` (404) and `UNSUPPORTED_ENTITY_TYPE` (400) enforced.
-- [x] Partial failure isolation across detector executions.
+- [x] Dedicated test database `SIH26135_TEST` isolated from production.
 - [x] Exactly 137 JPA repositories and 2 `@Query` annotations preserved.
 - [x] Zero schema mutations and strict `ddl-auto=validate` compliance.
-- [x] Dedicated test database `SIH26135_TEST` isolated from production.
-- [x] 100% full regression suite passing (1,800 / 1,800 tests).
+- [x] 100% full regression suite passing (1,804 / 1,804 tests).
 - [x] Zero Git mutations (no commits/pushes).
+- [x] `git diff --check` and `git diff --cached --check` exit with code 0.
 
 ---
 
-## 30. Final Verdict
+## 24. Final Verdict
 
 **READY FOR INDEPENDENT REVIEW**

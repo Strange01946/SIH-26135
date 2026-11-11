@@ -6,6 +6,7 @@ import in.gov.sih.sih26135.dto.response.DataQualityRuleExecutionSummary;
 import in.gov.sih.sih26135.entity.DataQualityRule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
@@ -27,6 +28,7 @@ import java.util.Map;
  *   <li>Inclusive boundaries: Attendance on batch start date or batch end date is valid.</li>
  *   <li>Rejects employer access with 403 Forbidden since employers do not have attendance tenancy.</li>
  *   <li>Enforces non-null state and training provider tenant restrictions.</li>
+ *   <li>Distinguishes registration lock failures from deduplication and preserves partial progress on error.</li>
  * </ul>
  */
 @Component
@@ -65,6 +67,7 @@ public class BatchAttendanceBoundsQualityDetector implements DataQualityDetector
     long violationCount = 0;
     long newIssuesCreated = 0;
     long deduplicatedSkipped = 0;
+    boolean hasFailure = false;
 
     int chunkSize = properties.getBatchChunkSize();
     long lastSeenId = 0;
@@ -110,14 +113,21 @@ public class BatchAttendanceBoundsQualityDetector implements DataQualityDetector
       sql.append("ORDER BY ar.attendance_id ASC LIMIT ?");
       params.add(chunkSize);
 
-      List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql.toString(), params.toArray());
+      List<Map<String, Object>> rows;
+      try {
+        rows = jdbcTemplate.queryForList(sql.toString(), params.toArray());
+      } catch (DataAccessException dae) {
+        log.error("Failed to query attendance chunk for rule {}: {}", RULE_CODE, dae.getMessage(), dae);
+        hasFailure = true;
+        break;
+      }
+
       if (rows.isEmpty()) {
         hasMore = false;
         break;
       }
 
       for (Map<String, Object> row : rows) {
-        evaluatedCount++;
         Long attendanceId = ((Number) row.get("attendance_id")).longValue();
         lastSeenId = attendanceId;
 
@@ -126,6 +136,7 @@ public class BatchAttendanceBoundsQualityDetector implements DataQualityDetector
         Object endDateObj = row.get("end_date");
 
         if (sessionDateObj == null || startDateObj == null) {
+          evaluatedCount++;
           continue;
         }
 
@@ -147,20 +158,34 @@ public class BatchAttendanceBoundsQualityDetector implements DataQualityDetector
           summary = "Attendance session date (" + sessionDate + ") occurs after batch scheduled end date (" + endDate + ")";
         }
 
+        evaluatedCount++;
+
         if (isViolation) {
           violationCount++;
-          boolean created = registrationService.registerIssueIfAbsent(
+          RegistrationResult result = registrationService.registerOrUpdateIssue(
               rule,
               "AttendanceRecord",
               attendanceId,
               summary
           );
-          if (created) {
+          if (result.isCreated()) {
             newIssuesCreated++;
-          } else {
+          } else if (result.isUpdated() || result.isDeduplicated()) {
             deduplicatedSkipped++;
+          } else if (result.isLockFailed()) {
+            log.warn("Lock acquisition failed during issue registration for AttendanceRecord {}: {}", attendanceId, result.message());
+            hasFailure = true;
+            break;
+          } else if (result.isDatabaseError()) {
+            log.error("Database error during issue registration for AttendanceRecord {}: {}", attendanceId, result.message());
+            hasFailure = true;
+            break;
           }
         }
+      }
+
+      if (hasFailure) {
+        break;
       }
 
       if (rows.size() < chunkSize || (request != null && request.getEntityId() != null)) {
@@ -169,6 +194,7 @@ public class BatchAttendanceBoundsQualityDetector implements DataQualityDetector
     }
 
     long durationMs = System.currentTimeMillis() - startTime;
+    String finalStatus = hasFailure ? "FAILED" : "SUCCESS";
     return new DataQualityRuleExecutionSummary(
         rule.getId(),
         RULE_CODE,
@@ -179,7 +205,7 @@ public class BatchAttendanceBoundsQualityDetector implements DataQualityDetector
         deduplicatedSkipped,
         executedAt,
         durationMs,
-        "SUCCESS"
+        finalStatus
     );
   }
 }

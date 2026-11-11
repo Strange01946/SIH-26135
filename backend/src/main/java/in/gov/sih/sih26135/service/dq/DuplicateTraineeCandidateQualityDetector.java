@@ -6,6 +6,7 @@ import in.gov.sih.sih26135.dto.response.DataQualityRuleExecutionSummary;
 import in.gov.sih.sih26135.entity.DataQualityRule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
@@ -29,8 +30,10 @@ import java.util.Map;
  *   <li>Never exposes raw sensitive identifiers or full contact details in issue summaries.</li>
  *   <li>Canonical identity ordering (t1 < t2) ensures pair symmetry and prevents self-matching.</li>
  *   <li>Requires actual cross-center enrollment evidence (center_id != center_id).</li>
- *   <li>Bounded deterministic pagination prevents silent candidate truncation beyond arbitrary limits.</li>
- *   <li>Aggregate issue strategy preserves all detected candidate IDs without raw PII exposure.</li>
+ *   <li>Bounded deterministic pagination discovers all candidate matches without silent arbitrary cutoffs.</li>
+ *   <li>Conservative aggregate representation accurately identifies total candidates and disclaims schema truncation.</li>
+ *   <li>Preserves newly discovered candidate relationships on existing OPEN issues without duplicate row creation.</li>
+ *   <li>Propagates candidate SQL failures and lock acquisition timeouts as FAILED status with accurate partial counts.</li>
  * </ul>
  */
 @Component
@@ -69,6 +72,7 @@ public class DuplicateTraineeCandidateQualityDetector implements DataQualityDete
     long violationCount = 0;
     long newIssuesCreated = 0;
     long deduplicatedSkipped = 0;
+    boolean hasFailure = false;
 
     int chunkSize = properties.getBatchChunkSize();
     long lastSeenId = 0;
@@ -113,14 +117,21 @@ public class DuplicateTraineeCandidateQualityDetector implements DataQualityDete
       sql.append("ORDER BY t.trainee_id ASC LIMIT ?");
       params.add(chunkSize);
 
-      List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql.toString(), params.toArray());
+      List<Map<String, Object>> rows;
+      try {
+        rows = jdbcTemplate.queryForList(sql.toString(), params.toArray());
+      } catch (DataAccessException dae) {
+        log.error("Failed to query trainee chunk for rule {}: {}", RULE_CODE, dae.getMessage(), dae);
+        hasFailure = true;
+        break;
+      }
+
       if (rows.isEmpty()) {
         hasMore = false;
         break;
       }
 
       for (Map<String, Object> row : rows) {
-        evaluatedCount++;
         Long t1Id = ((Number) row.get("trainee_id")).longValue();
         lastSeenId = t1Id;
 
@@ -132,39 +143,58 @@ public class DuplicateTraineeCandidateQualityDetector implements DataQualityDete
 
         // Weak identity guard: If neither phone nor email is present, skip duplicate matching
         if (phone.isEmpty() && email.isEmpty()) {
+          evaluatedCount++;
           continue;
         }
 
         // Query for canonical candidate t2 with t2.trainee_id > t1Id enrolled in distinct centers
-        List<Long> matchingCandidateIds = findCrossCenterDuplicateCandidates(
-            t1Id, phone, email, firstName, lastName, dob, scopeContext
-        );
+        List<Long> matchingCandidateIds;
+        try {
+          matchingCandidateIds = findCrossCenterDuplicateCandidates(
+              t1Id, phone, email, firstName, lastName, dob, scopeContext
+          );
+        } catch (DataAccessException dae) {
+          log.error("Candidate SQL query failed for trainee {}: {}", t1Id, dae.getMessage(), dae);
+          hasFailure = true;
+          break;
+        }
+
+        // Successfully evaluated record up to candidate discovery
+        evaluatedCount++;
 
         if (!matchingCandidateIds.isEmpty()) {
           violationCount += matchingCandidateIds.size();
 
-          // Aggregate issue strategy: Document all detected candidate IDs without exposing raw PII
-          String summary;
-          if (matchingCandidateIds.size() == 1) {
-            summary = "Candidate duplicate trainee registration across distinct training centers (associated candidate trainee ID: "
-                + matchingCandidateIds.get(0) + ")";
-          } else {
-            summary = "Candidate duplicate trainee registrations across distinct training centers. Matching candidate trainee IDs: "
-                + matchingCandidateIds;
-          }
+          // Conservative aggregate representation with schema truncation disclaimer
+          String summary = formatDuplicateTraineeSummary(matchingCandidateIds.size(), matchingCandidateIds);
 
-          boolean created = registrationService.registerIssueIfAbsent(
+          RegistrationResult result = registrationService.registerOrUpdateIssue(
               rule,
               "Trainee",
               t1Id,
               summary
           );
-          if (created) {
+
+          if (result.isCreated()) {
             newIssuesCreated++;
-          } else {
+          } else if (result.isUpdated() || result.isDeduplicated()) {
             deduplicatedSkipped++;
+          } else if (result.isLockFailed()) {
+            log.warn("Distributed named lock acquisition failed during duplicate issue registration for Trainee {}: {}",
+                t1Id, result.message());
+            hasFailure = true;
+            break;
+          } else if (result.isDatabaseError()) {
+            log.error("Database error during duplicate issue registration for Trainee {}: {}",
+                t1Id, result.message());
+            hasFailure = true;
+            break;
           }
         }
+      }
+
+      if (hasFailure) {
+        break;
       }
 
       if (rows.size() < chunkSize || (request != null && request.getEntityId() != null)) {
@@ -173,6 +203,7 @@ public class DuplicateTraineeCandidateQualityDetector implements DataQualityDete
     }
 
     long durationMs = System.currentTimeMillis() - startTime;
+    String finalStatus = hasFailure ? "FAILED" : "SUCCESS";
     return new DataQualityRuleExecutionSummary(
         rule.getId(),
         RULE_CODE,
@@ -183,13 +214,61 @@ public class DuplicateTraineeCandidateQualityDetector implements DataQualityDete
         deduplicatedSkipped,
         executedAt,
         durationMs,
-        "SUCCESS"
+        finalStatus
     );
+  }
+
+  /**
+   * Formats a conservative aggregate summary for candidate duplicate trainees.
+   * Accurately reports total matching candidates and explicitly states schema representation limits
+   * when the complete candidate list exceeds 500 characters.
+   */
+  public static String formatDuplicateTraineeSummary(int totalCandidates, List<Long> candidateIds) {
+    if (totalCandidates == 1 && candidateIds != null && !candidateIds.isEmpty()) {
+      return "Candidate duplicate trainee registration across distinct training centers (associated candidate trainee ID: "
+          + candidateIds.get(0) + ")";
+    }
+
+    if (candidateIds == null || candidateIds.isEmpty()) {
+      return "Candidate duplicate trainee registrations across distinct training centers. Total matching candidates detected: "
+          + totalCandidates;
+    }
+
+    String fullPrefix = "Candidate duplicate trainee registrations across distinct training centers. Total matching candidates detected: "
+        + totalCandidates + ". Candidate IDs: ";
+    String fullListStr = candidateIds.toString();
+    if ((fullPrefix + fullListStr).length() <= 500) {
+      return fullPrefix + fullListStr;
+    }
+
+    // Schema length limit reached: explicitly declare aggregate truncation with exact candidate count
+    String truncPrefix = "Candidate duplicate trainee registrations across distinct training centers. Total matching candidates detected: "
+        + totalCandidates
+        + ". Representation limit reached (schema max 500 chars): complete candidate enumeration truncated; initial candidate IDs: [";
+    String suffix = "]...";
+    int maxContentLength = 500 - truncPrefix.length() - suffix.length();
+
+    StringBuilder idsBuilder = new StringBuilder();
+    for (int i = 0; i < candidateIds.size(); i++) {
+      String idStr = String.valueOf(candidateIds.get(i));
+      int additionLength = (i == 0) ? idStr.length() : (2 + idStr.length());
+      if (idsBuilder.length() + additionLength > maxContentLength) {
+        break;
+      }
+      if (i > 0) {
+        idsBuilder.append(", ");
+      }
+      idsBuilder.append(idStr);
+    }
+
+    return truncPrefix + idsBuilder + suffix;
   }
 
   /**
    * Finds deterministic duplicate candidate IDs across different training centers using bounded pagination
    * and respecting caller tenancy scope.
+   *
+   * <p>Propagates {@link DataAccessException} on database query failures rather than swallowing errors.
    */
   private List<Long> findCrossCenterDuplicateCandidates(
       Long t1Id,
@@ -284,20 +363,15 @@ public class DuplicateTraineeCandidateQualityDetector implements DataQualityDete
       query.append("ORDER BY t2.trainee_id ASC LIMIT ?");
       args.add(candidateBatchSize);
 
-      List<Long> page;
-      try {
-        page = jdbcTemplate.queryForList(query.toString(), Long.class, args.toArray());
-      } catch (Exception e) {
-        log.warn("Cross-center duplicate candidate search failed for trainee {}: {}", t1Id, e.getMessage());
-        break;
-      }
+      // Do NOT swallow DataAccessException: allow it to propagate to caller for proper failure reporting
+      List<Long> page = jdbcTemplate.queryForList(query.toString(), Long.class, args.toArray());
 
       if (page.isEmpty()) {
         hasMoreCandidates = false;
       } else {
         allCandidateIds.addAll(page);
         lastSeenCandidateId = page.get(page.size() - 1);
-        if (page.size() < candidateBatchSize || allCandidateIds.size() >= 1000) {
+        if (page.size() < candidateBatchSize) {
           hasMoreCandidates = false;
         }
       }

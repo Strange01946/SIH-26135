@@ -6,6 +6,7 @@ import in.gov.sih.sih26135.entity.DataQualityRule;
 import in.gov.sih.sih26135.entity.RefDataQualityDetectionSource;
 import in.gov.sih.sih26135.entity.RefDataQualityIssueStatus;
 import in.gov.sih.sih26135.event.listener.AuditTrailEventListener;
+import in.gov.sih.sih26135.exception.DataQualityLockAcquisitionException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.repository.DataQualityIssueRepository;
 import in.gov.sih.sih26135.repository.RefDataQualityDetectionSourceRepository;
@@ -24,6 +25,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Service managing concurrency-safe issue registration and deduplication.
@@ -34,8 +37,9 @@ import java.time.LocalDateTime;
  *   <li>The distributed lock remains held until the issue-creation transaction has committed or rolled back.</li>
  *   <li>Never releases the distributed lock before commit visibility is guaranteed.</li>
  *   <li>Deduplication key: (ruleId + entityType + entityId + is_open_flag=1).</li>
- *   <li>Fails closed when GET_LOCK times out, fails, or returns null.</li>
+ *   <li>Fails closed when GET_LOCK times out, fails, or returns null (distinguished from deduplication).</li>
  *   <li>Fails closed when duplicate-existence check encounters database query failure.</li>
+ *   <li>Preservation of newly discovered relationships on existing OPEN issues without duplicate row creation.</li>
  *   <li>Preservation of historical RESOLVED / DISMISSED issues without silent reopening.</li>
  *   <li>Sanitization and PII redaction of issue summaries (max 500 characters).</li>
  * </ul>
@@ -72,17 +76,23 @@ public class DataQualityIssueRegistrationService {
   }
 
   /**
-   * Evaluates a finding and registers a new DataQualityIssue if no active OPEN issue exists for this rule and entity.
+   * Evaluates a finding under a distributed named lock:
+   * <ul>
+   *   <li>If no active OPEN issue exists: creates and commits a new DataQualityIssue (CREATED).</li>
+   *   <li>If an active OPEN issue exists and new findings are present: updates the existing issue summary (UPDATED).</li>
+   *   <li>If an active OPEN issue exists with identical findings: skips registration (DEDUPLICATED).</li>
+   *   <li>If named lock acquisition fails or times out: returns LOCK_FAILED without claiming deduplication.</li>
+   * </ul>
    *
    * @param rule data quality rule that detected the anomaly
    * @param entityType target entity type name
    * @param entityId target entity primary key identifier
    * @param rawSummary issue explanation
-   * @return {@code true} if a new issue was created, {@code false} if skipped due to existing active issue or lock timeout
+   * @return structured {@link RegistrationResult} indicating the exact outcome
    */
-  public boolean registerIssueIfAbsent(DataQualityRule rule, String entityType, Long entityId, String rawSummary) {
+  public RegistrationResult registerOrUpdateIssue(DataQualityRule rule, String entityType, Long entityId, String rawSummary) {
     if (rule == null || entityType == null || entityId == null) {
-      return false;
+      return RegistrationResult.databaseError("Rule, entityType, and entityId are required");
     }
 
     String lockKey = ("dq_lock:" + rule.getId() + ":" + entityType.trim() + ":" + entityId).intern();
@@ -95,20 +105,64 @@ public class DataQualityIssueRegistrationService {
         boolean lockAcquired = acquireNamedLock(lockConn, lockKey, timeout);
         if (!lockAcquired) {
           log.warn("Failed to acquire distributed named lock for {}: lock acquisition failed or timed out", lockKey);
-          return false;
+          return RegistrationResult.lockFailed("Distributed named lock acquisition timed out or failed for " + lockKey);
         }
 
         try {
-          // Execute issue creation in a new transaction.
+          // Execute issue registration or update in a new transaction.
           // The distributed named lock on lockConn remains held until transactionTemplate.execute
           // returns (which guarantees that the transaction has COMMITTED to the database).
-          Boolean created = transactionTemplate.execute(status -> {
+          return transactionTemplate.execute(status -> {
             // 1. Check if active open issue exists - fails closed if database query fails
-            boolean activeOpenIssueExists = checkActiveOpenIssueExists(rule.getId(), entityType.trim(), entityId);
-            if (activeOpenIssueExists) {
-              log.debug("Active open issue already exists for rule {} on {}:{} - deduplicated",
-                  rule.getRuleCode(), entityType, entityId);
-              return false;
+            Long existingIssueId = null;
+            String existingSummary = null;
+            try {
+              List<Map<String, Object>> existingRows = jdbcTemplate.queryForList(
+                  "SELECT dqi.data_quality_issue_id, dqi.issue_summary FROM data_quality_issues dqi " +
+                      "JOIN ref_data_quality_issue_status s ON dqi.data_quality_issue_status_id = s.data_quality_issue_status_id " +
+                      "WHERE dqi.data_quality_rule_id = ? AND dqi.entity_type = ? AND dqi.entity_id = ? AND s.is_open_flag = 1 " +
+                      "ORDER BY dqi.data_quality_issue_id ASC LIMIT 1",
+                  rule.getId(),
+                  entityType.trim(),
+                  entityId
+              );
+              if (!existingRows.isEmpty()) {
+                Map<String, Object> row = existingRows.get(0);
+                existingIssueId = ((Number) row.get("data_quality_issue_id")).longValue();
+                existingSummary = (String) row.get("issue_summary");
+              }
+            } catch (Exception e) {
+              log.error("Database query failure while checking active open issue for {}:{}: {}",
+                  entityType, entityId, e.getMessage(), e);
+              throw e;
+            }
+
+            String sanitizedSummary = sanitizeIssueSummary(rawSummary);
+
+            if (existingIssueId != null) {
+              // Active OPEN issue already exists
+              if (sanitizedSummary.equals(existingSummary)) {
+                log.debug("Active open issue {} already contains identical summary for rule {} on {}:{} - deduplicated",
+                    existingIssueId, rule.getRuleCode(), entityType, entityId);
+                return RegistrationResult.deduplicated(existingIssueId);
+              } else {
+                // Update the existing OPEN issue with the new findings (prevents loss of new duplicate candidates)
+                LocalDateTime now = LocalDateTime.now();
+                DataQualityIssue existingIssue = dataQualityIssueRepository.findById(existingIssueId).orElse(null);
+                if (existingIssue != null) {
+                  existingIssue.setIssueSummary(sanitizedSummary);
+                  existingIssue.setUpdatedAt(now);
+                  dataQualityIssueRepository.saveAndFlush(existingIssue);
+                } else {
+                  jdbcTemplate.update(
+                      "UPDATE data_quality_issues SET issue_summary = ?, updated_at = NOW() WHERE data_quality_issue_id = ?",
+                      sanitizedSummary, existingIssueId
+                  );
+                }
+                log.info("Updated existing active open issue {} with newly discovered findings for rule {} on {}:{}",
+                    existingIssueId, rule.getRuleCode(), entityType, entityId);
+                return RegistrationResult.updated(existingIssueId);
+              }
             }
 
             // 2. Resolve default OPEN status and RULE source
@@ -118,9 +172,7 @@ public class DataQualityIssueRegistrationService {
             RefDataQualityDetectionSource ruleSource = refDataQualityDetectionSourceRepository.findBySourceCode("RULE")
                 .orElseThrow(() -> new ResourceNotFoundException("RefDataQualityDetectionSource", "sourceCode: RULE"));
 
-            // 3. Sanitize and redact PII from issue summary
-            String sanitizedSummary = sanitizeIssueSummary(rawSummary);
-
+            // 3. Create new issue
             LocalDateTime now = LocalDateTime.now();
             DataQualityIssue issue = new DataQualityIssue(
                 rule.getDataQualityCategory(),
@@ -138,10 +190,8 @@ public class DataQualityIssueRegistrationService {
 
             dataQualityIssueRepository.saveAndFlush(issue);
             log.debug("Created new DataQualityIssue for rule {} on {}:{}", rule.getRuleCode(), entityType, entityId);
-            return true;
+            return RegistrationResult.created(issue.getId());
           });
-
-          return Boolean.TRUE.equals(created);
 
         } finally {
           // Distributed lock is released ONLY AFTER transaction commit visibility is guaranteed
@@ -153,6 +203,27 @@ public class DataQualityIssueRegistrationService {
         throw new RuntimeException("Database error during distributed named lock management: " + e.getMessage(), e);
       }
     }
+  }
+
+  /**
+   * Legacy compatibility method: delegates to {@link #registerOrUpdateIssue}.
+   * Throws {@link DataQualityLockAcquisitionException} on lock failure rather than masking as deduplication.
+   *
+   * @param rule data quality rule that detected the anomaly
+   * @param entityType target entity type name
+   * @param entityId target entity primary key identifier
+   * @param rawSummary issue explanation
+   * @return {@code true} if a new issue was created, {@code false} if deduplicated or updated
+   */
+  public boolean registerIssueIfAbsent(DataQualityRule rule, String entityType, Long entityId, String rawSummary) {
+    RegistrationResult result = registerOrUpdateIssue(rule, entityType, entityId, rawSummary);
+    if (result.isLockFailed()) {
+      throw new DataQualityLockAcquisitionException("Failed to acquire distributed registration lock for " + entityType + ":" + entityId + ": " + result.message());
+    }
+    if (result.isDatabaseError()) {
+      throw new RuntimeException("Database error during issue registration for " + entityType + ":" + entityId + ": " + result.message());
+    }
+    return result.isCreated();
   }
 
   /**

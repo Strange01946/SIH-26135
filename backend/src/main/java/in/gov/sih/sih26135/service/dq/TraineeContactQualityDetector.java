@@ -6,6 +6,7 @@ import in.gov.sih.sih26135.dto.response.DataQualityRuleExecutionSummary;
 import in.gov.sih.sih26135.entity.DataQualityRule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
@@ -24,6 +25,7 @@ import java.util.Map;
  *   <li>Treats empty string, whitespace-only, and NULL as missing.</li>
  *   <li>Rejects employer callers with 403 Forbidden since employers lack general trainee tenancy.</li>
  *   <li>Enforces non-null state and training provider tenant restrictions.</li>
+ *   <li>Distinguishes registration lock failures from deduplication and preserves partial progress on error.</li>
  * </ul>
  */
 @Component
@@ -62,6 +64,7 @@ public class TraineeContactQualityDetector implements DataQualityDetector {
     long violationCount = 0;
     long newIssuesCreated = 0;
     long deduplicatedSkipped = 0;
+    boolean hasFailure = false;
 
     int chunkSize = properties.getBatchChunkSize();
     long lastSeenId = 0;
@@ -106,7 +109,15 @@ public class TraineeContactQualityDetector implements DataQualityDetector {
       sql.append("ORDER BY t.trainee_id ASC LIMIT ?");
       params.add(chunkSize);
 
-      List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql.toString(), params.toArray());
+      List<Map<String, Object>> rows;
+      try {
+        rows = jdbcTemplate.queryForList(sql.toString(), params.toArray());
+      } catch (DataAccessException dae) {
+        log.error("Failed to query trainee chunk for rule {}: {}", RULE_CODE, dae.getMessage(), dae);
+        hasFailure = true;
+        break;
+      }
+
       if (rows.isEmpty()) {
         hasMore = false;
         break;
@@ -134,19 +145,31 @@ public class TraineeContactQualityDetector implements DataQualityDetector {
             details.append("email address is missing");
           }
 
-          boolean created = registrationService.registerIssueIfAbsent(
+          RegistrationResult result = registrationService.registerOrUpdateIssue(
               rule,
               "Trainee",
               traineeId,
               details.toString()
           );
 
-          if (created) {
+          if (result.isCreated()) {
             newIssuesCreated++;
-          } else {
+          } else if (result.isUpdated() || result.isDeduplicated()) {
             deduplicatedSkipped++;
+          } else if (result.isLockFailed()) {
+            log.warn("Lock acquisition failed during issue registration for Trainee {}: {}", traineeId, result.message());
+            hasFailure = true;
+            break;
+          } else if (result.isDatabaseError()) {
+            log.error("Database error during issue registration for Trainee {}: {}", traineeId, result.message());
+            hasFailure = true;
+            break;
           }
         }
+      }
+
+      if (hasFailure) {
+        break;
       }
 
       if (rows.size() < chunkSize || (request != null && request.getEntityId() != null)) {
@@ -155,6 +178,7 @@ public class TraineeContactQualityDetector implements DataQualityDetector {
     }
 
     long durationMs = System.currentTimeMillis() - startTime;
+    String finalStatus = hasFailure ? "FAILED" : "SUCCESS";
     return new DataQualityRuleExecutionSummary(
         rule.getId(),
         RULE_CODE,
@@ -165,7 +189,7 @@ public class TraineeContactQualityDetector implements DataQualityDetector {
         deduplicatedSkipped,
         executedAt,
         durationMs,
-        "SUCCESS"
+        finalStatus
     );
   }
 }

@@ -6,6 +6,7 @@ import in.gov.sih.sih26135.dto.response.DataQualityRuleExecutionSummary;
 import in.gov.sih.sih26135.entity.DataQualityRule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
@@ -27,6 +28,7 @@ import java.util.Map;
  *   <li>Actual joining date preceding training enrollment date.</li>
  *   <li>Safely skips records with missing/null dates without generating false anomalies.</li>
  *   <li>Enforces non-null state, provider, and employer tenancy restrictions.</li>
+ *   <li>Distinguishes registration lock failures from deduplication and preserves partial progress on error.</li>
  * </ul>
  */
 @Component
@@ -65,6 +67,7 @@ public class PlacementChronologyQualityDetector implements DataQualityDetector {
     long violationCount = 0;
     long newIssuesCreated = 0;
     long deduplicatedSkipped = 0;
+    boolean hasFailure = false;
 
     int chunkSize = properties.getBatchChunkSize();
     long lastSeenId = 0;
@@ -115,7 +118,15 @@ public class PlacementChronologyQualityDetector implements DataQualityDetector {
       sql.append("ORDER BY pr.placement_id ASC LIMIT ?");
       params.add(chunkSize);
 
-      List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql.toString(), params.toArray());
+      List<Map<String, Object>> rows;
+      try {
+        rows = jdbcTemplate.queryForList(sql.toString(), params.toArray());
+      } catch (DataAccessException dae) {
+        log.error("Failed to query placement chunk for rule {}: {}", RULE_CODE, dae.getMessage(), dae);
+        hasFailure = true;
+        break;
+      }
+
       if (rows.isEmpty()) {
         hasMore = false;
         break;
@@ -155,18 +166,30 @@ public class PlacementChronologyQualityDetector implements DataQualityDetector {
 
         if (isViolation) {
           violationCount++;
-          boolean created = registrationService.registerIssueIfAbsent(
+          RegistrationResult result = registrationService.registerOrUpdateIssue(
               rule,
               "PlacementRecord",
               placementId,
               summary
           );
-          if (created) {
+          if (result.isCreated()) {
             newIssuesCreated++;
-          } else {
+          } else if (result.isUpdated() || result.isDeduplicated()) {
             deduplicatedSkipped++;
+          } else if (result.isLockFailed()) {
+            log.warn("Lock acquisition failed during issue registration for PlacementRecord {}: {}", placementId, result.message());
+            hasFailure = true;
+            break;
+          } else if (result.isDatabaseError()) {
+            log.error("Database error during issue registration for PlacementRecord {}: {}", placementId, result.message());
+            hasFailure = true;
+            break;
           }
         }
+      }
+
+      if (hasFailure) {
+        break;
       }
 
       if (rows.size() < chunkSize || (request != null && request.getEntityId() != null)) {
@@ -175,6 +198,7 @@ public class PlacementChronologyQualityDetector implements DataQualityDetector {
     }
 
     long durationMs = System.currentTimeMillis() - startTime;
+    String finalStatus = hasFailure ? "FAILED" : "SUCCESS";
     return new DataQualityRuleExecutionSummary(
         rule.getId(),
         RULE_CODE,
@@ -185,7 +209,7 @@ public class PlacementChronologyQualityDetector implements DataQualityDetector {
         deduplicatedSkipped,
         executedAt,
         durationMs,
-        "SUCCESS"
+        finalStatus
     );
   }
 }
