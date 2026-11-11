@@ -3,7 +3,9 @@ package in.gov.sih.sih26135.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import in.gov.sih.sih26135.MysqlConnectionTest;
 import in.gov.sih.sih26135.dto.request.CreateAuditLogRequest;
+import in.gov.sih.sih26135.dto.response.AuditLogResponse;
 import in.gov.sih.sih26135.security.jwt.JwtTokenProvider;
+import in.gov.sih.sih26135.service.AuditLogService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -12,6 +14,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 
 import javax.sql.DataSource;
@@ -52,6 +56,9 @@ class AuditLogImmutabilityAndTimelineTest {
   @Autowired
   private JdbcTemplate jdbcTemplate;
 
+  @Autowired
+  private AuditLogService auditLogService;
+
   private String fullAdminToken;
   private String guestToken;
   private String employerToken;
@@ -69,6 +76,7 @@ class AuditLogImmutabilityAndTimelineTest {
         1L,
         "admin",
         List.of(
+            "ROLE_super_admin",
             "placement.manage",
             "employment.manage",
             "verification.manage",
@@ -137,9 +145,9 @@ class AuditLogImmutabilityAndTimelineTest {
   @DisplayName("Manual audit creation by unprivileged user is rejected with 403 Forbidden")
   void testManualAuditCreationByUnprivilegedUserReturns403() throws Exception {
     CreateAuditLogRequest request = new CreateAuditLogRequest();
-    request.setAuditActionId(6L);
-    request.setEntityType("Placement");
-    request.setEntityId(101L);
+    request.setAuditActionId(2L);
+    request.setEntityType("User");
+    request.setEntityId(1L);
     request.setChangeSummary("Forged audit record");
 
     mockMvc.perform(post("/api/v1/audit-logs")
@@ -153,9 +161,9 @@ class AuditLogImmutabilityAndTimelineTest {
   @DisplayName("Manual audit creation ignores client-supplied actorUserId, occurredAt, and correlationId in favor of server context")
   void testManualAuditCreationIgnoresClientAttributionAndBackdatedTimestamp() throws Exception {
     CreateAuditLogRequest request = new CreateAuditLogRequest();
-    request.setAuditActionId(6L);
-    request.setEntityType("Placement");
-    request.setEntityId(101L);
+    request.setAuditActionId(2L); // Action 2 is UPDATE (supported administrative manual action)
+    request.setEntityType("User");
+    request.setEntityId(1L); // User 1 is authorized for nationwide admin
     request.setActorUserId(99999L); // Client attempts to attribute to someone else!
     request.setOccurredAt(LocalDateTime.of(2015, 1, 1, 0, 0)); // Client attempts to backdate!
     request.setCorrelationId("forged-client-correlation"); // Client attempts to forge correlation!
@@ -169,6 +177,90 @@ class AuditLogImmutabilityAndTimelineTest {
         .andExpect(jsonPath("$.success").value(true))
         .andExpect(jsonPath("$.data.actorUserId").value(1)) // Overwritten with authenticated caller (1L)
         .andExpect(jsonPath("$.data.occurredAt").isNotEmpty()); // Must be current timestamp, not 2015
+  }
+
+  @Test
+  @DisplayName("Manual creation of automated workflow action (STATUS_CHANGE) is rejected with 400 UNAUTHORIZED_WORKFLOW_ACTION")
+  void testManualCreationOfWorkflowActionIsRejected() throws Exception {
+    CreateAuditLogRequest request = new CreateAuditLogRequest();
+    request.setAuditActionId(6L); // Action 6 is STATUS_CHANGE (automated workflow action)
+    request.setEntityType("User");
+    request.setEntityId(1L);
+    request.setChangeSummary("Client attempting to fabricate completed workflow status change");
+
+    mockMvc.perform(post("/api/v1/audit-logs")
+            .header("Authorization", fullAdminToken)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(request)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("UNAUTHORIZED_WORKFLOW_ACTION"));
+  }
+
+  @Test
+  @DisplayName("Manual audit creation is rejected with 403 Forbidden when authenticated user identity cannot be resolved")
+  void testManualAuditCreationRejectedWhenAuthenticatedIdentityUnavailable() throws Exception {
+    // Issue token with valid authority but non-existent user ID
+    String orphanToken = "Bearer " + jwtTokenProvider.generateAccessToken(
+        888888L,
+        "orphan_admin",
+        List.of("system.manage", "ROLE_super_admin")
+    );
+
+    CreateAuditLogRequest request = new CreateAuditLogRequest();
+    request.setAuditActionId(2L);
+    request.setEntityType("User");
+    request.setEntityId(1L);
+    request.setChangeSummary("Orphan admin audit log entry");
+
+    mockMvc.perform(post("/api/v1/audit-logs")
+            .header("Authorization", orphanToken)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(request)))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("Legitimate unauthenticated internal audit persistence succeeds through trusted internal pathway")
+  void testLegitimateInternalAuditPersistence() {
+    AuditLogResponse response = auditLogService.recordInternalAuditLog(
+        1L, 2L, "User", 1L, "Account locked after repeated authentication failures"
+    );
+    assertThat(response).isNotNull();
+    assertThat(response.id()).isNotNull();
+    assertThat(response.actorUserId()).isEqualTo(1L);
+    assertThat(response.entityType()).isEqualTo("User");
+    assertThat(response.entityId()).isEqualTo(1L);
+    assertThat(response.changeSummary()).isEqualTo("Account locked after repeated authentication failures");
+  }
+
+  @Test
+  @DisplayName("Direct unauthenticated call to recordAuditLog cannot create audit record with client-supplied actor ID")
+  void testDirectUnauthenticatedCallToRecordAuditLogIsRejected() {
+    SecurityContextHolder.clearContext();
+
+    CreateAuditLogRequest request = new CreateAuditLogRequest();
+    request.setAuditActionId(2L);
+    request.setEntityType("User");
+    request.setEntityId(1L);
+    request.setActorUserId(1L);
+    request.setChangeSummary("Direct unauthenticated attempt to forge audit log");
+
+    // Direct invocation must fail closed with AccessDeniedException
+    org.junit.jupiter.api.Assertions.assertThrows(
+        AccessDeniedException.class,
+        () -> auditLogService.recordAuditLog(request),
+        "Unauthenticated direct call to recordAuditLog must throw AccessDeniedException"
+    );
+
+    // Legitimate internal pathway recordInternalAuditLog continues working
+    AuditLogResponse internalResponse = auditLogService.recordInternalAuditLog(
+        1L, 2L, "User", 1L, "Internal audit record"
+    );
+    assertThat(internalResponse).isNotNull();
+    assertThat(internalResponse.id()).isNotNull();
+    assertThat(internalResponse.actorUserId()).isEqualTo(1L);
+    assertThat(internalResponse.entityType()).isEqualTo("User");
+    assertThat(internalResponse.entityId()).isEqualTo(1L);
   }
 
   // =========================================================================
@@ -288,6 +380,60 @@ class AuditLogImmutabilityAndTimelineTest {
     mockMvc.perform(get("/api/v1/audit-logs")
             .param("entityType", "Placement")
             .header("Authorization", employerToken))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("Caller holding audit.read cannot bypass entity scope using actor-based query even with matching actor ID")
+  void testActorBasedAuditQueryRejectedForNonNationwideAdmin() throws Exception {
+    // employerToken has actor user ID 201L and holds "audit.read"
+    mockMvc.perform(get("/api/v1/audit-logs")
+            .param("actorUserId", "201")
+            .header("Authorization", employerToken))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("Nationwide access is rejected without administrative role even with username admin and audit.read")
+  void testNationwideAccessRejectedWithoutAdministrativePrivileges() throws Exception {
+    // User named "admin" holding ONLY audit.read (no ROLE_super_admin or ROLE_government_admin)
+    String permissionOnlyAdminToken = "Bearer " + jwtTokenProvider.generateAccessToken(
+        1L,
+        "admin",
+        List.of("audit.read")
+    );
+
+    mockMvc.perform(get("/api/v1/audit-logs")
+            .header("Authorization", permissionOnlyAdminToken))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("User with system.manage and system.event.manage but without admin role cannot retrieve nationwide audit records even with null tenancy fields")
+  void testSystemManageAndEventManageWithoutAdminRoleCannotAccessNationwideAudit() throws Exception {
+    // User 1 (admin) has null tenancy fields in database (state_id=NULL, district_id=NULL, etc.)
+    // Issue token holding system.manage, system.event.manage, and audit.read without ROLE_super_admin or ROLE_government_admin
+    String systemManageToken = "Bearer " + jwtTokenProvider.generateAccessToken(
+        1L,
+        "admin",
+        List.of("system.manage", "system.event.manage", "audit.read")
+    );
+
+    // 1. Unscoped platform search must be rejected with 403 Forbidden
+    mockMvc.perform(get("/api/v1/audit-logs")
+            .header("Authorization", systemManageToken))
+        .andExpect(status().isForbidden());
+
+    // 2. Unscoped entity type lookup must be rejected with 403 Forbidden
+    mockMvc.perform(get("/api/v1/audit-logs")
+            .param("entityType", "Placement")
+            .header("Authorization", systemManageToken))
+        .andExpect(status().isForbidden());
+
+    // 3. Actor-based audit log lookup must be rejected with 403 Forbidden
+    mockMvc.perform(get("/api/v1/audit-logs")
+            .param("actorUserId", "1")
+            .header("Authorization", systemManageToken))
         .andExpect(status().isForbidden());
   }
 }

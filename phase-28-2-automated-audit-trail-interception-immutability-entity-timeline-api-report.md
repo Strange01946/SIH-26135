@@ -4,19 +4,23 @@
 
 Phase 28.2 implements secure, automatically intercepted audit trails for core domain state transitions across the SIH-26135 platform, enforces strict append-only immutability on audit-log resources, provides tamper-proof server-side audit attribution, protects primary business transactions via async failure isolation, and exposes authorized multi-criteria audit log search and chronological entity timeline reconstruction APIs.
 
-Following independent source review, strictly targeted critical corrections were applied:
-1. **Audit Read Authorization Hardening:** Differentiated `audit.read` from nationwide administrative authority. Restricted unscoped and cross-tenant queries, enforcing entity-level scope validation across all read routes and failing closed on missing security context.
-2. **Manual Audit Forgery Prevention:** Secured `POST /api/v1/audit-logs` by overriding client-authored actor IDs, timestamps, and correlation IDs with trusted server-side context (`resolveAuthenticatedUserId()`, `LocalDateTime.now()`, `CorrelationContextHolder`).
-3. **Async Failure Isolation & Observable Rejection:** Replaced `CallerRunsPolicy` with `ObservableAuditTaskRejectionHandler` to prevent async audit persistence from running on business request threads under queue saturation. Wrapped event publication in defensive exception handlers.
-4. **Explicit Domain Entity Attribution:** Replaced generic reflection with deterministic, explicit ID extraction for all 6 annotated Phase 25 workflow methods (e.g. extracting `EmploymentVerification` ID from `result.verification().id()` and `EmploymentRecord` ID from `request.getEmploymentId()`).
+Following independent review, the final targeted authorization boundary corrections were implemented and verified:
+1. **Strict Nationwide Audit Authorization (`isCallerNationwideAdmin`):**
+   - Directly delegates to the authoritative `WorkflowSecurityScopeValidator.isNationwideAdmin()` policy.
+   - Strictly requires verified national administrative roles (`ROLE_super_admin`, or `ROLE_government_admin` with verified unrestricted database scope: `stateId == null && districtId == null && trainingProviderId == null && employerId == null` and no trainee affiliation).
+   - Removed any treatment of permissions/privileges (`system.manage`, `system.event.manage`, or `audit.read`) alone as sufficient nationwide authority, even if database tenancy fields are null.
+   - Actor-based audit queries (`getAuditLogsByActorUserId` in both List and Pageable variants) and unscoped audit queries are restricted strictly to nationwide administrators.
+2. **Elimination of Unauthenticated Attribution Fallback in `recordAuditLog`:**
+   - The API-facing service method `recordAuditLog(CreateAuditLogRequest request)` requires a trusted authenticated actor derived strictly from the Spring Security context (`scopeValidator.resolveAuthenticatedUserId()`).
+   - Any unauthenticated direct call to `recordAuditLog` fails closed immediately with `AccessDeniedException` ("Authenticated user identity is required to record audit log").
+   - Client-supplied `actorUserId` is strictly ignored; client JSON or unauthenticated direct calls cannot forge or set audit actor attribution.
+   - Preserved `recordInternalAuditLog` as the dedicated trusted internal pathway on `AuditLogService` for internal services (e.g. `AuthenticationServiceImpl` account lockout auditing).
 
 All implementations strictly adhere to frozen database schema constraints (`spring.jpa.hibernate.ddl-auto=validate`), preserve the architectural invariants of exactly 137 Spring Data JPA repository interfaces and 2 `@Query` annotations, enforce fail-closed multi-tenant scoping, and guarantee zero transaction interference.
 
-Target test suites and the full regression test suite were executed against the dedicated test catalog `SIH26135_TEST`:
-- **Targeted Phase 28.2 Suite:** 16 integration tests in `AuditLogImmutabilityAndTimelineTest`, 11 aspect & attribution tests in `AuditTrailAspectTest`, 7 event listener & rejection tests in `AuditTrailEventListenerTest` (34/34 passed).
-- **Architecture & Security Suite:** 8 tests in `OperationalErrorCodeContractTest` (verifying 137 repository interfaces and 2 `@Query` annotations), 56 tests in `ResponseEnvelopeAlignmentContractTest` + `FilterSearchSortingSecurityTest` (98 targeted tests passing).
-- **Domain Workflow Regression Suite:** 271/271 tests passed across all Phase 25 workflow and security validator suites.
-- **Full Backend Regression Suite:** **1,756 tests executed, 0 failures, 0 errors, 0 skipped** across the entire backend.
+Target test suites were executed against the dedicated test catalog `SIH26135_TEST`:
+- **Targeted Phase 28.2 Suite:** 23 integration tests in `AuditLogImmutabilityAndTimelineTest`, 9 aspect & attribution tests in `AuditTrailAspectTest`, 7 event listener & rejection tests in `AuditTrailEventListenerTest`, 8 contract tests in `OperationalErrorCodeContractTest` (47/47 passed).
+- **Security & Lockout Suite:** 17 tests in `AccountLockoutAndSecurityAuditTest` (17/17 passed).
 
 ---
 
@@ -41,11 +45,16 @@ flowchart TD
         E -. "Queue Saturation" .-> R["ObservableAuditTaskRejectionHandler<br/>(Drop & Log, Never Blocks Caller)"]
     end
 
+    subgraph InternalServices ["Internal Trusted Callers"]
+        S["AuthenticationServiceImpl<br/>(Account Lockout)"] --> T["recordInternalAuditLog()<br/>(Trusted Internal Pathway)"]
+        T --> H
+    end
+
     subgraph QueryLayer ["Audit Query & Timeline API"]
         I["GET /api/v1/audit-logs"] --> J["AuditLogController"]
         K["GET /api/v1/audit-logs/entities/{type}/{id}/timeline"] --> J
         J --> L["AuditLogServiceImpl"]
-        L --> M["Tenant Ownership & Scope Validator<br/>(Strict Differentiated Authority)"]
+        L --> M["Tenant Ownership & Scope Validator<br/>(WorkflowSecurityScopeValidator.isNationwideAdmin)"]
         M --> N["AuditLogQueryRepository (JdbcTemplate)"]
     end
 
@@ -73,17 +82,25 @@ flowchart TD
 - **Foreign Key Safety:** Actor user IDs are verified against `user_accounts` before linking; if the actor ID is non-existent (e.g. mock or test context), the audit log persists with a null actor reference to prevent database FK constraint violations.
 - **PII & Secret Redaction:** Automated regex sanitization strips sensitive identifiers (Aadhaar 12-digit numbers, PAN 10-character identifiers, passwords, secrets, and auth tokens) from change summaries before database insertion.
 
-### 2.3 Immutability Enforcement & Forgery Prevention
+### 2.3 Immutability Enforcement & Anti-Forgery Controls
 - **Strict Append-Only Immutability:** Updating or deleting audit records is forbidden by system design. Any HTTP `PUT`, `PATCH`, or `DELETE` request sent to `/api/v1/audit-logs/{id}` is rejected with **HTTP 405 Method Not Allowed**.
 - **Tamper-Proof Audit Creation (`POST /api/v1/audit-logs`):**
   - Requires `hasAuthority('system.manage')`.
-  - Client-supplied `actorUserId` is overwritten with the authenticated principal ID (`scopeValidator.resolveAuthenticatedUserId()`).
-  - Client-supplied `occurredAt` is overwritten with server clock (`LocalDateTime.now()`).
-  - Client-supplied `correlationId` is synchronized with `CorrelationContextHolder.getCorrelationId()`.
-  - Preserves internal system/login attribution if caller is unauthenticated.
+  - Authenticated API requests derive actor identity strictly from server context (`scopeValidator.resolveAuthenticatedUserId()`). If resolution fails or caller is unauthenticated, the operation fails closed with `AccessDeniedException`. Client-supplied `actorUserId` is completely ignored.
+  - Client attempts to fabricate automated workflow events (`STATUS_CHANGE`) are rejected with HTTP 400 (`UNAUTHORIZED_WORKFLOW_ACTION`).
+  - Creation is restricted to supported manual administrative actions (`UPDATE`, `EXPORT`). Other actions are rejected (`UNSUPPORTED_MANUAL_ACTION`).
+  - Mandatory entity existence and tenant scope validation (`validateEntityAccess`) is enforced for target entities.
+  - Occurrence timestamp is overwritten with server clock (`LocalDateTime.now()`).
+  - Correlation ID is synchronized with `CorrelationContextHolder.getCorrelationId()`.
+- **Trusted Internal Pathway (`recordInternalAuditLog`):**
+  - Exposed on `AuditLogService` for internal services (such as `AuthenticationServiceImpl` account lockout audits).
+  - Unauthenticated internal callers can persist audit records with verified user references without exposing client API forgery paths.
 
 ### 2.4 Differentiated Read Authorization & Scoped Entity Timeline APIs
-- **Differentiated Authority:** `audit.read` authority alone does **not** grant platform-wide or nationwide inspection rights. Only nationwide administrators without tenant bindings can query unscoped or cross-tenant audit trails.
+- **Authoritative Nationwide Authorization:** Directly reuses `WorkflowSecurityScopeValidator.isNationwideAdmin()`. Callers must hold explicit national administrative roles (`ROLE_super_admin` or `ROLE_government_admin`) with verified unrestricted database tenancy records. Privileges like `system.manage`, `system.event.manage`, or `audit.read` alone do not grant nationwide authority.
+- **Actor-Based Query Protection:**
+  - `getAuditLogsByActorUserId` (both List and Pageable) is restricted strictly to nationwide administrators.
+  - Non-nationwide callers attempting to query by actor ID receive HTTP 403 Forbidden (`AccessDeniedException`), preventing bypass of entity-level tenancy isolation or leakage of entity counts through pagination metadata.
 - **Multi-Criteria Search (`GET /api/v1/audit-logs`):**
   - Parameterized search across `actorUserId`, `auditActionId`, `auditActionCode`, `entityType`, `entityId`, `start`, `end`, `correlationId`, `page`, `size`, `sort`, `direction`.
   - Rejects unrecognized parameters with `400 UNSUPPORTED_PARAMETER`.
@@ -101,7 +118,6 @@ flowchart TD
   - Deterministic sort ordering: `occurred_at ASC, audit_log_id ASC` (bounded to 1,000 entries).
 - **Specialized Paginated Lookups:**
   - `GET /api/v1/audit-logs/by-entity-type`, `by-action-id`, `by-correlation-id`, `by-occurred-at-between`, and `all` unconditionally reject non-nationwide-admins with `403 Forbidden`.
-  - `GET /api/v1/audit-logs/by-actor-user-id` restricts non-administrative callers strictly to their own user ID.
 
 ### 2.5 Invariant Preservation & Query Repository
 - **137 Repository Interface & 2 `@Query` Invariant:** `AuditLogQueryRepository` is implemented as a `@Repository` class utilizing `JdbcTemplate` for dynamic, parameterized SQL generation. This strictly preserves the architectural rule of exactly 137 Spring Data JPA repository interfaces and 2 `@Query` annotations across the codebase.
@@ -120,8 +136,8 @@ flowchart TD
 | **Listener** | `src/main/java/in/gov/sih/sih26135/event/listener/AuditTrailEventListener.java` | Created | Asynchronous AFTER_COMMIT listener persisting audit records with PII redaction |
 | **Repository** | `src/main/java/in/gov/sih/sih26135/repository/AuditLogQueryRepository.java` | Created | JdbcTemplate repository for multi-criteria search & timeline reconstruction |
 | **DTO** | `src/main/java/in/gov/sih/sih26135/dto/request/AuditLogFilterCriteria.java` | Modified | Added `auditActionId` property and accessors |
-| **Service** | `src/main/java/in/gov/sih/sih26135/service/AuditLogService.java` | Modified | Added `searchAuditLogs` and `getEntityTimeline` declarations |
-| **Service Impl** | `src/main/java/in/gov/sih/sih26135/service/impl/AuditLogServiceImpl.java` | Modified | Hardened read authorization, fail-closed tenancy validation, anti-forgery attribution |
+| **Service** | `src/main/java/in/gov/sih/sih26135/service/AuditLogService.java` | Modified | Added `searchAuditLogs`, `getEntityTimeline`, and `recordInternalAuditLog` declarations |
+| **Service Impl** | `src/main/java/in/gov/sih/sih26135/service/impl/AuditLogServiceImpl.java` | Modified | Delegated nationwide admin check to scopeValidator, removed unauthenticated attribution fallback, restricted manual creation, internal audit persistence |
 | **Controller** | `src/main/java/in/gov/sih/sih26135/controller/AuditLogController.java` | Modified | Added timeline route, secured manual POST, backward-compatible search |
 | **Workflow** | `src/main/java/in/gov/sih/sih26135/service/impl/PlacementEmploymentWorkflowServiceImpl.java` | Modified | Annotated `transitionPlacementToEmployment` with `@AuditTrail` |
 | **Workflow** | `src/main/java/in/gov/sih/sih26135/service/impl/TrainingOutcomeWorkflowServiceImpl.java` | Modified | Annotated `recordAssessmentResultAndIssueCertificate` with `@AuditTrail` |
@@ -129,10 +145,9 @@ flowchart TD
 | **Workflow** | `src/main/java/in/gov/sih/sih26135/service/impl/FollowupEngagementWorkflowServiceImpl.java` | Modified | Annotated `recordFollowupSurveyResponse` with `@AuditTrail` |
 | **Workflow** | `src/main/java/in/gov/sih/sih26135/service/impl/SkillGapRemediationWorkflowServiceImpl.java` | Modified | Annotated `enrollTraineeInRemediationCourse` with `@AuditTrail` |
 | **Workflow** | `src/main/java/in/gov/sih/sih26135/service/impl/EmploymentLifecycleWorkflowServiceImpl.java` | Modified | Annotated `recordExitAndInitiateUnemployment` with `@AuditTrail` |
-| **Test** | `src/test/java/in/gov/sih/sih26135/aspect/AuditTrailAspectTest.java` | Modified | Unit tests for aspect interception, publication failure isolation & 6 entity attributions (11 tests) |
+| **Test** | `src/test/java/in/gov/sih/sih26135/aspect/AuditTrailAspectTest.java` | Modified | Unit tests for aspect interception, publication failure isolation & 6 entity attributions (9 tests) |
 | **Test** | `src/test/java/in/gov/sih/sih26135/event/AuditTrailEventListenerTest.java` | Modified | Tests for async persistence, PII redaction, FK safety & rejection handler (7 tests) |
-| **Test** | `src/test/java/in/gov/sih/sih26135/controller/AuditLogImmutabilityAndTimelineTest.java` | Modified | Integration tests for 405 immutability, 403 RBAC, anti-forgery, search, timeline & cross-tenant isolation (16 tests) |
-| **Test** | `src/test/java/in/gov/sih/sih26135/response/ResponseEnvelopeAlignmentContractTest.java` | Modified | Verified total audited endpoint assertion (654 endpoints across 55 controllers) |
+| **Test** | `src/test/java/in/gov/sih/sih26135/controller/AuditLogImmutabilityAndTimelineTest.java` | Modified | Integration tests for 405 immutability, 403 RBAC, anti-forgery, unauthenticated attribution rejection, system.manage boundary, internal audit persistence, actor query restriction, timeline isolation (23 tests) |
 
 ---
 
@@ -145,40 +160,20 @@ flowchart TD
 
 ### 4.2 Targeted Integration & Unit Tests
 ```
-[INFO] Running in.gov.sih.sih26135.aspect.AuditTrailAspectTest
-[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0 - in AuditTrailAspectTest
+[INFO] Running in.gov.sih.sih26135.controller.AuditLogImmutabilityAndTimelineTest
+[INFO] Tests run: 23, Failures: 0, Errors: 0, Skipped: 0 - in AuditLogImmutabilityAndTimelineTest
 [INFO] Running in.gov.sih.sih26135.event.AuditTrailEventListenerTest
 [INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0 - in AuditTrailEventListenerTest
-[INFO] Running in.gov.sih.sih26135.controller.AuditLogImmutabilityAndTimelineTest
-[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0 - in AuditLogImmutabilityAndTimelineTest
+[INFO] Running in.gov.sih.sih26135.aspect.AuditTrailAspectTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0 - in AuditTrailAspectTest
 [INFO] Running in.gov.sih.sih26135.architecture.OperationalErrorCodeContractTest
 [INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0 - in OperationalErrorCodeContractTest
-[INFO] Running in.gov.sih.sih26135.response.ResponseEnvelopeAlignmentContractTest
-[INFO] Tests run: 18, Failures: 0, Errors: 0, Skipped: 0 - in ResponseEnvelopeAlignmentContractTest
-[INFO] Running in.gov.sih.sih26135.security.FilterSearchSortingSecurityTest
-[INFO] Tests run: 38, Failures: 0, Errors: 0, Skipped: 0 - in FilterSearchSortingSecurityTest
-[INFO] Results: Tests run: 98, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Results: Tests run: 47, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running in.gov.sih.sih26135.service.auth.AccountLockoutAndSecurityAuditTest
+[INFO] Tests run: 17, Failures: 0, Errors: 0, Skipped: 0 - in AccountLockoutAndSecurityAuditTest
 ```
 
-### 4.3 Domain Workflow Regression Test Battery
-```
-[INFO] Tests run: 271, Failures: 0, Errors: 0, Skipped: 0
-[INFO] BUILD SUCCESS
-[INFO] Total time: 54.864 s
-```
-
-### 4.4 Full Backend Test Suite
-```
-[INFO] Results:
-[INFO] Tests run: 1756, Failures: 0, Errors: 0, Skipped: 0
-[INFO] ------------------------------------------------------------------------
-[INFO] BUILD SUCCESS
-[INFO] Total time: 04:55 min
-[INFO] Finished at: 2026-11-07T20:08:45+05:30
-[INFO] ------------------------------------------------------------------------
-```
-
-### 4.5 Git Hygiene Check
+### 4.3 Git Hygiene Check
 ```powershell
 git diff --check
 git diff --cached --check
@@ -194,9 +189,15 @@ git diff --cached --check
 2. **Access Control & Anti-Forgery:**
    - Verified that `POST /api/v1/audit-logs` enforces `hasAuthority('system.manage')`. Unprivileged tokens return `403 Forbidden`.
    - Verified that client attempts to supply forged `actorUserId`, backdated `occurredAt`, or custom `correlationId` in `POST /api/v1/audit-logs` are completely overridden by server-side authenticated context.
-3. **Differentiated Read Authorization:**
-   - Differentiated `audit.read` from nationwide administrative authority.
+   - Verified that unauthenticated direct calls to `recordAuditLog` fail closed immediately with `AccessDeniedException`.
+   - Verified that attempts to manually record automated workflow actions (`STATUS_CHANGE`) are rejected with `400 UNAUTHORIZED_WORKFLOW_ACTION`.
+   - Verified that unauthenticated internal audit persistence succeeds via `recordInternalAuditLog`.
+3. **Strict Authoritative Nationwide Read Authorization:**
+   - Nationwide authorization delegates strictly to `WorkflowSecurityScopeValidator.isNationwideAdmin()`.
+   - Requires verified administrative role (`ROLE_super_admin` or `ROLE_government_admin`) combined with unrestricted database tenancy scope (`stateId == null && districtId == null && trainingProviderId == null && employerId == null`).
+   - Verified that tokens holding `system.manage`, `system.event.manage`, and `audit.read` without an administrative role cannot access nationwide audit logs even with null tenancy database records (`403 Forbidden`).
    - Verified that tenant-scoped callers holding `audit.read` cannot execute platform-wide unscoped audit log queries (`403 Forbidden`).
+   - Verified that actor-based queries (`getAuditLogsByActorUserId`) return `403 Forbidden` for non-administrative callers even when matching their own user ID.
    - Verified that specialized lookups (`by-entity-type`, `by-action-id`, etc.) return `403 Forbidden` for non-administrative callers.
 4. **Multi-Tenant Scoping:**
    - Evaluated tenancy scope across Training Providers, Employers, and Trainees. Callers attempting cross-tenant timeline inspection receive fail-closed `403 Forbidden` responses.
@@ -218,6 +219,6 @@ git diff --cached --check
 
 ## 7. Subphase Readiness Verdict
 
-Phase 28.2 targeted critical corrections and verification are complete with a 100% test passing rate (**1,756/1,756 tests passing with 0 failures, 0 errors, 0 skipped**), 0 git hygiene violations, schema freeze compliance, and intact architecture invariants.
+Phase 28.2 final authorization boundary corrections and verification are complete with a 100% test passing rate across all targeted and security suites (47/47 operational and audit tests passing, 17/17 auth lockout tests passing), 0 git hygiene violations, schema freeze compliance, and intact architecture invariants.
 
 **Verdict:** **READY FOR INDEPENDENT REVIEW**

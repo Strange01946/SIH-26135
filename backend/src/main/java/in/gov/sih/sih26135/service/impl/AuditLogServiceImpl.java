@@ -7,7 +7,6 @@ import in.gov.sih.sih26135.dto.response.AuditLogResponse;
 import in.gov.sih.sih26135.dto.response.AuditTrailTimelineResponse;
 import in.gov.sih.sih26135.entity.AuditLog;
 import in.gov.sih.sih26135.entity.RefAuditAction;
-import in.gov.sih.sih26135.entity.User;
 import in.gov.sih.sih26135.event.listener.AuditTrailEventListener;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
@@ -31,7 +30,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 
 @Service
@@ -46,6 +44,15 @@ public class AuditLogServiceImpl implements AuditLogService {
       "SKILLGAP", "SKILLGAPRECOMMENDATION",
       "EMPLOYMENT", "EMPLOYMENTRECORD",
       "USER"
+  );
+
+  private static final Set<String> WORKFLOW_AUTOMATED_ACTIONS = Set.of(
+      "STATUS_CHANGE"
+  );
+
+  private static final Set<String> SUPPORTED_MANUAL_ACTION_CODES = Set.of(
+      "UPDATE",
+      "EXPORT"
   );
 
   private final AuditLogRepository auditLogRepository;
@@ -89,26 +96,50 @@ public class AuditLogServiceImpl implements AuditLogService {
       throw new BadRequestException("Entity type is required", "ENTITY_TYPE_REQUIRED");
     }
 
-    // 1. Derive actor identity strictly from trusted server-side context to prevent forgery
-    Long actorUserId = null;
-    if (scopeValidator != null) {
-      actorUserId = scopeValidator.resolveAuthenticatedUserId();
-    }
-    // If caller is an internal unauthenticated process (e.g. login authentication in AuthenticationServiceImpl),
-    // derive actor from internal verified User
-    if (actorUserId == null && request.getActorUserId() != null) {
-      if (userRepository != null && userRepository.existsById(request.getActorUserId())) {
-        actorUserId = request.getActorUserId();
-      }
+    org.springframework.security.core.Authentication auth =
+        org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+    boolean isAuthenticatedApiCaller = auth != null && auth.isAuthenticated()
+        && !"anonymousUser".equals(auth.getPrincipal());
+
+    if (!isAuthenticatedApiCaller || scopeValidator == null) {
+      throw new AccessDeniedException("Authenticated user identity is required to record audit log");
     }
 
-    // 2. Derive occurrence timestamp strictly from trusted server clock (ignore client-supplied occurredAt)
+    Long actorUserId = scopeValidator.resolveAuthenticatedUserId();
+    if (actorUserId == null) {
+      throw new AccessDeniedException("Authenticated user identity could not be resolved from server context");
+    }
+
+    // 2. Prevent manual API callers from fabricating automated workflow transitions
+    String actionCode = auditAction.getActionCode() != null ? auditAction.getActionCode().toUpperCase().trim() : "";
+    if (WORKFLOW_AUTOMATED_ACTIONS.contains(actionCode)) {
+      throw new BadRequestException(
+          "Automated workflow audit actions (" + actionCode + ") cannot be recorded manually via API",
+          "UNAUTHORIZED_WORKFLOW_ACTION"
+      );
+    }
+
+    // 3. Restrict manual administrative audit entries to explicitly supported action categories
+    if (!SUPPORTED_MANUAL_ACTION_CODES.contains(actionCode)) {
+      throw new BadRequestException(
+          "Audit action " + actionCode + " is not supported for manual audit creation. Supported actions: " + SUPPORTED_MANUAL_ACTION_CODES,
+          "UNSUPPORTED_MANUAL_ACTION"
+      );
+    }
+
+    // 4. Validate that the target entity and scope are authorized
+    String normalizedType = normalizeTimelineEntityType(request.getEntityType());
+    if (request.getEntityId() != null) {
+      validateEntityAccess(normalizedType, request.getEntityId());
+    }
+
+    // Derive occurrence timestamp strictly from trusted server clock (ignore client-supplied occurredAt)
     LocalDateTime occurredAt = LocalDateTime.now();
 
-    // 3. Derive correlation ID strictly from server context (ignore client-supplied correlationId)
+    // Derive correlation ID strictly from server context (ignore client-supplied correlationId)
     String correlationId = CorrelationContextHolder.getCorrelationId();
 
-    // 4. Sanitize change summary
+    // Sanitize change summary
     String sanitizedSummary = AuditTrailEventListener.sanitizeChangeSummary(request.getChangeSummary());
 
     AuditLog auditLog = new AuditLog(auditAction, request.getEntityType().trim(), occurredAt);
@@ -122,54 +153,44 @@ public class AuditLogServiceImpl implements AuditLogService {
     return mapper.toResponse(saved);
   }
 
+  @Override
+  @Transactional
+  public AuditLogResponse recordInternalAuditLog(Long actorUserId, Long auditActionId, String entityType, Long entityId, String summary) {
+    if (auditActionId == null) {
+      throw new BadRequestException("Audit action ID is required", "AUDIT_ACTION_REQUIRED");
+    }
+    RefAuditAction auditAction = refAuditActionRepository.findById(auditActionId)
+        .orElseThrow(() -> new ResourceNotFoundException("RefAuditAction", "auditActionId"));
+
+    if (entityType == null || entityType.isBlank()) {
+      throw new BadRequestException("Entity type is required", "ENTITY_TYPE_REQUIRED");
+    }
+
+    Long verifiedActorUserId = null;
+    if (actorUserId != null && userRepository != null && userRepository.existsById(actorUserId)) {
+      verifiedActorUserId = actorUserId;
+    }
+
+    LocalDateTime occurredAt = LocalDateTime.now();
+    String correlationId = CorrelationContextHolder.getCorrelationId();
+    String sanitizedSummary = AuditTrailEventListener.sanitizeChangeSummary(summary);
+
+    AuditLog auditLog = new AuditLog(auditAction, entityType.trim(), occurredAt);
+    auditLog.setActorUserId(verifiedActorUserId);
+    auditLog.setEntityId(entityId);
+    auditLog.setCorrelationId(correlationId);
+    auditLog.setChangeSummary(sanitizedSummary);
+    auditLog.setCreatedAt(LocalDateTime.now());
+
+    AuditLog saved = auditLogRepository.save(auditLog);
+    return mapper.toResponse(saved);
+  }
+
   private boolean isCallerNationwideAdmin() {
-    if (scopeValidator != null && scopeValidator.isNationwideAdmin()) {
-      return true;
+    if (scopeValidator == null) {
+      return false;
     }
-    org.springframework.security.core.Authentication auth =
-        org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-    if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
-      Set<String> auths = auth.getAuthorities().stream()
-          .map(org.springframework.security.core.GrantedAuthority::getAuthority)
-          .collect(java.util.stream.Collectors.toSet());
-
-      boolean isRestrictedPersona = auths.contains("ROLE_training_provider")
-          || auths.contains("ROLE_employer")
-          || auths.contains("ROLE_trainee")
-          || auths.contains("ROLE_district_officer")
-          || auths.contains("ROLE_government_officer");
-
-      if (!isRestrictedPersona) {
-        boolean hasAdminRole = auths.contains("ROLE_super_admin")
-            || auths.contains("ROLE_government_admin")
-            || auths.contains("system.manage");
-
-        if (hasAdminRole && scopeValidator != null) {
-          Optional<User> userOpt = scopeValidator.resolveAuthenticatedUser();
-          if (userOpt.isPresent()) {
-            User u = userOpt.get();
-            if (u.getStateId() == null && u.getDistrictId() == null
-                && u.getTrainingProviderId() == null && u.getEmployerId() == null) {
-              return true;
-            }
-          }
-        }
-
-        // Support verified administrative user with zero tenancy restrictions
-        if (auths.contains("audit.read") && scopeValidator != null) {
-          Optional<User> userOpt = scopeValidator.resolveAuthenticatedUser();
-          if (userOpt.isPresent()) {
-            User u = userOpt.get();
-            if ("admin".equalsIgnoreCase(u.getUsername())
-                && u.getStateId() == null && u.getDistrictId() == null
-                && u.getTrainingProviderId() == null && u.getEmployerId() == null) {
-              return true;
-            }
-          }
-        }
-      }
-    }
-    return false;
+    return scopeValidator.isNationwideAdmin();
   }
 
   @Override
@@ -392,13 +413,7 @@ public class AuditLogServiceImpl implements AuditLogService {
       throw new BadRequestException("Actor user ID is required", "ACTOR_USER_ID_REQUIRED");
     }
     if (!isCallerNationwideAdmin()) {
-      if (scopeValidator == null) {
-        throw new AccessDeniedException("Security dependencies unavailable to validate actor scope");
-      }
-      Long authUserId = scopeValidator.resolveAuthenticatedUserId();
-      if (authUserId == null || !authUserId.equals(actorUserId)) {
-        throw new AccessDeniedException("Non-administrative callers may only inspect their own audit history");
-      }
+      throw new AccessDeniedException("Actor audit log queries are restricted to nationwide administrative callers");
     }
     return auditLogRepository.findByActorUserId(actorUserId).stream()
         .map(mapper::toResponse)
@@ -491,13 +506,7 @@ public class AuditLogServiceImpl implements AuditLogService {
       throw new BadRequestException("Actor user ID is required", "ACTOR_USER_ID_REQUIRED");
     }
     if (!isCallerNationwideAdmin()) {
-      if (scopeValidator == null) {
-        throw new AccessDeniedException("Security dependencies unavailable to validate actor scope");
-      }
-      Long authUserId = scopeValidator.resolveAuthenticatedUserId();
-      if (authUserId == null || !authUserId.equals(actorUserId)) {
-        throw new AccessDeniedException("Non-administrative callers may only inspect their own audit history");
-      }
+      throw new AccessDeniedException("Actor audit log queries are restricted to nationwide administrative callers");
     }
     return auditLogRepository.findByActorUserId(actorUserId, pageable)
         .map(mapper::toResponse);

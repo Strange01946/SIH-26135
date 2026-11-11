@@ -11,6 +11,8 @@ public interface AuditLogService {
 
   AuditLogResponse recordAuditLog(CreateAuditLogRequest request);
 
+  AuditLogResponse recordInternalAuditLog(Long actorUserId, Long auditActionId, String entityType, Long entityId, String summary);
+
   AuditLogResponse getAuditLogById(Long id);
 
   Page<AuditLogResponse> getAllAuditLogs(Pageable pageable);
