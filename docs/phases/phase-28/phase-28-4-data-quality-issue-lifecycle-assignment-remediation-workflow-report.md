@@ -4,44 +4,40 @@
 
 Phase 28.4 establishes a production-grade, concurrency-safe, transactional, and auditable Issue Lifecycle, Assignment, and Remediation Workflow for the SIH-26135 data quality subsystem. Building directly upon the detection engine and deduplication mechanism delivered in Phase 28.3, this phase enables authorized administrators, state authorities, and training providers to operationalize detected anomalies through strict state transitions, assignment, investigation, resolution, dismissal, and reopening workflows.
 
-Following independent source review, all confirmed authorization boundaries, state machine transition rules, assignee tenancy eligibility validations, and fail-open fallbacks were rigorously corrected and verified across unit, integration, and full regression test suites.
+Following independent source review, all confirmed authorization boundaries, tenant isolation safeguards across generic issue APIs, creation-time lifecycle bypass protections, state machine transition rules, assignee tenancy eligibility validations, and fail-open fallbacks were rigorously corrected and verified across unit, integration, and full regression test suites.
 
 Every lifecycle transition is executed within an isolated database transaction, guarded by row-level pessimistic locking (`SELECT ... FOR UPDATE`), and atomically recorded in the `data_quality_issue_events` audit table.
 
 ### Key Achievements & Targeted Corrections
 
-1. **Strict Read and Write Permission Separation:**
-   - Enforced `@PreAuthorize("hasAuthority('system.manage')")` on all lifecycle mutation endpoints (`/assign`, `/start-investigation`, `/resolve`, `/dismiss`, `/reopen`, `POST /`, `PUT /{id}`) in `DataQualityIssueController`.
-   - Preserved `@PreAuthorize("hasAnyAuthority('audit.read', 'system.manage')")` for read endpoints including `GET /{id}/events`.
-   - Enforced equivalent defense-in-depth authorization at the service boundary in `DataQualityWorkflowServiceImpl`: `resolveAndValidateManager()` requires `system.manage`, while `resolveAndValidateReader()` permits `audit.read || system.manage`.
-   - Validated via adversarial tests that callers holding `audit.read` alone receive HTTP 403 Forbidden for all lifecycle mutations while retaining read access to events within their tenant scope.
-2. **Assignee Eligibility Validation Against Issue Entity:**
-   - Validated candidate assignees in `validateAssigneeEligibility()` against the underlying entity in the database (`Trainee`, `AttendanceRecord`, `PlacementRecord`, `EmploymentRecord`, `BatchEnrollment`), not merely the caller's tenancy fields.
-   - Enforced unambiguous non-null assignee scope; assignees cannot have all-null tenant fields (null is not treated as unrestricted) or conflicting provider and employer associations.
-   - Disallowed cross-state, cross-provider, and cross-employer assignments.
-   - Enforced that while nationwide administrators may initiate assignments across tenants, the selected assignee must strictly match the issue's tenant scope.
-3. **Transition Matrix & Ownership Enforcement:**
-   - Formalized approved transitions: `OPEN -> ASSIGNED`, `ASSIGNED -> IN_PROGRESS`, `IN_PROGRESS -> RESOLVED`, `OPEN -> DISMISSED`, `IN_PROGRESS -> DISMISSED`, and `RESOLVED -> REOPENED`.
-   - Prohibited invalid transitions with HTTP 409 Conflict (`INVALID_DQ_TRANSITION`). Specifically corrected `dismissIssue()` to accept ONLY `OPEN -> DISMISSED` and `IN_PROGRESS -> DISMISSED`, explicitly rejecting `ASSIGNED -> DISMISSED` and `REOPENED -> DISMISSED`.
-   - Enforced investigator ownership: `startInvestigation()` and `resolveIssue()` require the actor to be the assigned investigator (`caller.getId().equals(issue.getAssignedUserId())`) or an authorized administrative supervisor (`isAdministrativeSupervisor(caller)`). Unauthorized actors receive HTTP 403 Forbidden.
-4. **Elimination of Fail-Open Fallbacks:**
-   - Made `DataQualityWorkflowService` a mandatory constructor-injected dependency in `DataQualityIssueController`; removed legacy fallbacks that could bypass workflow guards.
-   - Made `JdbcTemplate` mandatory and non-null in `DataQualityWorkflowServiceImpl`, ensuring fail-closed execution without skipping pessimistic locking or tenant validation.
-5. **Protection of Lifecycle History on Generic PUT:**
-   - Enforced strict immutability of lifecycle metadata on generic `PUT /api/v1/data-quality-issues/{id}` (`updateIssue`).
-   - Direct status alteration is rejected with HTTP 400 Bad Request and error code `LIFECYCLE_BYPASS_PROHIBITED`.
-   - Direct assignment alteration is rejected with HTTP 400 Bad Request and error code `ASSIGNMENT_BYPASS_PROHIBITED`.
-   - Direct resolution alteration is rejected with HTTP 400 Bad Request and error code `RESOLUTION_BYPASS_PROHIBITED`.
-6. **Append-Only Event Trail Auditability:**
-   - Transition events (`ASSIGNMENT`, `INVESTIGATION`, `RESOLUTION`, `DISMISSAL`, `REOPEN`) are inserted atomically alongside issue state updates using supported schema columns (`data_quality_issue_id`, `data_quality_issue_status_id`, `changed_by_user_id`, `changed_at`, `remarks`, `created_at`).
-   - Comprehensive event history endpoint (`GET /api/v1/data-quality-issues/{id}/events`) exposes chronologically ordered events.
-7. **Synergy with Phase 28.3 Deduplication:**
-   - Active issues (`ASSIGNED`, `IN_PROGRESS`, `REOPENED`) retain `is_open_flag = 1`. Scans by `DataQualityIssueRegistrationService` correctly detect active issues and return `RegistrationStatus.DEDUPLICATED` without creating duplicate records.
-8. **Architectural & Schema Integrity:**
-   - Schema validation (`ddl-auto=validate`) verified against `SIH26135_TEST` catalog with zero schema alterations.
-   - Exactly 137 Spring Data JPA repository interfaces and exactly 2 `@Query` annotations preserved.
+1. **Tenant Isolation in Generic Data Quality Issue APIs:**
+   - Extracted and reused unified, fail-closed tenant scope validation in `DataQualityIssueScopeSupport`, shared across both `DataQualityIssueServiceImpl` and `DataQualityWorkflowServiceImpl`.
+   - Enforced service-boundary authorization and tenant ownership checks on `GET /{id}` (`getIssueById`), compound entity lookup `GET ?entityType=...&entityId=...` (`getIssuesByEntity`), `PUT /{id}` (`updateIssue` — validated before inspecting terminal state or mutating any fields), and `POST /` (`reportIssue` — non-nationwide callers restricted to authorized tenant entities).
+   - Enforced fail-closed collection filtering across all search/filter queries (`ruleId`, `categoryId`, `severityId`, `statusId`, `sourceId`, `entityType`, `assignedUserId`, `resolvedByUserId`) so zero out-of-scope records are ever disclosed.
+   - Enforced fail-closed handling when `WorkflowSecurityScopeValidator` or `JdbcTemplate` is unavailable, when caller tenancy fields are missing or ambiguous/conflicting, or when personas query forbidden entity types (e.g., employers querying trainee or enrollment issues).
+   - Routed legacy `DataQualityIssueServiceImpl.assignIssue()` and `resolveIssue()` through `DataQualityWorkflowService` so direct service invocation cannot bypass locks, state transitions, tenant checks, or audit event logging.
+2. **Lifecycle Bypass Prevention During Issue Creation:**
+   - Enforced that all manually reported issues via `reportIssue()` (`POST /api/v1/data-quality-issues`) start in `OPEN` status with `assignedUserId = null`.
+   - Explicitly rejected attempts to create issues in non-`OPEN` statuses (`ASSIGNED`, `IN_PROGRESS`, `REOPENED`, `RESOLVED`, `DISMISSED`) with HTTP 400 Bad Request (`LIFECYCLE_BYPASS_PROHIBITED`), while preserving compatibility for requests that omit status or explicitly specify `OPEN`.
+   - Explicitly rejected client-selected `assignedUserId` during issue creation with HTTP 400 Bad Request (`ASSIGNMENT_BYPASS_PROHIBITED`), ensuring assignment occurs solely through `DataQualityWorkflowService.assignIssue()` without fabricating historical events.
+3. **Strict Read and Write Permission Separation:**
+   - Enforced `@PreAuthorize("hasAuthority('system.manage')")` on all lifecycle mutation endpoints (`/assign`, `/start-investigation`, `/resolve`, `/dismiss`, `/reopen`, `POST /`, `PUT /{id}`) in `DataQualityIssueController`, and equivalent service-boundary `system.manage` verification.
+   - Preserved `audit.read || system.manage` authorization for read endpoints including `GET /{id}/events` within the caller's tenant boundary.
+4. **Assignee Eligibility Validation Against Issue Entity:**
+   - Validated candidate assignees in `validateAssigneeEligibility()` against the underlying entity in the database (`Trainee`, `AttendanceRecord`, `PlacementRecord`, `EmploymentRecord`, `BatchEnrollment`).
+   - Rejected unscoped assignees (all tenancy fields null) and conflicting assignees (`ASSIGNEE_SCOPE_MISMATCH`, 400 Bad Request), as well as cross-state, cross-provider, and cross-employer assignments even when initiated by a nationwide admin.
+5. **Transition Matrix & Ownership Enforcement:**
+   - Corrected `dismissIssue()` to accept ONLY `OPEN -> DISMISSED` and `IN_PROGRESS -> DISMISSED`, explicitly rejecting `ASSIGNED -> DISMISSED` and `REOPENED -> DISMISSED` with HTTP 409 Conflict (`INVALID_DQ_TRANSITION`).
+   - Enforced investigator ownership in `startInvestigation()`, `resolveIssue()`, and in-progress `dismissIssue()` (`assignedUserId` or authorized administrative supervisor).
+6. **Protection of Lifecycle History & Append-Only Event Trail:**
+   - Enforced strict immutability of status, assignment, and resolution metadata on generic `PUT /api/v1/data-quality-issues/{id}` (`LIFECYCLE_BYPASS_PROHIBITED`, `ASSIGNMENT_BYPASS_PROHIBITED`, `RESOLUTION_BYPASS_PROHIBITED`).
+   - Atomic event insertion to `data_quality_issue_events` using supported schema columns (`data_quality_issue_id`, `data_quality_issue_status_id`, `changed_by_user_id`, `changed_at`, `remarks`, `created_at`).
+7. **Synergy with Phase 28.3 & Architectural Invariants:**
+   - Preserved `DataQualityIssueRegistrationService` detection-engine registration and Phase 28.3 deduplication behavior (`is_open_flag = 1`).
+   - Schema validation (`ddl-auto=validate`) verified against `SIH26135_TEST` with zero schema alterations.
+   - Exactly 137 Spring Data JPA repository interfaces and 2 `@Query` annotations preserved.
    - Exactly 63 production controllers verified; all 659 audited endpoints return standard `ApiResponse` envelopes.
-   - Full regression suite achieved 100% pass rate: **1,882 / 1,882 tests passed** (0 failures, 0 errors, 0 skipped).
+   - Full regression suite achieved 100% pass rate: **1,902 / 1,902 tests passed** (0 failures, 0 errors, 0 skipped).
 
 ---
 
@@ -75,6 +71,7 @@ flowchart TD
 
 | Initial State | Target State | Endpoint Trigger | Mandatory Request Fields | Invariants & Business Validations |
 | :--- | :--- | :--- | :--- | :--- |
+| `(Creation)` | `OPEN` | `POST /` | `categoryId`, `severityId`, `sourceId`, `entityType`, `issueSummary` | Must start in `OPEN` (`statusId` omitted or `OPEN`) with null assignee. Scoped callers must target an authorized tenant entity. |
 | `OPEN` | `ASSIGNED` | `POST /{id}/assign` | `assignedUserId` | Assignee must exist, be active, not be a trainee, have non-null unambiguous tenancy, and match entity tenant scope. Status updated to `ASSIGNED`. Appends event. |
 | `ASSIGNED` | `IN_PROGRESS` | `POST /{id}/start-investigation` | `remarks` (optional, max 500) | Caller must be assigned investigator or supervisor/admin. Status updated to `IN_PROGRESS`. Appends event. |
 | `IN_PROGRESS` | `RESOLVED` | `POST /{id}/resolve` | `resolutionNotes` (non-blank, max 500) | Caller must be assigned investigator or supervisor/admin. Server derives `resolved_by_user_id` and `resolved_at`. Enforces `resolved_at >= detected_at`. Sets `is_open_flag = 0`. Appends event. |
@@ -83,18 +80,14 @@ flowchart TD
 | `RESOLVED` | `REOPENED` | `POST /{id}/reopen` | `reopeningReason` (non-blank, max 500) | Caller must possess authorized tenant or admin scope. Clears `resolved_by_user_id`, `resolved_at`, and `resolution_notes`. Sets `is_open_flag = 1`. Appends event. |
 | `REOPENED` | `ASSIGNED` | `POST /{id}/assign` | `assignedUserId` | Re-assigned to eligible investigator. Status updated to `ASSIGNED`. Appends event. |
 
-### 2.3 Prohibited State Transitions (409 Conflict)
+### 2.3 Prohibited Transitions & Creation Bypasses
 
-Any transition not explicitly permitted in the matrix is immediately rejected with HTTP 409 Conflict and error code `INVALID_DQ_TRANSITION`:
+Any transition not explicitly permitted in the matrix is rejected with HTTP 409 Conflict (`INVALID_DQ_TRANSITION`), and lifecycle bypasses during `POST /` or `PUT /{id}` are rejected with HTTP 400 Bad Request:
 
-- `OPEN -> RESOLVED`: Issues cannot be directly resolved without investigation.
-- `OPEN -> IN_PROGRESS`: Issues must first be assigned to an investigator.
-- `ASSIGNED -> RESOLVED`: Investigation must formally begin before resolution.
-- `ASSIGNED -> DISMISSED`: Assigned issues must either start investigation or be re-assigned; direct dismissal prohibited.
-- `REOPENED -> DISMISSED`: Reopened issues must be re-assigned or investigated; direct dismissal prohibited.
-- `RESOLVED -> DISMISSED`: A resolved issue cannot be dismissed; it must be reopened if invalid.
-- `DISMISSED -> RESOLVED` / `DISMISSED -> REOPENED`: Dismissed issues are permanently terminal.
-- `IN_PROGRESS -> ASSIGNED`: Reassignment must not bypass workflow state.
+- `POST /` with `ASSIGNED`, `IN_PROGRESS`, `REOPENED`, `RESOLVED`, or `DISMISSED`: HTTP 400 (`LIFECYCLE_BYPASS_PROHIBITED`).
+- `POST /` with non-null `assignedUserId`: HTTP 400 (`ASSIGNMENT_BYPASS_PROHIBITED`).
+- `PUT /{id}` with status, assignment, or resolution fields: HTTP 400 (`LIFECYCLE_BYPASS_PROHIBITED`, `ASSIGNMENT_BYPASS_PROHIBITED`, `RESOLUTION_BYPASS_PROHIBITED`).
+- `OPEN -> RESOLVED`, `OPEN -> IN_PROGRESS`, `ASSIGNED -> RESOLVED`, `ASSIGNED -> DISMISSED`, `REOPENED -> DISMISSED`, `RESOLVED -> DISMISSED`, `DISMISSED -> RESOLVED`, `DISMISSED -> REOPENED`, `IN_PROGRESS -> ASSIGNED`: HTTP 409 (`INVALID_DQ_TRANSITION`).
 
 ---
 
@@ -103,15 +96,11 @@ Any transition not explicitly permitted in the matrix is immediately rejected wi
 ### 3.1 Row-Level Pessimistic Locking
 
 To prevent race conditions, concurrent conflicting state transitions, or simultaneous resolutions:
-1. Every state transition begins by executing a pessimistic lock query via `JdbcTemplate`:
+1. Every state transition executes a pessimistic lock query via `JdbcTemplate`:
    ```sql
-   SELECT data_quality_issue_id, data_quality_issue_status_id, is_open_flag, detected_at,
-          entity_type, entity_id, assigned_user_id, resolved_by_user_id, resolved_at, resolution_notes
-   FROM data_quality_issues
-   WHERE data_quality_issue_id = ? FOR UPDATE
+   SELECT data_quality_issue_id FROM data_quality_issues WHERE data_quality_issue_id = ? FOR UPDATE
    ```
-2. The issue record is loaded, and its current status is verified within the lock.
-3. If another transaction has modified the issue state concurrently, the incoming transaction observes the updated status and rejects invalid transitions deterministically.
+2. The issue entity is loaded and validated within the lock before mutating state.
 
 ### 3.2 Atomic Event Logging (`data_quality_issue_events`)
 
@@ -129,159 +118,65 @@ The schema contains the strict MySQL check constraint:
 ```sql
 CONSTRAINT `ck_dq_issues_resolved_at` CHECK (`resolved_at` >= `detected_at`)
 ```
-Application logic rigorously validates this temporal invariant:
-- Server assigns `resolved_at = LocalDateTime.now()`.
-- If `resolved_at.isBefore(detectedAt)`, the operation fails with HTTP 400 Bad Request, safeguarding the database constraint.
-- When an issue is reopened, `resolved_by_user_id`, `resolved_at`, and `resolution_notes` are set to `NULL`, which is schema-valid and satisfies the check constraint while preserving previous resolution details in `data_quality_issue_events`.
+Server assigns `resolved_at = LocalDateTime.now()`, checks `!resolvedAt.isBefore(detectedAt)`, and clears resolution attribution columns to `NULL` on reopen while preserving previous resolution events in `data_quality_issue_events`.
 
 ---
 
 ## 4. Security, Authorization & Tenancy Boundaries
 
-Issue lifecycle endpoints enforce multi-tenant isolation via `WorkflowSecurityScopeValidator` and service-level verification:
+All data quality endpoints (`DataQualityIssueController`), generic service operations (`DataQualityIssueServiceImpl`), and lifecycle workflow transitions (`DataQualityWorkflowServiceImpl`) enforce multi-tenant isolation via `WorkflowSecurityScopeValidator` and `DataQualityIssueScopeSupport`:
 
 1. **Permission Separation:**
-   - Management operations (`/assign`, `/start-investigation`, `/resolve`, `/dismiss`, `/reopen`, `POST /`, `PUT /{id}`) strictly require `system.manage`.
-   - Read operations (`GET /{id}`, `GET /`, `GET /{id}/events`) permit `audit.read` or `system.manage`.
+   - Management operations (`POST /`, `PUT /{id}`, `/assign`, `/start-investigation`, `/resolve`, `/dismiss`, `/reopen`) strictly require `system.manage`.
+   - Read operations (`GET /{id}`, `GET ?...`, `GET /{id}/events`) require `audit.read` or `system.manage`.
 2. **Nationwide Administrators (`ROLE_super_admin`, unrestricted `ROLE_government_admin`):**
-   - Unrestricted authority across all issues, entities, and states.
-   - May assign issues across tenants, but the target assignee must match the issue's tenant scope.
-3. **State Administrators (`ROLE_state_admin`):**
-   - Restricted to issues associated with entities located within their assigned `state_id`.
-   - Entity tenancy is verified by inspecting underlying tables (`trainees`, `attendance_records`, `placement_records`, `employment_records`, `batch_enrollments`).
-   - Blocked from operating on out-of-scope issues (HTTP 403 Forbidden).
-4. **Training Providers (`ROLE_training_provider`):**
-   - Restricted to issues affecting trainees, batches, or centers owned by their `training_provider_id`.
-   - Blocked from accessing or resolving other providers' issues.
-5. **Employers (`ROLE_employer`):**
-   - Restricted to placement or employment verification issues associated with their `employer_id`.
-6. **Trainees (`ROLE_trainee`):**
-   - Strictly denied from all data quality management operations (HTTP 403 Forbidden).
-   - Ineligible to be assigned any data quality issues.
-7. **Assignee Tenancy Validation:**
-   - An issue cannot be assigned to an unscoped user (null tenancy fields) or a user whose tenancy does not match the issue's entity scope (`ASSIGNEE_SCOPE_MISMATCH`, 400 Bad Request).
-   - Assignees must be active accounts.
+   - Verified via `WorkflowSecurityScopeValidator.isNationwideAdmin()` (unrestricted DB tenancy, non-trainee, explicit administrative role).
+   - Full cross-tenant read, creation, update, and workflow supervision authority (target assignees must still match the issue's tenant boundary).
+3. **State Administrators / District Officers:**
+   - Restricted to issues referencing entities within their assigned `state_id` (and `district_id` if configured on the user record) across `Trainee`, `AttendanceRecord`, `PlacementRecord`, `EmploymentRecord`, and `BatchEnrollment` / `TrainingEnrollment`.
+   - Out-of-scope single-entity access (`GET /{id}`, `GET ?entityType=&entityId=`, `PUT /{id}`, `POST /`) fails with HTTP 403 Forbidden; collection queries (`GET ?statusId=`, `?ruleId=`, etc.) filter out all out-of-scope records.
+4. **Training Providers (`ROLE_training_provider` / `training_provider_id`):**
+   - Restricted strictly to entities owned by or enrolled with their `training_provider_id`.
+5. **Employers (`ROLE_employer` / `employer_id`):**
+   - Restricted strictly to `PlacementRecord` and `EmploymentRecord` issues matching their `employer_id`.
+   - Explicitly denied from `Trainee`, `AttendanceRecord`, and `BatchEnrollment` issues and entity queries (HTTP 403 Forbidden).
+6. **Fail-Closed Handling for Missing or Ambiguous Scope:**
+   - Callers with deleted/inactive user records, trainee profiles/roles, missing required tenancy IDs (e.g., all tenancy IDs null without verified nationwide admin role), or ambiguous/conflicting tenancy fields/roles fail closed with HTTP 403 Forbidden (`AccessDeniedException`).
 
 ---
 
-## 5. API Endpoints & Request/Response Contracts
-
-### 5.1 Assign Issue
-- **Method / Path:** `POST /api/v1/data-quality-issues/{id}/assign`
-- **Security:** `@PreAuthorize("hasAuthority('system.manage')")`
-- **Request Parameters / Body:** Supports both request body `{"assignedUserId": 42}` and backward-compatible query param `?assignedUserId=42`.
-- **Response:** `200 OK` with enveloped `ApiResponse<DataQualityIssueResponse>`.
-
-### 5.2 Start Investigation
-- **Method / Path:** `POST /api/v1/data-quality-issues/{id}/start-investigation`
-- **Security:** `@PreAuthorize("hasAuthority('system.manage')")`
-- **Request Body:**
-  ```json
-  {
-    "remarks": "Reviewing biometric attendance discrepancies for Batch 102."
-  }
-  ```
-- **Response:** `200 OK` with enveloped `ApiResponse<DataQualityIssueResponse>`.
-
-### 5.3 Resolve Issue
-- **Method / Path:** `POST /api/v1/data-quality-issues/{id}/resolve`
-- **Security:** `@PreAuthorize("hasAuthority('system.manage')")`
-- **Request Body:**
-  ```json
-  {
-    "resolutionNotes": "Verified candidate Aadhaar and updated matching phone number."
-  }
-  ```
-- **Response:** `200 OK` with enveloped `ApiResponse<DataQualityIssueResponse>`.
-
-### 5.4 Dismiss Issue
-- **Method / Path:** `POST /api/v1/data-quality-issues/{id}/dismiss`
-- **Security:** `@PreAuthorize("hasAuthority('system.manage')")`
-- **Request Body:**
-  ```json
-  {
-    "remarks": "False positive: candidate has authorized exemption under Section 4."
-  }
-  ```
-- **Response:** `200 OK` with enveloped `ApiResponse<DataQualityIssueResponse>`.
-
-### 5.5 Reopen Issue
-- **Method / Path:** `POST /api/v1/data-quality-issues/{id}/reopen`
-- **Security:** `@PreAuthorize("hasAuthority('system.manage')")`
-- **Request Body:**
-  ```json
-  {
-    "reopeningReason": "Audit review showed secondary enrollment was not terminated."
-  }
-  ```
-- **Response:** `200 OK` with enveloped `ApiResponse<DataQualityIssueResponse>`.
-
-### 5.6 Issue Event History
-- **Method / Path:** `GET /api/v1/data-quality-issues/{id}/events`
-- **Security:** `@PreAuthorize("hasAnyAuthority('audit.read', 'system.manage')")`
-- **Response:** `200 OK` with enveloped `ApiResponse<List<DataQualityIssueEventResponse>>`.
-
----
-
-## 6. Implementation & Correction Summary
-
-### 6.1 Modified Components
+## 5. Implementation & Correction Summary
 
 | Component / File | Purpose & Corrections |
 | :--- | :--- |
-| `DataQualityIssueController.java` | Injected mandatory `DataQualityWorkflowService`; removed fail-open legacy fallbacks; applied `@PreAuthorize("hasAuthority('system.manage')")` to all write endpoints. |
-| `DataQualityWorkflowServiceImpl.java` | Enforced read/write permission separation (`system.manage` vs `audit.read`); implemented entity-level `validateAssigneeEligibility()`; restricted `dismissIssue()` to OPEN and IN_PROGRESS; enforced investigator ownership with supervisor override in `startInvestigation()`, `resolveIssue()`, and `dismissIssue()`; made `JdbcTemplate` mandatory; eliminated fail-open bypasses. |
-| `DataQualityIssueServiceImpl.java` | Protected lifecycle history against generic `PUT /{id}` updates (`LIFECYCLE_BYPASS_PROHIBITED`, `ASSIGNMENT_BYPASS_PROHIBITED`, `RESOLUTION_BYPASS_PROHIBITED`). |
-| `DataQualityWorkflowServiceTest.java` | Expanded unit and state machine test suite to 52 tests covering permission separation, assignee scope matching, invalid dismissals (409), investigator ownership (403), supervisor overrides, and event persistence. |
-| `DataQualityWorkflowApiTest.java` | Expanded integration test suite to 26 tests covering live MySQL verification of permission separation, adversarial nationwide-admin assignment to out-of-scope users, generic PUT lifecycle protections, check constraints, and Phase 28.3 deduplication synergy. |
-| `ResponseEnvelopeAlignmentContractTest.java` | Audited and verified all 63 production REST controllers and 659 endpoints returning standard `ApiResponse` envelope. |
+| `DataQualityIssueScopeSupport.java` | Shared fail-closed security and tenant-scope enforcement helper (caller resolution, missing/ambiguous scope checks, single-entity scope queries, and batched `IN (...)` collection filtering across `Trainee`, `AttendanceRecord`, `PlacementRecord`, `EmploymentRecord`, and `BatchEnrollment`). |
+| `DataQualityIssueServiceImpl.java` | Enforced tenant isolation and service-boundary auth across `reportIssue()`, `updateIssue()`, `getIssueById()`, `getIssuesByEntity()`, and all filtered collection queries; enforced `OPEN`-only initial status and zero initial assignee on creation; delegated legacy `assignIssue()`/`resolveIssue()` to `DataQualityWorkflowService`. |
+| `DataQualityWorkflowServiceImpl.java` | Consolidated caller auth and issue scope checks to reuse `DataQualityIssueScopeSupport`; retained transaction locking, assignee entity eligibility, transition matrix enforcement, investigator ownership, and atomic event logging. |
+| `DataQualityIssueController.java` | Mandatory non-null `DataQualityWorkflowService`; `@PreAuthorize("hasAuthority('system.manage')")` on all mutation endpoints; class-level `audit.read || system.manage` on read routes. |
+| `DataQualityWorkflowServiceTest.java` | 52 unit and state-machine tests covering permission separation, assignee scope matching, invalid dismissals (409), investigator ownership (403), supervisor overrides, and event persistence. |
+| `DataQualityIssueServiceSecurityTest.java` | 10 unit tests covering service-boundary enforcement of `OPEN`-only creation status, rejection of initial assignees, district officer isolation, ambiguous caller fail-closed checks, and legacy delegation. |
+| `DataQualityWorkflowApiTest.java` | 26 live MySQL integration tests for workflow lifecycle endpoints, check constraints, generic PUT bypass protections, and Phase 28.3 deduplication synergy. |
+| `DataQualityGenericIssueSecurityApiTest.java` | 10 live MySQL integration and adversarial tests verifying cross-tenant rejection (`GET /{id}`, `GET ?entityType=&entityId=`, `POST /`, `PUT /{id}`), strict collection filtering across all filter parameters for State/Provider/Employer/Nationwide personas, fail-closed missing/ambiguous scope handling, service-boundary enforcement, creation lifecycle bypass prevention, and Phase 28.3 deduplication preservation. |
 
 ---
 
-## 7. Verification & Test Evidence
+## 6. Verification & Test Evidence
 
-### 7.1 Unit & State Machine Test Suite (`DataQualityWorkflowServiceTest`)
+### 6.1 Focused Data Quality Suites
 
-- Total Tests: **52**
-- Status: **PASSED (100%)**
-- Test Coverage Breakdown:
-  - Transition validity: All allowable state transitions validated.
-  - Transition rejection: Every disallowed transition confirmed to throw `InvalidDataQualityTransitionException` (409 Conflict), including `ASSIGNED -> DISMISSED` and `REOPENED -> DISMISSED`.
-  - Investigator ownership: `startInvestigation()` and `resolveIssue()` restrict execution to assigned investigator or administrative supervisor (403 Forbidden for unauthorized callers).
-  - Validation guards: Null, blank, whitespace-only, and oversized (>500 chars) notes/remarks rejected with `BadRequestException` (400 Bad Request).
-  - Assignee eligibility: Inactive users, trainee accounts, unscoped users, and cross-tenant assignees rejected with `BadRequestException` (`ASSIGNEE_SCOPE_MISMATCH`).
-  - Read/write permission separation: Verified `system.manage` enforcement for managers and `audit.read` permission for event readers within tenant scope.
-  - Event trail: Event generation verified with exact status mappings, actor attribution, and remarks.
+- `DataQualityWorkflowServiceTest`: **52 / 52 PASSED**
+- `DataQualityIssueServiceSecurityTest`: **10 / 10 PASSED**
+- `DataQualityWorkflowApiTest`: **26 / 26 PASSED** (live MySQL `SIH26135_TEST`)
+- `DataQualityGenericIssueSecurityApiTest`: **10 / 10 PASSED** (live MySQL `SIH26135_TEST`)
+- Phase 28.3 Suites (`DataQualityAnomalyDetectorsTest`, `DataQualityRuleCatalogTest`, `DataQualityDeduplicationAndScanApiTest`): **100% PASSED**
 
-### 7.2 Integration Test Suite (`DataQualityWorkflowApiTest`)
+### 6.2 Architectural Invariant Verification
 
-- Total Tests: **26**
-- Status: **PASSED (100%)**
-- Execution Environment: Spring Boot Test with live MySQL `SIH26135_TEST` catalog.
-- Test Coverage Breakdown:
-  - Full end-to-end lifecycle: `OPEN -> ASSIGNED -> IN_PROGRESS -> RESOLVED -> REOPENED`.
-  - Read/Write permission separation: Callers with `audit.read` alone rejected with 403 Forbidden across all lifecycle mutations, while permitted to view events within tenant scope.
-  - Adversarial assignment tests: Nationwide admin attempting assignment to an assignee outside issue tenant scope rejected with 400 Bad Request (`ASSIGNEE_SCOPE_MISMATCH`); unscoped assignee rejected.
-  - Dismissal constraints: Rejection of `ASSIGNED -> DISMISSED` and `REOPENED -> DISMISSED` with 409 Conflict.
-  - Generic PUT lifecycle protections: Rejection of direct status (`LIFECYCLE_BYPASS_PROHIBITED`), assignment (`ASSIGNMENT_BYPASS_PROHIBITED`), and resolution (`RESOLUTION_BYPASS_PROHIBITED`) alterations.
-  - Database check constraint: Verified MySQL `ck_dq_issues_resolved_at` constraint actively blocks `resolved_at < detected_at`.
-  - Phase 28.3 Deduplication synergy: Active statuses (`ASSIGNED`, `IN_PROGRESS`, `REOPENED`) properly deduplicated during scans.
+1. **JPA Repository Count:** **137 JPA repository interfaces** verified (0 added).
+2. **`@Query` Annotation Invariant:** **2 `@Query` annotations** preserved (`TraineeUnemploymentEventRepository:19`, `UserRepository:22`).
+3. **Production Controller Count & Envelope Alignment:** **63 production REST controllers** and **659 endpoint methods** audited and verified by `ResponseEnvelopeAlignmentContractTest`.
 
-### 7.3 Architectural Invariant Verification
-
-1. **JPA Repository Count:**
-   - Scanned: **137 JPA repository interfaces**
-   - Verified: Exactly 137 interfaces preserved (0 added).
-2. **`@Query` Annotation Invariant:**
-   - Scanned: **2 `@Query` annotations** across entire codebase (`TraineeUnemploymentEventRepository:19`, `UserRepository:22`).
-   - Verified: Exactly 2 annotations preserved (0 added).
-3. **Production Controller Count & Envelope Alignment:**
-   - Scanned: **63 production REST controllers** across all modules.
-   - Scanned: **659 endpoint methods**.
-   - Verified: 100% of endpoints return `ResponseEntity<ApiResponse<T>>` or `ResponseEntity<StreamingResponseBody>`.
-   - Contract test: `ResponseEnvelopeAlignmentContractTest` passed.
-
-### 7.4 Full Regression Test Results
+### 6.3 Full Regression Test Results
 
 ```
 [INFO] -------------------------------------------------------
@@ -290,19 +185,19 @@ Issue lifecycle endpoints enforce multi-tenant isolation via `WorkflowSecuritySc
 ...
 [INFO] Results:
 [INFO] 
-[INFO] Tests run: 1882, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 1902, Failures: 0, Errors: 0, Skipped: 0
 [INFO] 
 [INFO] ------------------------------------------------------------------------
 [INFO] BUILD SUCCESS
 [INFO] ------------------------------------------------------------------------
-[INFO] Total time:  05:24 min
-[INFO] Finished at: 2026-11-11T20:50:40+05:30
+[INFO] Total time:  05:31 min
+[INFO] Finished at: 2026-11-11T22:29:22+05:30
 [INFO] ------------------------------------------------------------------------
 ```
 
 ---
 
-## 8. Architectural Invariants Compliance Matrix
+## 7. Architectural Invariants Compliance Matrix
 
 | Invariant / Constraint | Requirement | Actual Status | Evidence |
 | :--- | :--- | :--- | :--- |
@@ -313,11 +208,11 @@ Issue lifecycle endpoints enforce multi-tenant isolation via `WorkflowSecuritySc
 | **REST Controllers** | Exactly 63 controllers | **COMPLIANT** | Verified by `ResponseEnvelopeAlignmentContractTest`. |
 | **API Envelope Uniformity** | 100% `ApiResponse` | **COMPLIANT** | All 659 endpoints validated by `ResponseEnvelopeAlignmentContractTest`. |
 | **MySQL Check Constraint** | `ck_dq_issues_resolved_at` | **COMPLIANT** | Verified by unit tests, integration tests, and schema constraint checks. |
-| **Full Regression Suite** | 100% Pass Rate | **COMPLIANT** | **1,882 / 1,882 tests passing** (0 failures, 0 errors, 0 skipped). |
-| **Git Hygiene** | Zero commits, push, stash, or reset | **COMPLIANT** | Working directory clean; no git commits created. |
+| **Full Regression Suite** | 100% Pass Rate | **COMPLIANT** | **1,902 / 1,902 tests passing** (0 failures, 0 errors, 0 skipped). |
+| **Git Hygiene** | Zero commits, push, stash, or reset | **COMPLIANT** | No git mutations performed. |
 
 ---
 
-## 9. Review Status & Sign-off
+## 8. Review Status & Sign-off
 
 Phase 28.4 — Data Quality Issue Lifecycle, Assignment & Remediation Workflow is **COMPLETED**, **VERIFIED**, and **READY FOR INDEPENDENT REVIEW**.

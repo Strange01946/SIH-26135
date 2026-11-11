@@ -99,10 +99,11 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
       throw new BadRequestException("assignedUserId must be a positive integer", "INVALID_ASSIGNEE");
     }
 
-    User caller = resolveAndValidateManager();
+    DataQualityIssueScopeSupport.CallerScope callerScope = resolveAndValidateManagerScope();
+    User caller = callerScope.caller();
     lockIssueRow(issueId);
     DataQualityIssue issue = findIssue(issueId);
-    validateCallerScopeForIssue(caller, issue);
+    DataQualityIssueScopeSupport.validateCallerScopeForIssue(callerScope, issue, jdbcTemplate);
 
     // Validate Assignee against the issue entity and tenant ownership
     validateAssigneeEligibility(assignedUserId, caller, issue);
@@ -140,10 +141,11 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
   @Override
   public DataQualityIssueResponse startInvestigation(Long issueId, StartInvestigationRequest request) {
     validateIssueId(issueId);
-    User caller = resolveAndValidateManager();
+    DataQualityIssueScopeSupport.CallerScope callerScope = resolveAndValidateManagerScope();
+    User caller = callerScope.caller();
     lockIssueRow(issueId);
     DataQualityIssue issue = findIssue(issueId);
-    validateCallerScopeForIssue(caller, issue);
+    DataQualityIssueScopeSupport.validateCallerScopeForIssue(callerScope, issue, jdbcTemplate);
 
     // Validate State Transition: allowed from ASSIGNED or REOPENED
     String currentStatusCode = getStatusCode(issue);
@@ -187,10 +189,11 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
       throw new BadRequestException("resolutionNotes cannot exceed 500 characters", "VALIDATION_FAILED");
     }
 
-    User caller = resolveAndValidateManager();
+    DataQualityIssueScopeSupport.CallerScope callerScope = resolveAndValidateManagerScope();
+    User caller = callerScope.caller();
     lockIssueRow(issueId);
     DataQualityIssue issue = findIssue(issueId);
-    validateCallerScopeForIssue(caller, issue);
+    DataQualityIssueScopeSupport.validateCallerScopeForIssue(callerScope, issue, jdbcTemplate);
 
     // Validate State Transition: allowed ONLY from IN_PROGRESS
     String currentStatusCode = getStatusCode(issue);
@@ -242,10 +245,11 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
       throw new BadRequestException("remarks cannot exceed 500 characters", "VALIDATION_FAILED");
     }
 
-    User caller = resolveAndValidateManager();
+    DataQualityIssueScopeSupport.CallerScope callerScope = resolveAndValidateManagerScope();
+    User caller = callerScope.caller();
     lockIssueRow(issueId);
     DataQualityIssue issue = findIssue(issueId);
-    validateCallerScopeForIssue(caller, issue);
+    DataQualityIssueScopeSupport.validateCallerScopeForIssue(callerScope, issue, jdbcTemplate);
 
     // Validate State Transition: allowed ONLY from OPEN or IN_PROGRESS
     // Explicitly reject ASSIGNED -> DISMISSED, REOPENED -> DISMISSED, RESOLVED -> DISMISSED, DISMISSED -> DISMISSED
@@ -292,10 +296,11 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
       throw new BadRequestException("reopeningReason cannot exceed 500 characters", "VALIDATION_FAILED");
     }
 
-    User caller = resolveAndValidateManager();
+    DataQualityIssueScopeSupport.CallerScope callerScope = resolveAndValidateManagerScope();
+    User caller = callerScope.caller();
     lockIssueRow(issueId);
     DataQualityIssue issue = findIssue(issueId);
-    validateCallerScopeForIssue(caller, issue);
+    DataQualityIssueScopeSupport.validateCallerScopeForIssue(callerScope, issue, jdbcTemplate);
 
     // Validate State Transition: allowed ONLY from RESOLVED
     String currentStatusCode = getStatusCode(issue);
@@ -325,9 +330,9 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
   @Transactional(readOnly = true)
   public List<DataQualityIssueEventResponse> getIssueEvents(Long issueId) {
     validateIssueId(issueId);
-    User caller = resolveAndValidateReader();
+    DataQualityIssueScopeSupport.CallerScope callerScope = resolveAndValidateReaderScope();
     DataQualityIssue issue = findIssue(issueId);
-    validateCallerScopeForIssue(caller, issue);
+    DataQualityIssueScopeSupport.validateCallerScopeForIssue(callerScope, issue, jdbcTemplate);
 
     List<DataQualityIssueEvent> events = dataQualityIssueEventRepository.findByDataQualityIssueId(issueId);
     return events.stream()
@@ -370,50 +375,12 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
     }
   }
 
-  private User resolveAndValidateManager() {
-    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-    if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-      throw new AccessDeniedException("Authenticated user identity is required to manage data quality issues");
-    }
-
-    boolean hasManageAuthority = auth.getAuthorities().stream()
-        .anyMatch(a -> "system.manage".equals(a.getAuthority()));
-    if (!hasManageAuthority) {
-      throw new AccessDeniedException("Caller lacks required management authority 'system.manage'");
-    }
-
-    Long callerUserId = scopeValidator.resolveAuthenticatedUserId();
-    if (callerUserId == null) {
-      throw new AccessDeniedException("Authenticated user identity is required to manage data quality issues");
-    }
-    if (scopeValidator.isTraineeCaller()) {
-      throw new AccessDeniedException("Trainees are not authorized to manage data quality issues");
-    }
-    return scopeValidator.resolveAuthenticatedUser()
-        .orElseThrow(() -> new AccessDeniedException("Authoritative user record not found"));
+  private DataQualityIssueScopeSupport.CallerScope resolveAndValidateManagerScope() {
+    return DataQualityIssueScopeSupport.resolveAndValidateCaller(scopeValidator, jdbcTemplate, true);
   }
 
-  private User resolveAndValidateReader() {
-    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-    if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-      throw new AccessDeniedException("Authenticated user identity is required to read data quality issue events");
-    }
-
-    boolean hasReadOrManage = auth.getAuthorities().stream()
-        .anyMatch(a -> "audit.read".equals(a.getAuthority()) || "system.manage".equals(a.getAuthority()));
-    if (!hasReadOrManage) {
-      throw new AccessDeniedException("Caller lacks required read or manage authority");
-    }
-
-    Long callerUserId = scopeValidator.resolveAuthenticatedUserId();
-    if (callerUserId == null) {
-      throw new AccessDeniedException("Authenticated user identity is required to read data quality issue events");
-    }
-    if (scopeValidator.isTraineeCaller()) {
-      throw new AccessDeniedException("Trainees are not authorized to view data quality issues");
-    }
-    return scopeValidator.resolveAuthenticatedUser()
-        .orElseThrow(() -> new AccessDeniedException("Authoritative user record not found"));
+  private DataQualityIssueScopeSupport.CallerScope resolveAndValidateReaderScope() {
+    return DataQualityIssueScopeSupport.resolveAndValidateCaller(scopeValidator, jdbcTemplate, false);
   }
 
   private boolean isAdministrativeSupervisor(User caller) {
@@ -434,150 +401,6 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
       return true;
     }
     return false;
-  }
-
-  private void validateCallerScopeForIssue(User caller, DataQualityIssue issue) {
-    if (scopeValidator.isNationwideAdmin()) {
-      return; // Authorized across all national issues
-    }
-
-    String entityType = issue.getEntityType();
-    Long entityId = issue.getEntityId();
-
-    if (entityType == null || entityId == null) {
-      throw new AccessDeniedException("Caller lacks authority to manage unscoped data quality issue");
-    }
-
-    switch (entityType) {
-      case "Trainee" -> {
-        if (caller.getEmployerId() != null && caller.getStateId() == null && caller.getTrainingProviderId() == null) {
-          throw new AccessDeniedException("Employers are not authorized to manage trainee data quality issues");
-        }
-        if (caller.getStateId() != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM trainees WHERE trainee_id = ? AND state_id = ? AND deleted_at IS NULL",
-              Integer.class, entityId, caller.getStateId());
-          if (count == null || count == 0) {
-            throw new AccessDeniedException("Issue trainee does not belong to caller state scope");
-          }
-        } else if (caller.getTrainingProviderId() != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM training_enrollments WHERE trainee_id = ? AND provider_id = ?",
-              Integer.class, entityId, caller.getTrainingProviderId());
-          if (count == null || count == 0) {
-            throw new AccessDeniedException("Issue trainee does not belong to caller training provider scope");
-          }
-        } else {
-          throw new AccessDeniedException("Caller lacks authorized tenant scope for this trainee issue");
-        }
-      }
-      case "AttendanceRecord" -> {
-        if (caller.getEmployerId() != null && caller.getStateId() == null && caller.getTrainingProviderId() == null) {
-          throw new AccessDeniedException("Employers are not authorized to manage attendance data quality issues");
-        }
-        if (caller.getStateId() != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM attendance_records ar " +
-                  "JOIN training_batches tb ON ar.batch_id = tb.batch_id " +
-                  "JOIN training_centers tc ON tb.center_id = tc.center_id " +
-                  "WHERE ar.attendance_id = ? AND tc.state_id = ?",
-              Integer.class, entityId, caller.getStateId());
-          if (count == null || count == 0) {
-            throw new AccessDeniedException("Issue attendance record does not belong to caller state scope");
-          }
-        } else if (caller.getTrainingProviderId() != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM attendance_records ar " +
-                  "JOIN training_enrollments te ON ar.enrollment_id = te.enrollment_id " +
-                  "WHERE ar.attendance_id = ? AND te.provider_id = ?",
-              Integer.class, entityId, caller.getTrainingProviderId());
-          if (count == null || count == 0) {
-            throw new AccessDeniedException("Issue attendance record does not belong to caller training provider scope");
-          }
-        } else {
-          throw new AccessDeniedException("Caller lacks authorized tenant scope for this attendance issue");
-        }
-      }
-      case "PlacementRecord" -> {
-        if (caller.getStateId() != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM placement_records WHERE placement_id = ? AND work_state_id = ? AND deleted_at IS NULL",
-              Integer.class, entityId, caller.getStateId());
-          if (count == null || count == 0) {
-            throw new AccessDeniedException("Issue placement record does not belong to caller state scope");
-          }
-        } else if (caller.getTrainingProviderId() != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM placement_records WHERE placement_id = ? AND provider_id = ? AND deleted_at IS NULL",
-              Integer.class, entityId, caller.getTrainingProviderId());
-          if (count == null || count == 0) {
-            throw new AccessDeniedException("Issue placement record does not belong to caller training provider scope");
-          }
-        } else if (caller.getEmployerId() != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM placement_records WHERE placement_id = ? AND employer_id = ? AND deleted_at IS NULL",
-              Integer.class, entityId, caller.getEmployerId());
-          if (count == null || count == 0) {
-            throw new AccessDeniedException("Issue placement record does not belong to caller employer scope");
-          }
-        } else {
-          throw new AccessDeniedException("Caller lacks authorized tenant scope for this placement issue");
-        }
-      }
-      case "EmploymentRecord" -> {
-        if (caller.getStateId() != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM employment_records WHERE employment_id = ? AND work_state_id = ? AND deleted_at IS NULL",
-              Integer.class, entityId, caller.getStateId());
-          if (count == null || count == 0) {
-            throw new AccessDeniedException("Issue employment record does not belong to caller state scope");
-          }
-        } else if (caller.getTrainingProviderId() != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM employment_records er " +
-                  "JOIN training_enrollments te ON er.enrollment_id = te.enrollment_id " +
-                  "WHERE er.employment_id = ? AND te.provider_id = ? AND er.deleted_at IS NULL",
-              Integer.class, entityId, caller.getTrainingProviderId());
-          if (count == null || count == 0) {
-            throw new AccessDeniedException("Issue employment record does not belong to caller training provider scope");
-          }
-        } else if (caller.getEmployerId() != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM employment_records WHERE employment_id = ? AND employer_id = ? AND deleted_at IS NULL",
-              Integer.class, entityId, caller.getEmployerId());
-          if (count == null || count == 0) {
-            throw new AccessDeniedException("Issue employment record does not belong to caller employer scope");
-          }
-        } else {
-          throw new AccessDeniedException("Caller lacks authorized tenant scope for this employment issue");
-        }
-      }
-      case "BatchEnrollment", "TrainingEnrollment" -> {
-        if (caller.getStateId() != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM training_enrollments te " +
-                  "JOIN training_batches tb ON te.batch_id = tb.batch_id " +
-                  "JOIN training_centers tc ON tb.center_id = tc.center_id " +
-                  "WHERE te.enrollment_id = ? AND tc.state_id = ?",
-              Integer.class, entityId, caller.getStateId());
-          if (count == null || count == 0) {
-            throw new AccessDeniedException("Issue enrollment does not belong to caller state scope");
-          }
-        } else if (caller.getTrainingProviderId() != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM training_enrollments WHERE enrollment_id = ? AND provider_id = ?",
-              Integer.class, entityId, caller.getTrainingProviderId());
-          if (count == null || count == 0) {
-            throw new AccessDeniedException("Issue enrollment does not belong to caller training provider scope");
-          }
-        } else {
-          throw new AccessDeniedException("Caller lacks authorized tenant scope for this enrollment issue");
-        }
-      }
-      default -> {
-        throw new AccessDeniedException("Caller lacks authority to manage issue for entity type: " + entityType);
-      }
-    }
   }
 
   private void validateAssigneeEligibility(Long assignedUserId, User caller, DataQualityIssue issue) {
