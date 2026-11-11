@@ -7,6 +7,7 @@ import in.gov.sih.sih26135.entity.DataQualityRule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
 
 import java.sql.Date;
@@ -28,6 +29,8 @@ import java.util.Map;
  *   <li>Never exposes raw sensitive identifiers or full contact details in issue summaries.</li>
  *   <li>Canonical identity ordering (t1 < t2) ensures pair symmetry and prevents self-matching.</li>
  *   <li>Requires actual cross-center enrollment evidence (center_id != center_id).</li>
+ *   <li>Bounded deterministic pagination prevents silent candidate truncation beyond arbitrary limits.</li>
+ *   <li>Aggregate issue strategy preserves all detected candidate IDs without raw PII exposure.</li>
  * </ul>
  */
 @Component
@@ -80,14 +83,24 @@ public class DuplicateTraineeCandidateQualityDetector implements DataQualityDete
       List<Object> params = new ArrayList<>();
       params.add(lastSeenId);
 
-      // Tenancy scope filters
+      // Tenancy scope filters - strictly enforced with authoritative non-null checks
       if (!scopeContext.canScanNationwide()) {
-        if (scopeContext.isStateAdmin() && scopeContext.stateId() != null) {
+        if (scopeContext.isEmployer()) {
+          throw new AccessDeniedException("Employers are not authorized to scan general trainee records or duplicate registrations");
+        } else if (scopeContext.isStateAdmin()) {
+          if (scopeContext.stateId() == null) {
+            throw new AccessDeniedException("State administrator scope identifier cannot be resolved");
+          }
           sql.append("AND t.state_id = ? ");
           params.add(scopeContext.stateId());
-        } else if (scopeContext.isTrainingProvider() && scopeContext.trainingProviderId() != null) {
+        } else if (scopeContext.isTrainingProvider()) {
+          if (scopeContext.trainingProviderId() == null) {
+            throw new AccessDeniedException("Training provider scope identifier cannot be resolved");
+          }
           sql.append("AND t.trainee_id IN (SELECT te.trainee_id FROM training_enrollments te WHERE te.provider_id = ?) ");
           params.add(scopeContext.trainingProviderId());
+        } else {
+          throw new AccessDeniedException("Caller persona is not authorized to scan trainee duplicate registrations");
         }
       }
 
@@ -124,12 +137,22 @@ public class DuplicateTraineeCandidateQualityDetector implements DataQualityDete
 
         // Query for canonical candidate t2 with t2.trainee_id > t1Id enrolled in distinct centers
         List<Long> matchingCandidateIds = findCrossCenterDuplicateCandidates(
-            t1Id, phone, email, firstName, lastName, dob
+            t1Id, phone, email, firstName, lastName, dob, scopeContext
         );
 
-        for (Long t2Id : matchingCandidateIds) {
-          violationCount++;
-          String summary = "Candidate duplicate trainee registration across distinct training centers (associated candidate trainee ID: " + t2Id + ")";
+        if (!matchingCandidateIds.isEmpty()) {
+          violationCount += matchingCandidateIds.size();
+
+          // Aggregate issue strategy: Document all detected candidate IDs without exposing raw PII
+          String summary;
+          if (matchingCandidateIds.size() == 1) {
+            summary = "Candidate duplicate trainee registration across distinct training centers (associated candidate trainee ID: "
+                + matchingCandidateIds.get(0) + ")";
+          } else {
+            summary = "Candidate duplicate trainee registrations across distinct training centers. Matching candidate trainee IDs: "
+                + matchingCandidateIds;
+          }
+
           boolean created = registrationService.registerIssueIfAbsent(
               rule,
               "Trainee",
@@ -165,79 +188,121 @@ public class DuplicateTraineeCandidateQualityDetector implements DataQualityDete
   }
 
   /**
-   * Finds deterministic duplicate candidate IDs across different training centers.
+   * Finds deterministic duplicate candidate IDs across different training centers using bounded pagination
+   * and respecting caller tenancy scope.
    */
   private List<Long> findCrossCenterDuplicateCandidates(
-      Long t1Id, String phone, String email, String firstName, String lastName, LocalDate dob) {
+      Long t1Id,
+      String phone,
+      String email,
+      String firstName,
+      String lastName,
+      LocalDate dob,
+      ScanScopeContext scopeContext) {
 
-    StringBuilder query = new StringBuilder(
-        "SELECT DISTINCT t2.trainee_id FROM trainees t2 " +
-            "WHERE t2.deleted_at IS NULL AND t2.trainee_id > ? AND ("
-    );
-    List<Object> args = new ArrayList<>();
-    args.add(t1Id);
+    List<Long> allCandidateIds = new ArrayList<>();
+    long lastSeenCandidateId = t1Id;
+    int candidateBatchSize = 100;
+    boolean hasMoreCandidates = true;
 
-    List<String> conditions = new ArrayList<>();
+    while (hasMoreCandidates) {
+      StringBuilder query = new StringBuilder(
+          "SELECT DISTINCT t2.trainee_id FROM trainees t2 " +
+              "WHERE t2.deleted_at IS NULL AND t2.trainee_id > ? "
+      );
+      List<Object> args = new ArrayList<>();
+      args.add(lastSeenCandidateId);
 
-    // Signal A & B: Matching non-empty phone with DOB or Name
-    if (!phone.isEmpty()) {
-      if (dob != null) {
-        conditions.add("(t2.phone = ? AND t2.date_of_birth = ?)");
+      // Tenancy scope enforcement on candidate t2
+      if (!scopeContext.canScanNationwide()) {
+        if (scopeContext.isStateAdmin()) {
+          query.append("AND t2.state_id = ? ");
+          args.add(scopeContext.stateId());
+        } else if (scopeContext.isTrainingProvider()) {
+          query.append("AND t2.trainee_id IN (SELECT te2.trainee_id FROM training_enrollments te2 WHERE te2.provider_id = ?) ");
+          args.add(scopeContext.trainingProviderId());
+        }
+      }
+
+      List<String> conditions = new ArrayList<>();
+
+      // Signal A & B: Matching non-empty phone with DOB or Name
+      if (!phone.isEmpty()) {
+        if (dob != null) {
+          conditions.add("(t2.phone = ? AND t2.date_of_birth = ?)");
+          args.add(phone);
+          args.add(Date.valueOf(dob));
+        }
+        if (!firstName.isEmpty()) {
+          conditions.add("(t2.phone = ? AND t2.first_name = ? AND t2.last_name = ?)");
+          args.add(phone);
+          args.add(firstName);
+          args.add(lastName);
+        }
+      }
+
+      // Signal C & D: Matching non-empty email with DOB or Name
+      if (!email.isEmpty()) {
+        if (dob != null) {
+          conditions.add("(LOWER(t2.email) = ? AND t2.date_of_birth = ?)");
+          args.add(email.toLowerCase());
+          args.add(Date.valueOf(dob));
+        }
+        if (!firstName.isEmpty()) {
+          conditions.add("(LOWER(t2.email) = ? AND t2.first_name = ? AND t2.last_name = ?)");
+          args.add(email.toLowerCase());
+          args.add(firstName);
+          args.add(lastName);
+        }
+      }
+
+      // Signal E: Both phone and email match
+      if (!phone.isEmpty() && !email.isEmpty()) {
+        conditions.add("(t2.phone = ? AND LOWER(t2.email) = ?)");
         args.add(phone);
-        args.add(Date.valueOf(dob));
-      }
-      if (!firstName.isEmpty()) {
-        conditions.add("(t2.phone = ? AND t2.first_name = ? AND t2.last_name = ?)");
-        args.add(phone);
-        args.add(firstName);
-        args.add(lastName);
-      }
-    }
-
-    // Signal C & D: Matching non-empty email with DOB or Name
-    if (!email.isEmpty()) {
-      if (dob != null) {
-        conditions.add("(LOWER(t2.email) = ? AND t2.date_of_birth = ?)");
         args.add(email.toLowerCase());
-        args.add(Date.valueOf(dob));
       }
-      if (!firstName.isEmpty()) {
-        conditions.add("(LOWER(t2.email) = ? AND t2.first_name = ? AND t2.last_name = ?)");
-        args.add(email.toLowerCase());
-        args.add(firstName);
-        args.add(lastName);
+
+      if (conditions.isEmpty()) {
+        return List.of();
+      }
+
+      query.append("AND (");
+      query.append(String.join(" OR ", conditions));
+      query.append(") ");
+
+      // Cross-center relationship requirement: t1 and t2 must be registered in distinct centers
+      query.append(
+          "AND EXISTS (" +
+              "  SELECT 1 FROM training_enrollments te1 " +
+              "  JOIN training_enrollments te2 ON te1.center_id != te2.center_id " +
+              "  WHERE te1.trainee_id = ? AND te2.trainee_id = t2.trainee_id" +
+              ") "
+      );
+      args.add(t1Id);
+
+      query.append("ORDER BY t2.trainee_id ASC LIMIT ?");
+      args.add(candidateBatchSize);
+
+      List<Long> page;
+      try {
+        page = jdbcTemplate.queryForList(query.toString(), Long.class, args.toArray());
+      } catch (Exception e) {
+        log.warn("Cross-center duplicate candidate search failed for trainee {}: {}", t1Id, e.getMessage());
+        break;
+      }
+
+      if (page.isEmpty()) {
+        hasMoreCandidates = false;
+      } else {
+        allCandidateIds.addAll(page);
+        lastSeenCandidateId = page.get(page.size() - 1);
+        if (page.size() < candidateBatchSize || allCandidateIds.size() >= 1000) {
+          hasMoreCandidates = false;
+        }
       }
     }
 
-    // Signal E: Both phone and email match
-    if (!phone.isEmpty() && !email.isEmpty()) {
-      conditions.add("(t2.phone = ? AND LOWER(t2.email) = ?)");
-      args.add(phone);
-      args.add(email.toLowerCase());
-    }
-
-    if (conditions.isEmpty()) {
-      return List.of();
-    }
-
-    query.append(String.join(" OR ", conditions));
-    query.append(") ");
-
-    // Cross-center relationship requirement: t1 and t2 must be registered in distinct centers
-    query.append(
-        "AND EXISTS (" +
-            "  SELECT 1 FROM training_enrollments te1 " +
-            "  JOIN training_enrollments te2 ON te1.center_id != te2.center_id " +
-            "  WHERE te1.trainee_id = ? AND te2.trainee_id = t2.trainee_id" +
-            ") LIMIT 5"
-    );
-    args.add(t1Id);
-
-    try {
-      return jdbcTemplate.queryForList(query.toString(), Long.class, args.toArray());
-    } catch (Exception e) {
-      log.warn("Cross-center duplicate candidate search failed for trainee {}: {}", t1Id, e.getMessage());
-      return List.of();
-    }
+    return allCandidateIds;
   }
 }

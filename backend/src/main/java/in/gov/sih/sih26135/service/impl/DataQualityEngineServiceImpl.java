@@ -41,6 +41,11 @@ public class DataQualityEngineServiceImpl implements DataQualityEngineService {
       "ATTENDANCERECORD"
   );
 
+  private static final Set<String> EMPLOYER_ALLOWED_RULES = Set.of(
+      "DQ-PLACEMENT-002",
+      "DQ-EMPLOYMENT-003"
+  );
+
   private final DataQualityRuleCatalogService catalogService;
   private final WorkflowSecurityScopeValidator scopeValidator;
   private final Map<String, DataQualityDetector> detectorRegistry = new HashMap<>();
@@ -60,11 +65,11 @@ public class DataQualityEngineServiceImpl implements DataQualityEngineService {
 
   @Override
   public List<DataQualityRuleExecutionSummary> executeScan(DataQualityScanRequest request) {
-    // 1. Authorize caller and determine tenancy boundary
+    // 1. Authorize caller and determine tenancy boundary (fails closed on missing scope)
     ScanScopeContext scopeContext = resolveAndValidateScope(request);
 
-    // 2. Validate request parameters
-    validateScanRequest(request);
+    // 2. Validate request parameters and persona-to-scope compatibility
+    validateScanRequest(request, scopeContext);
 
     // 3. Resolve target rules to evaluate
     List<DataQualityRule> rules = catalogService.resolveRulesForScan(request);
@@ -72,9 +77,19 @@ public class DataQualityEngineServiceImpl implements DataQualityEngineService {
       return List.of();
     }
 
+    // 4. If employer caller, restrict rules to employer-accessible domains
+    if (scopeContext.isEmployer() && !scopeContext.canScanNationwide()) {
+      rules = rules.stream()
+          .filter(r -> EMPLOYER_ALLOWED_RULES.contains(r.getRuleCode()))
+          .toList();
+      if (rules.isEmpty()) {
+        return List.of();
+      }
+    }
+
     List<DataQualityRuleExecutionSummary> summaries = new ArrayList<>();
 
-    // 4. Execute detectors for each resolved rule
+    // 5. Execute detectors for each resolved rule
     for (DataQualityRule rule : rules) {
       DataQualityDetector detector = detectorRegistry.get(rule.getRuleCode());
       if (detector == null) {
@@ -97,6 +112,10 @@ public class DataQualityEngineServiceImpl implements DataQualityEngineService {
       try {
         DataQualityRuleExecutionSummary summary = detector.executeScan(rule, request, scopeContext);
         summaries.add(summary);
+      } catch (AccessDeniedException ade) {
+        // Security boundary violations must fail closed immediately
+        log.warn("Security boundary violation during execution of rule {}: {}", rule.getRuleCode(), ade.getMessage());
+        throw ade;
       } catch (Exception e) {
         log.error("Rule execution failed for {}: {}", rule.getRuleCode(), e.getMessage(), e);
         // Partial failure isolation: capture failure summary and continue evaluating other rules
@@ -145,7 +164,7 @@ public class DataQualityEngineServiceImpl implements DataQualityEngineService {
       if (!isStateAdmin && !isProvider && !isEmployer) {
         throw new AccessDeniedException("Caller lacks administrative or scoped operational authority to execute data quality scans");
       }
-      return new ScanScopeContext(
+      ScanScopeContext context = new ScanScopeContext(
           callerUserId,
           false,
           isStateAdmin,
@@ -155,12 +174,15 @@ public class DataQualityEngineServiceImpl implements DataQualityEngineService {
           isEmployer,
           employerId
       );
+      // Require authoritative, non-null tenant identifiers for every non-nationwide scan
+      context.validateAuthoritativeScope();
+      return context;
     }
 
     return ScanScopeContext.nationwide(callerUserId);
   }
 
-  private void validateScanRequest(DataQualityScanRequest request) {
+  private void validateScanRequest(DataQualityScanRequest request, ScanScopeContext scopeContext) {
     if (request == null) {
       return;
     }
@@ -173,6 +195,22 @@ public class DataQualityEngineServiceImpl implements DataQualityEngineService {
                 ". Supported types: Trainee, PlacementRecord, EmploymentRecord, AttendanceRecord",
             "UNSUPPORTED_ENTITY_TYPE"
         );
+      }
+      if (!scopeContext.canAccessEntityType(request.getTargetEntityType())) {
+        throw new AccessDeniedException(
+            "Caller persona is not authorized to scan entity type: " + request.getTargetEntityType()
+        );
+      }
+    }
+
+    if (request.getRuleCode() != null && !request.getRuleCode().isBlank()) {
+      String ruleCode = request.getRuleCode().trim();
+      if (scopeContext.isEmployer() && !scopeContext.canScanNationwide()) {
+        if (!EMPLOYER_ALLOWED_RULES.contains(ruleCode)) {
+          throw new AccessDeniedException(
+              "Employers are not authorized to execute rule: " + ruleCode
+          );
+        }
       }
     }
   }

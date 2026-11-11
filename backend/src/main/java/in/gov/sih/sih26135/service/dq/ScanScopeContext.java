@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.service.dq;
 
+import org.springframework.security.access.AccessDeniedException;
+
 /**
  * Encapsulates the resolved tenancy boundary and administrative authority of the caller executing a scan.
  */
@@ -19,6 +21,59 @@ public record ScanScopeContext(
    */
   public boolean canScanNationwide() {
     return isNationwideAdmin;
+  }
+
+  /**
+   * Validates that non-nationwide callers possess authoritative, non-null tenancy identifiers.
+   * Fails closed with AccessDeniedException if the required identifier is missing.
+   */
+  public void validateAuthoritativeScope() {
+    if (isNationwideAdmin) {
+      return;
+    }
+    if (isStateAdmin) {
+      if (stateId == null) {
+        throw new AccessDeniedException("State administrator tenancy scope cannot be resolved: stateId is null");
+      }
+      return;
+    }
+    if (isTrainingProvider) {
+      if (trainingProviderId == null) {
+        throw new AccessDeniedException("Training provider tenancy scope cannot be resolved: trainingProviderId is null");
+      }
+      return;
+    }
+    if (isEmployer) {
+      if (employerId == null) {
+        throw new AccessDeniedException("Employer tenancy scope cannot be resolved: employerId is null");
+      }
+      return;
+    }
+    throw new AccessDeniedException("Caller lacks administrative or scoped operational authority to execute data quality scans");
+  }
+
+  /**
+   * Checks whether the caller persona can safely execute scans against the specified entity type.
+   */
+  public boolean canAccessEntityType(String entityType) {
+    if (isNationwideAdmin) {
+      return true;
+    }
+    if (entityType == null) {
+      return false;
+    }
+    String normalized = entityType.trim().toUpperCase().replace("_", "");
+    if (isEmployer) {
+      // Employers are restricted to placement and employment records
+      return "PLACEMENTRECORD".equals(normalized) || "EMPLOYMENTRECORD".equals(normalized);
+    }
+    if (isStateAdmin || isTrainingProvider) {
+      return "TRAINEE".equals(normalized) ||
+             "PLACEMENTRECORD".equals(normalized) ||
+             "EMPLOYMENTRECORD".equals(normalized) ||
+             "ATTENDANCERECORD".equals(normalized);
+    }
+    return false;
   }
 
   /**

@@ -27,6 +27,11 @@ public class DataQualityEngineProperties {
   private int batchChunkSize = 500;
 
   /**
+   * Distributed named lock acquisition timeout in seconds.
+   */
+  private int lockTimeoutSeconds = 10;
+
+  /**
    * Optional maximum realistic monthly salary boundary (in INR).
    * Salaries above this threshold are flagged as potentially suspicious/erroneous.
    * Defaults to 5,000,000 INR/month.
@@ -47,6 +52,16 @@ public class DataQualityEngineProperties {
   public void setBatchChunkSize(int batchChunkSize) {
     if (batchChunkSize > 0 && batchChunkSize <= 5000) {
       this.batchChunkSize = batchChunkSize;
+    }
+  }
+
+  public int getLockTimeoutSeconds() {
+    return lockTimeoutSeconds;
+  }
+
+  public void setLockTimeoutSeconds(int lockTimeoutSeconds) {
+    if (lockTimeoutSeconds > 0 && lockTimeoutSeconds <= 60) {
+      this.lockTimeoutSeconds = lockTimeoutSeconds;
     }
   }
 

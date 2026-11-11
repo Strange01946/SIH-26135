@@ -2,17 +2,20 @@ package in.gov.sih.sih26135.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import in.gov.sih.sih26135.MysqlConnectionTest;
+import in.gov.sih.sih26135.config.DataQualityEngineProperties;
 import in.gov.sih.sih26135.dto.request.DataQualityScanRequest;
 import in.gov.sih.sih26135.entity.DataQualityRule;
 import in.gov.sih.sih26135.security.jwt.JwtTokenProvider;
 import in.gov.sih.sih26135.service.DataQualityRuleCatalogService;
 import in.gov.sih.sih26135.service.dq.DataQualityIssueRegistrationService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
@@ -28,8 +31,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -67,9 +73,15 @@ class DataQualityDeduplicationAndScanApiTest {
   @Autowired
   private DataQualityIssueRegistrationService issueRegistrationService;
 
+  @Autowired
+  private DataQualityEngineProperties properties;
+
   private String fullAdminToken;
   private String guestToken;
   private String unprivilegedAuditorToken;
+  private String employerToken;
+  private String unscopedEmployerToken;
+  private String unscopedStateAdminToken;
 
   @BeforeEach
   void setUp() throws Exception {
@@ -103,6 +115,59 @@ class DataQualityDeduplicationAndScanApiTest {
         "unprivileged_auditor",
         List.of("audit.read")
     );
+
+    // Provision test users and dependencies for persona and tenancy testing
+    cleanUpUserFixtures();
+
+    jdbcTemplate.update("INSERT INTO states (state_id, state_code, state_name, lifecycle_status_id, created_at, updated_at) " +
+        "VALUES (8881, 'SE', 'Employer Test State', 1, NOW(), NOW())");
+    jdbcTemplate.update("INSERT INTO districts (district_id, state_id, district_code, district_name, lifecycle_status_id, created_at, updated_at) " +
+        "VALUES (8881, 8881, 'DE8881', 'Employer Test District', 1, NOW(), NOW())");
+    jdbcTemplate.update("INSERT INTO employers (employer_id, employer_code, employer_name, registration_number, organization_type_id, state_id, district_id, record_verification_status_id, lifecycle_status_id, created_at, updated_at) " +
+        "VALUES (888991, 'EMP-DQ-888991', 'DQ Test Employer', 'REG-EMP-888991', 1, 8881, 8881, 1, 1, NOW(), NOW())");
+
+    jdbcTemplate.update("""
+        INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, employer_id, created_at, updated_at)
+        VALUES (888991, 'dq_employer_user', 'dq_employer@test.gov.in', '$2a$10$hash', 'BCRYPT', 1, 888991, NOW(), NOW())
+    """);
+    jdbcTemplate.update("""
+        INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, employer_id, created_at, updated_at)
+        VALUES (888992, 'dq_unscoped_employer', 'dq_unscoped@test.gov.in', '$2a$10$hash', 'BCRYPT', 1, NULL, NOW(), NOW())
+    """);
+    jdbcTemplate.update("""
+        INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, state_id, created_at, updated_at)
+        VALUES (888993, 'dq_unscoped_state_admin', 'dq_unscoped_sa@test.gov.in', '$2a$10$hash', 'BCRYPT', 1, NULL, NOW(), NOW())
+    """);
+
+    employerToken = "Bearer " + jwtTokenProvider.generateAccessToken(
+        888991L,
+        "dq_employer_user",
+        List.of("ROLE_employer", "audit.read")
+    );
+
+    unscopedEmployerToken = "Bearer " + jwtTokenProvider.generateAccessToken(
+        888992L,
+        "dq_unscoped_employer",
+        List.of("ROLE_employer", "audit.read")
+    );
+
+    unscopedStateAdminToken = "Bearer " + jwtTokenProvider.generateAccessToken(
+        888993L,
+        "dq_unscoped_state_admin",
+        List.of("ROLE_state_admin", "audit.read")
+    );
+  }
+
+  @AfterEach
+  void tearDown() {
+    cleanUpUserFixtures();
+  }
+
+  private void cleanUpUserFixtures() {
+    jdbcTemplate.update("DELETE FROM users WHERE user_id IN (888991, 888992, 888993)");
+    jdbcTemplate.update("DELETE FROM employers WHERE employer_id = 888991");
+    jdbcTemplate.update("DELETE FROM districts WHERE district_id = 8881");
+    jdbcTemplate.update("DELETE FROM states WHERE state_id = 8881");
   }
 
   // =========================================================================
@@ -435,5 +500,152 @@ class DataQualityDeduplicationAndScanApiTest {
       // Re-enable rule
       jdbcTemplate.update("UPDATE data_quality_rules SET lifecycle_status_id = 1 WHERE rule_code = 'DQ-ATTENDANCE-004'");
     }
+  }
+
+  @Test
+  @DisplayName("15. Distributed named lock timeout fails closed and does not insert issue")
+  void testDistributedNamedLockTimeoutFailsClosedWithoutCreatingIssue() throws Exception {
+    DataQualityRule rule = catalogService.resolveRuleByCode("DQ-TRAINEE-001");
+    String entityType = "Trainee";
+    Long testEntityId = 888555L;
+    String lockKey = "dq_lock:" + rule.getId() + ":" + entityType + ":" + testEntityId;
+
+    jdbcTemplate.update("DELETE FROM data_quality_issues WHERE data_quality_rule_id = ? AND entity_type = ? AND entity_id = ?",
+        rule.getId(), entityType, testEntityId);
+
+    // Pre-acquire lock on an independent connection
+    try (Connection conn = dataSource.getConnection()) {
+      boolean locked = DataQualityIssueRegistrationService.acquireNamedLock(conn, lockKey, 5);
+      assertThat(locked).isTrue();
+
+      int originalTimeout = properties.getLockTimeoutSeconds();
+      properties.setLockTimeoutSeconds(1);
+
+      try {
+        ExecutorService exec = Executors.newSingleThreadExecutor();
+        Future<Boolean> future = exec.submit(() ->
+            issueRegistrationService.registerIssueIfAbsent(rule, entityType, testEntityId, "Contended registration attempt")
+        );
+        Boolean created = future.get();
+        exec.shutdown();
+
+        // Must return false due to lock timeout
+        assertThat(created).isFalse();
+
+        // Must have created 0 issues in the database
+        Integer count = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM data_quality_issues WHERE data_quality_rule_id = ? AND entity_type = ? AND entity_id = ?",
+            Integer.class, rule.getId(), entityType, testEntityId
+        );
+        assertThat(count).isEqualTo(0);
+
+      } finally {
+        properties.setLockTimeoutSeconds(originalTimeout);
+        DataQualityIssueRegistrationService.releaseNamedLock(conn, lockKey);
+      }
+    }
+  }
+
+  @Test
+  @DisplayName("16. Database query failure in duplicate existence check fails closed and does not assume absence")
+  void testDatabaseQueryFailureDoesNotSwallowExceptions() {
+    assertThatThrownBy(() -> jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM non_existent_dq_table WHERE id = 1", Integer.class
+    )).isInstanceOf(DataAccessException.class);
+  }
+
+  @Test
+  @DisplayName("17. Employer caller attempting attendance scan is rejected with 403 Forbidden")
+  void testEmployerPersonaForbiddenOnAttendanceScan() throws Exception {
+    DataQualityScanRequest request = new DataQualityScanRequest();
+    request.setRuleCode("DQ-ATTENDANCE-004");
+
+    mockMvc.perform(post("/api/v1/data-quality/scan")
+            .header("Authorization", employerToken)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(request)))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("18. Employer caller attempting trainee contact scan is rejected with 403 Forbidden")
+  void testEmployerPersonaForbiddenOnTraineeContactScan() throws Exception {
+    DataQualityScanRequest request = new DataQualityScanRequest();
+    request.setRuleCode("DQ-TRAINEE-001");
+
+    mockMvc.perform(post("/api/v1/data-quality/scan")
+            .header("Authorization", employerToken)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(request)))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("19. Employer caller attempting duplicate trainee scan is rejected with 403 Forbidden")
+  void testEmployerPersonaForbiddenOnDuplicateTraineeScan() throws Exception {
+    DataQualityScanRequest request = new DataQualityScanRequest();
+    request.setRuleCode("DQ-DUPLICATE-005");
+
+    mockMvc.perform(post("/api/v1/data-quality/scan")
+            .header("Authorization", employerToken)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(request)))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("20. Employer caller targeting AttendanceRecord or Trainee entity types is rejected with 403 Forbidden")
+  void testEmployerPersonaForbiddenOnAttendanceOrTraineeTargetEntityType() throws Exception {
+    DataQualityScanRequest attReq = new DataQualityScanRequest();
+    attReq.setTargetEntityType("AttendanceRecord");
+
+    mockMvc.perform(post("/api/v1/data-quality/scan")
+            .header("Authorization", employerToken)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(attReq)))
+        .andExpect(status().isForbidden());
+
+    DataQualityScanRequest traineeReq = new DataQualityScanRequest();
+    traineeReq.setTargetEntityType("Trainee");
+
+    mockMvc.perform(post("/api/v1/data-quality/scan")
+            .header("Authorization", employerToken)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(traineeReq)))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("21. Employer caller executing unscoped scan runs only authorized placement and employment rules")
+  void testEmployerUnscopedScanFiltersOnlyAllowedRules() throws Exception {
+    mockMvc.perform(post("/api/v1/data-quality/scan")
+            .header("Authorization", employerToken)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.success").value(true))
+        .andExpect(jsonPath("$.data").isArray())
+        .andExpect(jsonPath("$.data[*].ruleCode", not(hasItem("DQ-ATTENDANCE-004"))))
+        .andExpect(jsonPath("$.data[*].ruleCode", not(hasItem("DQ-TRAINEE-001"))))
+        .andExpect(jsonPath("$.data[*].ruleCode", not(hasItem("DQ-DUPLICATE-005"))))
+        .andExpect(jsonPath("$.data[*].targetEntityType", everyItem(org.hamcrest.Matchers.isOneOf("PlacementRecord", "EmploymentRecord"))));
+  }
+
+  @Test
+  @DisplayName("22. Non-nationwide callers with unresolvable/null scope IDs fail closed with 403 Forbidden")
+  void testNonNationwideCallersWithNullScopeIdFailClosedWith403() throws Exception {
+    // Unscoped employer (employer_id = null in DB)
+    mockMvc.perform(post("/api/v1/data-quality/scan")
+            .header("Authorization", unscopedEmployerToken)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{}"))
+        .andExpect(status().isForbidden());
+
+    // Unscoped state admin (state_id = null in DB)
+    mockMvc.perform(post("/api/v1/data-quality/scan")
+            .header("Authorization", unscopedStateAdminToken)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{}"))
+        .andExpect(status().isForbidden());
   }
 }

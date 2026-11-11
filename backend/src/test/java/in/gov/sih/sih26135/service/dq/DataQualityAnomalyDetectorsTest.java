@@ -7,13 +7,14 @@ import in.gov.sih.sih26135.dto.response.DataQualityRuleExecutionSummary;
 import in.gov.sih.sih26135.entity.DataQualityRule;
 import in.gov.sih.sih26135.repository.DataQualityIssueRepository;
 import in.gov.sih.sih26135.service.DataQualityRuleCatalogService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.access.AccessDeniedException;
 
 import javax.sql.DataSource;
 import java.math.BigDecimal;
@@ -21,6 +22,7 @@ import java.sql.Connection;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
 @DisplayName("Phase 28.3 - Data Quality Anomaly Detectors Unit & Boundary Tests")
@@ -64,6 +66,11 @@ class DataQualityAnomalyDetectorsTest {
       assertThat(catalog).isEqualToIgnoringCase(MysqlConnectionTest.EXPECTED_TEST_CATALOG);
     }
     catalogService.ensureDefaultRulesProvisioned();
+  }
+
+  @AfterEach
+  void tearDown() {
+    cleanUpDuplicateTraineeFixtures();
   }
 
   // =========================================================================
@@ -112,7 +119,7 @@ class DataQualityAnomalyDetectorsTest {
   // =========================================================================
 
   @Test
-  @DisplayName("DQ-EMPLOYMENT-003: Salary validation normalizes pay periods correctly")
+  @DisplayName("DQ-EMPLOYMENT-003: Salary validation normalizes pay periods correctly and handles unsupported frequency safely")
   void testSalaryNormalizationUtility() {
     // Monthly: unchanged
     BigDecimal monthly = new BigDecimal("25000.00");
@@ -124,6 +131,11 @@ class DataQualityAnomalyDetectorsTest {
     assertThat(EmploymentSalaryQualityDetector.normalizeToMonthly(annual, "ANNUAL"))
         .isEqualByComparingTo("30000.00");
 
+    // Yearly: divided by 12
+    BigDecimal yearly = new BigDecimal("240000.00");
+    assertThat(EmploymentSalaryQualityDetector.normalizeToMonthly(yearly, "YEARLY"))
+        .isEqualByComparingTo("20000.00");
+
     // Weekly: multiplied by 52 and divided by 12
     BigDecimal weekly = new BigDecimal("6000.00");
     assertThat(EmploymentSalaryQualityDetector.normalizeToMonthly(weekly, "WEEKLY"))
@@ -133,12 +145,23 @@ class DataQualityAnomalyDetectorsTest {
     BigDecimal daily = new BigDecimal("1000.00");
     assertThat(EmploymentSalaryQualityDetector.normalizeToMonthly(daily, "DAILY"))
         .isEqualByComparingTo("26000.00");
+
+    // Hourly: multiplied by 208 (8 hours/day * 26 days/month)
+    BigDecimal hourly = new BigDecimal("100.00");
+    assertThat(EmploymentSalaryQualityDetector.normalizeToMonthly(hourly, "HOURLY"))
+        .isEqualByComparingTo("20800.00");
+
+    // Unsupported frequency codes safely return null rather than defaulting to MONTHLY
+    assertThat(EmploymentSalaryQualityDetector.normalizeToMonthly(new BigDecimal("25000.00"), "PIECEWORK")).isNull();
+    assertThat(EmploymentSalaryQualityDetector.normalizeToMonthly(new BigDecimal("25000.00"), "")).isNull();
+    assertThat(EmploymentSalaryQualityDetector.normalizeToMonthly(new BigDecimal("25000.00"), "   ")).isNull();
+    assertThat(EmploymentSalaryQualityDetector.normalizeToMonthly(new BigDecimal("25000.00"), null)).isNull();
+    assertThat(EmploymentSalaryQualityDetector.normalizeToMonthly(null, "MONTHLY")).isEqualTo(BigDecimal.ZERO);
   }
 
   @Test
   @DisplayName("DQ-EMPLOYMENT-003: Skips statutory evaluation when state has no configured threshold (no invented wage)")
   void testSalaryDetectorWithoutStatutoryThreshold() {
-    // Ensure no threshold configured for state 99
     properties.setStateMinimumWages(Map.of());
 
     DataQualityRule rule = catalogService.resolveRuleByCode("DQ-EMPLOYMENT-003");
@@ -156,7 +179,6 @@ class DataQualityAnomalyDetectorsTest {
   @Test
   @DisplayName("DQ-EMPLOYMENT-003: Detects salary below configured statutory minimum wage threshold")
   void testSalaryDetectorWithConfiguredThreshold() {
-    // Configure statutory minimum wage for state 1 (e.g. 15,000 INR/month)
     properties.setStateMinimumWages(Map.of("1", new BigDecimal("15000.00")));
 
     DataQualityRule rule = catalogService.resolveRuleByCode("DQ-EMPLOYMENT-003");
@@ -192,7 +214,7 @@ class DataQualityAnomalyDetectorsTest {
   }
 
   // =========================================================================
-  // 5. DQ-DUPLICATE-005 TESTS
+  // 5. DQ-DUPLICATE-005 & CROSS-CUTTING DETECTOR TESTS
   // =========================================================================
 
   @Test
@@ -209,5 +231,208 @@ class DataQualityAnomalyDetectorsTest {
     assertThat(summary.ruleCode()).isEqualTo("DQ-DUPLICATE-005");
     assertThat(summary.targetEntityType()).isEqualTo("Trainee");
     assertThat(summary.status()).isEqualTo("SUCCESS");
+  }
+
+  @Test
+  @DisplayName("DQ-DUPLICATE-005: Preserves >5 candidate IDs in aggregate issue, enforces tenant isolation, and deduplicates repeated scans")
+  void testDuplicateDetectorBoundedPaginationAndAggregateStrategyWithManyCandidates() {
+    setupDuplicateTraineeFixtures();
+
+    DataQualityRule rule = catalogService.resolveRuleByCode("DQ-DUPLICATE-005");
+    DataQualityScanRequest request = new DataQualityScanRequest();
+    request.setRuleCode("DQ-DUPLICATE-005");
+    request.setEntityId(888701L);
+
+    // Scan as State 8871 Admin: strictly isolates to State 8871
+    ScanScopeContext scope = ScanScopeContext.stateScoped(10L, 8871L);
+    DataQualityRuleExecutionSummary summary = duplicateDetector.executeScan(rule, request, scope);
+
+    assertThat(summary.status()).isEqualTo("SUCCESS");
+    // 7 candidate matches in state 8871 (exceeds 5-candidate limit!)
+    assertThat(summary.violationCount()).isEqualTo(7L);
+    assertThat(summary.newIssuesCreated()).isEqualTo(1L);
+    assertThat(summary.deduplicatedIssuesSkipped()).isEqualTo(0L);
+
+    // Verify aggregate issue in DB
+    String issueSummary = jdbcTemplate.queryForObject(
+        "SELECT issue_summary FROM data_quality_issues WHERE data_quality_rule_id = ? AND entity_type = 'Trainee' AND entity_id = ?",
+        String.class, rule.getId(), 888701L
+    );
+    assertThat(issueSummary).isNotNull();
+    assertThat(issueSummary).contains("888702", "888703", "888704", "888705", "888706", "888707", "888708");
+    // Cross-state candidate 888709 in State 8872 must NOT be inspected or matched (tenant isolation)
+    assertThat(issueSummary).doesNotContain("888709");
+    // Raw PII must NOT be leaked in issue summary
+    assertThat(issueSummary).doesNotContain("9876543210");
+    assertThat(issueSummary).doesNotContain("1995-05-15");
+
+    // Repeated scan on same scope must detect existing open issue and skip without duplicating
+    DataQualityRuleExecutionSummary repeatSummary = duplicateDetector.executeScan(rule, request, scope);
+    assertThat(repeatSummary.violationCount()).isEqualTo(7L);
+    assertThat(repeatSummary.newIssuesCreated()).isEqualTo(0L);
+    assertThat(repeatSummary.deduplicatedIssuesSkipped()).isEqualTo(1L);
+  }
+
+  @Test
+  @DisplayName("All detectors reject employer persona on unauthorized domain entities with AccessDeniedException")
+  void testDetectorsRejectEmployerOnUnauthorizedRules() {
+    ScanScopeContext employerScope = ScanScopeContext.employerScoped(10L, 8871L);
+
+    DataQualityRule attendanceRule = catalogService.resolveRuleByCode("DQ-ATTENDANCE-004");
+    assertThatThrownBy(() -> attendanceDetector.executeScan(attendanceRule, null, employerScope))
+        .isInstanceOf(AccessDeniedException.class)
+        .hasMessageContaining("Employers are not authorized");
+
+    DataQualityRule traineeRule = catalogService.resolveRuleByCode("DQ-TRAINEE-001");
+    assertThatThrownBy(() -> traineeDetector.executeScan(traineeRule, null, employerScope))
+        .isInstanceOf(AccessDeniedException.class)
+        .hasMessageContaining("Employers are not authorized");
+
+    DataQualityRule duplicateRule = catalogService.resolveRuleByCode("DQ-DUPLICATE-005");
+    assertThatThrownBy(() -> duplicateDetector.executeScan(duplicateRule, null, employerScope))
+        .isInstanceOf(AccessDeniedException.class)
+        .hasMessageContaining("Employers are not authorized");
+  }
+
+  @Test
+  @DisplayName("All detectors fail closed with AccessDeniedException when non-nationwide caller has null scope ID")
+  void testDetectorsRejectNullScopeIdOnNonNationwideScans() {
+    ScanScopeContext nullStateScope = new ScanScopeContext(10L, false, true, null, false, null, false, null);
+    ScanScopeContext nullProviderScope = new ScanScopeContext(10L, false, false, null, true, null, false, null);
+    ScanScopeContext nullEmployerScope = new ScanScopeContext(10L, false, false, null, false, null, true, null);
+
+    DataQualityRule traineeRule = catalogService.resolveRuleByCode("DQ-TRAINEE-001");
+    assertThatThrownBy(() -> traineeDetector.executeScan(traineeRule, null, nullStateScope))
+        .isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(() -> traineeDetector.executeScan(traineeRule, null, nullProviderScope))
+        .isInstanceOf(AccessDeniedException.class);
+
+    DataQualityRule placementRule = catalogService.resolveRuleByCode("DQ-PLACEMENT-002");
+    assertThatThrownBy(() -> placementDetector.executeScan(placementRule, null, nullStateScope))
+        .isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(() -> placementDetector.executeScan(placementRule, null, nullProviderScope))
+        .isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(() -> placementDetector.executeScan(placementRule, null, nullEmployerScope))
+        .isInstanceOf(AccessDeniedException.class);
+
+    DataQualityRule salaryRule = catalogService.resolveRuleByCode("DQ-EMPLOYMENT-003");
+    assertThatThrownBy(() -> salaryDetector.executeScan(salaryRule, null, nullStateScope))
+        .isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(() -> salaryDetector.executeScan(salaryRule, null, nullProviderScope))
+        .isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(() -> salaryDetector.executeScan(salaryRule, null, nullEmployerScope))
+        .isInstanceOf(AccessDeniedException.class);
+
+    DataQualityRule attendanceRule = catalogService.resolveRuleByCode("DQ-ATTENDANCE-004");
+    assertThatThrownBy(() -> attendanceDetector.executeScan(attendanceRule, null, nullStateScope))
+        .isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(() -> attendanceDetector.executeScan(attendanceRule, null, nullProviderScope))
+        .isInstanceOf(AccessDeniedException.class);
+
+    DataQualityRule duplicateRule = catalogService.resolveRuleByCode("DQ-DUPLICATE-005");
+    assertThatThrownBy(() -> duplicateDetector.executeScan(duplicateRule, null, nullStateScope))
+        .isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(() -> duplicateDetector.executeScan(duplicateRule, null, nullProviderScope))
+        .isInstanceOf(AccessDeniedException.class);
+  }
+
+  // =========================================================================
+  // FIXTURE MANAGEMENT
+  // =========================================================================
+
+  private void setupDuplicateTraineeFixtures() {
+    cleanUpDuplicateTraineeFixtures();
+
+    // 1. States & Districts
+    jdbcTemplate.update("INSERT INTO states (state_id, state_code, state_name, lifecycle_status_id, created_at, updated_at) " +
+        "VALUES (8871, 'S1', 'DQ State 1', 1, NOW(), NOW())");
+    jdbcTemplate.update("INSERT INTO states (state_id, state_code, state_name, lifecycle_status_id, created_at, updated_at) " +
+        "VALUES (8872, 'S2', 'DQ State 2', 1, NOW(), NOW())");
+
+    jdbcTemplate.update("INSERT INTO districts (district_id, state_id, district_code, district_name, lifecycle_status_id, created_at, updated_at) " +
+        "VALUES (8871, 8871, 'D8871', 'DQ District 1', 1, NOW(), NOW())");
+    jdbcTemplate.update("INSERT INTO districts (district_id, state_id, district_code, district_name, lifecycle_status_id, created_at, updated_at) " +
+        "VALUES (8872, 8872, 'D8872', 'DQ District 2', 1, NOW(), NOW())");
+
+    // 2. Training Provider & Centers
+    jdbcTemplate.update("INSERT INTO training_providers (provider_id, provider_code, provider_name, registration_number, organization_type_id, state_id, district_id, accreditation_status_id, lifecycle_status_id, created_at, updated_at) " +
+        "VALUES (8871, 'PRV-DQ-8871', 'DQ Provider 8871', 'REG-PRV-8871', 1, 8871, 8871, 1, 1, NOW(), NOW())");
+
+    jdbcTemplate.update("INSERT INTO training_centers (center_id, provider_id, center_code, center_name, state_id, district_id, lifecycle_status_id, created_at, updated_at) " +
+        "VALUES (8871, 8871, 'CTR-DQ-8871', 'Center 8871', 8871, 8871, 1, NOW(), NOW())");
+    jdbcTemplate.update("INSERT INTO training_centers (center_id, provider_id, center_code, center_name, state_id, district_id, lifecycle_status_id, created_at, updated_at) " +
+        "VALUES (8872, 8871, 'CTR-DQ-8872', 'Center 8872', 8871, 8871, 1, NOW(), NOW())");
+    jdbcTemplate.update("INSERT INTO training_centers (center_id, provider_id, center_code, center_name, state_id, district_id, lifecycle_status_id, created_at, updated_at) " +
+        "VALUES (8873, 8871, 'CTR-DQ-8873', 'Center 8873', 8872, 8872, 1, NOW(), NOW())");
+
+    // 3. Organization, Department, Scheme, Program, Sector, Course, Batch
+    jdbcTemplate.update("INSERT INTO organizations (organization_id, organization_code, organization_name, organization_type_id, lifecycle_status_id, created_at, updated_at) " +
+        "VALUES (8871, 'ORG-DQ-8871', 'DQ Org 8871', 1, 1, NOW(), NOW())");
+    jdbcTemplate.update("INSERT INTO departments (department_id, organization_id, department_code, department_name, lifecycle_status_id, created_at, updated_at) " +
+        "VALUES (8871, 8871, 'DEP-DQ-8871', 'DQ Dept 8871', 1, NOW(), NOW())");
+    jdbcTemplate.update("INSERT INTO schemes (scheme_id, scheme_code, scheme_name, department_id, currency_code, lifecycle_status_id, created_at, updated_at) " +
+        "VALUES (8871, 'SCH-DQ-8871', 'DQ Scheme 8871', 8871, 'INR', 1, NOW(), NOW())");
+    jdbcTemplate.update("INSERT INTO programs (program_id, program_code, program_name, department_id, scheme_id, lifecycle_status_id, created_at, updated_at) " +
+        "VALUES (8871, 'PRG-DQ-8871', 'DQ Program 8871', 8871, 8871, 1, NOW(), NOW())");
+    jdbcTemplate.update("INSERT INTO sectors (sector_id, sector_code, sector_name, lifecycle_status_id, created_at, updated_at) " +
+        "VALUES (8871, 'SEC-DQ-8871', 'DQ Sector 8871', 1, NOW(), NOW())");
+    jdbcTemplate.update("INSERT INTO courses (course_id, course_code, course_name, sector_id, delivery_mode_id, duration_hours, lifecycle_status_id, created_at, updated_at) " +
+        "VALUES (8871, 'CRS-DQ-8871', 'DQ Course 8871', 8871, 1, 120, 1, NOW(), NOW())");
+
+    jdbcTemplate.update("INSERT INTO training_batches (batch_id, batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at) " +
+        "VALUES (8871, 'BAT-DQ-8871', 8871, 8871, 8871, 8871, '2026-01-01', 30, 1, NOW(), NOW())");
+    jdbcTemplate.update("INSERT INTO training_batches (batch_id, batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at) " +
+        "VALUES (8872, 'BAT-DQ-8872', 8871, 8871, 8872, 8871, '2026-01-01', 30, 1, NOW(), NOW())");
+    jdbcTemplate.update("INSERT INTO training_batches (batch_id, batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at) " +
+        "VALUES (8873, 'BAT-DQ-8873', 8871, 8871, 8873, 8871, '2026-01-01', 30, 1, NOW(), NOW())");
+
+    // 4. Seed Trainees
+    // Primary Trainee T1 (888701) in State 8871
+    jdbcTemplate.update("INSERT INTO trainees (trainee_id, registration_number, first_name, last_name, phone, email, date_of_birth, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at) " +
+        "VALUES (888701, 'REG-DQ-888701', 'Aditya', 'Sharma', '9876543210', 'aditya.sharma@example.gov.in', '1995-05-15', 1, 8871, 8871, 1, 1, NOW(), NOW())");
+
+    // Candidate Trainees T2..T8 (888702..888708) in State 8871 with identical phone and DOB
+    for (long tid = 888702L; tid <= 888708L; tid++) {
+      jdbcTemplate.update("INSERT INTO trainees (trainee_id, registration_number, first_name, last_name, phone, email, date_of_birth, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at) " +
+          "VALUES (?, ?, 'Aditya', 'Sharma', '9876543210', ?, '1995-05-15', 1, 8871, 8871, 1, 1, NOW(), NOW())",
+          tid, "REG-DQ-" + tid, "aditya" + tid + "@example.gov.in");
+    }
+
+    // Candidate Trainee T9 (888709) in State 8872 with identical phone and DOB
+    jdbcTemplate.update("INSERT INTO trainees (trainee_id, registration_number, first_name, last_name, phone, email, date_of_birth, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at) " +
+        "VALUES (888709, 'REG-DQ-888709', 'Aditya', 'Sharma', '9876543210', 'aditya888709@example.gov.in', '1995-05-15', 1, 8872, 8872, 1, 1, NOW(), NOW())");
+
+    // 5. Seed Enrollments
+    // T1 enrolled in Center 8871
+    jdbcTemplate.update("INSERT INTO training_enrollments (enrollment_id, enrollment_number, trainee_id, program_id, course_id, provider_id, center_id, batch_id, enrollment_date, enrollment_status_id, created_at, updated_at) " +
+        "VALUES (888701, 'ENR-DQ-888701', 888701, 8871, 8871, 8871, 8871, 8871, '2026-01-01', 1, NOW(), NOW())");
+
+    // T2..T8 enrolled in Center 8872 (Center 8872 != 8871!)
+    for (long tid = 888702L; tid <= 888708L; tid++) {
+      jdbcTemplate.update("INSERT INTO training_enrollments (enrollment_id, enrollment_number, trainee_id, program_id, course_id, provider_id, center_id, batch_id, enrollment_date, enrollment_status_id, created_at, updated_at) " +
+          "VALUES (?, ?, ?, 8871, 8871, 8871, 8872, 8872, '2026-01-01', 1, NOW(), NOW())",
+          tid, "ENR-DQ-" + tid, tid);
+    }
+
+    // T9 enrolled in Center 8873
+    jdbcTemplate.update("INSERT INTO training_enrollments (enrollment_id, enrollment_number, trainee_id, program_id, course_id, provider_id, center_id, batch_id, enrollment_date, enrollment_status_id, created_at, updated_at) " +
+        "VALUES (888709, 'ENR-DQ-888709', 888709, 8871, 8871, 8871, 8873, 8873, '2026-01-01', 1, NOW(), NOW())");
+  }
+
+  private void cleanUpDuplicateTraineeFixtures() {
+    jdbcTemplate.update("DELETE FROM data_quality_issues WHERE entity_id BETWEEN 888701 AND 888709 AND entity_type = 'Trainee'");
+    jdbcTemplate.update("DELETE FROM training_enrollments WHERE enrollment_id BETWEEN 888701 AND 888709");
+    jdbcTemplate.update("DELETE FROM trainees WHERE trainee_id BETWEEN 888701 AND 888709");
+    jdbcTemplate.update("DELETE FROM training_batches WHERE batch_id IN (8871, 8872, 8873)");
+    jdbcTemplate.update("DELETE FROM training_centers WHERE center_id IN (8871, 8872, 8873)");
+    jdbcTemplate.update("DELETE FROM training_providers WHERE provider_id = 8871");
+    jdbcTemplate.update("DELETE FROM programs WHERE program_id = 8871");
+    jdbcTemplate.update("DELETE FROM schemes WHERE scheme_id = 8871");
+    jdbcTemplate.update("DELETE FROM departments WHERE department_id = 8871");
+    jdbcTemplate.update("DELETE FROM organizations WHERE organization_id = 8871");
+    jdbcTemplate.update("DELETE FROM courses WHERE course_id = 8871");
+    jdbcTemplate.update("DELETE FROM sectors WHERE sector_id = 8871");
+    jdbcTemplate.update("DELETE FROM districts WHERE district_id IN (8871, 8872)");
+    jdbcTemplate.update("DELETE FROM states WHERE state_id IN (8871, 8872)");
   }
 }

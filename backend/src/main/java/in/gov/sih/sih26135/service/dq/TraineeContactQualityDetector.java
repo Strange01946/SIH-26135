@@ -7,6 +7,7 @@ import in.gov.sih.sih26135.entity.DataQualityRule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -15,9 +16,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Anomaly detector for rule DQ-TRAINEE-001 (MISSING).
+ * Detector for Rule DQ-TRAINEE-001: Missing Contact Information.
  *
- * <p>Identifies trainee records with missing, empty, or whitespace-only contact information (phone number or email).
+ * <p>Enforces:
+ * <ul>
+ *   <li>Identifies trainee records missing required contact information (phone number or email).</li>
+ *   <li>Treats empty string, whitespace-only, and NULL as missing.</li>
+ *   <li>Rejects employer callers with 403 Forbidden since employers lack general trainee tenancy.</li>
+ *   <li>Enforces non-null state and training provider tenant restrictions.</li>
+ * </ul>
  */
 @Component
 public class TraineeContactQualityDetector implements DataQualityDetector {
@@ -26,16 +33,16 @@ public class TraineeContactQualityDetector implements DataQualityDetector {
   public static final String RULE_CODE = "DQ-TRAINEE-001";
 
   private final JdbcTemplate jdbcTemplate;
-  private final DataQualityIssueRegistrationService registrationService;
   private final DataQualityEngineProperties properties;
+  private final DataQualityIssueRegistrationService registrationService;
 
   public TraineeContactQualityDetector(
       JdbcTemplate jdbcTemplate,
-      DataQualityIssueRegistrationService registrationService,
-      DataQualityEngineProperties properties) {
+      DataQualityEngineProperties properties,
+      DataQualityIssueRegistrationService registrationService) {
     this.jdbcTemplate = jdbcTemplate;
-    this.registrationService = registrationService;
     this.properties = properties;
+    this.registrationService = registrationService;
   }
 
   @Override
@@ -62,26 +69,35 @@ public class TraineeContactQualityDetector implements DataQualityDetector {
 
     while (hasMore) {
       StringBuilder sql = new StringBuilder(
-          "SELECT t.trainee_id, t.phone, t.email, t.state_id FROM trainees t WHERE t.deleted_at IS NULL AND t.trainee_id > ? "
+          "SELECT t.trainee_id, t.first_name, t.last_name, t.phone, t.email, t.state_id " +
+              "FROM trainees t " +
+              "WHERE t.deleted_at IS NULL AND t.trainee_id > ? "
       );
       List<Object> params = new ArrayList<>();
       params.add(lastSeenId);
 
-      // 1. Tenancy scope filters
+      // Tenancy scope filters - strictly enforced with non-null checks
       if (!scopeContext.canScanNationwide()) {
-        if (scopeContext.isStateAdmin() && scopeContext.stateId() != null) {
+        if (scopeContext.isEmployer()) {
+          throw new AccessDeniedException("Employers are not authorized to scan general trainee contact information");
+        } else if (scopeContext.isStateAdmin()) {
+          if (scopeContext.stateId() == null) {
+            throw new AccessDeniedException("State administrator scope identifier cannot be resolved");
+          }
           sql.append("AND t.state_id = ? ");
           params.add(scopeContext.stateId());
-        } else if (scopeContext.isTrainingProvider() && scopeContext.trainingProviderId() != null) {
+        } else if (scopeContext.isTrainingProvider()) {
+          if (scopeContext.trainingProviderId() == null) {
+            throw new AccessDeniedException("Training provider scope identifier cannot be resolved");
+          }
           sql.append("AND t.trainee_id IN (SELECT te.trainee_id FROM training_enrollments te WHERE te.provider_id = ?) ");
           params.add(scopeContext.trainingProviderId());
-        } else if (scopeContext.isEmployer() && scopeContext.employerId() != null) {
-          sql.append("AND t.trainee_id IN (SELECT pr.trainee_id FROM placement_records pr WHERE pr.employer_id = ?) ");
-          params.add(scopeContext.employerId());
+        } else {
+          throw new AccessDeniedException("Caller persona is not authorized to scan trainee contact information");
         }
       }
 
-      // 2. Specific entity filter if provided in request
+      // Entity filter
       if (request != null && request.getEntityId() != null) {
         sql.append("AND t.trainee_id = ? ");
         params.add(request.getEntityId());
@@ -101,46 +117,30 @@ public class TraineeContactQualityDetector implements DataQualityDetector {
         Long traineeId = ((Number) row.get("trainee_id")).longValue();
         lastSeenId = traineeId;
 
-        String phone = row.get("phone") != null ? ((String) row.get("phone")).trim() : "";
-        String email = row.get("email") != null ? ((String) row.get("email")).trim() : "";
+        String phone = (String) row.get("phone");
+        String email = (String) row.get("email");
 
-        boolean phoneMissing = phone.isEmpty();
-        boolean emailMissing = email.isEmpty();
+        boolean phoneMissing = phone == null || phone.trim().isEmpty();
+        boolean emailMissing = email == null || email.trim().isEmpty();
 
-        if (phoneMissing && emailMissing) {
+        if (phoneMissing || emailMissing) {
           violationCount++;
-          boolean created = registrationService.registerIssueIfAbsent(
-              rule,
-              "Trainee",
-              traineeId,
-              "Trainee record is missing both contact phone number and email address"
-          );
-          if (created) {
-            newIssuesCreated++;
+          StringBuilder details = new StringBuilder("Trainee is missing contact information: ");
+          if (phoneMissing && emailMissing) {
+            details.append("both phone number and email address are missing");
+          } else if (phoneMissing) {
+            details.append("phone number is missing");
           } else {
-            deduplicatedSkipped++;
+            details.append("email address is missing");
           }
-        } else if (phoneMissing) {
-          violationCount++;
+
           boolean created = registrationService.registerIssueIfAbsent(
               rule,
               "Trainee",
               traineeId,
-              "Trainee record is missing required contact phone number"
+              details.toString()
           );
-          if (created) {
-            newIssuesCreated++;
-          } else {
-            deduplicatedSkipped++;
-          }
-        } else if (emailMissing) {
-          violationCount++;
-          boolean created = registrationService.registerIssueIfAbsent(
-              rule,
-              "Trainee",
-              traineeId,
-              "Trainee record is missing required contact email address"
-          );
+
           if (created) {
             newIssuesCreated++;
           } else {

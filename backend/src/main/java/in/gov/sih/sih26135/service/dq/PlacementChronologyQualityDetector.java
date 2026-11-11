@@ -7,6 +7,7 @@ import in.gov.sih.sih26135.entity.DataQualityRule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
 
 import java.sql.Date;
@@ -17,12 +18,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Anomaly detector for rule DQ-PLACEMENT-002 (INCONSISTENT).
+ * Detector for Rule DQ-PLACEMENT-002: Placement Temporal Incoherence.
  *
- * <p>Identifies temporal incoherence in placement records:
+ * <p>Enforces:
  * <ul>
  *   <li>Offer date preceding training enrollment date.</li>
  *   <li>Actual joining date preceding offer date.</li>
+ *   <li>Actual joining date preceding training enrollment date.</li>
+ *   <li>Safely skips records with missing/null dates without generating false anomalies.</li>
+ *   <li>Enforces non-null state, provider, and employer tenancy restrictions.</li>
  * </ul>
  */
 @Component
@@ -32,16 +36,16 @@ public class PlacementChronologyQualityDetector implements DataQualityDetector {
   public static final String RULE_CODE = "DQ-PLACEMENT-002";
 
   private final JdbcTemplate jdbcTemplate;
-  private final DataQualityIssueRegistrationService registrationService;
   private final DataQualityEngineProperties properties;
+  private final DataQualityIssueRegistrationService registrationService;
 
   public PlacementChronologyQualityDetector(
       JdbcTemplate jdbcTemplate,
-      DataQualityIssueRegistrationService registrationService,
-      DataQualityEngineProperties properties) {
+      DataQualityEngineProperties properties,
+      DataQualityIssueRegistrationService registrationService) {
     this.jdbcTemplate = jdbcTemplate;
-    this.registrationService = registrationService;
     this.properties = properties;
+    this.registrationService = registrationService;
   }
 
   @Override
@@ -77,17 +81,28 @@ public class PlacementChronologyQualityDetector implements DataQualityDetector {
       List<Object> params = new ArrayList<>();
       params.add(lastSeenId);
 
-      // Tenancy scope filters
+      // Tenancy scope filters - strictly enforced with non-null checks
       if (!scopeContext.canScanNationwide()) {
-        if (scopeContext.isStateAdmin() && scopeContext.stateId() != null) {
+        if (scopeContext.isStateAdmin()) {
+          if (scopeContext.stateId() == null) {
+            throw new AccessDeniedException("State administrator scope identifier cannot be resolved");
+          }
           sql.append("AND pr.work_state_id = ? ");
           params.add(scopeContext.stateId());
-        } else if (scopeContext.isTrainingProvider() && scopeContext.trainingProviderId() != null) {
+        } else if (scopeContext.isTrainingProvider()) {
+          if (scopeContext.trainingProviderId() == null) {
+            throw new AccessDeniedException("Training provider scope identifier cannot be resolved");
+          }
           sql.append("AND pr.provider_id = ? ");
           params.add(scopeContext.trainingProviderId());
-        } else if (scopeContext.isEmployer() && scopeContext.employerId() != null) {
+        } else if (scopeContext.isEmployer()) {
+          if (scopeContext.employerId() == null) {
+            throw new AccessDeniedException("Employer scope identifier cannot be resolved");
+          }
           sql.append("AND pr.employer_id = ? ");
           params.add(scopeContext.employerId());
+        } else {
+          throw new AccessDeniedException("Caller persona is not authorized to scan placement records");
         }
       }
 
@@ -111,33 +126,40 @@ public class PlacementChronologyQualityDetector implements DataQualityDetector {
         Long placementId = ((Number) row.get("placement_id")).longValue();
         lastSeenId = placementId;
 
-        LocalDate offerDate = row.get("offer_date") != null ? ((Date) row.get("offer_date")).toLocalDate() : null;
-        LocalDate joiningDate = row.get("actual_joining_date") != null ? ((Date) row.get("actual_joining_date")).toLocalDate() : null;
-        LocalDate enrollmentDate = row.get("enrollment_date") != null ? ((Date) row.get("enrollment_date")).toLocalDate() : null;
+        Object offerDateObj = row.get("offer_date");
+        Object joiningDateObj = row.get("actual_joining_date");
+        Object enrollmentDateObj = row.get("enrollment_date");
 
-        String anomalySummary = null;
+        LocalDate offerDate = offerDateObj != null ? ((Date) offerDateObj).toLocalDate() : null;
+        LocalDate joiningDate = joiningDateObj != null ? ((Date) joiningDateObj).toLocalDate() : null;
+        LocalDate enrollmentDate = enrollmentDateObj != null ? ((Date) enrollmentDateObj).toLocalDate() : null;
 
-        // Condition 1: Offer date earlier than enrollment date
+        boolean isViolation = false;
+        String summary = null;
+
+        // Condition 1: Offer date precedes enrollment date
         if (offerDate != null && enrollmentDate != null && offerDate.isBefore(enrollmentDate)) {
-          anomalySummary = "Placement offer date precedes training enrollment date for placement ID " + placementId;
+          isViolation = true;
+          summary = "Placement offer date (" + offerDate + ") precedes candidate enrollment date (" + enrollmentDate + ")";
+        }
+        // Condition 2: Actual joining date precedes offer date
+        else if (joiningDate != null && offerDate != null && joiningDate.isBefore(offerDate)) {
+          isViolation = true;
+          summary = "Placement joining date (" + joiningDate + ") precedes offer date (" + offerDate + ")";
+        }
+        // Condition 3: Actual joining date precedes enrollment date
+        else if (joiningDate != null && enrollmentDate != null && joiningDate.isBefore(enrollmentDate)) {
+          isViolation = true;
+          summary = "Placement joining date (" + joiningDate + ") precedes candidate enrollment date (" + enrollmentDate + ")";
         }
 
-        // Condition 2: Joining date earlier than offer date
-        if (joiningDate != null && offerDate != null && joiningDate.isBefore(offerDate)) {
-          if (anomalySummary != null) {
-            anomalySummary += "; Joining date also precedes offer date";
-          } else {
-            anomalySummary = "Employment joining date precedes offer date for placement ID " + placementId;
-          }
-        }
-
-        if (anomalySummary != null) {
+        if (isViolation) {
           violationCount++;
           boolean created = registrationService.registerIssueIfAbsent(
               rule,
               "PlacementRecord",
               placementId,
-              anomalySummary
+              summary
           );
           if (created) {
             newIssuesCreated++;
