@@ -24,8 +24,8 @@ Every lifecycle transition is executed within an isolated database transaction, 
    - Enforced `@PreAuthorize("hasAuthority('system.manage')")` on all lifecycle mutation endpoints (`/assign`, `/start-investigation`, `/resolve`, `/dismiss`, `/reopen`, `POST /`, `PUT /{id}`) in `DataQualityIssueController`, and equivalent service-boundary `system.manage` verification.
    - Preserved `audit.read || system.manage` authorization for read endpoints including `GET /{id}/events` within the caller's tenant boundary.
 4. **Assignee Eligibility Validation Against Issue Entity:**
-   - Validated candidate assignees in `validateAssigneeEligibility()` against the underlying entity in the database (`Trainee`, `AttendanceRecord`, `PlacementRecord`, `EmploymentRecord`, `BatchEnrollment`).
-   - Rejected unscoped assignees (all tenancy fields null) and conflicting assignees (`ASSIGNEE_SCOPE_MISMATCH`, 400 Bad Request), as well as cross-state, cross-provider, and cross-employer assignments even when initiated by a nationwide admin.
+   - Validated candidate assignees in `validateAssigneeEligibility()` against the underlying entity in the database (`Trainee`, `AttendanceRecord`, `PlacementRecord`, `EmploymentRecord`, `TrainingEnrollment` / `BatchEnrollment`) via shared `DataQualityIssueScopeSupport` helpers, including strict verification of assignee `districtId` (when present) so assignments where the state matches but the district does not are rejected (`ASSIGNEE_SCOPE_MISMATCH`, 400 Bad Request).
+   - Verified under the existing RBAC role/permission model (`user_roles -> roles -> role_permissions -> permissions`) that candidate assignees hold active workflow-management authority (`system.manage`, rejecting missing authority with `INVALID_ASSIGNEE`) and consistent role-to-tenancy alignment (`district_officer` requires `districtId`, `training_provider` requires `trainingProviderId`, `employer` requires `employerId`, `state_admin`/`government_officer` requires `stateId`), fixed `isUserTrainee()` to query `roles`, and preserved verified nationwide (`super_admin`, `government_admin`), state-level, provider, and employer assignments while rejecting inactive, deleted, trainee, unscoped, and cross-tenant assignees (including when invoked by a nationwide admin).
 5. **Transition Matrix & Ownership Enforcement:**
    - Corrected `dismissIssue()` to accept ONLY `OPEN -> DISMISSED` and `IN_PROGRESS -> DISMISSED`, explicitly rejecting `ASSIGNED -> DISMISSED` and `REOPENED -> DISMISSED` with HTTP 409 Conflict (`INVALID_DQ_TRANSITION`).
    - Enforced investigator ownership in `startInvestigation()`, `resolveIssue()`, and in-progress `dismissIssue()` (`assignedUserId` or authorized administrative supervisor).
@@ -36,8 +36,8 @@ Every lifecycle transition is executed within an isolated database transaction, 
    - Preserved `DataQualityIssueRegistrationService` detection-engine registration and Phase 28.3 deduplication behavior (`is_open_flag = 1`).
    - Schema validation (`ddl-auto=validate`) verified against `SIH26135_TEST` with zero schema alterations.
    - Exactly 137 Spring Data JPA repository interfaces and 2 `@Query` annotations preserved.
-   - Exactly 63 production controllers verified; all 659 audited endpoints return standard `ApiResponse` envelopes.
-   - Full regression suite achieved 100% pass rate: **1,902 / 1,902 tests passed** (0 failures, 0 errors, 0 skipped).
+   - Exactly 63 production controllers verified; REST response envelope uniformity validated by `ResponseEnvelopeAlignmentContractTest`.
+   - Full regression suite achieved 100% pass rate: **1,911 / 1,911 tests passed** (0 failures, 0 errors, 0 skipped).
 
 ---
 
@@ -149,14 +149,14 @@ All data quality endpoints (`DataQualityIssueController`), generic service opera
 
 | Component / File | Purpose & Corrections |
 | :--- | :--- |
-| `DataQualityIssueScopeSupport.java` | Shared fail-closed security and tenant-scope enforcement helper (caller resolution, missing/ambiguous scope checks, single-entity scope queries, and batched `IN (...)` collection filtering across `Trainee`, `AttendanceRecord`, `PlacementRecord`, `EmploymentRecord`, and `BatchEnrollment`). |
+| `DataQualityIssueScopeSupport.java` | Shared fail-closed security and tenant-scope enforcement helper (caller resolution, missing/ambiguous scope checks, single-entity state/district/provider/employer helpers, and batched `IN (...)` collection filtering across `Trainee`, `AttendanceRecord`, `PlacementRecord`, `EmploymentRecord`, and `BatchEnrollment`). |
 | `DataQualityIssueServiceImpl.java` | Enforced tenant isolation and service-boundary auth across `reportIssue()`, `updateIssue()`, `getIssueById()`, `getIssuesByEntity()`, and all filtered collection queries; enforced `OPEN`-only initial status and zero initial assignee on creation; delegated legacy `assignIssue()`/`resolveIssue()` to `DataQualityWorkflowService`. |
-| `DataQualityWorkflowServiceImpl.java` | Consolidated caller auth and issue scope checks to reuse `DataQualityIssueScopeSupport`; retained transaction locking, assignee entity eligibility, transition matrix enforcement, investigator ownership, and atomic event logging. |
+| `DataQualityWorkflowServiceImpl.java` | Consolidated caller auth and issue scope checks to reuse `DataQualityIssueScopeSupport`; enforced district-level (`districtId`), RBAC `system.manage` permission, and role-to-tenancy validation in `validateAssigneeEligibility()`; fixed `isUserTrainee()` to query `roles`; retained transaction locking, transition matrix enforcement, investigator ownership, and atomic event logging. |
 | `DataQualityIssueController.java` | Mandatory non-null `DataQualityWorkflowService`; `@PreAuthorize("hasAuthority('system.manage')")` on all mutation endpoints; class-level `audit.read || system.manage` on read routes. |
-| `DataQualityWorkflowServiceTest.java` | 52 unit and state-machine tests covering permission separation, assignee scope matching, invalid dismissals (409), investigator ownership (403), supervisor overrides, and event persistence. |
+| `DataQualityWorkflowServiceTest.java` | 57 unit and state-machine tests covering permission separation, assignee district & RBAC `system.manage` eligibility, nationwide/state/provider/employer assignment rules, invalid dismissals (409), investigator ownership (403), supervisor overrides, and event persistence. |
 | `DataQualityIssueServiceSecurityTest.java` | 10 unit tests covering service-boundary enforcement of `OPEN`-only creation status, rejection of initial assignees, district officer isolation, ambiguous caller fail-closed checks, and legacy delegation. |
 | `DataQualityWorkflowApiTest.java` | 26 live MySQL integration tests for workflow lifecycle endpoints, check constraints, generic PUT bypass protections, and Phase 28.3 deduplication synergy. |
-| `DataQualityGenericIssueSecurityApiTest.java` | 10 live MySQL integration and adversarial tests verifying cross-tenant rejection (`GET /{id}`, `GET ?entityType=&entityId=`, `POST /`, `PUT /{id}`), strict collection filtering across all filter parameters for State/Provider/Employer/Nationwide personas, fail-closed missing/ambiguous scope handling, service-boundary enforcement, creation lifecycle bypass prevention, and Phase 28.3 deduplication preservation. |
+| `DataQualityGenericIssueSecurityApiTest.java` | 14 live MySQL integration and adversarial tests verifying cross-tenant rejection (`GET /{id}`, `GET ?entityType=&entityId=`, `POST /`, `PUT /{id}`), strict collection filtering across all filter parameters, assignee district & `system.manage` eligibility in live DB, fail-closed missing/ambiguous scope handling, creation lifecycle bypass prevention, and Phase 28.3 deduplication preservation. |
 
 ---
 
@@ -164,17 +164,18 @@ All data quality endpoints (`DataQualityIssueController`), generic service opera
 
 ### 6.1 Focused Data Quality Suites
 
-- `DataQualityWorkflowServiceTest`: **52 / 52 PASSED**
+- `DataQualityWorkflowServiceTest`: **57 / 57 PASSED**
 - `DataQualityIssueServiceSecurityTest`: **10 / 10 PASSED**
 - `DataQualityWorkflowApiTest`: **26 / 26 PASSED** (live MySQL `SIH26135_TEST`)
-- `DataQualityGenericIssueSecurityApiTest`: **10 / 10 PASSED** (live MySQL `SIH26135_TEST`)
+- `DataQualityGenericIssueSecurityApiTest`: **14 / 14 PASSED** (live MySQL `SIH26135_TEST`)
+- Combined focused workflow & security run: **107 / 107 PASSED** (0 failures, 0 errors, 0 skipped)
 - Phase 28.3 Suites (`DataQualityAnomalyDetectorsTest`, `DataQualityRuleCatalogTest`, `DataQualityDeduplicationAndScanApiTest`): **100% PASSED**
 
 ### 6.2 Architectural Invariant Verification
 
 1. **JPA Repository Count:** **137 JPA repository interfaces** verified (0 added).
 2. **`@Query` Annotation Invariant:** **2 `@Query` annotations** preserved (`TraineeUnemploymentEventRepository:19`, `UserRepository:22`).
-3. **Production Controller Count & Envelope Alignment:** **63 production REST controllers** and **659 endpoint methods** audited and verified by `ResponseEnvelopeAlignmentContractTest`.
+3. **Production Controller Count & Envelope Alignment:** **63 production REST controllers** verified; REST envelope uniformity validated by `ResponseEnvelopeAlignmentContractTest`.
 
 ### 6.3 Full Regression Test Results
 
@@ -185,13 +186,13 @@ All data quality endpoints (`DataQualityIssueController`), generic service opera
 ...
 [INFO] Results:
 [INFO] 
-[INFO] Tests run: 1902, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 1911, Failures: 0, Errors: 0, Skipped: 0
 [INFO] 
 [INFO] ------------------------------------------------------------------------
 [INFO] BUILD SUCCESS
 [INFO] ------------------------------------------------------------------------
-[INFO] Total time:  05:31 min
-[INFO] Finished at: 2026-11-11T22:29:22+05:30
+[INFO] Total time:  06:03 min
+[INFO] Finished at: 2026-11-11T23:21:24+05:30
 [INFO] ------------------------------------------------------------------------
 ```
 
@@ -205,10 +206,10 @@ All data quality endpoints (`DataQualityIssueController`), generic service opera
 | **Database Schema** | Zero schema modifications | **COMPLIANT** | No tables, columns, indexes, or constraints added or modified. |
 | **JPA Repositories** | Exactly 137 interfaces | **COMPLIANT** | Verified by Spring Data scanner and `OperationalErrorCodeContractTest`. |
 | **`@Query` Annotations** | Exactly 2 annotations | **COMPLIANT** | Verified by `OperationalErrorCodeContractTest`. |
-| **REST Controllers** | Exactly 63 controllers | **COMPLIANT** | Verified by `ResponseEnvelopeAlignmentContractTest`. |
-| **API Envelope Uniformity** | 100% `ApiResponse` | **COMPLIANT** | All 659 endpoints validated by `ResponseEnvelopeAlignmentContractTest`. |
+| **REST Controllers** | Exactly 63 controllers | **COMPLIANT** | Verified by controller file inventory and `ResponseEnvelopeAlignmentContractTest`. |
+| **API Envelope Uniformity** | 100% `ApiResponse` | **COMPLIANT** | All controller serialization and envelope contracts validated by `ResponseEnvelopeAlignmentContractTest`. |
 | **MySQL Check Constraint** | `ck_dq_issues_resolved_at` | **COMPLIANT** | Verified by unit tests, integration tests, and schema constraint checks. |
-| **Full Regression Suite** | 100% Pass Rate | **COMPLIANT** | **1,902 / 1,902 tests passing** (0 failures, 0 errors, 0 skipped). |
+| **Full Regression Suite** | 100% Pass Rate | **COMPLIANT** | **1,911 / 1,911 tests passing** (0 failures, 0 errors, 0 skipped). |
 | **Git Hygiene** | Zero commits, push, stash, or reset | **COMPLIANT** | No git mutations performed. |
 
 ---

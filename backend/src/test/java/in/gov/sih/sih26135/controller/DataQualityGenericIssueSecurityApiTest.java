@@ -123,6 +123,9 @@ class DataQualityGenericIssueSecurityApiTest {
     jdbcTemplate.update(
         "INSERT INTO districts (district_id, state_id, district_code, district_name, lifecycle_status_id, created_at, updated_at) " +
             "VALUES (9962, 9962, 'GD62', 'Generic DQ District B', 1, NOW(), NOW())");
+    jdbcTemplate.update(
+        "INSERT INTO districts (district_id, state_id, district_code, district_name, lifecycle_status_id, created_at, updated_at) " +
+            "VALUES (9963, 9961, 'GD63', 'Generic DQ District A2', 1, NOW(), NOW())");
 
     // Sector, Course, Organization, Department, Scheme, Program
     jdbcTemplate.update(
@@ -228,6 +231,51 @@ class DataQualityGenericIssueSecurityApiTest {
     jdbcTemplate.update(
         "INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, training_provider_id, employer_id, created_at, updated_at) " +
             "VALUES (9967, 'gdq_conflict_pe', 'gdq9967@test.gov.in', 'hash', 'argon2id', 1, 9961, 9961, NOW(), NOW())");
+    // 9968: District A1 Officer (state_id=9961, district_id=9961) with system.manage
+    jdbcTemplate.update(
+        "INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, state_id, district_id, created_at, updated_at) " +
+            "VALUES (9968, 'gdq_district_a1', 'gdq9968@test.gov.in', 'hash', 'argon2id', 1, 9961, 9961, NOW(), NOW())");
+    // 9969: District A2 Officer (state_id=9961, district_id=9963) with system.manage (same state A, different district A2)
+    jdbcTemplate.update(
+        "INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, state_id, district_id, created_at, updated_at) " +
+            "VALUES (9969, 'gdq_district_a2', 'gdq9969@test.gov.in', 'hash', 'argon2id', 1, 9961, 9963, NOW(), NOW())");
+    // 99601: State A1 User WITHOUT system.manage (analyst read-only role)
+    jdbcTemplate.update(
+        "INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, state_id, district_id, created_at, updated_at) " +
+            "VALUES (99601, 'gdq_no_manage', 'gdq99601@test.gov.in', 'hash', 'argon2id', 1, 9961, 9961, NOW(), NOW())");
+    // 99602: District Officer missing district_id (state_id=9961, district_id=NULL)
+    jdbcTemplate.update(
+        "INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, state_id, created_at, updated_at) " +
+            "VALUES (99602, 'gdq_dist_null', 'gdq99602@test.gov.in', 'hash', 'argon2id', 1, 9961, NOW(), NOW())");
+
+    // Provision RBAC test role (system.manage) & real DB role assignments
+    jdbcTemplate.update(
+        "INSERT INTO roles (role_id, role_code, role_name, is_system_role, lifecycle_status_id, created_at, updated_at) " +
+            "VALUES (9961, 'GDQ_TEST_MGR', 'GDQ Test Manager', 0, 1, NOW(), NOW())");
+    jdbcTemplate.update(
+        "INSERT INTO role_permissions (role_id, permission_id) " +
+            "SELECT 9961, permission_id FROM permissions WHERE permission_code = 'system.manage'");
+    jdbcTemplate.update(
+        "INSERT INTO user_roles (user_id, role_id, assigned_at) " +
+            "SELECT 9960, role_id, NOW() FROM roles WHERE role_code = 'super_admin' LIMIT 1");
+    for (long uid : List.of(9961L, 9962L, 9963L, 9964L, 9965L, 9968L, 9969L, 99602L)) {
+      jdbcTemplate.update("INSERT INTO user_roles (user_id, role_id, assigned_at) VALUES (?, 9961, NOW())", uid);
+    }
+    jdbcTemplate.update(
+        "INSERT INTO user_roles (user_id, role_id, assigned_at) " +
+            "SELECT 9963, role_id, NOW() FROM roles WHERE role_code = 'training_provider' LIMIT 1");
+    jdbcTemplate.update(
+        "INSERT INTO user_roles (user_id, role_id, assigned_at) " +
+            "SELECT 9964, role_id, NOW() FROM roles WHERE role_code = 'employer' LIMIT 1");
+    for (long uid : List.of(9968L, 9969L, 99602L)) {
+      jdbcTemplate.update(
+          "INSERT INTO user_roles (user_id, role_id, assigned_at) " +
+              "SELECT ?, role_id, NOW() FROM roles WHERE role_code = 'district_officer' LIMIT 1",
+          uid);
+    }
+    jdbcTemplate.update(
+        "INSERT INTO user_roles (user_id, role_id, assigned_at) " +
+            "SELECT 99601, role_id, NOW() FROM roles WHERE role_code = 'analyst' LIMIT 1");
 
     nationwideAdminToken = "Bearer " + jwtTokenProvider.generateAccessToken(
         9960L, "gdq_superadmin", List.of("ROLE_super_admin", "audit.read", "system.manage"));
@@ -260,7 +308,7 @@ class DataQualityGenericIssueSecurityApiTest {
 
   private void cleanUpTestFixtures() {
     try {
-      jdbcTemplate.update("DELETE FROM data_quality_issue_events WHERE changed_by_user_id BETWEEN 9960 AND 9969");
+      jdbcTemplate.update("DELETE FROM data_quality_issue_events WHERE changed_by_user_id BETWEEN 9960 AND 9969 OR changed_by_user_id IN (99601, 99602)");
       jdbcTemplate.update("DELETE FROM data_quality_issue_events WHERE data_quality_issue_id IN (SELECT data_quality_issue_id FROM data_quality_issues WHERE issue_summary LIKE 'GDQ-TEST-%')");
       jdbcTemplate.update("DELETE FROM data_quality_issues WHERE issue_summary LIKE 'GDQ-TEST-%'");
       jdbcTemplate.update("DELETE FROM data_quality_issues WHERE entity_type = 'Trainee' AND entity_id IN (9961, 9962)");
@@ -271,14 +319,17 @@ class DataQualityGenericIssueSecurityApiTest {
       jdbcTemplate.update("DELETE FROM training_centers WHERE center_id IN (9961, 9962)");
       jdbcTemplate.update("DELETE FROM employers WHERE employer_id IN (9961, 9962)");
       jdbcTemplate.update("DELETE FROM training_providers WHERE provider_id IN (9961, 9962)");
-      jdbcTemplate.update("DELETE FROM users WHERE user_id BETWEEN 9960 AND 9969");
+      jdbcTemplate.update("DELETE FROM user_roles WHERE user_id BETWEEN 9960 AND 9969 OR user_id IN (99601, 99602)");
+      jdbcTemplate.update("DELETE FROM role_permissions WHERE role_id = 9961");
+      jdbcTemplate.update("DELETE FROM roles WHERE role_id = 9961");
+      jdbcTemplate.update("DELETE FROM users WHERE user_id BETWEEN 9960 AND 9969 OR user_id IN (99601, 99602)");
       jdbcTemplate.update("DELETE FROM programs WHERE program_id = 9961");
       jdbcTemplate.update("DELETE FROM schemes WHERE scheme_id = 9961");
       jdbcTemplate.update("DELETE FROM departments WHERE department_id = 9961");
       jdbcTemplate.update("DELETE FROM organizations WHERE organization_id = 9961");
       jdbcTemplate.update("DELETE FROM courses WHERE course_id = 9961");
       jdbcTemplate.update("DELETE FROM sectors WHERE sector_id = 9961");
-      jdbcTemplate.update("DELETE FROM districts WHERE district_id IN (9961, 9962)");
+      jdbcTemplate.update("DELETE FROM districts WHERE district_id IN (9961, 9962, 9963)");
       jdbcTemplate.update("DELETE FROM states WHERE state_id IN (9961, 9962)");
     } catch (Exception ignored) {
     }
@@ -752,6 +803,144 @@ class DataQualityGenericIssueSecurityApiTest {
           rule, "Trainee", 9961L, "GDQ-TEST-DEDUP-SUMMARY");
       assertThat(res2.status()).isEqualTo(RegistrationStatus.DEDUPLICATED);
       assertThat(res2.issueId()).isEqualTo(res1.issueId());
+    }
+  }
+
+  @Nested
+  @DisplayName("5. Final Assignee District & Role-Permission Eligibility Security")
+  class AssigneeEligibilitySecurityTests {
+
+    @Test
+    @DisplayName("State admin can assign District A issue to District A officer with system.manage, and cannot assign to District B officer in same state")
+    void shouldValidateAssigneeDistrictAgainstEntityDistrictInSameState() throws Exception {
+      Long traineeIssueId = insertIssue("OPEN", "Trainee", 9961L, "GDQ-TEST-DIST-TRAINEE", null, null);
+      Long placementIssueId = insertIssue("OPEN", "PlacementRecord", 9961L, "GDQ-TEST-DIST-PLACEMENT", null, null);
+
+      // Same state (9961), wrong district (9963 != 9961) -> MUST REJECT for both Trainee and PlacementRecord
+      AssignDataQualityIssueRequest wrongDistrictReq = new AssignDataQualityIssueRequest(9969L, "Wrong district officer");
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/assign", traineeIssueId)
+              .header("Authorization", stateAAdminToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(wrongDistrictReq)))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code", is("ASSIGNEE_SCOPE_MISMATCH")));
+
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/assign", placementIssueId)
+              .header("Authorization", stateAAdminToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(wrongDistrictReq)))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code", is("ASSIGNEE_SCOPE_MISMATCH")));
+
+      // Matching state (9961) AND matching district (9961) with system.manage -> MUST ACCEPT
+      AssignDataQualityIssueRequest validDistrictReq = new AssignDataQualityIssueRequest(9968L, "Valid district A1 officer");
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/assign", traineeIssueId)
+              .header("Authorization", stateAAdminToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(validDistrictReq)))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.dataQualityIssueStatusCode", is("ASSIGNED")))
+          .andExpect(jsonPath("$.data.assignedUserId", is(9968)));
+
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/assign", placementIssueId)
+              .header("Authorization", stateAAdminToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(validDistrictReq)))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.dataQualityIssueStatusCode", is("ASSIGNED")))
+          .andExpect(jsonPath("$.data.assignedUserId", is(9968)));
+    }
+
+    @Test
+    @DisplayName("State admin cannot assign issue to user without system.manage or district_officer missing districtId")
+    void shouldRejectAssigneeWithoutWorkflowManagementAuthorityOrDistrictId() throws Exception {
+      Long traineeIssueId = insertIssue("OPEN", "Trainee", 9961L, "GDQ-TEST-NOMANAGE", null, null);
+
+      // User 99601 is in matching state & district (9961, 9961) but holds analyst role (no system.manage)
+      AssignDataQualityIssueRequest noManageReq = new AssignDataQualityIssueRequest(99601L, "Analyst without system.manage");
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/assign", traineeIssueId)
+              .header("Authorization", stateAAdminToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(noManageReq)))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code", is("INVALID_ASSIGNEE")));
+
+      // User 99602 holds district_officer role with system.manage but has null districtId
+      AssignDataQualityIssueRequest missingDistrictIdReq = new AssignDataQualityIssueRequest(99602L, "District officer missing districtId");
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/assign", traineeIssueId)
+              .header("Authorization", stateAAdminToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(missingDistrictIdReq)))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code", is("ASSIGNEE_SCOPE_MISMATCH")));
+    }
+
+    @Test
+    @DisplayName("Valid training provider and employer assignments continue to work with RBAC system.manage")
+    void shouldPreserveValidProviderAndEmployerAssignments() throws Exception {
+      Long traineeIssueId = insertIssue("OPEN", "Trainee", 9961L, "GDQ-TEST-PRV-ASSIGN", null, null);
+      Long placementIssueId = insertIssue("OPEN", "PlacementRecord", 9961L, "GDQ-TEST-EMP-ASSIGN", null, null);
+
+      AssignDataQualityIssueRequest providerReq = new AssignDataQualityIssueRequest(9963L, "Provider A owner");
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/assign", traineeIssueId)
+              .header("Authorization", providerAToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(providerReq)))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.dataQualityIssueStatusCode", is("ASSIGNED")))
+          .andExpect(jsonPath("$.data.assignedUserId", is(9963)));
+
+      AssignDataQualityIssueRequest employerReq = new AssignDataQualityIssueRequest(9964L, "Employer A owner");
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/assign", placementIssueId)
+              .header("Authorization", employerAToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(employerReq)))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.dataQualityIssueStatusCode", is("ASSIGNED")))
+          .andExpect(jsonPath("$.data.assignedUserId", is(9964)));
+    }
+
+    @Test
+    @DisplayName("Nationwide admin cannot bypass assignee district, permission, or scope eligibility, while valid nationwide assignment succeeds")
+    void shouldPreventNationwideAdminBypassWhilePreservingValidNationwideAssignment() throws Exception {
+      Long traineeIssueId = insertIssue("OPEN", "Trainee", 9961L, "GDQ-TEST-NW-ELIGIBILITY", null, null);
+
+      // Mismatched district even from nationwide admin -> rejected
+      AssignDataQualityIssueRequest wrongDistrictReq = new AssignDataQualityIssueRequest(9969L, "NW wrong district");
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/assign", traineeIssueId)
+              .header("Authorization", nationwideAdminToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(wrongDistrictReq)))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code", is("ASSIGNEE_SCOPE_MISMATCH")));
+
+      // Assignee lacking system.manage even from nationwide admin -> rejected
+      AssignDataQualityIssueRequest noManageReq = new AssignDataQualityIssueRequest(99601L, "NW no system.manage");
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/assign", traineeIssueId)
+              .header("Authorization", nationwideAdminToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(noManageReq)))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code", is("INVALID_ASSIGNEE")));
+
+      // Unscoped non-admin user even from nationwide admin -> rejected
+      AssignDataQualityIssueRequest unscopedReq = new AssignDataQualityIssueRequest(9965L, "NW unscoped non-admin");
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/assign", traineeIssueId)
+              .header("Authorization", nationwideAdminToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(unscopedReq)))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code", is("ASSIGNEE_SCOPE_MISMATCH")));
+
+      // Verified nationwide super_admin assignee -> accepted
+      AssignDataQualityIssueRequest validNationwideReq = new AssignDataQualityIssueRequest(9960L, "NW verified super_admin");
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/assign", traineeIssueId)
+              .header("Authorization", nationwideAdminToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(validNationwideReq)))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.dataQualityIssueStatusCode", is("ASSIGNED")))
+          .andExpect(jsonPath("$.data.assignedUserId", is(9960)));
     }
   }
 }

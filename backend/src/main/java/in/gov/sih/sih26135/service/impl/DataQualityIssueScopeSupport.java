@@ -232,25 +232,13 @@ final class DataQualityIssueScopeSupport {
       throw new AccessDeniedException("Employers are not authorized to manage trainee data quality issues");
     }
     if (scope.isStateScoped()) {
-      Integer count = scope.districtId() != null
-          ? jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM trainees WHERE trainee_id = ? AND state_id = ? AND district_id = ? AND deleted_at IS NULL",
-              Integer.class, traineeId, scope.stateId(), scope.districtId())
-          : jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM trainees WHERE trainee_id = ? AND state_id = ? AND deleted_at IS NULL",
-              Integer.class, traineeId, scope.stateId());
-      if (count == null || count == 0) {
+      if (!matchesEntityStateAndDistrict("Trainee", traineeId, scope.stateId(), scope.districtId(), jdbcTemplate)) {
         throw new AccessDeniedException("Issue trainee does not belong to caller state scope");
       }
       return;
     }
     if (scope.isProviderScoped()) {
-      Integer count = jdbcTemplate.queryForObject(
-          "SELECT COUNT(*) FROM training_enrollments te " +
-              "JOIN trainees t ON te.trainee_id = t.trainee_id " +
-              "WHERE te.trainee_id = ? AND te.provider_id = ? AND te.deleted_at IS NULL AND t.deleted_at IS NULL",
-          Integer.class, traineeId, scope.trainingProviderId());
-      if (count == null || count == 0) {
+      if (!matchesEntityProvider("Trainee", traineeId, scope.trainingProviderId(), jdbcTemplate)) {
         throw new AccessDeniedException("Issue trainee does not belong to caller training provider scope");
       }
       return;
@@ -263,31 +251,13 @@ final class DataQualityIssueScopeSupport {
       throw new AccessDeniedException("Employers are not authorized to manage attendance data quality issues");
     }
     if (scope.isStateScoped()) {
-      Integer count = scope.districtId() != null
-          ? jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM attendance_records ar " +
-                  "JOIN training_batches tb ON ar.batch_id = tb.batch_id " +
-                  "JOIN training_centers tc ON tb.center_id = tc.center_id " +
-                  "WHERE ar.attendance_id = ? AND tc.state_id = ? AND tc.district_id = ? AND tc.deleted_at IS NULL",
-              Integer.class, attendanceId, scope.stateId(), scope.districtId())
-          : jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM attendance_records ar " +
-                  "JOIN training_batches tb ON ar.batch_id = tb.batch_id " +
-                  "JOIN training_centers tc ON tb.center_id = tc.center_id " +
-                  "WHERE ar.attendance_id = ? AND tc.state_id = ? AND tc.deleted_at IS NULL",
-              Integer.class, attendanceId, scope.stateId());
-      if (count == null || count == 0) {
+      if (!matchesEntityStateAndDistrict("AttendanceRecord", attendanceId, scope.stateId(), scope.districtId(), jdbcTemplate)) {
         throw new AccessDeniedException("Issue attendance record does not belong to caller state scope");
       }
       return;
     }
     if (scope.isProviderScoped()) {
-      Integer count = jdbcTemplate.queryForObject(
-          "SELECT COUNT(*) FROM attendance_records ar " +
-              "JOIN training_enrollments te ON ar.enrollment_id = te.enrollment_id " +
-              "WHERE ar.attendance_id = ? AND te.provider_id = ? AND te.deleted_at IS NULL",
-          Integer.class, attendanceId, scope.trainingProviderId());
-      if (count == null || count == 0) {
+      if (!matchesEntityProvider("AttendanceRecord", attendanceId, scope.trainingProviderId(), jdbcTemplate)) {
         throw new AccessDeniedException("Issue attendance record does not belong to caller training provider scope");
       }
       return;
@@ -297,32 +267,19 @@ final class DataQualityIssueScopeSupport {
 
   private static void validatePlacementScope(CallerScope scope, Long placementId, JdbcTemplate jdbcTemplate) {
     if (scope.isStateScoped()) {
-      Integer count = scope.districtId() != null
-          ? jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM placement_records WHERE placement_id = ? AND work_state_id = ? AND work_district_id = ? AND deleted_at IS NULL",
-              Integer.class, placementId, scope.stateId(), scope.districtId())
-          : jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM placement_records WHERE placement_id = ? AND work_state_id = ? AND deleted_at IS NULL",
-              Integer.class, placementId, scope.stateId());
-      if (count == null || count == 0) {
+      if (!matchesEntityStateAndDistrict("PlacementRecord", placementId, scope.stateId(), scope.districtId(), jdbcTemplate)) {
         throw new AccessDeniedException("Issue placement record does not belong to caller state scope");
       }
       return;
     }
     if (scope.isProviderScoped()) {
-      Integer count = jdbcTemplate.queryForObject(
-          "SELECT COUNT(*) FROM placement_records WHERE placement_id = ? AND provider_id = ? AND deleted_at IS NULL",
-          Integer.class, placementId, scope.trainingProviderId());
-      if (count == null || count == 0) {
+      if (!matchesEntityProvider("PlacementRecord", placementId, scope.trainingProviderId(), jdbcTemplate)) {
         throw new AccessDeniedException("Issue placement record does not belong to caller training provider scope");
       }
       return;
     }
     if (scope.isEmployerScoped()) {
-      Integer count = jdbcTemplate.queryForObject(
-          "SELECT COUNT(*) FROM placement_records WHERE placement_id = ? AND employer_id = ? AND deleted_at IS NULL",
-          Integer.class, placementId, scope.employerId());
-      if (count == null || count == 0) {
+      if (!matchesEntityEmployer("PlacementRecord", placementId, scope.employerId(), jdbcTemplate)) {
         throw new AccessDeniedException("Issue placement record does not belong to caller employer scope");
       }
       return;
@@ -332,34 +289,19 @@ final class DataQualityIssueScopeSupport {
 
   private static void validateEmploymentScope(CallerScope scope, Long employmentId, JdbcTemplate jdbcTemplate) {
     if (scope.isStateScoped()) {
-      Integer count = scope.districtId() != null
-          ? jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM employment_records WHERE employment_id = ? AND work_state_id = ? AND work_district_id = ? AND deleted_at IS NULL",
-              Integer.class, employmentId, scope.stateId(), scope.districtId())
-          : jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM employment_records WHERE employment_id = ? AND work_state_id = ? AND deleted_at IS NULL",
-              Integer.class, employmentId, scope.stateId());
-      if (count == null || count == 0) {
+      if (!matchesEntityStateAndDistrict("EmploymentRecord", employmentId, scope.stateId(), scope.districtId(), jdbcTemplate)) {
         throw new AccessDeniedException("Issue employment record does not belong to caller state scope");
       }
       return;
     }
     if (scope.isProviderScoped()) {
-      Integer count = jdbcTemplate.queryForObject(
-          "SELECT COUNT(*) FROM employment_records er " +
-              "JOIN training_enrollments te ON er.enrollment_id = te.enrollment_id " +
-              "WHERE er.employment_id = ? AND te.provider_id = ? AND te.deleted_at IS NULL AND er.deleted_at IS NULL",
-          Integer.class, employmentId, scope.trainingProviderId());
-      if (count == null || count == 0) {
+      if (!matchesEntityProvider("EmploymentRecord", employmentId, scope.trainingProviderId(), jdbcTemplate)) {
         throw new AccessDeniedException("Issue employment record does not belong to caller training provider scope");
       }
       return;
     }
     if (scope.isEmployerScoped()) {
-      Integer count = jdbcTemplate.queryForObject(
-          "SELECT COUNT(*) FROM employment_records WHERE employment_id = ? AND employer_id = ? AND deleted_at IS NULL",
-          Integer.class, employmentId, scope.employerId());
-      if (count == null || count == 0) {
+      if (!matchesEntityEmployer("EmploymentRecord", employmentId, scope.employerId(), jdbcTemplate)) {
         throw new AccessDeniedException("Issue employment record does not belong to caller employer scope");
       }
       return;
@@ -372,34 +314,135 @@ final class DataQualityIssueScopeSupport {
       throw new AccessDeniedException("Employers are not authorized to manage enrollment data quality issues");
     }
     if (scope.isStateScoped()) {
-      Integer count = scope.districtId() != null
-          ? jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM training_enrollments te " +
-                  "JOIN training_batches tb ON te.batch_id = tb.batch_id " +
-                  "JOIN training_centers tc ON tb.center_id = tc.center_id " +
-                  "WHERE te.enrollment_id = ? AND tc.state_id = ? AND tc.district_id = ? AND tc.deleted_at IS NULL AND te.deleted_at IS NULL",
-              Integer.class, enrollmentId, scope.stateId(), scope.districtId())
-          : jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM training_enrollments te " +
-                  "JOIN training_batches tb ON te.batch_id = tb.batch_id " +
-                  "JOIN training_centers tc ON tb.center_id = tc.center_id " +
-                  "WHERE te.enrollment_id = ? AND tc.state_id = ? AND tc.deleted_at IS NULL AND te.deleted_at IS NULL",
-              Integer.class, enrollmentId, scope.stateId());
-      if (count == null || count == 0) {
+      if (!matchesEntityStateAndDistrict("BatchEnrollment", enrollmentId, scope.stateId(), scope.districtId(), jdbcTemplate)) {
         throw new AccessDeniedException("Issue enrollment does not belong to caller state scope");
       }
       return;
     }
     if (scope.isProviderScoped()) {
-      Integer count = jdbcTemplate.queryForObject(
-          "SELECT COUNT(*) FROM training_enrollments WHERE enrollment_id = ? AND provider_id = ? AND deleted_at IS NULL",
-          Integer.class, enrollmentId, scope.trainingProviderId());
-      if (count == null || count == 0) {
+      if (!matchesEntityProvider("BatchEnrollment", enrollmentId, scope.trainingProviderId(), jdbcTemplate)) {
         throw new AccessDeniedException("Issue enrollment does not belong to caller training provider scope");
       }
       return;
     }
     throw new AccessDeniedException("Caller lacks authorized tenant scope for this enrollment issue");
+  }
+
+  static boolean matchesEntityStateAndDistrict(
+      String normalizedType,
+      Long entityId,
+      Long stateId,
+      Long districtId,
+      JdbcTemplate jdbcTemplate) {
+    if (normalizedType == null || entityId == null || stateId == null || jdbcTemplate == null) {
+      return false;
+    }
+    Integer count = switch (normalizedType) {
+      case "Trainee" -> districtId != null
+          ? jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM trainees WHERE trainee_id = ? AND state_id = ? AND district_id = ? AND deleted_at IS NULL",
+              Integer.class, entityId, stateId, districtId)
+          : jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM trainees WHERE trainee_id = ? AND state_id = ? AND deleted_at IS NULL",
+              Integer.class, entityId, stateId);
+      case "AttendanceRecord" -> districtId != null
+          ? jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM attendance_records ar " +
+                  "JOIN training_batches tb ON ar.batch_id = tb.batch_id " +
+                  "JOIN training_centers tc ON tb.center_id = tc.center_id " +
+                  "WHERE ar.attendance_id = ? AND tc.state_id = ? AND tc.district_id = ? AND tc.deleted_at IS NULL",
+              Integer.class, entityId, stateId, districtId)
+          : jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM attendance_records ar " +
+                  "JOIN training_batches tb ON ar.batch_id = tb.batch_id " +
+                  "JOIN training_centers tc ON tb.center_id = tc.center_id " +
+                  "WHERE ar.attendance_id = ? AND tc.state_id = ? AND tc.deleted_at IS NULL",
+              Integer.class, entityId, stateId);
+      case "PlacementRecord" -> districtId != null
+          ? jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM placement_records WHERE placement_id = ? AND work_state_id = ? AND work_district_id = ? AND deleted_at IS NULL",
+              Integer.class, entityId, stateId, districtId)
+          : jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM placement_records WHERE placement_id = ? AND work_state_id = ? AND deleted_at IS NULL",
+              Integer.class, entityId, stateId);
+      case "EmploymentRecord" -> districtId != null
+          ? jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM employment_records WHERE employment_id = ? AND work_state_id = ? AND work_district_id = ? AND deleted_at IS NULL",
+              Integer.class, entityId, stateId, districtId)
+          : jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM employment_records WHERE employment_id = ? AND work_state_id = ? AND deleted_at IS NULL",
+              Integer.class, entityId, stateId);
+      case "BatchEnrollment" -> districtId != null
+          ? jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM training_enrollments te " +
+                  "JOIN training_batches tb ON te.batch_id = tb.batch_id " +
+                  "JOIN training_centers tc ON tb.center_id = tc.center_id " +
+                  "WHERE te.enrollment_id = ? AND tc.state_id = ? AND tc.district_id = ? AND tc.deleted_at IS NULL AND te.deleted_at IS NULL",
+              Integer.class, entityId, stateId, districtId)
+          : jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM training_enrollments te " +
+                  "JOIN training_batches tb ON te.batch_id = tb.batch_id " +
+                  "JOIN training_centers tc ON tb.center_id = tc.center_id " +
+                  "WHERE te.enrollment_id = ? AND tc.state_id = ? AND tc.deleted_at IS NULL AND te.deleted_at IS NULL",
+              Integer.class, entityId, stateId);
+      default -> 0;
+    };
+    return count != null && count > 0;
+  }
+
+  static boolean matchesEntityProvider(
+      String normalizedType,
+      Long entityId,
+      Long providerId,
+      JdbcTemplate jdbcTemplate) {
+    if (normalizedType == null || entityId == null || providerId == null || jdbcTemplate == null) {
+      return false;
+    }
+    Integer count = switch (normalizedType) {
+      case "Trainee" -> jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM training_enrollments te " +
+              "JOIN trainees t ON te.trainee_id = t.trainee_id " +
+              "WHERE te.trainee_id = ? AND te.provider_id = ? AND te.deleted_at IS NULL AND t.deleted_at IS NULL",
+          Integer.class, entityId, providerId);
+      case "AttendanceRecord" -> jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM attendance_records ar " +
+              "JOIN training_enrollments te ON ar.enrollment_id = te.enrollment_id " +
+              "WHERE ar.attendance_id = ? AND te.provider_id = ? AND te.deleted_at IS NULL",
+          Integer.class, entityId, providerId);
+      case "PlacementRecord" -> jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM placement_records WHERE placement_id = ? AND provider_id = ? AND deleted_at IS NULL",
+          Integer.class, entityId, providerId);
+      case "EmploymentRecord" -> jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM employment_records er " +
+              "JOIN training_enrollments te ON er.enrollment_id = te.enrollment_id " +
+              "WHERE er.employment_id = ? AND te.provider_id = ? AND te.deleted_at IS NULL AND er.deleted_at IS NULL",
+          Integer.class, entityId, providerId);
+      case "BatchEnrollment" -> jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM training_enrollments WHERE enrollment_id = ? AND provider_id = ? AND deleted_at IS NULL",
+          Integer.class, entityId, providerId);
+      default -> 0;
+    };
+    return count != null && count > 0;
+  }
+
+  static boolean matchesEntityEmployer(
+      String normalizedType,
+      Long entityId,
+      Long employerId,
+      JdbcTemplate jdbcTemplate) {
+    if (normalizedType == null || entityId == null || employerId == null || jdbcTemplate == null) {
+      return false;
+    }
+    Integer count = switch (normalizedType) {
+      case "PlacementRecord" -> jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM placement_records WHERE placement_id = ? AND employer_id = ? AND deleted_at IS NULL",
+          Integer.class, entityId, employerId);
+      case "EmploymentRecord" -> jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM employment_records WHERE employment_id = ? AND employer_id = ? AND deleted_at IS NULL",
+          Integer.class, entityId, employerId);
+      default -> 0;
+    };
+    return count != null && count > 0;
   }
 
   static List<DataQualityIssue> filterIssuesInScope(

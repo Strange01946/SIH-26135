@@ -953,4 +953,220 @@ class DataQualityWorkflowServiceTest {
       assertThat(responses.get(1).id()).isEqualTo(102L);
     }
   }
+
+  @Nested
+  @DisplayName("8. Assignee District & Role-Permission Eligibility Validation")
+  class AssigneeDistrictAndPermissionTests {
+
+    private DataQualityIssueResponse toMockIssueResponse(DataQualityIssue entity) {
+      String statusCode = entity.getDataQualityIssueStatus() != null
+          ? entity.getDataQualityIssueStatus().getStatusCode() : null;
+      return new DataQualityIssueResponse(
+          entity.getId(), 1L, "RULE", "Rule", 1L, "CAT", "Category",
+          1L, "HIGH", "High", 2L, statusCode, statusCode,
+          true, false, 1L, "AUTO", "Auto", entity.getEntityType(), entity.getEntityId(),
+          entity.getIssueSummary(), entity.getDetectedAt(), entity.getAssignedUserId(),
+          entity.getResolvedAt(), entity.getResolvedByUserId(), entity.getResolutionNotes(),
+          entity.getCreatedAt(), entity.getUpdatedAt()
+      );
+    }
+
+    @Test
+    @DisplayName("State admin assigns District A issue to District A officer with system.manage -> accepted")
+    void stateAdminAssignsDistrictIssueToMatchingDistrictOfficer() {
+      User stateCaller = new User();
+      stateCaller.setId(30L);
+      stateCaller.setStateId(1L);
+      mockUserAuthentication(stateCaller, "ROLE_state_admin", "system.manage");
+
+      User districtAOfficer = new User();
+      districtAOfficer.setId(31L);
+      districtAOfficer.setStateId(1L);
+      districtAOfficer.setDistrictId(10L);
+      districtAOfficer.setUserStatusId(1L);
+
+      DataQualityIssue issue = createTestIssue(1L, openStatus);
+      issue.setEntityType("Trainee");
+      issue.setEntityId(100L);
+
+      when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
+      when(userRepository.findById(31L)).thenReturn(Optional.of(districtAOfficer));
+      when(traineeRepository.findByUserId(31L)).thenReturn(Optional.empty());
+      when(jdbcTemplate.queryForList(anyString(), eq(String.class), eq(31L)))
+          .thenReturn(List.of("district_officer"));
+      when(jdbcTemplate.queryForObject(contains("district_id = ?"), eq(Integer.class), eq(100L), eq(1L), eq(10L)))
+          .thenReturn(1);
+      when(refDataQualityIssueStatusRepository.findByStatusCode("ASSIGNED")).thenReturn(Optional.of(assignedStatus));
+      when(dataQualityIssueRepository.save(any(DataQualityIssue.class))).thenAnswer(inv -> inv.getArgument(0));
+      when(issueMapper.toResponse(any(DataQualityIssue.class)))
+          .thenAnswer(inv -> toMockIssueResponse(inv.getArgument(0)));
+
+      DataQualityIssueResponse response = workflowService.assignIssue(1L, new AssignDataQualityIssueRequest(31L, "District A review"));
+      assertThat(response.assignedUserId()).isEqualTo(31L);
+      assertThat(response.dataQualityIssueStatusCode()).isEqualTo("ASSIGNED");
+    }
+
+    @Test
+    @DisplayName("State admin assigns District A issue to District B officer in same state -> rejected")
+    void stateAdminAssignsDistrictIssueToMismatchedDistrictOfficerRejected() {
+      User stateCaller = new User();
+      stateCaller.setId(30L);
+      stateCaller.setStateId(1L);
+      mockUserAuthentication(stateCaller, "ROLE_state_admin", "system.manage");
+
+      User districtBOfficer = new User();
+      districtBOfficer.setId(32L);
+      districtBOfficer.setStateId(1L);
+      districtBOfficer.setDistrictId(20L);
+      districtBOfficer.setUserStatusId(1L);
+
+      DataQualityIssue issue = createTestIssue(1L, openStatus);
+      issue.setEntityType("Trainee");
+      issue.setEntityId(100L);
+
+      when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
+      when(userRepository.findById(32L)).thenReturn(Optional.of(districtBOfficer));
+      when(traineeRepository.findByUserId(32L)).thenReturn(Optional.empty());
+      when(jdbcTemplate.queryForList(anyString(), eq(String.class), eq(32L)))
+          .thenReturn(List.of("district_officer"));
+      when(jdbcTemplate.queryForObject(contains("district_id = ?"), eq(Integer.class), eq(100L), eq(1L), eq(20L)))
+          .thenReturn(0);
+
+      assertThatThrownBy(() -> workflowService.assignIssue(1L, new AssignDataQualityIssueRequest(32L)))
+          .isInstanceOf(BadRequestException.class)
+          .extracting("errorCode")
+          .isEqualTo("ASSIGNEE_SCOPE_MISMATCH");
+
+      verify(dataQualityIssueRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("State admin assigns issue to user without workflow-management authority (system.manage) -> rejected")
+    void stateAdminAssignsIssueToUserWithoutSystemManageRejected() {
+      User stateCaller = new User();
+      stateCaller.setId(30L);
+      stateCaller.setStateId(1L);
+      mockUserAuthentication(stateCaller, "ROLE_state_admin", "system.manage");
+
+      User analystUser = new User();
+      analystUser.setId(33L);
+      analystUser.setStateId(1L);
+      analystUser.setDistrictId(10L);
+      analystUser.setUserStatusId(1L);
+
+      DataQualityIssue issue = createTestIssue(1L, openStatus);
+      issue.setEntityType("Trainee");
+      issue.setEntityId(100L);
+
+      when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
+      when(userRepository.findById(33L)).thenReturn(Optional.of(analystUser));
+      when(traineeRepository.findByUserId(33L)).thenReturn(Optional.empty());
+      when(jdbcTemplate.queryForObject(contains("system.manage"), eq(Integer.class), eq(33L))).thenReturn(0);
+
+      assertThatThrownBy(() -> workflowService.assignIssue(1L, new AssignDataQualityIssueRequest(33L)))
+          .isInstanceOf(BadRequestException.class)
+          .extracting("errorCode")
+          .isEqualTo("INVALID_ASSIGNEE");
+
+      verify(dataQualityIssueRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Valid provider and employer assignments continue to succeed")
+    void validProviderAndEmployerAssignmentsSucceed() {
+      User providerCaller = new User();
+      providerCaller.setId(40L);
+      providerCaller.setTrainingProviderId(300L);
+      mockUserAuthentication(providerCaller, "ROLE_training_provider", "system.manage");
+
+      User providerAssignee = new User();
+      providerAssignee.setId(41L);
+      providerAssignee.setTrainingProviderId(300L);
+      providerAssignee.setUserStatusId(1L);
+
+      DataQualityIssue traineeIssue = createTestIssue(1L, openStatus);
+      traineeIssue.setEntityType("Trainee");
+      traineeIssue.setEntityId(100L);
+
+      when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(traineeIssue));
+      when(userRepository.findById(41L)).thenReturn(Optional.of(providerAssignee));
+      when(traineeRepository.findByUserId(41L)).thenReturn(Optional.empty());
+      when(jdbcTemplate.queryForList(anyString(), eq(String.class), eq(41L)))
+          .thenReturn(List.of("training_provider"));
+      when(refDataQualityIssueStatusRepository.findByStatusCode("ASSIGNED")).thenReturn(Optional.of(assignedStatus));
+      when(dataQualityIssueRepository.save(any(DataQualityIssue.class))).thenAnswer(inv -> inv.getArgument(0));
+      when(issueMapper.toResponse(any(DataQualityIssue.class)))
+          .thenAnswer(inv -> toMockIssueResponse(inv.getArgument(0)));
+
+      DataQualityIssueResponse prvResp = workflowService.assignIssue(1L, new AssignDataQualityIssueRequest(41L));
+      assertThat(prvResp.assignedUserId()).isEqualTo(41L);
+
+      User employerCaller = new User();
+      employerCaller.setId(50L);
+      employerCaller.setEmployerId(400L);
+      mockUserAuthentication(employerCaller, "ROLE_employer", "system.manage");
+
+      User employerAssignee = new User();
+      employerAssignee.setId(51L);
+      employerAssignee.setEmployerId(400L);
+      employerAssignee.setUserStatusId(1L);
+
+      DataQualityIssue placementIssue = createTestIssue(2L, openStatus);
+      placementIssue.setEntityType("PlacementRecord");
+      placementIssue.setEntityId(200L);
+
+      when(dataQualityIssueRepository.findById(2L)).thenReturn(Optional.of(placementIssue));
+      when(userRepository.findById(51L)).thenReturn(Optional.of(employerAssignee));
+      when(traineeRepository.findByUserId(51L)).thenReturn(Optional.empty());
+      when(jdbcTemplate.queryForList(anyString(), eq(String.class), eq(51L)))
+          .thenReturn(List.of("employer"));
+
+      DataQualityIssueResponse empResp = workflowService.assignIssue(2L, new AssignDataQualityIssueRequest(51L));
+      assertThat(empResp.assignedUserId()).isEqualTo(51L);
+    }
+
+    @Test
+    @DisplayName("Nationwide admin cannot bypass district eligibility while verified nationwide assignment is preserved")
+    void nationwideAdminCannotBypassDistrictEligibilityWhileNationwideAssignmentPreserved() {
+      mockAdminAuthentication();
+
+      User districtBOfficer = new User();
+      districtBOfficer.setId(32L);
+      districtBOfficer.setStateId(1L);
+      districtBOfficer.setDistrictId(20L);
+      districtBOfficer.setUserStatusId(1L);
+
+      DataQualityIssue issue = createTestIssue(1L, openStatus);
+      issue.setEntityType("Trainee");
+      issue.setEntityId(100L);
+
+      when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
+      when(userRepository.findById(32L)).thenReturn(Optional.of(districtBOfficer));
+      when(traineeRepository.findByUserId(32L)).thenReturn(Optional.empty());
+      when(jdbcTemplate.queryForList(anyString(), eq(String.class), eq(32L)))
+          .thenReturn(List.of("district_officer"));
+      when(jdbcTemplate.queryForObject(contains("district_id = ?"), eq(Integer.class), eq(100L), eq(1L), eq(20L)))
+          .thenReturn(0);
+
+      assertThatThrownBy(() -> workflowService.assignIssue(1L, new AssignDataQualityIssueRequest(32L)))
+          .isInstanceOf(BadRequestException.class)
+          .extracting("errorCode")
+          .isEqualTo("ASSIGNEE_SCOPE_MISMATCH");
+
+      User nationwideAssignee = new User();
+      nationwideAssignee.setId(60L);
+      nationwideAssignee.setUserStatusId(1L);
+      when(userRepository.findById(60L)).thenReturn(Optional.of(nationwideAssignee));
+      when(traineeRepository.findByUserId(60L)).thenReturn(Optional.empty());
+      when(jdbcTemplate.queryForList(anyString(), eq(String.class), eq(60L)))
+          .thenReturn(List.of("super_admin"));
+      when(refDataQualityIssueStatusRepository.findByStatusCode("ASSIGNED")).thenReturn(Optional.of(assignedStatus));
+      when(dataQualityIssueRepository.save(any(DataQualityIssue.class))).thenAnswer(inv -> inv.getArgument(0));
+      when(issueMapper.toResponse(any(DataQualityIssue.class)))
+          .thenAnswer(inv -> toMockIssueResponse(inv.getArgument(0)));
+
+      DataQualityIssueResponse nwResp = workflowService.assignIssue(1L, new AssignDataQualityIssueRequest(60L));
+      assertThat(nwResp.assignedUserId()).isEqualTo(60L);
+    }
+  }
 }

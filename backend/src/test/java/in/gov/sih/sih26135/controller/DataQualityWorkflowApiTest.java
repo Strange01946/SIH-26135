@@ -155,6 +155,22 @@ class DataQualityWorkflowApiTest {
         validStateId
     );
 
+    // Grant active workflow management role ('system.manage') to test reviewers (9981, 9983) and super_admin to 9980
+    jdbcTemplate.update(
+        "INSERT INTO roles (role_id, role_code, role_name, is_system_role, lifecycle_status_id, created_at, updated_at) " +
+            "VALUES (9981, 'WF_TEST_MGR', 'WF Test Manager', 0, 1, NOW(), NOW())"
+    );
+    jdbcTemplate.update(
+        "INSERT INTO role_permissions (role_id, permission_id) " +
+            "SELECT 9981, permission_id FROM permissions WHERE permission_code = 'system.manage'"
+    );
+    jdbcTemplate.update(
+        "INSERT INTO user_roles (user_id, role_id, assigned_at) " +
+            "SELECT 9980, role_id, NOW() FROM roles WHERE role_code = 'super_admin' LIMIT 1"
+    );
+    jdbcTemplate.update("INSERT INTO user_roles (user_id, role_id, assigned_at) VALUES (9981, 9981, NOW())");
+    jdbcTemplate.update("INSERT INTO user_roles (user_id, role_id, assigned_at) VALUES (9983, 9981, NOW())");
+
     testUserId = 9980L;
     testReviewerUserId = 9981L;
 
@@ -199,6 +215,9 @@ class DataQualityWorkflowApiTest {
       jdbcTemplate.update("DELETE FROM data_quality_issue_events WHERE changed_by_user_id IN (9980, 9981, 9982, 9983, 9984)");
       jdbcTemplate.update("DELETE FROM data_quality_issues WHERE issue_summary LIKE 'WF-TEST-%' OR issue_summary = 'Re-detected salary discrepancy'");
       jdbcTemplate.update("DELETE FROM trainees WHERE trainee_id = 9985");
+      jdbcTemplate.update("DELETE FROM user_roles WHERE user_id IN (9980, 9981, 9982, 9983, 9984)");
+      jdbcTemplate.update("DELETE FROM role_permissions WHERE role_id = 9981");
+      jdbcTemplate.update("DELETE FROM roles WHERE role_id = 9981");
       jdbcTemplate.update("DELETE FROM users WHERE user_id IN (9980, 9981, 9982, 9983, 9984)");
       jdbcTemplate.update("DELETE FROM districts WHERE district_id = 9985");
       jdbcTemplate.update("DELETE FROM states WHERE state_id IN (9985, 9986)");

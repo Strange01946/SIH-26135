@@ -26,6 +26,7 @@ import in.gov.sih.sih26135.service.DataQualityWorkflowService;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -56,6 +57,20 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
   public static final String STATUS_RESOLVED = "RESOLVED";
   public static final String STATUS_DISMISSED = "DISMISSED";
   public static final String STATUS_REOPENED = "REOPENED";
+
+  private static final Set<String> NATIONWIDE_ADMIN_ROLE_CODES = Set.of(
+      "super_admin",
+      "government_admin"
+  );
+
+  private static final Set<String> RESTRICTED_ASSIGNEE_ROLE_CODES = Set.of(
+      "training_provider",
+      "employer",
+      "trainee",
+      "district_officer",
+      "government_officer",
+      "state_admin"
+  );
 
   private final DataQualityIssueRepository dataQualityIssueRepository;
   private final DataQualityIssueEventRepository dataQualityIssueEventRepository;
@@ -419,203 +434,241 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
       throw new BadRequestException("Trainees cannot be assigned data quality issues", "INVALID_ASSIGNEE");
     }
 
+    Set<String> assigneeRoles = loadActiveRoleCodes(assignee.getId());
+    if (assigneeRoles.contains("trainee")) {
+      throw new BadRequestException("Trainees cannot be assigned data quality issues", "INVALID_ASSIGNEE");
+    }
+
+    boolean isNationwideAdminAssignee = validateAssigneeTenantAndRoleConsistency(assignee, assigneeRoles);
+    validateAssigneeWorkflowPermission(assignee);
+    validateAssigneeCallerScope(assignee, caller, isNationwideAdminAssignee);
+    validateAssigneeAgainstIssueEntity(assignee, issue, isNationwideAdminAssignee);
+  }
+
+  private void validateAssigneeWorkflowPermission(User assignee) {
+    Integer managePermCount = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM user_roles ur " +
+            "JOIN roles r ON ur.role_id = r.role_id " +
+            "JOIN role_permissions rp ON r.role_id = rp.role_id " +
+            "JOIN permissions p ON rp.permission_id = p.permission_id " +
+            "WHERE ur.user_id = ? AND r.deleted_at IS NULL " +
+            "AND (r.lifecycle_status_id IS NULL OR r.lifecycle_status_id = 1) " +
+            "AND p.permission_code = 'system.manage'",
+        Integer.class, assignee.getId());
+    if (managePermCount == null || managePermCount == 0) {
+      throw new BadRequestException(
+          "Assignee does not have workflow management authority (system.manage)",
+          "INVALID_ASSIGNEE");
+    }
+  }
+
+  private Set<String> loadActiveRoleCodes(Long userId) {
+    List<String> rawRoles = jdbcTemplate.queryForList(
+        "SELECT r.role_code FROM user_roles ur " +
+            "JOIN roles r ON ur.role_id = r.role_id " +
+            "WHERE ur.user_id = ? AND r.deleted_at IS NULL " +
+            "AND (r.lifecycle_status_id IS NULL OR r.lifecycle_status_id = 1)",
+        String.class, userId);
+    if (rawRoles == null || rawRoles.isEmpty()) {
+      return Set.of();
+    }
+    return rawRoles.stream()
+        .filter(Objects::nonNull)
+        .map(code -> code.trim().toLowerCase(Locale.ROOT))
+        .map(code -> code.startsWith("role_") ? code.substring(5) : code)
+        .filter(code -> !code.isEmpty())
+        .collect(Collectors.toSet());
+  }
+
+  private boolean validateAssigneeTenantAndRoleConsistency(User assignee, Set<String> assigneeRoles) {
     Long aStateId = assignee.getStateId();
+    Long aDistrictId = assignee.getDistrictId();
     Long aProviderId = assignee.getTrainingProviderId();
     Long aEmployerId = assignee.getEmployerId();
 
-    // Reject missing or ambiguous assignee scope
-    if (aStateId == null && aProviderId == null && aEmployerId == null) {
+    boolean hasNationwideRole = assigneeRoles.stream().anyMatch(NATIONWIDE_ADMIN_ROLE_CODES::contains);
+    boolean hasRestrictedRole = assigneeRoles.stream().anyMatch(RESTRICTED_ASSIGNEE_ROLE_CODES::contains);
+    boolean isNationwideAdminAssignee = aStateId == null && aDistrictId == null && aProviderId == null
+        && aEmployerId == null && hasNationwideRole && !hasRestrictedRole;
+
+    if (aStateId == null && aDistrictId == null && aProviderId == null && aEmployerId == null
+        && !isNationwideAdminAssignee) {
       throw new BadRequestException("Assignee has missing or ambiguous tenant scope", "ASSIGNEE_SCOPE_MISMATCH");
     }
     if (aProviderId != null && aEmployerId != null) {
       throw new BadRequestException("Assignee has conflicting tenant scope", "ASSIGNEE_SCOPE_MISMATCH");
     }
 
-    // Cross-tenant check against caller (when caller is not nationwide admin)
-    if (!scopeValidator.isNationwideAdmin()) {
-      if (caller.getStateId() != null) {
-        if (aStateId != null && !aStateId.equals(caller.getStateId())) {
-          throw new BadRequestException("Assignee does not belong to caller state scope", "ASSIGNEE_SCOPE_MISMATCH");
-        }
-        if (aProviderId != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM training_providers WHERE provider_id = ? AND state_id = ?",
-              Integer.class, aProviderId, caller.getStateId());
-          if (count == null || count == 0) {
-            throw new BadRequestException("Assignee training provider is not located in caller state", "ASSIGNEE_SCOPE_MISMATCH");
-          }
-        }
-        if (aEmployerId != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM employers WHERE employer_id = ? AND state_id = ?",
-              Integer.class, aEmployerId, caller.getStateId());
-          if (count == null || count == 0) {
-            throw new BadRequestException("Assignee employer is not located in caller state", "ASSIGNEE_SCOPE_MISMATCH");
-          }
-        }
-      } else if (caller.getTrainingProviderId() != null) {
-        if (aProviderId == null || !aProviderId.equals(caller.getTrainingProviderId())) {
-          throw new BadRequestException("Assignee does not belong to caller training provider scope", "ASSIGNEE_SCOPE_MISMATCH");
-        }
-      } else if (caller.getEmployerId() != null) {
-        if (aEmployerId == null || !aEmployerId.equals(caller.getEmployerId())) {
-          throw new BadRequestException("Assignee does not belong to caller employer scope", "ASSIGNEE_SCOPE_MISMATCH");
-        }
+    if (assigneeRoles.contains("district_officer") && aDistrictId == null) {
+      throw new BadRequestException("District officer assignee must have district scope", "ASSIGNEE_SCOPE_MISMATCH");
+    }
+    if (assigneeRoles.contains("training_provider") && aProviderId == null) {
+      throw new BadRequestException("Training provider assignee must have training provider scope", "ASSIGNEE_SCOPE_MISMATCH");
+    }
+    if (assigneeRoles.contains("employer") && aEmployerId == null) {
+      throw new BadRequestException("Employer assignee must have employer scope", "ASSIGNEE_SCOPE_MISMATCH");
+    }
+    if ((assigneeRoles.contains("state_admin") || assigneeRoles.contains("government_officer")) && aStateId == null) {
+      throw new BadRequestException("Government officer assignee must have state scope", "ASSIGNEE_SCOPE_MISMATCH");
+    }
+    return isNationwideAdminAssignee;
+  }
+
+  private void validateAssigneeCallerScope(User assignee, User caller, boolean isNationwideAdminAssignee) {
+    if (scopeValidator.isNationwideAdmin()) {
+      return;
+    }
+    if (isNationwideAdminAssignee) {
+      throw new BadRequestException(
+          "Non-nationwide caller cannot assign issues to a nationwide administrator",
+          "ASSIGNEE_SCOPE_MISMATCH");
+    }
+
+    Long aStateId = assignee.getStateId();
+    Long aDistrictId = assignee.getDistrictId();
+    Long aProviderId = assignee.getTrainingProviderId();
+    Long aEmployerId = assignee.getEmployerId();
+
+    if (caller.getDistrictId() != null) {
+      if (aDistrictId != null && !aDistrictId.equals(caller.getDistrictId())) {
+        throw new BadRequestException("Assignee does not belong to caller district scope", "ASSIGNEE_SCOPE_MISMATCH");
+      }
+      if (aDistrictId == null && aProviderId == null && aEmployerId == null) {
+        throw new BadRequestException("District caller cannot assign issue outside district scope", "ASSIGNEE_SCOPE_MISMATCH");
       }
     }
 
-    // Validate assignee eligibility against the actual issue entity and tenant ownership
+    if (caller.getStateId() != null) {
+      if (aStateId != null && !aStateId.equals(caller.getStateId())) {
+        throw new BadRequestException("Assignee does not belong to caller state scope", "ASSIGNEE_SCOPE_MISMATCH");
+      }
+      if (aStateId == null && aDistrictId != null) {
+        Integer count = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM districts WHERE district_id = ? AND state_id = ? AND deleted_at IS NULL",
+            Integer.class, aDistrictId, caller.getStateId());
+        if (count == null || count == 0) {
+          throw new BadRequestException("Assignee district does not belong to caller state scope", "ASSIGNEE_SCOPE_MISMATCH");
+        }
+      }
+      if (aProviderId != null) {
+        Integer count = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM training_providers WHERE provider_id = ? AND state_id = ?",
+            Integer.class, aProviderId, caller.getStateId());
+        if (count == null || count == 0) {
+          throw new BadRequestException("Assignee training provider is not located in caller state", "ASSIGNEE_SCOPE_MISMATCH");
+        }
+      }
+      if (aEmployerId != null) {
+        Integer count = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM employers WHERE employer_id = ? AND state_id = ?",
+            Integer.class, aEmployerId, caller.getStateId());
+        if (count == null || count == 0) {
+          throw new BadRequestException("Assignee employer is not located in caller state", "ASSIGNEE_SCOPE_MISMATCH");
+        }
+      }
+    } else if (caller.getTrainingProviderId() != null) {
+      if (aProviderId == null || !aProviderId.equals(caller.getTrainingProviderId())) {
+        throw new BadRequestException("Assignee does not belong to caller training provider scope", "ASSIGNEE_SCOPE_MISMATCH");
+      }
+    } else if (caller.getEmployerId() != null) {
+      if (aEmployerId == null || !aEmployerId.equals(caller.getEmployerId())) {
+        throw new BadRequestException("Assignee does not belong to caller employer scope", "ASSIGNEE_SCOPE_MISMATCH");
+      }
+    }
+  }
+
+  private void validateAssigneeAgainstIssueEntity(
+      User assignee, DataQualityIssue issue, boolean isNationwideAdminAssignee) {
     String entityType = issue.getEntityType();
     Long entityId = issue.getEntityId();
     if (entityType == null || entityId == null) {
-      throw new BadRequestException("Issue entity type and identifier are required to validate assignee eligibility", "INVALID_ISSUE");
+      throw new BadRequestException(
+          "Issue entity type and identifier are required to validate assignee eligibility",
+          "INVALID_ISSUE");
     }
 
-    switch (entityType) {
-      case "Trainee" -> {
-        if (aEmployerId != null && aStateId == null && aProviderId == null) {
-          throw new BadRequestException("Employers cannot be assigned trainee data quality issues", "ASSIGNEE_SCOPE_MISMATCH");
-        }
-        if (aStateId != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM trainees WHERE trainee_id = ? AND state_id = ? AND deleted_at IS NULL",
-              Integer.class, entityId, aStateId);
-          if (count == null || count == 0) {
-            throw new BadRequestException("Assignee state scope does not match issue trainee state", "ASSIGNEE_SCOPE_MISMATCH");
-          }
-        }
-        if (aProviderId != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM training_enrollments WHERE trainee_id = ? AND provider_id = ?",
-              Integer.class, entityId, aProviderId);
-          if (count == null || count == 0) {
-            throw new BadRequestException("Assignee training provider does not match issue trainee enrollments", "ASSIGNEE_SCOPE_MISMATCH");
-          }
-        }
-      }
-      case "AttendanceRecord" -> {
-        if (aEmployerId != null && aStateId == null && aProviderId == null) {
-          throw new BadRequestException("Employers cannot be assigned attendance data quality issues", "ASSIGNEE_SCOPE_MISMATCH");
-        }
-        if (aStateId != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM attendance_records ar " +
-                  "JOIN training_batches tb ON ar.batch_id = tb.batch_id " +
-                  "JOIN training_centers tc ON tb.center_id = tc.center_id " +
-                  "WHERE ar.attendance_id = ? AND tc.state_id = ?",
-              Integer.class, entityId, aStateId);
-          if (count == null || count == 0) {
-            throw new BadRequestException("Assignee state scope does not match issue attendance record", "ASSIGNEE_SCOPE_MISMATCH");
-          }
-        }
-        if (aProviderId != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM attendance_records ar " +
-                  "JOIN training_enrollments te ON ar.enrollment_id = te.enrollment_id " +
-                  "WHERE ar.attendance_id = ? AND te.provider_id = ?",
-              Integer.class, entityId, aProviderId);
-          if (count == null || count == 0) {
-            throw new BadRequestException("Assignee training provider does not match issue attendance record", "ASSIGNEE_SCOPE_MISMATCH");
-          }
-        }
-      }
-      case "PlacementRecord" -> {
-        if (aStateId != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM placement_records WHERE placement_id = ? AND work_state_id = ? AND deleted_at IS NULL",
-              Integer.class, entityId, aStateId);
-          if (count == null || count == 0) {
-            throw new BadRequestException("Assignee state scope does not match issue placement record", "ASSIGNEE_SCOPE_MISMATCH");
-          }
-        }
-        if (aProviderId != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM placement_records WHERE placement_id = ? AND provider_id = ? AND deleted_at IS NULL",
-              Integer.class, entityId, aProviderId);
-          if (count == null || count == 0) {
-            throw new BadRequestException("Assignee training provider does not match issue placement record", "ASSIGNEE_SCOPE_MISMATCH");
-          }
-        }
-        if (aEmployerId != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM placement_records WHERE placement_id = ? AND employer_id = ? AND deleted_at IS NULL",
-              Integer.class, entityId, aEmployerId);
-          if (count == null || count == 0) {
-            throw new BadRequestException("Assignee employer does not match issue placement record", "ASSIGNEE_SCOPE_MISMATCH");
-          }
-        }
-      }
-      case "EmploymentRecord" -> {
-        if (aStateId != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM employment_records WHERE employment_id = ? AND work_state_id = ? AND deleted_at IS NULL",
-              Integer.class, entityId, aStateId);
-          if (count == null || count == 0) {
-            throw new BadRequestException("Assignee state scope does not match issue employment record", "ASSIGNEE_SCOPE_MISMATCH");
-          }
-        }
-        if (aProviderId != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM employment_records er " +
-                  "JOIN training_enrollments te ON er.enrollment_id = te.enrollment_id " +
-                  "WHERE er.employment_id = ? AND te.provider_id = ? AND er.deleted_at IS NULL",
-              Integer.class, entityId, aProviderId);
-          if (count == null || count == 0) {
-            throw new BadRequestException("Assignee training provider does not match issue employment record", "ASSIGNEE_SCOPE_MISMATCH");
-          }
-        }
-        if (aEmployerId != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM employment_records WHERE employment_id = ? AND employer_id = ? AND deleted_at IS NULL",
-              Integer.class, entityId, aEmployerId);
-          if (count == null || count == 0) {
-            throw new BadRequestException("Assignee employer does not match issue employment record", "ASSIGNEE_SCOPE_MISMATCH");
-          }
-        }
-      }
-      case "BatchEnrollment", "TrainingEnrollment" -> {
-        if (aEmployerId != null && aStateId == null && aProviderId == null) {
-          throw new BadRequestException("Employers cannot be assigned enrollment data quality issues", "ASSIGNEE_SCOPE_MISMATCH");
-        }
-        if (aStateId != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM training_enrollments te " +
-                  "JOIN training_batches tb ON te.batch_id = tb.batch_id " +
-                  "JOIN training_centers tc ON tb.center_id = tc.center_id " +
-                  "WHERE te.enrollment_id = ? AND tc.state_id = ?",
-              Integer.class, entityId, aStateId);
-          if (count == null || count == 0) {
-            throw new BadRequestException("Assignee state scope does not match issue enrollment record", "ASSIGNEE_SCOPE_MISMATCH");
-          }
-        }
-        if (aProviderId != null) {
-          Integer count = jdbcTemplate.queryForObject(
-              "SELECT COUNT(*) FROM training_enrollments WHERE enrollment_id = ? AND provider_id = ?",
-              Integer.class, entityId, aProviderId);
-          if (count == null || count == 0) {
-            throw new BadRequestException("Assignee training provider does not match issue enrollment record", "ASSIGNEE_SCOPE_MISMATCH");
-          }
-        }
-      }
-      default -> {
-        throw new BadRequestException("Unsupported entity type for assignee validation: " + entityType, "INVALID_ENTITY_TYPE");
-      }
+    String normalizedType;
+    try {
+      normalizedType = DataQualityIssueScopeSupport.normalizeEntityType(entityType);
+    } catch (BadRequestException e) {
+      throw new BadRequestException("Unsupported entity type for assignee validation: " + entityType, "INVALID_ENTITY_TYPE");
     }
+
+    if (isNationwideAdminAssignee) {
+      return;
+    }
+
+    Long aStateId = assignee.getStateId();
+    Long aDistrictId = assignee.getDistrictId();
+    Long aProviderId = assignee.getTrainingProviderId();
+    Long aEmployerId = assignee.getEmployerId();
+
+    boolean supportsEmployer = "PlacementRecord".equals(normalizedType) || "EmploymentRecord".equals(normalizedType);
+    if (!supportsEmployer && aEmployerId != null && aStateId == null && aDistrictId == null && aProviderId == null) {
+      String label = switch (normalizedType) {
+        case "Trainee" -> "trainee";
+        case "AttendanceRecord" -> "attendance";
+        case "TrainingEnrollment" -> "enrollment";
+        default -> normalizedType.toLowerCase(Locale.ROOT);
+      };
+      throw new BadRequestException(
+          "Employers cannot be assigned " + label + " data quality issues",
+          "ASSIGNEE_SCOPE_MISMATCH");
+    }
+
+    if ((aStateId != null || aDistrictId != null)
+        && !DataQualityIssueScopeSupport.matchesEntityStateAndDistrict(
+            normalizedType, entityId, aStateId, aDistrictId, jdbcTemplate)) {
+      if ("Trainee".equals(normalizedType) && aDistrictId == null) {
+        throw new BadRequestException(
+            "Assignee state scope does not match issue trainee state",
+            "ASSIGNEE_SCOPE_MISMATCH");
+      }
+      throw new BadRequestException(
+          "Assignee state or district scope does not match issue " + entityScopeLabel(normalizedType),
+          "ASSIGNEE_SCOPE_MISMATCH");
+    }
+
+    if (aProviderId != null
+        && !DataQualityIssueScopeSupport.matchesEntityProvider(normalizedType, entityId, aProviderId, jdbcTemplate)) {
+      String providerTarget = "Trainee".equals(normalizedType)
+          ? "issue trainee enrollments"
+          : "issue " + entityScopeLabel(normalizedType);
+      throw new BadRequestException(
+          "Assignee training provider does not match " + providerTarget,
+          "ASSIGNEE_SCOPE_MISMATCH");
+    }
+
+    if (aEmployerId != null && supportsEmployer
+        && !DataQualityIssueScopeSupport.matchesEntityEmployer(normalizedType, entityId, aEmployerId, jdbcTemplate)) {
+      throw new BadRequestException(
+          "Assignee employer does not match issue " + entityScopeLabel(normalizedType),
+          "ASSIGNEE_SCOPE_MISMATCH");
+    }
+  }
+
+  private String entityScopeLabel(String normalizedType) {
+    return switch (normalizedType) {
+      case "Trainee" -> "trainee state or district";
+      case "AttendanceRecord" -> "attendance record";
+      case "PlacementRecord" -> "placement record";
+      case "EmploymentRecord" -> "employment record";
+      case "TrainingEnrollment" -> "enrollment record";
+      default -> normalizedType;
+    };
   }
 
   private boolean isUserTrainee(User user) {
     if (traineeRepository.findByUserId(user.getId()).isPresent()) {
       return true;
     }
-    try {
-      Integer count = jdbcTemplate.queryForObject(
-          "SELECT COUNT(*) FROM user_roles ur JOIN ref_roles r ON ur.role_id = r.role_id " +
-              "WHERE ur.user_id = ? AND r.role_code = 'ROLE_trainee'",
-          Integer.class, user.getId());
-      return count != null && count > 0;
-    } catch (Exception e) {
-      return false;
-    }
+    Integer count = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM user_roles ur JOIN roles r ON ur.role_id = r.role_id " +
+            "WHERE ur.user_id = ? AND r.deleted_at IS NULL " +
+            "AND (r.lifecycle_status_id IS NULL OR r.lifecycle_status_id = 1) " +
+            "AND (r.role_code = 'trainee' OR r.role_code = 'ROLE_trainee')",
+        Integer.class, user.getId());
+    return count != null && count > 0;
   }
 
   private void createAndAppendEvent(
