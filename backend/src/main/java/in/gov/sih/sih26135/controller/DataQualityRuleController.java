@@ -1,19 +1,23 @@
 package in.gov.sih.sih26135.controller;
 
-import org.springframework.validation.annotation.Validated;
-import jakarta.validation.constraints.Positive;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateDataQualityRuleRequest;
+import in.gov.sih.sih26135.dto.request.DataQualityScanRequest;
 import in.gov.sih.sih26135.dto.request.UpdateDataQualityRuleRequest;
+import in.gov.sih.sih26135.dto.response.DataQualityRuleExecutionSummary;
 import in.gov.sih.sih26135.dto.response.DataQualityRuleResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.response.ApiResponse;
+import in.gov.sih.sih26135.service.DataQualityEngineService;
 import in.gov.sih.sih26135.service.DataQualityRuleService;
 import jakarta.servlet.http.HttpServletRequest;
-import java.util.List;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Positive;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,25 +27,30 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.security.access.prepost.PreAuthorize;
+
+import java.util.List;
 
 /**
- * REST controller for managing Data Quality Rule domain resources.
+ * REST controller for managing Data Quality Rule domain resources and automated anomaly scanning.
  *
- * <p>Base Route: /api/v1/data-quality-rules
- * Consumes: CreateDataQualityRuleRequest, UpdateDataQualityRuleRequest
- * Produces: DataQualityRuleResponse enveloped in ApiResponse
+ * <p>Base Routes: /api/v1/data-quality-rules, /api/v1/data-quality
+ * Consumes: CreateDataQualityRuleRequest, UpdateDataQualityRuleRequest, DataQualityScanRequest
+ * Produces: DataQualityRuleResponse, DataQualityRuleExecutionSummary enveloped in ApiResponse
  */
 @Validated
 @RestController
-@RequestMapping("/api/v1/data-quality-rules")
+@RequestMapping({"/api/v1/data-quality-rules", "/api/v1/data-quality"})
 @PreAuthorize("hasAnyAuthority('audit.read', 'system.manage')")
 public class DataQualityRuleController {
 
   private final DataQualityRuleService dataQualityRuleService;
+  private final DataQualityEngineService dataQualityEngineService;
 
-  public DataQualityRuleController(DataQualityRuleService dataQualityRuleService) {
+  public DataQualityRuleController(
+      DataQualityRuleService dataQualityRuleService,
+      @Autowired(required = false) DataQualityEngineService dataQualityEngineService) {
     this.dataQualityRuleService = dataQualityRuleService;
+    this.dataQualityEngineService = dataQualityEngineService;
   }
 
   /**
@@ -192,6 +201,22 @@ public class DataQualityRuleController {
   public ResponseEntity<ApiResponse<Void>> deleteRule(@PathVariable @Positive Long id) {
     dataQualityRuleService.deleteRule(id);
     return ResponseEntity.ok(ApiResponse.success("Data quality rule deleted successfully"));
+  }
+
+  /**
+   * Initiates an automated data quality scan across domain records.
+   *
+   * @param request optional scan filter and target scope criteria
+   * @return 200 OK with list of execution summaries per evaluated rule
+   */
+  @PostMapping("/scan")
+  public ResponseEntity<ApiResponse<List<DataQualityRuleExecutionSummary>>> triggerScan(
+      @Valid @RequestBody(required = false) DataQualityScanRequest request) {
+    if (dataQualityEngineService == null) {
+      return ResponseEntity.ok(ApiResponse.ok(List.of()));
+    }
+    List<DataQualityRuleExecutionSummary> summaries = dataQualityEngineService.executeScan(request);
+    return ResponseEntity.ok(ApiResponse.ok(summaries));
   }
 
   private void validateOnlyQueryParameter(HttpServletRequest request, String allowedParam) {

@@ -79,6 +79,7 @@ class FilterSearchSortingSecurityTest {
         1L,
         "admin",
         List.of(
+            "ROLE_super_admin",
             "trainee.read", "trainee.manage",
             "employer.read", "employer.manage",
             "course.read", "course.manage",

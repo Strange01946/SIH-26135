@@ -89,6 +89,7 @@ class OperationalLogEventPaginationTest {
         1L,
         "admin",
         List.of(
+            "ROLE_super_admin",
             "placement.manage",
             "employment.manage",
             "verification.manage",
