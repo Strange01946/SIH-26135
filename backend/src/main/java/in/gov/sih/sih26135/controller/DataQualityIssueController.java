@@ -3,7 +3,14 @@ package in.gov.sih.sih26135.controller;
 import org.springframework.validation.annotation.Validated;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
+import in.gov.sih.sih26135.dto.request.AssignDataQualityIssueRequest;
 import in.gov.sih.sih26135.dto.request.CreateDataQualityIssueRequest;
+import in.gov.sih.sih26135.dto.request.DismissDataQualityIssueRequest;
+import in.gov.sih.sih26135.dto.request.ReopenDataQualityIssueRequest;
+import in.gov.sih.sih26135.dto.request.StartInvestigationRequest;
+import in.gov.sih.sih26135.dto.response.DataQualityIssueEventResponse;
+import in.gov.sih.sih26135.service.DataQualityWorkflowService;
+import org.springframework.beans.factory.annotation.Autowired;
 import in.gov.sih.sih26135.dto.request.ResolveDataQualityIssueRequest;
 import in.gov.sih.sih26135.dto.request.UpdateDataQualityIssueRequest;
 import in.gov.sih.sih26135.dto.response.DataQualityIssueResponse;
@@ -41,9 +48,18 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class DataQualityIssueController {
 
   private final DataQualityIssueService dataQualityIssueService;
+  private final DataQualityWorkflowService dataQualityWorkflowService;
 
   public DataQualityIssueController(DataQualityIssueService dataQualityIssueService) {
+    this(dataQualityIssueService, null);
+  }
+
+  @Autowired
+  public DataQualityIssueController(
+      DataQualityIssueService dataQualityIssueService,
+      @Autowired(required = false) DataQualityWorkflowService dataQualityWorkflowService) {
     this.dataQualityIssueService = dataQualityIssueService;
+    this.dataQualityWorkflowService = dataQualityWorkflowService;
   }
 
   /**
@@ -278,18 +294,49 @@ public class DataQualityIssueController {
   @PostMapping("/{id}/assign")
   public ResponseEntity<ApiResponse<DataQualityIssueResponse>> assignIssue(
       @PathVariable @Positive Long id,
-      @RequestParam("assignedUserId") @Positive Long assignedUserId,
+      @RequestParam(value = "assignedUserId", required = false) @Positive Long assignedUserIdParam,
+      @Valid @RequestBody(required = false) AssignDataQualityIssueRequest requestBody,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "assignedUserId");
-    DataQualityIssueResponse response =
-        dataQualityIssueService.assignIssue(id, assignedUserId);
+    AssignDataQualityIssueRequest request;
+    if (requestBody != null && requestBody.getAssignedUserId() != null) {
+      request = requestBody;
+    } else if (assignedUserIdParam != null) {
+      validateOnlyQueryParameter(httpRequest, "assignedUserId");
+      request = new AssignDataQualityIssueRequest(assignedUserIdParam);
+    } else {
+      throw new BadRequestException("assignedUserId is required", "ASSIGNED_USER_REQUIRED");
+    }
+    DataQualityIssueResponse response = dataQualityWorkflowService != null
+        ? dataQualityWorkflowService.assignIssue(id, request)
+        : dataQualityIssueService.assignIssue(id, request.getAssignedUserId());
     return ResponseEntity.ok(ApiResponse.success(
         "Data quality issue assigned successfully",
         response));
   }
 
   /**
-   * Resolves or dismisses a data quality issue.
+   * Starts active investigation on an assigned data quality issue.
+   *
+   * @param id primary key identifier of the issue
+   * @param request optional investigation remarks
+   * @return 200 OK with updated DataQualityIssueResponse enveloped in ApiResponse
+   */
+  @PostMapping("/{id}/start-investigation")
+  public ResponseEntity<ApiResponse<DataQualityIssueResponse>> startInvestigation(
+      @PathVariable @Positive Long id,
+      @Valid @RequestBody(required = false) StartInvestigationRequest request) {
+    if (dataQualityWorkflowService == null) {
+      throw new IllegalStateException("Workflow service is unavailable");
+    }
+    DataQualityIssueResponse response = dataQualityWorkflowService.startInvestigation(
+        id, request != null ? request : new StartInvestigationRequest());
+    return ResponseEntity.ok(ApiResponse.success(
+        "Data quality issue investigation started successfully",
+        response));
+  }
+
+  /**
+   * Resolves an in-progress data quality issue with mandatory resolution notes.
    *
    * @param id primary key identifier of the issue to resolve
    * @param request issue resolution payload
@@ -299,10 +346,68 @@ public class DataQualityIssueController {
   public ResponseEntity<ApiResponse<DataQualityIssueResponse>> resolveIssue(
       @PathVariable @Positive Long id,
       @Valid @RequestBody ResolveDataQualityIssueRequest request) {
-    DataQualityIssueResponse response = dataQualityIssueService.resolveIssue(id, request);
+    DataQualityIssueResponse response = dataQualityWorkflowService != null
+        ? dataQualityWorkflowService.resolveIssue(id, request)
+        : dataQualityIssueService.resolveIssue(id, request);
     return ResponseEntity.ok(ApiResponse.success(
         "Data quality issue resolved successfully",
         response));
+  }
+
+  /**
+   * Dismisses a reported or in-progress data quality issue with mandatory remarks.
+   *
+   * @param id primary key identifier of the issue to dismiss
+   * @param request dismissal payload containing remarks
+   * @return 200 OK with dismissed DataQualityIssueResponse enveloped in ApiResponse
+   */
+  @PostMapping("/{id}/dismiss")
+  public ResponseEntity<ApiResponse<DataQualityIssueResponse>> dismissIssue(
+      @PathVariable @Positive Long id,
+      @Valid @RequestBody DismissDataQualityIssueRequest request) {
+    if (dataQualityWorkflowService == null) {
+      throw new IllegalStateException("Workflow service is unavailable");
+    }
+    DataQualityIssueResponse response = dataQualityWorkflowService.dismissIssue(id, request);
+    return ResponseEntity.ok(ApiResponse.success(
+        "Data quality issue dismissed successfully",
+        response));
+  }
+
+  /**
+   * Reopens a previously resolved data quality issue with mandatory reopening reason.
+   *
+   * @param id primary key identifier of the issue to reopen
+   * @param request reopening payload containing reason
+   * @return 200 OK with reopened DataQualityIssueResponse enveloped in ApiResponse
+   */
+  @PostMapping("/{id}/reopen")
+  public ResponseEntity<ApiResponse<DataQualityIssueResponse>> reopenIssue(
+      @PathVariable @Positive Long id,
+      @Valid @RequestBody ReopenDataQualityIssueRequest request) {
+    if (dataQualityWorkflowService == null) {
+      throw new IllegalStateException("Workflow service is unavailable");
+    }
+    DataQualityIssueResponse response = dataQualityWorkflowService.reopenIssue(id, request);
+    return ResponseEntity.ok(ApiResponse.success(
+        "Data quality issue reopened successfully",
+        response));
+  }
+
+  /**
+   * Retrieves the historical event trail for a data quality issue.
+   *
+   * @param id primary key identifier of the issue
+   * @return 200 OK with list of DataQualityIssueEventResponse enveloped in ApiResponse
+   */
+  @GetMapping("/{id}/events")
+  public ResponseEntity<ApiResponse<List<DataQualityIssueEventResponse>>> getIssueEvents(
+      @PathVariable @Positive Long id) {
+    if (dataQualityWorkflowService == null) {
+      throw new IllegalStateException("Workflow service is unavailable");
+    }
+    List<DataQualityIssueEventResponse> response = dataQualityWorkflowService.getIssueEvents(id);
+    return ResponseEntity.ok(ApiResponse.ok(response));
   }
 
   private void validateOnlyQueryParameter(HttpServletRequest request, String allowedParam) {

@@ -210,7 +210,7 @@ public class ResponseEnvelopeAlignmentContractTest {
 
       assertThat(totalAuditedEndpoints)
           .as("Audit must inspect and verify all endpoints across all controllers")
-          .isEqualTo(655);
+          .isEqualTo(659);
     }
 
     @Test
