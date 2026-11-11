@@ -151,6 +151,26 @@ public class DataQualityIssueServiceImpl implements DataQualityIssueService {
       throw new ConflictException("Cannot update an issue that is already in terminal state", "ISSUE_IS_TERMINAL");
     }
 
+    // Protect lifecycle history: direct alteration of status, assignment or resolution metadata is strictly prohibited
+    if (request.getDataQualityIssueStatusId() != null) {
+      throw new BadRequestException(
+          "Direct alteration of status is not permitted via generic update. Use dedicated lifecycle endpoints.",
+          "LIFECYCLE_BYPASS_PROHIBITED"
+      );
+    }
+    if (request.getAssignedUserId() != null) {
+      throw new BadRequestException(
+          "Direct alteration of assignment is not permitted via generic update. Use dedicated /assign endpoint.",
+          "ASSIGNMENT_BYPASS_PROHIBITED"
+      );
+    }
+    if (request.getResolvedAt() != null || request.getResolvedByUserId() != null || request.getResolutionNotes() != null) {
+      throw new BadRequestException(
+          "Direct alteration of resolution metadata is not permitted via generic update. Use dedicated /resolve endpoint.",
+          "RESOLUTION_BYPASS_PROHIBITED"
+      );
+    }
+
     if (request.getIssueSummary() != null && !request.getIssueSummary().isBlank()) {
       issue.setIssueSummary(request.getIssueSummary().trim());
     }
@@ -171,26 +191,6 @@ public class DataQualityIssueServiceImpl implements DataQualityIssueService {
       RefDataQualityDetectionSource source = refDataQualityDetectionSourceRepository.findById(request.getDataQualityDetectionSourceId())
           .orElseThrow(() -> new ResourceNotFoundException("RefDataQualityDetectionSource", "dataQualityDetectionSourceId"));
       issue.setDataQualityDetectionSource(source);
-    }
-
-    if (request.getAssignedUserId() != null) {
-      if (!userRepository.existsById(request.getAssignedUserId())) {
-        throw new ResourceNotFoundException("User", "assignedUserId");
-      }
-      issue.setAssignedUserId(request.getAssignedUserId());
-    }
-
-    // Status transition validation in generic update
-    if (request.getDataQualityIssueStatusId() != null) {
-      RefDataQualityIssueStatus newStatus = refDataQualityIssueStatusRepository.findById(request.getDataQualityIssueStatusId())
-          .orElseThrow(() -> new ResourceNotFoundException("RefDataQualityIssueStatus", "dataQualityIssueStatusId"));
-      if (Boolean.TRUE.equals(newStatus.getIsTerminalFlag())) {
-        throw new BadRequestException(
-            "Terminal status transitions must be performed via resolveIssue()",
-            "USE_RESOLVE_ISSUE_FOR_TERMINAL_STATUS"
-        );
-      }
-      issue.setDataQualityIssueStatus(newStatus);
     }
 
     DataQualityIssue saved = dataQualityIssueRepository.save(issue);

@@ -27,12 +27,16 @@ import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -72,7 +76,7 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
       WorkflowSecurityScopeValidator scopeValidator,
       DataQualityIssueMapper issueMapper,
       DataQualityIssueEventMapper eventMapper,
-      @Autowired(required = false) JdbcTemplate jdbcTemplate) {
+      JdbcTemplate jdbcTemplate) {
     this.dataQualityIssueRepository = Objects.requireNonNull(dataQualityIssueRepository, "dataQualityIssueRepository is required");
     this.dataQualityIssueEventRepository = Objects.requireNonNull(dataQualityIssueEventRepository, "dataQualityIssueEventRepository is required");
     this.refDataQualityIssueStatusRepository = Objects.requireNonNull(refDataQualityIssueStatusRepository, "refDataQualityIssueStatusRepository is required");
@@ -81,7 +85,7 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
     this.scopeValidator = Objects.requireNonNull(scopeValidator, "scopeValidator is required");
     this.issueMapper = Objects.requireNonNull(issueMapper, "issueMapper is required");
     this.eventMapper = Objects.requireNonNull(eventMapper, "eventMapper is required");
-    this.jdbcTemplate = jdbcTemplate;
+    this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate is required");
   }
 
   @Override
@@ -95,13 +99,13 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
       throw new BadRequestException("assignedUserId must be a positive integer", "INVALID_ASSIGNEE");
     }
 
-    User caller = resolveAndValidateCaller();
+    User caller = resolveAndValidateManager();
     lockIssueRow(issueId);
     DataQualityIssue issue = findIssue(issueId);
     validateCallerScopeForIssue(caller, issue);
 
-    // Validate Assignee
-    validateAssignee(assignedUserId, caller);
+    // Validate Assignee against the issue entity and tenant ownership
+    validateAssigneeEligibility(assignedUserId, caller, issue);
 
     // Validate State Transition: allowed from OPEN, ASSIGNED, or REOPENED
     String currentStatusCode = getStatusCode(issue);
@@ -136,15 +140,21 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
   @Override
   public DataQualityIssueResponse startInvestigation(Long issueId, StartInvestigationRequest request) {
     validateIssueId(issueId);
-    User caller = resolveAndValidateCaller();
+    User caller = resolveAndValidateManager();
     lockIssueRow(issueId);
     DataQualityIssue issue = findIssue(issueId);
     validateCallerScopeForIssue(caller, issue);
 
-    // Validate State Transition: allowed ONLY from ASSIGNED
+    // Validate State Transition: allowed from ASSIGNED or REOPENED
     String currentStatusCode = getStatusCode(issue);
-    if (!STATUS_ASSIGNED.equalsIgnoreCase(currentStatusCode)) {
+    if (!STATUS_ASSIGNED.equalsIgnoreCase(currentStatusCode) && !STATUS_REOPENED.equalsIgnoreCase(currentStatusCode)) {
       throw new InvalidDataQualityTransitionException(currentStatusCode, STATUS_IN_PROGRESS);
+    }
+
+    // Require the authenticated actor to be the assigned investigator or an authorized administrative supervisor
+    Long assignedUserId = issue.getAssignedUserId();
+    if (assignedUserId == null || (!assignedUserId.equals(caller.getId()) && !isAdministrativeSupervisor(caller))) {
+      throw new AccessDeniedException("Only the assigned investigator or an authorized administrative supervisor can start investigation");
     }
 
     RefDataQualityIssueStatus inProgressStatus = getRefStatus(STATUS_IN_PROGRESS);
@@ -177,7 +187,7 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
       throw new BadRequestException("resolutionNotes cannot exceed 500 characters", "VALIDATION_FAILED");
     }
 
-    User caller = resolveAndValidateCaller();
+    User caller = resolveAndValidateManager();
     lockIssueRow(issueId);
     DataQualityIssue issue = findIssue(issueId);
     validateCallerScopeForIssue(caller, issue);
@@ -186,6 +196,12 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
     String currentStatusCode = getStatusCode(issue);
     if (!STATUS_IN_PROGRESS.equalsIgnoreCase(currentStatusCode)) {
       throw new InvalidDataQualityTransitionException(currentStatusCode, STATUS_RESOLVED);
+    }
+
+    // Require the authenticated actor to be the assigned investigator or an authorized administrative supervisor
+    Long assignedUserId = issue.getAssignedUserId();
+    if (assignedUserId != null && !assignedUserId.equals(caller.getId()) && !isAdministrativeSupervisor(caller)) {
+      throw new AccessDeniedException("Only the assigned investigator or an authorized administrative supervisor can resolve this issue");
     }
 
     // Server-derived attribution
@@ -226,15 +242,24 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
       throw new BadRequestException("remarks cannot exceed 500 characters", "VALIDATION_FAILED");
     }
 
-    User caller = resolveAndValidateCaller();
+    User caller = resolveAndValidateManager();
     lockIssueRow(issueId);
     DataQualityIssue issue = findIssue(issueId);
     validateCallerScopeForIssue(caller, issue);
 
-    // Validate State Transition: allowed from OPEN, ASSIGNED, or IN_PROGRESS
+    // Validate State Transition: allowed ONLY from OPEN or IN_PROGRESS
+    // Explicitly reject ASSIGNED -> DISMISSED, REOPENED -> DISMISSED, RESOLVED -> DISMISSED, DISMISSED -> DISMISSED
     String currentStatusCode = getStatusCode(issue);
-    if (STATUS_RESOLVED.equalsIgnoreCase(currentStatusCode) || STATUS_DISMISSED.equalsIgnoreCase(currentStatusCode)) {
+    if (!STATUS_OPEN.equalsIgnoreCase(currentStatusCode) && !STATUS_IN_PROGRESS.equalsIgnoreCase(currentStatusCode)) {
       throw new InvalidDataQualityTransitionException(currentStatusCode, STATUS_DISMISSED);
+    }
+
+    // If dismissing an in-progress issue, require the actor to be the assigned investigator or an administrative supervisor
+    if (STATUS_IN_PROGRESS.equalsIgnoreCase(currentStatusCode)) {
+      Long assignedUserId = issue.getAssignedUserId();
+      if (assignedUserId != null && !assignedUserId.equals(caller.getId()) && !isAdministrativeSupervisor(caller)) {
+        throw new AccessDeniedException("Only the assigned investigator or an authorized administrative supervisor can dismiss an in-progress issue");
+      }
     }
 
     LocalDateTime now = LocalDateTime.now();
@@ -267,7 +292,7 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
       throw new BadRequestException("reopeningReason cannot exceed 500 characters", "VALIDATION_FAILED");
     }
 
-    User caller = resolveAndValidateCaller();
+    User caller = resolveAndValidateManager();
     lockIssueRow(issueId);
     DataQualityIssue issue = findIssue(issueId);
     validateCallerScopeForIssue(caller, issue);
@@ -300,7 +325,7 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
   @Transactional(readOnly = true)
   public List<DataQualityIssueEventResponse> getIssueEvents(Long issueId) {
     validateIssueId(issueId);
-    User caller = resolveAndValidateCaller();
+    User caller = resolveAndValidateReader();
     DataQualityIssue issue = findIssue(issueId);
     validateCallerScopeForIssue(caller, issue);
 
@@ -336,18 +361,27 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
   }
 
   private void lockIssueRow(Long issueId) {
-    if (jdbcTemplate != null) {
-      try {
-        jdbcTemplate.queryForObject(
-            "SELECT data_quality_issue_id FROM data_quality_issues WHERE data_quality_issue_id = ? FOR UPDATE",
-            Long.class, issueId);
-      } catch (EmptyResultDataAccessException e) {
-        throw new ResourceNotFoundException("DataQualityIssue", "id");
-      }
+    try {
+      jdbcTemplate.queryForObject(
+          "SELECT data_quality_issue_id FROM data_quality_issues WHERE data_quality_issue_id = ? FOR UPDATE",
+          Long.class, issueId);
+    } catch (EmptyResultDataAccessException e) {
+      throw new ResourceNotFoundException("DataQualityIssue", "id");
     }
   }
 
-  private User resolveAndValidateCaller() {
+  private User resolveAndValidateManager() {
+    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+      throw new AccessDeniedException("Authenticated user identity is required to manage data quality issues");
+    }
+
+    boolean hasManageAuthority = auth.getAuthorities().stream()
+        .anyMatch(a -> "system.manage".equals(a.getAuthority()));
+    if (!hasManageAuthority) {
+      throw new AccessDeniedException("Caller lacks required management authority 'system.manage'");
+    }
+
     Long callerUserId = scopeValidator.resolveAuthenticatedUserId();
     if (callerUserId == null) {
       throw new AccessDeniedException("Authenticated user identity is required to manage data quality issues");
@@ -357,6 +391,49 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
     }
     return scopeValidator.resolveAuthenticatedUser()
         .orElseThrow(() -> new AccessDeniedException("Authoritative user record not found"));
+  }
+
+  private User resolveAndValidateReader() {
+    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+      throw new AccessDeniedException("Authenticated user identity is required to read data quality issue events");
+    }
+
+    boolean hasReadOrManage = auth.getAuthorities().stream()
+        .anyMatch(a -> "audit.read".equals(a.getAuthority()) || "system.manage".equals(a.getAuthority()));
+    if (!hasReadOrManage) {
+      throw new AccessDeniedException("Caller lacks required read or manage authority");
+    }
+
+    Long callerUserId = scopeValidator.resolveAuthenticatedUserId();
+    if (callerUserId == null) {
+      throw new AccessDeniedException("Authenticated user identity is required to read data quality issue events");
+    }
+    if (scopeValidator.isTraineeCaller()) {
+      throw new AccessDeniedException("Trainees are not authorized to view data quality issues");
+    }
+    return scopeValidator.resolveAuthenticatedUser()
+        .orElseThrow(() -> new AccessDeniedException("Authoritative user record not found"));
+  }
+
+  private boolean isAdministrativeSupervisor(User caller) {
+    if (scopeValidator.isNationwideAdmin()) {
+      return true;
+    }
+    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    if (auth == null || !auth.isAuthenticated()) {
+      return false;
+    }
+    Set<String> authorities = auth.getAuthorities().stream()
+        .map(GrantedAuthority::getAuthority)
+        .collect(Collectors.toSet());
+    if (authorities.contains("ROLE_super_admin") || authorities.contains("ROLE_government_admin")) {
+      return true;
+    }
+    if (authorities.contains("ROLE_state_admin") && caller.getStateId() != null) {
+      return true;
+    }
+    return false;
   }
 
   private void validateCallerScopeForIssue(User caller, DataQualityIssue issue) {
@@ -369,11 +446,6 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
 
     if (entityType == null || entityId == null) {
       throw new AccessDeniedException("Caller lacks authority to manage unscoped data quality issue");
-    }
-
-    if (jdbcTemplate == null) {
-      // In standalone unit tests without JDBC template, rely on validator roles
-      return;
     }
 
     switch (entityType) {
@@ -508,51 +580,218 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
     }
   }
 
-  private void validateAssignee(Long assignedUserId, User caller) {
-    if (traineeRepository.findByUserId(assignedUserId).isPresent()) {
-      throw new BadRequestException("Trainees cannot be assigned data quality issues", "INVALID_ASSIGNEE");
+  private void validateAssigneeEligibility(Long assignedUserId, User caller, DataQualityIssue issue) {
+    if (assignedUserId == null || assignedUserId <= 0) {
+      throw new BadRequestException("assignedUserId must be a positive integer", "INVALID_ASSIGNEE");
     }
 
     User assignee = userRepository.findById(assignedUserId)
         .orElseThrow(() -> new ResourceNotFoundException("User", "assignedUserId"));
 
-    if (assignee.getDeletedAt() != null) {
+    if (assignee.getDeletedAt() != null || (assignee.getUserStatusId() != null && assignee.getUserStatusId() != 1)) {
       throw new BadRequestException("Assignee user is deleted or inactive", "INVALID_ASSIGNEE");
     }
 
-    if (scopeValidator.isNationwideAdmin()) {
-      return; // Super admin can assign to any non-deleted operational user
+    if (isUserTrainee(assignee)) {
+      throw new BadRequestException("Trainees cannot be assigned data quality issues", "INVALID_ASSIGNEE");
     }
 
-    // Check scope compatibility between caller and assignee
-    if (caller.getStateId() != null) {
-      if (assignee.getStateId() != null && !assignee.getStateId().equals(caller.getStateId())) {
-        throw new BadRequestException("Assignee does not belong to caller state scope", "ASSIGNEE_SCOPE_MISMATCH");
-      }
-      if (assignee.getTrainingProviderId() != null && jdbcTemplate != null) {
-        Integer count = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM training_providers WHERE provider_id = ? AND state_id = ?",
-            Integer.class, assignee.getTrainingProviderId(), caller.getStateId());
-        if (count == null || count == 0) {
-          throw new BadRequestException("Assignee training provider is not located in caller state", "ASSIGNEE_SCOPE_MISMATCH");
+    Long aStateId = assignee.getStateId();
+    Long aProviderId = assignee.getTrainingProviderId();
+    Long aEmployerId = assignee.getEmployerId();
+
+    // Reject missing or ambiguous assignee scope
+    if (aStateId == null && aProviderId == null && aEmployerId == null) {
+      throw new BadRequestException("Assignee has missing or ambiguous tenant scope", "ASSIGNEE_SCOPE_MISMATCH");
+    }
+    if (aProviderId != null && aEmployerId != null) {
+      throw new BadRequestException("Assignee has conflicting tenant scope", "ASSIGNEE_SCOPE_MISMATCH");
+    }
+
+    // Cross-tenant check against caller (when caller is not nationwide admin)
+    if (!scopeValidator.isNationwideAdmin()) {
+      if (caller.getStateId() != null) {
+        if (aStateId != null && !aStateId.equals(caller.getStateId())) {
+          throw new BadRequestException("Assignee does not belong to caller state scope", "ASSIGNEE_SCOPE_MISMATCH");
+        }
+        if (aProviderId != null) {
+          Integer count = jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM training_providers WHERE provider_id = ? AND state_id = ?",
+              Integer.class, aProviderId, caller.getStateId());
+          if (count == null || count == 0) {
+            throw new BadRequestException("Assignee training provider is not located in caller state", "ASSIGNEE_SCOPE_MISMATCH");
+          }
+        }
+        if (aEmployerId != null) {
+          Integer count = jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM employers WHERE employer_id = ? AND state_id = ?",
+              Integer.class, aEmployerId, caller.getStateId());
+          if (count == null || count == 0) {
+            throw new BadRequestException("Assignee employer is not located in caller state", "ASSIGNEE_SCOPE_MISMATCH");
+          }
+        }
+      } else if (caller.getTrainingProviderId() != null) {
+        if (aProviderId == null || !aProviderId.equals(caller.getTrainingProviderId())) {
+          throw new BadRequestException("Assignee does not belong to caller training provider scope", "ASSIGNEE_SCOPE_MISMATCH");
+        }
+      } else if (caller.getEmployerId() != null) {
+        if (aEmployerId == null || !aEmployerId.equals(caller.getEmployerId())) {
+          throw new BadRequestException("Assignee does not belong to caller employer scope", "ASSIGNEE_SCOPE_MISMATCH");
         }
       }
-      if (assignee.getEmployerId() != null && jdbcTemplate != null) {
-        Integer count = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM employers WHERE employer_id = ? AND state_id = ?",
-            Integer.class, assignee.getEmployerId(), caller.getStateId());
-        if (count == null || count == 0) {
-          throw new BadRequestException("Assignee employer is not located in caller state", "ASSIGNEE_SCOPE_MISMATCH");
+    }
+
+    // Validate assignee eligibility against the actual issue entity and tenant ownership
+    String entityType = issue.getEntityType();
+    Long entityId = issue.getEntityId();
+    if (entityType == null || entityId == null) {
+      throw new BadRequestException("Issue entity type and identifier are required to validate assignee eligibility", "INVALID_ISSUE");
+    }
+
+    switch (entityType) {
+      case "Trainee" -> {
+        if (aEmployerId != null && aStateId == null && aProviderId == null) {
+          throw new BadRequestException("Employers cannot be assigned trainee data quality issues", "ASSIGNEE_SCOPE_MISMATCH");
+        }
+        if (aStateId != null) {
+          Integer count = jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM trainees WHERE trainee_id = ? AND state_id = ? AND deleted_at IS NULL",
+              Integer.class, entityId, aStateId);
+          if (count == null || count == 0) {
+            throw new BadRequestException("Assignee state scope does not match issue trainee state", "ASSIGNEE_SCOPE_MISMATCH");
+          }
+        }
+        if (aProviderId != null) {
+          Integer count = jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM training_enrollments WHERE trainee_id = ? AND provider_id = ?",
+              Integer.class, entityId, aProviderId);
+          if (count == null || count == 0) {
+            throw new BadRequestException("Assignee training provider does not match issue trainee enrollments", "ASSIGNEE_SCOPE_MISMATCH");
+          }
         }
       }
-    } else if (caller.getTrainingProviderId() != null) {
-      if (assignee.getTrainingProviderId() != null && !assignee.getTrainingProviderId().equals(caller.getTrainingProviderId())) {
-        throw new BadRequestException("Assignee does not belong to caller training provider scope", "ASSIGNEE_SCOPE_MISMATCH");
+      case "AttendanceRecord" -> {
+        if (aEmployerId != null && aStateId == null && aProviderId == null) {
+          throw new BadRequestException("Employers cannot be assigned attendance data quality issues", "ASSIGNEE_SCOPE_MISMATCH");
+        }
+        if (aStateId != null) {
+          Integer count = jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM attendance_records ar " +
+                  "JOIN training_batches tb ON ar.batch_id = tb.batch_id " +
+                  "JOIN training_centers tc ON tb.center_id = tc.center_id " +
+                  "WHERE ar.attendance_id = ? AND tc.state_id = ?",
+              Integer.class, entityId, aStateId);
+          if (count == null || count == 0) {
+            throw new BadRequestException("Assignee state scope does not match issue attendance record", "ASSIGNEE_SCOPE_MISMATCH");
+          }
+        }
+        if (aProviderId != null) {
+          Integer count = jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM attendance_records ar " +
+                  "JOIN training_enrollments te ON ar.enrollment_id = te.enrollment_id " +
+                  "WHERE ar.attendance_id = ? AND te.provider_id = ?",
+              Integer.class, entityId, aProviderId);
+          if (count == null || count == 0) {
+            throw new BadRequestException("Assignee training provider does not match issue attendance record", "ASSIGNEE_SCOPE_MISMATCH");
+          }
+        }
       }
-    } else if (caller.getEmployerId() != null) {
-      if (assignee.getEmployerId() != null && !assignee.getEmployerId().equals(caller.getEmployerId())) {
-        throw new BadRequestException("Assignee does not belong to caller employer scope", "ASSIGNEE_SCOPE_MISMATCH");
+      case "PlacementRecord" -> {
+        if (aStateId != null) {
+          Integer count = jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM placement_records WHERE placement_id = ? AND work_state_id = ? AND deleted_at IS NULL",
+              Integer.class, entityId, aStateId);
+          if (count == null || count == 0) {
+            throw new BadRequestException("Assignee state scope does not match issue placement record", "ASSIGNEE_SCOPE_MISMATCH");
+          }
+        }
+        if (aProviderId != null) {
+          Integer count = jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM placement_records WHERE placement_id = ? AND provider_id = ? AND deleted_at IS NULL",
+              Integer.class, entityId, aProviderId);
+          if (count == null || count == 0) {
+            throw new BadRequestException("Assignee training provider does not match issue placement record", "ASSIGNEE_SCOPE_MISMATCH");
+          }
+        }
+        if (aEmployerId != null) {
+          Integer count = jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM placement_records WHERE placement_id = ? AND employer_id = ? AND deleted_at IS NULL",
+              Integer.class, entityId, aEmployerId);
+          if (count == null || count == 0) {
+            throw new BadRequestException("Assignee employer does not match issue placement record", "ASSIGNEE_SCOPE_MISMATCH");
+          }
+        }
       }
+      case "EmploymentRecord" -> {
+        if (aStateId != null) {
+          Integer count = jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM employment_records WHERE employment_id = ? AND work_state_id = ? AND deleted_at IS NULL",
+              Integer.class, entityId, aStateId);
+          if (count == null || count == 0) {
+            throw new BadRequestException("Assignee state scope does not match issue employment record", "ASSIGNEE_SCOPE_MISMATCH");
+          }
+        }
+        if (aProviderId != null) {
+          Integer count = jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM employment_records er " +
+                  "JOIN training_enrollments te ON er.enrollment_id = te.enrollment_id " +
+                  "WHERE er.employment_id = ? AND te.provider_id = ? AND er.deleted_at IS NULL",
+              Integer.class, entityId, aProviderId);
+          if (count == null || count == 0) {
+            throw new BadRequestException("Assignee training provider does not match issue employment record", "ASSIGNEE_SCOPE_MISMATCH");
+          }
+        }
+        if (aEmployerId != null) {
+          Integer count = jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM employment_records WHERE employment_id = ? AND employer_id = ? AND deleted_at IS NULL",
+              Integer.class, entityId, aEmployerId);
+          if (count == null || count == 0) {
+            throw new BadRequestException("Assignee employer does not match issue employment record", "ASSIGNEE_SCOPE_MISMATCH");
+          }
+        }
+      }
+      case "BatchEnrollment", "TrainingEnrollment" -> {
+        if (aEmployerId != null && aStateId == null && aProviderId == null) {
+          throw new BadRequestException("Employers cannot be assigned enrollment data quality issues", "ASSIGNEE_SCOPE_MISMATCH");
+        }
+        if (aStateId != null) {
+          Integer count = jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM training_enrollments te " +
+                  "JOIN training_batches tb ON te.batch_id = tb.batch_id " +
+                  "JOIN training_centers tc ON tb.center_id = tc.center_id " +
+                  "WHERE te.enrollment_id = ? AND tc.state_id = ?",
+              Integer.class, entityId, aStateId);
+          if (count == null || count == 0) {
+            throw new BadRequestException("Assignee state scope does not match issue enrollment record", "ASSIGNEE_SCOPE_MISMATCH");
+          }
+        }
+        if (aProviderId != null) {
+          Integer count = jdbcTemplate.queryForObject(
+              "SELECT COUNT(*) FROM training_enrollments WHERE enrollment_id = ? AND provider_id = ?",
+              Integer.class, entityId, aProviderId);
+          if (count == null || count == 0) {
+            throw new BadRequestException("Assignee training provider does not match issue enrollment record", "ASSIGNEE_SCOPE_MISMATCH");
+          }
+        }
+      }
+      default -> {
+        throw new BadRequestException("Unsupported entity type for assignee validation: " + entityType, "INVALID_ENTITY_TYPE");
+      }
+    }
+  }
+
+  private boolean isUserTrainee(User user) {
+    if (traineeRepository.findByUserId(user.getId()).isPresent()) {
+      return true;
+    }
+    try {
+      Integer count = jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM user_roles ur JOIN ref_roles r ON ur.role_id = r.role_id " +
+              "WHERE ur.user_id = ? AND r.role_code = 'ROLE_trainee'",
+          Integer.class, user.getId());
+      return count != null && count > 0;
+    } catch (Exception e) {
+      return false;
     }
   }
 

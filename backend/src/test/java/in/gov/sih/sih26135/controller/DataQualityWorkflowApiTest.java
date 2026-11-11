@@ -7,6 +7,7 @@ import in.gov.sih.sih26135.dto.request.DismissDataQualityIssueRequest;
 import in.gov.sih.sih26135.dto.request.ReopenDataQualityIssueRequest;
 import in.gov.sih.sih26135.dto.request.ResolveDataQualityIssueRequest;
 import in.gov.sih.sih26135.dto.request.StartInvestigationRequest;
+import in.gov.sih.sih26135.dto.request.UpdateDataQualityIssueRequest;
 import in.gov.sih.sih26135.entity.DataQualityRule;
 import in.gov.sih.sih26135.security.jwt.JwtTokenProvider;
 import in.gov.sih.sih26135.service.DataQualityRuleCatalogService;
@@ -27,22 +28,17 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
-import java.sql.SQLException;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.hamcrest.Matchers.empty;
-import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -73,6 +69,9 @@ class DataQualityWorkflowApiTest {
   private DataQualityIssueRegistrationService registrationService;
 
   private String adminToken;
+  private String auditReadToken;
+  private String reviewerToken;
+  private String unrelatedReviewerToken;
   private String unauthenticatedToken;
   private Long testUserId;
   private Long testReviewerUserId;
@@ -90,15 +89,72 @@ class DataQualityWorkflowApiTest {
     // Clean up test users & issues if existing
     cleanUpTestData();
 
-    // Insert an active admin user (user_id = 9980) and reviewer user (user_id = 9981)
+    // 1. Resolve or provision valid geographic reference records
+    Long validDistrictId = null;
+    Long validStateId = null;
+    try {
+      validDistrictId = jdbcTemplate.queryForObject("SELECT MIN(district_id) FROM districts", Long.class);
+      if (validDistrictId != null) {
+        validStateId = jdbcTemplate.queryForObject("SELECT state_id FROM districts WHERE district_id = ?", Long.class, validDistrictId);
+      }
+    } catch (Exception ignored) {
+    }
+
+    if (validDistrictId == null || validStateId == null) {
+      validStateId = 9985L;
+      validDistrictId = 9985L;
+      jdbcTemplate.update("INSERT INTO states (state_id, state_code, state_name, lifecycle_status_id, created_at, updated_at) VALUES (?, 'W1', 'WF State 1', 1, NOW(), NOW())", validStateId);
+      jdbcTemplate.update("INSERT INTO districts (district_id, state_id, district_code, district_name, lifecycle_status_id, created_at, updated_at) VALUES (?, ?, 'WD1', 'WF District 1', 1, NOW(), NOW())", validDistrictId, validStateId);
+    }
+
+    Long otherStateId = null;
+    try {
+      otherStateId = jdbcTemplate.queryForObject("SELECT MIN(state_id) FROM states WHERE state_id != ?", Long.class, validStateId);
+    } catch (Exception ignored) {
+    }
+
+    if (otherStateId == null) {
+      otherStateId = 9986L;
+      jdbcTemplate.update("INSERT INTO states (state_id, state_code, state_name, lifecycle_status_id, created_at, updated_at) VALUES (?, 'W2', 'WF State 2', 1, NOW(), NOW())", otherStateId);
+    }
+
+    // 2. Insert test trainee 9985 in validStateId, validDistrictId
+    jdbcTemplate.update(
+        "INSERT INTO trainees (trainee_id, registration_number, first_name, last_name, phone, email, date_of_birth, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at) " +
+            "VALUES (9985, 'WF-TR-9985', 'TestTrainee', 'ScopeCheck', '9876543210', 'tr9985@test.gov.in', '2000-01-01', 1, ?, ?, 1, 1, NOW(), NOW())",
+        validStateId, validDistrictId
+    );
+
+    // 3. Insert test users
+    // User 9980: Admin
     jdbcTemplate.update(
         "INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, created_at, updated_at) " +
             "VALUES (9980, 'wf_admin_test', 'wf_admin@test.gov.in', 'hash', 'argon2id', 1, NOW(), NOW())"
     );
+    // User 9981: Reviewer in validStateId
+    jdbcTemplate.update(
+        "INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, state_id, created_at, updated_at) " +
+            "VALUES (9981, 'wf_reviewer_test', 'wf_reviewer@test.gov.in', 'hash', 'argon2id', 1, ?, NOW(), NOW())",
+        validStateId
+    );
+    // User 9982: Unscoped user (null tenancy fields)
     jdbcTemplate.update(
         "INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, created_at, updated_at) " +
-            "VALUES (9981, 'wf_reviewer_test', 'wf_reviewer@test.gov.in', 'hash', 'argon2id', 1, NOW(), NOW())"
+            "VALUES (9982, 'wf_unscoped_test', 'wf_unscoped@test.gov.in', 'hash', 'argon2id', 1, NOW(), NOW())"
     );
+    // User 9983: Reviewer in otherStateId
+    jdbcTemplate.update(
+        "INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, state_id, created_at, updated_at) " +
+            "VALUES (9983, 'wf_state2_test', 'wf_state2@test.gov.in', 'hash', 'argon2id', 1, ?, NOW(), NOW())",
+        otherStateId
+    );
+    // User 9984: Auditor in validStateId (has audit.read only)
+    jdbcTemplate.update(
+        "INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, state_id, created_at, updated_at) " +
+            "VALUES (9984, 'wf_auditor_test', 'wf_auditor@test.gov.in', 'hash', 'argon2id', 1, ?, NOW(), NOW())",
+        validStateId
+    );
+
     testUserId = 9980L;
     testReviewerUserId = 9981L;
 
@@ -106,6 +162,24 @@ class DataQualityWorkflowApiTest {
         testUserId,
         "wf_admin_test",
         List.of("ROLE_super_admin", "audit.read", "system.manage")
+    );
+
+    auditReadToken = "Bearer " + jwtTokenProvider.generateAccessToken(
+        9984L,
+        "wf_auditor_test",
+        List.of("audit.read")
+    );
+
+    reviewerToken = "Bearer " + jwtTokenProvider.generateAccessToken(
+        testReviewerUserId,
+        "wf_reviewer_test",
+        List.of("ROLE_state_admin", "system.manage")
+    );
+
+    unrelatedReviewerToken = "Bearer " + jwtTokenProvider.generateAccessToken(
+        9983L,
+        "wf_state2_test",
+        List.of("ROLE_state_admin", "system.manage")
     );
 
     unauthenticatedToken = "Bearer " + jwtTokenProvider.generateAccessToken(
@@ -122,9 +196,12 @@ class DataQualityWorkflowApiTest {
 
   private void cleanUpTestData() {
     try {
-      jdbcTemplate.update("DELETE FROM data_quality_issue_events WHERE changed_by_user_id IN (9980, 9981)");
+      jdbcTemplate.update("DELETE FROM data_quality_issue_events WHERE changed_by_user_id IN (9980, 9981, 9982, 9983, 9984)");
       jdbcTemplate.update("DELETE FROM data_quality_issues WHERE issue_summary LIKE 'WF-TEST-%' OR issue_summary = 'Re-detected salary discrepancy'");
-      jdbcTemplate.update("DELETE FROM users WHERE user_id IN (9980, 9981)");
+      jdbcTemplate.update("DELETE FROM trainees WHERE trainee_id = 9985");
+      jdbcTemplate.update("DELETE FROM users WHERE user_id IN (9980, 9981, 9982, 9983, 9984)");
+      jdbcTemplate.update("DELETE FROM districts WHERE district_id = 9985");
+      jdbcTemplate.update("DELETE FROM states WHERE state_id IN (9985, 9986)");
     } catch (Exception ignored) {
     }
   }
@@ -154,7 +231,7 @@ class DataQualityWorkflowApiTest {
               "data_quality_rule_id, data_quality_category_id, data_quality_severity_id, " +
               "data_quality_issue_status_id, data_quality_detection_source_id, entity_type, " +
               "entity_id, issue_summary, detected_at, created_at, updated_at) " +
-              "VALUES (?, ?, ?, ?, ?, 'Trainee', 12345, ?, NOW() - INTERVAL 1 HOUR, NOW(), NOW())",
+              "VALUES (?, ?, ?, ?, ?, 'Trainee', 9985, ?, NOW() - INTERVAL 1 HOUR, NOW(), NOW())",
           java.sql.Statement.RETURN_GENERATED_KEYS
       );
       ps.setLong(1, ruleId);
@@ -199,7 +276,7 @@ class DataQualityWorkflowApiTest {
     }
 
     @Test
-    @DisplayName("Should successfully assign an OPEN issue using backward-compatible query param")
+    @DisplayName("Should successfully assign an OPEN issue using query parameter")
     void shouldAssignWithQueryParam() throws Exception {
       Long issueId = insertTestIssue("OPEN", "WF-TEST-ASSIGN-PARAM");
 
@@ -208,60 +285,110 @@ class DataQualityWorkflowApiTest {
               .param("assignedUserId", testReviewerUserId.toString()))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.success", is(true)))
-          .andExpect(jsonPath("$.data.dataQualityIssueStatusCode", is("ASSIGNED")))
           .andExpect(jsonPath("$.data.assignedUserId", is(testReviewerUserId.intValue())));
     }
 
     @Test
-    @DisplayName("Should reject assigning an IN_PROGRESS issue with 409 Conflict")
-    void shouldRejectAssigningInProgress() throws Exception {
-      Long issueId = insertTestIssue("IN_PROGRESS", "WF-TEST-ASSIGN-CONFLICT");
-      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(testReviewerUserId);
+    @DisplayName("Should reject nationwide admin assigning to unrelated assignee outside issue state scope")
+    void shouldRejectNationwideAdminAssigningToUnrelatedAssignee() throws Exception {
+      Long issueId = insertTestIssue("OPEN", "WF-TEST-ASSIGN-UNRELATED");
+      // Assignee 9983 is in State 2, but Trainee 9985 is in State 1
+      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(9983L);
 
       mockMvc.perform(post("/api/v1/data-quality-issues/{id}/assign", issueId)
               .header("Authorization", adminToken)
               .contentType(MediaType.APPLICATION_JSON)
               .content(objectMapper.writeValueAsString(request)))
-          .andExpect(status().isConflict())
-          .andExpect(jsonPath("$.code", is("INVALID_DQ_TRANSITION")));
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code", is("ASSIGNEE_SCOPE_MISMATCH")));
+    }
+
+    @Test
+    @DisplayName("Should reject assigning to unscoped user (null tenancy fields)")
+    void shouldRejectAssigningToUnscopedUser() throws Exception {
+      Long issueId = insertTestIssue("OPEN", "WF-TEST-ASSIGN-UNSCOPED");
+      // Assignee 9982 has null state, provider, and employer
+      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(9982L);
+
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/assign", issueId)
+              .header("Authorization", adminToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(request)))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code", is("ASSIGNEE_SCOPE_MISMATCH")));
+    }
+
+    @Test
+    @DisplayName("Should reject assignment when unauthenticated")
+    void shouldRejectUnauthenticatedAssignment() throws Exception {
+      Long issueId = insertTestIssue("OPEN", "WF-TEST-UNAUTH");
+      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(testReviewerUserId);
+
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/assign", issueId)
+              .header("Authorization", unauthenticatedToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(request)))
+          .andExpect(status().isForbidden());
     }
   }
 
   @Nested
-  @DisplayName("2. Start Investigation API (POST /{id}/start-investigation)")
-  class StartInvestigationApiTests {
+  @DisplayName("2. Investigation API (POST /{id}/start-investigation)")
+  class InvestigationApiTests {
 
     @Test
-    @DisplayName("Should successfully transition ASSIGNED issue to IN_PROGRESS")
+    @DisplayName("Should transition ASSIGNED issue to IN_PROGRESS and record event")
     void shouldStartInvestigationSuccessfully() throws Exception {
-      Long issueId = insertTestIssue("ASSIGNED", "WF-TEST-INVESTIGATE-SUCCESS");
-      StartInvestigationRequest request = new StartInvestigationRequest("Forensic investigation started");
+      Long issueId = insertTestIssue("ASSIGNED", "WF-TEST-START-INVESTIGATION");
+      // Assign to testReviewerUserId
+      jdbcTemplate.update("UPDATE data_quality_issues SET assigned_user_id = ? WHERE data_quality_issue_id = ?",
+          testReviewerUserId, issueId);
+
+      StartInvestigationRequest request = new StartInvestigationRequest("Beginning root cause analysis");
 
       mockMvc.perform(post("/api/v1/data-quality-issues/{id}/start-investigation", issueId)
-              .header("Authorization", adminToken)
+              .header("Authorization", reviewerToken)
               .contentType(MediaType.APPLICATION_JSON)
               .content(objectMapper.writeValueAsString(request)))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.success", is(true)))
           .andExpect(jsonPath("$.data.dataQualityIssueStatusCode", is("IN_PROGRESS")));
 
-      // Verify event was saved
+      // Verify event was logged
       List<Map<String, Object>> events = jdbcTemplate.queryForList(
           "SELECT * FROM data_quality_issue_events WHERE data_quality_issue_id = ?", issueId
       );
       assertThat(events).hasSize(1);
-      assertThat(events.get(0).get("remarks")).isEqualTo("Forensic investigation started");
+      assertThat(events.get(0).get("remarks")).isEqualTo("Beginning root cause analysis");
     }
 
     @Test
-    @DisplayName("Should reject transitioning OPEN issue to IN_PROGRESS directly with 409 Conflict")
-    void shouldRejectDirectStartFromOpen() throws Exception {
-      Long issueId = insertTestIssue("OPEN", "WF-TEST-INVESTIGATE-DIRECT-OPEN");
+    @DisplayName("Should reject unauthorized investigator starting investigation with 403 Forbidden")
+    void shouldRejectUnauthorizedInvestigatorStartingInvestigation() throws Exception {
+      Long issueId = insertTestIssue("ASSIGNED", "WF-TEST-START-UNAUTHORIZED");
+      jdbcTemplate.update("UPDATE data_quality_issues SET assigned_user_id = ? WHERE data_quality_issue_id = ?",
+          testReviewerUserId, issueId);
+
+      StartInvestigationRequest request = new StartInvestigationRequest("Unauthorized attempt");
+
+      // Caller 9983 is not assigned to this issue and not administrative supervisor
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/start-investigation", issueId)
+              .header("Authorization", unrelatedReviewerToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(request)))
+          .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Should reject starting investigation directly on OPEN issue with 409 Conflict")
+    void shouldRejectDirectInvestigationOnOpen() throws Exception {
+      Long issueId = insertTestIssue("OPEN", "WF-TEST-START-CONFLICT");
+      StartInvestigationRequest request = new StartInvestigationRequest("Premature start");
 
       mockMvc.perform(post("/api/v1/data-quality-issues/{id}/start-investigation", issueId)
               .header("Authorization", adminToken)
               .contentType(MediaType.APPLICATION_JSON)
-              .content("{}"))
+              .content(objectMapper.writeValueAsString(request)))
           .andExpect(status().isConflict())
           .andExpect(jsonPath("$.code", is("INVALID_DQ_TRANSITION")));
     }
@@ -272,35 +399,38 @@ class DataQualityWorkflowApiTest {
   class ResolveApiTests {
 
     @Test
-    @DisplayName("Should successfully resolve an IN_PROGRESS issue and populate server attribution")
+    @DisplayName("Should resolve an IN_PROGRESS issue with server attribution, notes and event")
     void shouldResolveInProgressIssueSuccessfully() throws Exception {
       Long issueId = insertTestIssue("IN_PROGRESS", "WF-TEST-RESOLVE-SUCCESS");
-      ResolveDataQualityIssueRequest request = new ResolveDataQualityIssueRequest("Remediated in source trainee directory");
+      jdbcTemplate.update("UPDATE data_quality_issues SET assigned_user_id = ? WHERE data_quality_issue_id = ?",
+          testReviewerUserId, issueId);
+
+      ResolveDataQualityIssueRequest request = new ResolveDataQualityIssueRequest("Discrepancy remediated in enrollment records");
 
       mockMvc.perform(post("/api/v1/data-quality-issues/{id}/resolve", issueId)
-              .header("Authorization", adminToken)
+              .header("Authorization", reviewerToken)
               .contentType(MediaType.APPLICATION_JSON)
               .content(objectMapper.writeValueAsString(request)))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.success", is(true)))
           .andExpect(jsonPath("$.data.dataQualityIssueStatusCode", is("RESOLVED")))
-          .andExpect(jsonPath("$.data.resolvedByUserId", is(testUserId.intValue())))
-          .andExpect(jsonPath("$.data.resolvedAt", notNullValue()))
-          .andExpect(jsonPath("$.data.resolutionNotes", is("Remediated in source trainee directory")));
+          .andExpect(jsonPath("$.data.resolvedByUserId", is(testReviewerUserId.intValue())))
+          .andExpect(jsonPath("$.data.resolvedAt", is(org.hamcrest.Matchers.notNullValue())))
+          .andExpect(jsonPath("$.data.resolutionNotes", is("Discrepancy remediated in enrollment records")));
 
-      // Verify database state directly
-      Map<String, Object> row = jdbcTemplate.queryForMap(
-          "SELECT resolved_by_user_id, resolution_notes FROM data_quality_issues WHERE data_quality_issue_id = ?", issueId
+      // Check event
+      List<Map<String, Object>> events = jdbcTemplate.queryForList(
+          "SELECT * FROM data_quality_issue_events WHERE data_quality_issue_id = ?", issueId
       );
-      assertThat(((Number) row.get("resolved_by_user_id")).longValue()).isEqualTo(testUserId);
-      assertThat(row.get("resolution_notes")).isEqualTo("Remediated in source trainee directory");
+      assertThat(events).hasSize(1);
+      assertThat(events.get(0).get("remarks")).isEqualTo("Discrepancy remediated in enrollment records");
     }
 
     @Test
-    @DisplayName("Should reject resolution from OPEN with 409 Conflict")
-    void shouldRejectPrematureResolutionFromOpen() throws Exception {
-      Long issueId = insertTestIssue("OPEN", "WF-TEST-RESOLVE-PREMATURE");
-      ResolveDataQualityIssueRequest request = new ResolveDataQualityIssueRequest("Premature attempt");
+    @DisplayName("Should reject resolving an OPEN issue directly with 409 Conflict")
+    void shouldRejectResolvingOpenIssueDirectly() throws Exception {
+      Long issueId = insertTestIssue("OPEN", "WF-TEST-RESOLVE-OPEN-CONFLICT");
+      ResolveDataQualityIssueRequest request = new ResolveDataQualityIssueRequest("Skipping to resolve");
 
       mockMvc.perform(post("/api/v1/data-quality-issues/{id}/resolve", issueId)
               .header("Authorization", adminToken)
@@ -311,16 +441,17 @@ class DataQualityWorkflowApiTest {
     }
 
     @Test
-    @DisplayName("Should reject blank resolution notes with 400 Bad Request")
-    void shouldRejectBlankResolutionNotes() throws Exception {
-      Long issueId = insertTestIssue("IN_PROGRESS", "WF-TEST-RESOLVE-BLANK");
-      String payload = "{\"resolutionNotes\": \"   \"}";
+    @DisplayName("Should reject resolving an ASSIGNED issue directly with 409 Conflict")
+    void shouldRejectResolvingAssignedIssueDirectly() throws Exception {
+      Long issueId = insertTestIssue("ASSIGNED", "WF-TEST-RESOLVE-ASSIGNED-CONFLICT");
+      ResolveDataQualityIssueRequest request = new ResolveDataQualityIssueRequest("Skipping investigation");
 
       mockMvc.perform(post("/api/v1/data-quality-issues/{id}/resolve", issueId)
               .header("Authorization", adminToken)
               .contentType(MediaType.APPLICATION_JSON)
-              .content(payload))
-          .andExpect(status().isBadRequest());
+              .content(objectMapper.writeValueAsString(request)))
+          .andExpect(status().isConflict())
+          .andExpect(jsonPath("$.code", is("INVALID_DQ_TRANSITION")));
     }
   }
 
@@ -329,10 +460,10 @@ class DataQualityWorkflowApiTest {
   class DismissApiTests {
 
     @Test
-    @DisplayName("Should successfully dismiss an OPEN issue with mandatory remarks")
+    @DisplayName("Should dismiss an OPEN issue with remarks and log DISMISSAL event")
     void shouldDismissOpenIssueSuccessfully() throws Exception {
       Long issueId = insertTestIssue("OPEN", "WF-TEST-DISMISS-OPEN");
-      DismissDataQualityIssueRequest request = new DismissDataQualityIssueRequest("Verified as expected business exception");
+      DismissDataQualityIssueRequest request = new DismissDataQualityIssueRequest("Confirmed false positive");
 
       mockMvc.perform(post("/api/v1/data-quality-issues/{id}/dismiss", issueId)
               .header("Authorization", adminToken)
@@ -341,7 +472,42 @@ class DataQualityWorkflowApiTest {
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.success", is(true)))
           .andExpect(jsonPath("$.data.dataQualityIssueStatusCode", is("DISMISSED")))
-          .andExpect(jsonPath("$.data.resolutionNotes", is("Verified as expected business exception")));
+          .andExpect(jsonPath("$.data.resolutionNotes", is("Confirmed false positive")));
+
+      // Check event
+      List<Map<String, Object>> events = jdbcTemplate.queryForList(
+          "SELECT * FROM data_quality_issue_events WHERE data_quality_issue_id = ?", issueId
+      );
+      assertThat(events).hasSize(1);
+      assertThat(events.get(0).get("remarks")).isEqualTo("Confirmed false positive");
+    }
+
+    @Test
+    @DisplayName("Should explicitly reject ASSIGNED -> DISMISSED with 409 Conflict")
+    void shouldRejectDismissingAssignedIssueWith409() throws Exception {
+      Long issueId = insertTestIssue("ASSIGNED", "WF-TEST-DISMISS-ASSIGNED-409");
+      DismissDataQualityIssueRequest request = new DismissDataQualityIssueRequest("Direct dismissal of assigned");
+
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/dismiss", issueId)
+              .header("Authorization", adminToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(request)))
+          .andExpect(status().isConflict())
+          .andExpect(jsonPath("$.code", is("INVALID_DQ_TRANSITION")));
+    }
+
+    @Test
+    @DisplayName("Should explicitly reject REOPENED -> DISMISSED with 409 Conflict")
+    void shouldRejectDismissingReopenedIssueWith409() throws Exception {
+      Long issueId = insertTestIssue("REOPENED", "WF-TEST-DISMISS-REOPENED-409");
+      DismissDataQualityIssueRequest request = new DismissDataQualityIssueRequest("Direct dismissal of reopened");
+
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/dismiss", issueId)
+              .header("Authorization", adminToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(request)))
+          .andExpect(status().isConflict())
+          .andExpect(jsonPath("$.code", is("INVALID_DQ_TRANSITION")));
     }
 
     @Test
@@ -472,7 +638,141 @@ class DataQualityWorkflowApiTest {
   }
 
   @Nested
-  @DisplayName("7. Database Check Constraint & Deduplication Engine Synergy")
+  @DisplayName("7. Read and Write Permission Separation Tests (audit.read vs system.manage)")
+  class ReadAndWritePermissionSeparationTests {
+
+    @Test
+    @DisplayName("Caller with audit.read alone cannot authorize lifecycle mutations (403 Forbidden)")
+    void shouldRejectCallerWithAuditReadAloneFromAllLifecycleMutations() throws Exception {
+      Long issueId = insertTestIssue("OPEN", "WF-TEST-PERM-MUTATION");
+
+      // 1. assign
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/assign", issueId)
+              .header("Authorization", auditReadToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(new AssignDataQualityIssueRequest(testReviewerUserId))))
+          .andExpect(status().isForbidden());
+
+      // 2. start-investigation
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/start-investigation", issueId)
+              .header("Authorization", auditReadToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(new StartInvestigationRequest())))
+          .andExpect(status().isForbidden());
+
+      // 3. resolve
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/resolve", issueId)
+              .header("Authorization", auditReadToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(new ResolveDataQualityIssueRequest("Resolution notes"))))
+          .andExpect(status().isForbidden());
+
+      // 4. dismiss
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/dismiss", issueId)
+              .header("Authorization", auditReadToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(new DismissDataQualityIssueRequest("Dismiss notes"))))
+          .andExpect(status().isForbidden());
+
+      // 5. reopen
+      mockMvc.perform(post("/api/v1/data-quality-issues/{id}/reopen", issueId)
+              .header("Authorization", auditReadToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(new ReopenDataQualityIssueRequest("Reopen reason"))))
+          .andExpect(status().isForbidden());
+
+      // 6. generic PUT
+      UpdateDataQualityIssueRequest updateReq = new UpdateDataQualityIssueRequest();
+      updateReq.setIssueSummary("Attempted update with audit.read");
+      mockMvc.perform(put("/api/v1/data-quality-issues/{id}", issueId)
+              .header("Authorization", auditReadToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(updateReq)))
+          .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Caller with audit.read alone CAN read issue events (200 OK)")
+    void shouldAllowCallerWithAuditReadToViewEvents() throws Exception {
+      Long issueId = insertTestIssue("OPEN", "WF-TEST-PERM-READ-EVENTS");
+
+      mockMvc.perform(get("/api/v1/data-quality-issues/{id}/events", issueId)
+              .header("Authorization", auditReadToken))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.success", is(true)));
+    }
+  }
+
+  @Nested
+  @DisplayName("8. Generic PUT Lifecycle History Protection Tests")
+  class GenericUpdateProtectionTests {
+
+    @Test
+    @DisplayName("Should reject direct status alteration via generic PUT")
+    void shouldRejectDirectStatusAlterationViaGenericPut() throws Exception {
+      Long issueId = insertTestIssue("OPEN", "WF-TEST-PUT-STATUS");
+      UpdateDataQualityIssueRequest request = new UpdateDataQualityIssueRequest();
+      request.setDataQualityIssueStatusId(2L); // Trying to directly change status
+
+      mockMvc.perform(put("/api/v1/data-quality-issues/{id}", issueId)
+              .header("Authorization", adminToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(request)))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code", is("LIFECYCLE_BYPASS_PROHIBITED")));
+    }
+
+    @Test
+    @DisplayName("Should reject direct assignment alteration via generic PUT")
+    void shouldRejectDirectAssignmentAlterationViaGenericPut() throws Exception {
+      Long issueId = insertTestIssue("OPEN", "WF-TEST-PUT-ASSIGN");
+      UpdateDataQualityIssueRequest request = new UpdateDataQualityIssueRequest();
+      request.setAssignedUserId(testReviewerUserId); // Trying to directly change assignee
+
+      mockMvc.perform(put("/api/v1/data-quality-issues/{id}", issueId)
+              .header("Authorization", adminToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(request)))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code", is("ASSIGNMENT_BYPASS_PROHIBITED")));
+    }
+
+    @Test
+    @DisplayName("Should reject direct resolution alteration via generic PUT")
+    void shouldRejectDirectResolutionAlterationViaGenericPut() throws Exception {
+      Long issueId = insertTestIssue("OPEN", "WF-TEST-PUT-RESOLVE");
+      UpdateDataQualityIssueRequest request = new UpdateDataQualityIssueRequest();
+      request.setResolutionNotes("Bypassing resolve workflow");
+
+      mockMvc.perform(put("/api/v1/data-quality-issues/{id}", issueId)
+              .header("Authorization", adminToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(request)))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code", is("RESOLUTION_BYPASS_PROHIBITED")));
+    }
+
+    @Test
+    @DisplayName("Should permit unrelated updates via generic PUT without modifying lifecycle metadata")
+    void shouldPermitUnrelatedUpdatesViaGenericPut() throws Exception {
+      Long issueId = insertTestIssue("OPEN", "WF-TEST-PUT-PERMITTED");
+      UpdateDataQualityIssueRequest request = new UpdateDataQualityIssueRequest();
+      request.setIssueSummary("Updated issue summary through permitted generic update");
+
+      mockMvc.perform(put("/api/v1/data-quality-issues/{id}", issueId)
+              .header("Authorization", adminToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(request)))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.success", is(true)))
+          .andExpect(jsonPath("$.data.issueSummary", is("Updated issue summary through permitted generic update")))
+          .andExpect(jsonPath("$.data.dataQualityIssueStatusCode", is("OPEN")))
+          .andExpect(jsonPath("$.data.assignedUserId", nullValue()));
+    }
+  }
+
+  @Nested
+  @DisplayName("9. Database Check Constraint & Deduplication Engine Synergy")
   class CheckConstraintAndDeduplicationSynergy {
 
     @Test

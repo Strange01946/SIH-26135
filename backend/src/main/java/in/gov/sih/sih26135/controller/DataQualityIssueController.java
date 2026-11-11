@@ -19,6 +19,7 @@ import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.service.DataQualityIssueService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -50,16 +51,12 @@ public class DataQualityIssueController {
   private final DataQualityIssueService dataQualityIssueService;
   private final DataQualityWorkflowService dataQualityWorkflowService;
 
-  public DataQualityIssueController(DataQualityIssueService dataQualityIssueService) {
-    this(dataQualityIssueService, null);
-  }
-
   @Autowired
   public DataQualityIssueController(
       DataQualityIssueService dataQualityIssueService,
-      @Autowired(required = false) DataQualityWorkflowService dataQualityWorkflowService) {
-    this.dataQualityIssueService = dataQualityIssueService;
-    this.dataQualityWorkflowService = dataQualityWorkflowService;
+      DataQualityWorkflowService dataQualityWorkflowService) {
+    this.dataQualityIssueService = Objects.requireNonNull(dataQualityIssueService, "dataQualityIssueService is required");
+    this.dataQualityWorkflowService = Objects.requireNonNull(dataQualityWorkflowService, "dataQualityWorkflowService is required");
   }
 
   /**
@@ -255,6 +252,7 @@ public class DataQualityIssueController {
    * @return 201 Created with created DataQualityIssueResponse enveloped in ApiResponse
    */
   @PostMapping
+  @PreAuthorize("hasAuthority('system.manage')")
   public ResponseEntity<ApiResponse<DataQualityIssueResponse>> reportIssue(
       @Valid @RequestBody CreateDataQualityIssueRequest request,
       HttpServletRequest httpRequest) {
@@ -274,6 +272,7 @@ public class DataQualityIssueController {
    * @return 200 OK with updated DataQualityIssueResponse enveloped in ApiResponse
    */
   @PutMapping("/{id}")
+  @PreAuthorize("hasAuthority('system.manage')")
   public ResponseEntity<ApiResponse<DataQualityIssueResponse>> updateIssue(
       @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateDataQualityIssueRequest request) {
@@ -287,11 +286,13 @@ public class DataQualityIssueController {
    * Assigns a data quality issue to a specific user.
    *
    * @param id primary key identifier of the issue to assign
-   * @param assignedUserId user identifier to assign the issue to
+   * @param assignedUserIdParam user identifier parameter to assign the issue to
+   * @param requestBody JSON request body specifying assigned user ID
    * @param httpRequest HTTP servlet request to verify query parameters
    * @return 200 OK with updated DataQualityIssueResponse enveloped in ApiResponse
    */
   @PostMapping("/{id}/assign")
+  @PreAuthorize("hasAuthority('system.manage')")
   public ResponseEntity<ApiResponse<DataQualityIssueResponse>> assignIssue(
       @PathVariable @Positive Long id,
       @RequestParam(value = "assignedUserId", required = false) @Positive Long assignedUserIdParam,
@@ -306,9 +307,7 @@ public class DataQualityIssueController {
     } else {
       throw new BadRequestException("assignedUserId is required", "ASSIGNED_USER_REQUIRED");
     }
-    DataQualityIssueResponse response = dataQualityWorkflowService != null
-        ? dataQualityWorkflowService.assignIssue(id, request)
-        : dataQualityIssueService.assignIssue(id, request.getAssignedUserId());
+    DataQualityIssueResponse response = dataQualityWorkflowService.assignIssue(id, request);
     return ResponseEntity.ok(ApiResponse.success(
         "Data quality issue assigned successfully",
         response));
@@ -322,12 +321,10 @@ public class DataQualityIssueController {
    * @return 200 OK with updated DataQualityIssueResponse enveloped in ApiResponse
    */
   @PostMapping("/{id}/start-investigation")
+  @PreAuthorize("hasAuthority('system.manage')")
   public ResponseEntity<ApiResponse<DataQualityIssueResponse>> startInvestigation(
       @PathVariable @Positive Long id,
       @Valid @RequestBody(required = false) StartInvestigationRequest request) {
-    if (dataQualityWorkflowService == null) {
-      throw new IllegalStateException("Workflow service is unavailable");
-    }
     DataQualityIssueResponse response = dataQualityWorkflowService.startInvestigation(
         id, request != null ? request : new StartInvestigationRequest());
     return ResponseEntity.ok(ApiResponse.success(
@@ -343,12 +340,11 @@ public class DataQualityIssueController {
    * @return 200 OK with resolved DataQualityIssueResponse enveloped in ApiResponse
    */
   @PostMapping("/{id}/resolve")
+  @PreAuthorize("hasAuthority('system.manage')")
   public ResponseEntity<ApiResponse<DataQualityIssueResponse>> resolveIssue(
       @PathVariable @Positive Long id,
       @Valid @RequestBody ResolveDataQualityIssueRequest request) {
-    DataQualityIssueResponse response = dataQualityWorkflowService != null
-        ? dataQualityWorkflowService.resolveIssue(id, request)
-        : dataQualityIssueService.resolveIssue(id, request);
+    DataQualityIssueResponse response = dataQualityWorkflowService.resolveIssue(id, request);
     return ResponseEntity.ok(ApiResponse.success(
         "Data quality issue resolved successfully",
         response));
@@ -362,12 +358,10 @@ public class DataQualityIssueController {
    * @return 200 OK with dismissed DataQualityIssueResponse enveloped in ApiResponse
    */
   @PostMapping("/{id}/dismiss")
+  @PreAuthorize("hasAuthority('system.manage')")
   public ResponseEntity<ApiResponse<DataQualityIssueResponse>> dismissIssue(
       @PathVariable @Positive Long id,
       @Valid @RequestBody DismissDataQualityIssueRequest request) {
-    if (dataQualityWorkflowService == null) {
-      throw new IllegalStateException("Workflow service is unavailable");
-    }
     DataQualityIssueResponse response = dataQualityWorkflowService.dismissIssue(id, request);
     return ResponseEntity.ok(ApiResponse.success(
         "Data quality issue dismissed successfully",
@@ -382,12 +376,10 @@ public class DataQualityIssueController {
    * @return 200 OK with reopened DataQualityIssueResponse enveloped in ApiResponse
    */
   @PostMapping("/{id}/reopen")
+  @PreAuthorize("hasAuthority('system.manage')")
   public ResponseEntity<ApiResponse<DataQualityIssueResponse>> reopenIssue(
       @PathVariable @Positive Long id,
       @Valid @RequestBody ReopenDataQualityIssueRequest request) {
-    if (dataQualityWorkflowService == null) {
-      throw new IllegalStateException("Workflow service is unavailable");
-    }
     DataQualityIssueResponse response = dataQualityWorkflowService.reopenIssue(id, request);
     return ResponseEntity.ok(ApiResponse.success(
         "Data quality issue reopened successfully",
@@ -403,9 +395,6 @@ public class DataQualityIssueController {
   @GetMapping("/{id}/events")
   public ResponseEntity<ApiResponse<List<DataQualityIssueEventResponse>>> getIssueEvents(
       @PathVariable @Positive Long id) {
-    if (dataQualityWorkflowService == null) {
-      throw new IllegalStateException("Workflow service is unavailable");
-    }
     List<DataQualityIssueEventResponse> response = dataQualityWorkflowService.getIssueEvents(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }

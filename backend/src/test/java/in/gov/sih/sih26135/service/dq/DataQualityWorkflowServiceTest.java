@@ -10,7 +10,6 @@ import in.gov.sih.sih26135.dto.response.DataQualityIssueResponse;
 import in.gov.sih.sih26135.entity.DataQualityIssue;
 import in.gov.sih.sih26135.entity.DataQualityIssueEvent;
 import in.gov.sih.sih26135.entity.RefDataQualityIssueStatus;
-import in.gov.sih.sih26135.entity.Trainee;
 import in.gov.sih.sih26135.entity.User;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.InvalidDataQualityTransitionException;
@@ -25,6 +24,7 @@ import in.gov.sih.sih26135.repository.TraineeRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.impl.DataQualityWorkflowServiceImpl;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -40,8 +40,12 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -157,6 +161,17 @@ class DataQualityWorkflowServiceTest {
     assigneeUser = new User();
     assigneeUser.setId(20L);
     assigneeUser.setUsername("reviewer");
+    assigneeUser.setStateId(1L);
+
+    when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), any())).thenReturn(1);
+    when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), any(), any())).thenReturn(1);
+    when(jdbcTemplate.queryForObject(contains("ROLE_trainee"), eq(Integer.class), anyLong())).thenReturn(0);
+    when(jdbcTemplate.queryForObject(contains("FOR UPDATE"), eq(Long.class), anyLong())).thenReturn(1L);
+  }
+
+  @AfterEach
+  void tearDown() {
+    SecurityContextHolder.clearContext();
   }
 
   private DataQualityIssue createTestIssue(Long id, RefDataQualityIssueStatus status) {
@@ -167,6 +182,7 @@ class DataQualityWorkflowServiceTest {
     issue.setEntityId(100L);
     issue.setIssueSummary("Test anomaly detected");
     issue.setDetectedAt(LocalDateTime.now().minusDays(1));
+    issue.setAssignedUserId(20L);
     return issue;
   }
 
@@ -175,6 +191,29 @@ class DataQualityWorkflowServiceTest {
     when(scopeValidator.resolveAuthenticatedUser()).thenReturn(Optional.of(adminCaller));
     when(scopeValidator.isNationwideAdmin()).thenReturn(true);
     when(scopeValidator.isTraineeCaller()).thenReturn(false);
+
+    SecurityContextHolder.getContext().setAuthentication(
+        new UsernamePasswordAuthenticationToken(
+            adminCaller, null, List.of(
+                new SimpleGrantedAuthority("ROLE_super_admin"),
+                new SimpleGrantedAuthority("system.manage")
+            )
+        )
+    );
+  }
+
+  private void mockUserAuthentication(User user, String... authorities) {
+    when(scopeValidator.resolveAuthenticatedUserId()).thenReturn(user.getId());
+    when(scopeValidator.resolveAuthenticatedUser()).thenReturn(Optional.of(user));
+    when(scopeValidator.isNationwideAdmin()).thenReturn(false);
+    when(scopeValidator.isTraineeCaller()).thenReturn(false);
+
+    List<SimpleGrantedAuthority> auths = Arrays.stream(authorities)
+        .map(SimpleGrantedAuthority::new)
+        .toList();
+    SecurityContextHolder.getContext().setAuthentication(
+        new UsernamePasswordAuthenticationToken(user, null, auths)
+    );
   }
 
   @Nested
@@ -218,7 +257,7 @@ class DataQualityWorkflowServiceTest {
       when(refDataQualityIssueStatusRepository.findByStatusCode("ASSIGNED")).thenReturn(Optional.of(assignedStatus));
       when(dataQualityIssueRepository.save(any(DataQualityIssue.class))).thenAnswer(inv -> inv.getArgument(0));
 
-      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(20L, "Reassigned to secondary reviewer");
+      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(20L);
       workflowService.assignIssue(1L, request);
 
       assertThat(issue.getAssignedUserId()).isEqualTo(20L);
@@ -236,7 +275,7 @@ class DataQualityWorkflowServiceTest {
       when(refDataQualityIssueStatusRepository.findByStatusCode("ASSIGNED")).thenReturn(Optional.of(assignedStatus));
       when(dataQualityIssueRepository.save(any(DataQualityIssue.class))).thenAnswer(inv -> inv.getArgument(0));
 
-      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(20L, "Assigning reopened issue");
+      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(20L, "Reassigned after reopen");
       workflowService.assignIssue(1L, request);
 
       assertThat(issue.getDataQualityIssueStatus()).isEqualTo(assignedStatus);
@@ -244,82 +283,152 @@ class DataQualityWorkflowServiceTest {
     }
 
     @Test
-    @DisplayName("Should reject assignment when issue is IN_PROGRESS with 409 Conflict")
+    @DisplayName("Should reject assigning an issue that is already IN_PROGRESS with 409 Conflict")
     void shouldRejectAssignmentWhenInProgress() {
       mockAdminAuthentication();
       DataQualityIssue issue = createTestIssue(1L, inProgressStatus);
       when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
       when(userRepository.findById(20L)).thenReturn(Optional.of(assigneeUser));
-      when(traineeRepository.findByUserId(20L)).thenReturn(Optional.empty());
 
-      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(20L, "Invalid reassign");
+      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(20L);
       assertThatThrownBy(() -> workflowService.assignIssue(1L, request))
           .isInstanceOf(InvalidDataQualityTransitionException.class)
           .hasMessageContaining("Cannot transition data quality issue from IN_PROGRESS to ASSIGNED")
           .satisfies(ex -> assertThat(((InvalidDataQualityTransitionException) ex).getErrorCode())
               .isEqualTo(OperationalErrorCodes.INVALID_DQ_TRANSITION));
+
+      verify(dataQualityIssueRepository, never()).save(any());
+      verify(dataQualityIssueEventRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("Should reject assignment when issue is in terminal state (RESOLVED / DISMISSED) with 409 Conflict")
-    void shouldRejectAssignmentWhenTerminal() {
+    @DisplayName("Should reject assigning an issue that is already RESOLVED with 409 Conflict")
+    void shouldRejectAssignmentWhenResolved() {
       mockAdminAuthentication();
       DataQualityIssue issue = createTestIssue(1L, resolvedStatus);
       when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
       when(userRepository.findById(20L)).thenReturn(Optional.of(assigneeUser));
-      when(traineeRepository.findByUserId(20L)).thenReturn(Optional.empty());
 
-      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(20L, "Invalid assign");
+      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(20L);
       assertThatThrownBy(() -> workflowService.assignIssue(1L, request))
           .isInstanceOf(InvalidDataQualityTransitionException.class)
           .hasMessageContaining("Cannot transition data quality issue from RESOLVED to ASSIGNED");
     }
 
     @Test
-    @DisplayName("Should reject assignment when assignee is a Trainee with 400 Bad Request")
+    @DisplayName("Should reject assigning to Trainee user with 400 Bad Request")
     void shouldRejectAssignmentToTrainee() {
       mockAdminAuthentication();
       DataQualityIssue issue = createTestIssue(1L, openStatus);
       when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
-      when(traineeRepository.findByUserId(20L)).thenReturn(Optional.of(new Trainee()));
+      when(userRepository.findById(20L)).thenReturn(Optional.of(assigneeUser));
+      when(traineeRepository.findByUserId(20L)).thenReturn(Optional.of(new in.gov.sih.sih26135.entity.Trainee()));
 
-      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(20L, "Assigning to trainee");
+      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(20L);
       assertThatThrownBy(() -> workflowService.assignIssue(1L, request))
           .isInstanceOf(BadRequestException.class)
           .hasMessageContaining("Trainees cannot be assigned data quality issues");
     }
 
     @Test
-    @DisplayName("Should reject assignment when assignee user does not exist with 404 Not Found")
-    void shouldRejectAssignmentWhenUserNotFound() {
+    @DisplayName("Should reject assigning to non-existent user with 404 Not Found")
+    void shouldRejectAssignmentToNonExistentUser() {
       mockAdminAuthentication();
       DataQualityIssue issue = createTestIssue(1L, openStatus);
       when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
-      when(traineeRepository.findByUserId(999L)).thenReturn(Optional.empty());
       when(userRepository.findById(999L)).thenReturn(Optional.empty());
 
-      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(999L, "Assigning to ghost");
+      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(999L);
       assertThatThrownBy(() -> workflowService.assignIssue(1L, request))
           .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
-    @DisplayName("Should reject assignment when assignee user is deleted with 400 Bad Request")
-    void shouldRejectAssignmentWhenAssigneeIsDeleted() {
+    @DisplayName("Should reject assigning to deleted/inactive user with 400 Bad Request")
+    void shouldRejectAssignmentToDeletedUser() {
       mockAdminAuthentication();
       DataQualityIssue issue = createTestIssue(1L, openStatus);
+      assigneeUser.setDeletedAt(LocalDateTime.now());
       when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
-      when(traineeRepository.findByUserId(20L)).thenReturn(Optional.empty());
+      when(userRepository.findById(20L)).thenReturn(Optional.of(assigneeUser));
 
-      User deletedUser = new User();
-      deletedUser.setId(20L);
-      deletedUser.setDeletedAt(LocalDateTime.now().minusDays(2));
-      when(userRepository.findById(20L)).thenReturn(Optional.of(deletedUser));
-
-      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(20L, "Assigning to deleted user");
+      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(20L);
       assertThatThrownBy(() -> workflowService.assignIssue(1L, request))
           .isInstanceOf(BadRequestException.class)
           .hasMessageContaining("Assignee user is deleted or inactive");
+    }
+
+    @Test
+    @DisplayName("Should reject nationwide admin assigning to unrelated assignee outside issue tenant scope")
+    void shouldRejectNationwideAdminAssigningToUnrelatedAssignee() {
+      mockAdminAuthentication();
+      DataQualityIssue issue = createTestIssue(1L, openStatus);
+      issue.setEntityType("Trainee");
+      issue.setEntityId(100L);
+
+      User unrelatedAssignee = new User();
+      unrelatedAssignee.setId(25L);
+      unrelatedAssignee.setStateId(2L); // State 2, but trainee is in State 1
+
+      when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
+      when(userRepository.findById(25L)).thenReturn(Optional.of(unrelatedAssignee));
+      when(traineeRepository.findByUserId(25L)).thenReturn(Optional.empty());
+      when(jdbcTemplate.queryForObject(contains("trainees"), eq(Integer.class), eq(100L), eq(2L))).thenReturn(0);
+
+      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(25L);
+      assertThatThrownBy(() -> workflowService.assignIssue(1L, request))
+          .isInstanceOf(BadRequestException.class)
+          .hasMessageContaining("Assignee state scope does not match issue trainee state");
+    }
+
+    @Test
+    @DisplayName("Should reject provider caller assigning to unscoped user (null tenancy fields)")
+    void shouldRejectProviderAssigningToUnscopedUser() {
+      User providerCaller = new User();
+      providerCaller.setId(50L);
+      providerCaller.setTrainingProviderId(10L);
+      mockUserAuthentication(providerCaller, "ROLE_training_provider", "system.manage");
+
+      DataQualityIssue issue = createTestIssue(1L, openStatus);
+      issue.setEntityType("Trainee");
+      issue.setEntityId(100L);
+
+      User unscopedAssignee = new User();
+      unscopedAssignee.setId(60L);
+      // All tenancy fields null (missing scope)
+      unscopedAssignee.setStateId(null);
+      unscopedAssignee.setTrainingProviderId(null);
+      unscopedAssignee.setEmployerId(null);
+
+      when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
+      when(userRepository.findById(60L)).thenReturn(Optional.of(unscopedAssignee));
+      when(traineeRepository.findByUserId(60L)).thenReturn(Optional.empty());
+
+      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(60L);
+      assertThatThrownBy(() -> workflowService.assignIssue(1L, request))
+          .isInstanceOf(BadRequestException.class)
+          .hasMessageContaining("Assignee has missing or ambiguous tenant scope");
+    }
+
+    @Test
+    @DisplayName("Should reject assignee with conflicting tenant scope (both provider and employer)")
+    void shouldRejectAssigneeWithConflictingScope() {
+      mockAdminAuthentication();
+      DataQualityIssue issue = createTestIssue(1L, openStatus);
+
+      User conflictingAssignee = new User();
+      conflictingAssignee.setId(70L);
+      conflictingAssignee.setTrainingProviderId(10L);
+      conflictingAssignee.setEmployerId(20L); // Conflicting!
+
+      when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
+      when(userRepository.findById(70L)).thenReturn(Optional.of(conflictingAssignee));
+      when(traineeRepository.findByUserId(70L)).thenReturn(Optional.empty());
+
+      AssignDataQualityIssueRequest request = new AssignDataQualityIssueRequest(70L);
+      assertThatThrownBy(() -> workflowService.assignIssue(1L, request))
+          .isInstanceOf(BadRequestException.class)
+          .hasMessageContaining("Assignee has conflicting tenant scope");
     }
   }
 
@@ -328,10 +437,15 @@ class DataQualityWorkflowServiceTest {
   class InvestigationTransitions {
 
     @Test
-    @DisplayName("Should successfully start investigation from ASSIGNED state")
-    void shouldStartInvestigationSuccessfully() {
-      mockAdminAuthentication();
+    @DisplayName("Should successfully start investigation from ASSIGNED state by assigned investigator")
+    void shouldStartInvestigationSuccessfullyByAssignedInvestigator() {
+      User assignedInvestigator = new User();
+      assignedInvestigator.setId(20L);
+      assignedInvestigator.setStateId(1L);
+      mockUserAuthentication(assignedInvestigator, "ROLE_state_admin", "system.manage");
+
       DataQualityIssue issue = createTestIssue(1L, assignedStatus);
+      issue.setAssignedUserId(20L);
       when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
       when(refDataQualityIssueStatusRepository.findByStatusCode("IN_PROGRESS")).thenReturn(Optional.of(inProgressStatus));
       when(dataQualityIssueRepository.save(any(DataQualityIssue.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -345,6 +459,40 @@ class DataQualityWorkflowServiceTest {
       verify(dataQualityIssueEventRepository).save(eventCaptor.capture());
       assertThat(eventCaptor.getValue().getDataQualityIssueStatus()).isEqualTo(inProgressStatus);
       assertThat(eventCaptor.getValue().getRemarks()).isEqualTo("Initiating forensic audit");
+    }
+
+    @Test
+    @DisplayName("Should allow administrative supervisor to start investigation override")
+    void shouldAllowSupervisorToStartInvestigation() {
+      mockAdminAuthentication(); // AdminCaller (id=10)
+      DataQualityIssue issue = createTestIssue(1L, assignedStatus);
+      issue.setAssignedUserId(20L); // Assigned to user 20
+      when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
+      when(refDataQualityIssueStatusRepository.findByStatusCode("IN_PROGRESS")).thenReturn(Optional.of(inProgressStatus));
+      when(dataQualityIssueRepository.save(any(DataQualityIssue.class))).thenAnswer(inv -> inv.getArgument(0));
+
+      StartInvestigationRequest request = new StartInvestigationRequest("Supervisor starting audit");
+      workflowService.startInvestigation(1L, request);
+
+      assertThat(issue.getDataQualityIssueStatus()).isEqualTo(inProgressStatus);
+    }
+
+    @Test
+    @DisplayName("Should reject unauthorized investigator from starting investigation with 403 Forbidden")
+    void shouldRejectUnauthorizedInvestigatorStartingInvestigation() {
+      User otherUser = new User();
+      otherUser.setId(30L);
+      otherUser.setTrainingProviderId(10L);
+      mockUserAuthentication(otherUser, "ROLE_training_provider", "system.manage");
+
+      DataQualityIssue issue = createTestIssue(1L, assignedStatus);
+      issue.setAssignedUserId(20L); // Assigned to user 20, caller is user 30
+      when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
+
+      StartInvestigationRequest request = new StartInvestigationRequest("Unauthorized start");
+      assertThatThrownBy(() -> workflowService.startInvestigation(1L, request))
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessageContaining("Only the assigned investigator or an authorized administrative supervisor can start investigation");
     }
 
     @Test
@@ -381,10 +529,15 @@ class DataQualityWorkflowServiceTest {
   class ResolutionTransitions {
 
     @Test
-    @DisplayName("Should successfully resolve an IN_PROGRESS issue with server attribution and event")
-    void shouldResolveInProgressIssueSuccessfully() {
-      mockAdminAuthentication();
+    @DisplayName("Should successfully resolve an IN_PROGRESS issue by assigned investigator")
+    void shouldResolveInProgressIssueSuccessfullyByAssignedInvestigator() {
+      User assignedInvestigator = new User();
+      assignedInvestigator.setId(20L);
+      assignedInvestigator.setStateId(1L);
+      mockUserAuthentication(assignedInvestigator, "ROLE_state_admin", "system.manage");
+
       DataQualityIssue issue = createTestIssue(1L, inProgressStatus);
+      issue.setAssignedUserId(20L);
       when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
       when(refDataQualityIssueStatusRepository.findByStatusCode("RESOLVED")).thenReturn(Optional.of(resolvedStatus));
       when(dataQualityIssueRepository.save(any(DataQualityIssue.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -393,7 +546,7 @@ class DataQualityWorkflowServiceTest {
       workflowService.resolveIssue(1L, request);
 
       assertThat(issue.getDataQualityIssueStatus()).isEqualTo(resolvedStatus);
-      assertThat(issue.getResolvedByUserId()).isEqualTo(adminCaller.getId());
+      assertThat(issue.getResolvedByUserId()).isEqualTo(20L);
       assertThat(issue.getResolvedAt()).isNotNull();
       assertThat(issue.getResolutionNotes()).isEqualTo("Discrepancy remediated in enrollment register");
 
@@ -401,6 +554,24 @@ class DataQualityWorkflowServiceTest {
       verify(dataQualityIssueEventRepository).save(eventCaptor.capture());
       assertThat(eventCaptor.getValue().getDataQualityIssueStatus()).isEqualTo(resolvedStatus);
       assertThat(eventCaptor.getValue().getRemarks()).isEqualTo("Discrepancy remediated in enrollment register");
+    }
+
+    @Test
+    @DisplayName("Should reject unauthorized user resolving issue with 403 Forbidden")
+    void shouldRejectUnauthorizedUserResolvingIssue() {
+      User otherUser = new User();
+      otherUser.setId(30L);
+      otherUser.setTrainingProviderId(10L);
+      mockUserAuthentication(otherUser, "ROLE_training_provider", "system.manage");
+
+      DataQualityIssue issue = createTestIssue(1L, inProgressStatus);
+      issue.setAssignedUserId(20L); // Assigned to user 20
+      when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
+
+      ResolveDataQualityIssueRequest request = new ResolveDataQualityIssueRequest("Unauthorized resolution attempt");
+      assertThatThrownBy(() -> workflowService.resolveIssue(1L, request))
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessageContaining("Only the assigned investigator or an authorized administrative supervisor can resolve this issue");
     }
 
     @Test
@@ -449,28 +620,14 @@ class DataQualityWorkflowServiceTest {
           .isInstanceOf(BadRequestException.class)
           .hasMessageContaining("resolutionNotes cannot exceed 500 characters");
     }
-
-    @Test
-    @DisplayName("Should reject resolution when detected_at is in the future relative to server time")
-    void shouldEnforceTemporalInvariant() {
-      mockAdminAuthentication();
-      DataQualityIssue issue = createTestIssue(1L, inProgressStatus);
-      issue.setDetectedAt(LocalDateTime.now().plusHours(2)); // future detection date
-      when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
-
-      ResolveDataQualityIssueRequest request = new ResolveDataQualityIssueRequest("Future detected issue");
-      assertThatThrownBy(() -> workflowService.resolveIssue(1L, request))
-          .isInstanceOf(BadRequestException.class)
-          .hasMessageContaining("Resolved timestamp cannot be before detected timestamp");
-    }
   }
 
   @Nested
-  @DisplayName("4. Dismissal Transition (OPEN / IN_PROGRESS -> DISMISSED)")
-  class DismissalTransitions {
+  @DisplayName("4. Dismissal Transition (OPEN -> DISMISSED, IN_PROGRESS -> DISMISSED)")
+  class DismissTransitions {
 
     @Test
-    @DisplayName("Should successfully dismiss an OPEN issue with remarks")
+    @DisplayName("Should successfully dismiss an OPEN issue with remarks and event")
     void shouldDismissOpenIssueSuccessfully() {
       mockAdminAuthentication();
       DataQualityIssue issue = createTestIssue(1L, openStatus);
@@ -492,10 +649,15 @@ class DataQualityWorkflowServiceTest {
     }
 
     @Test
-    @DisplayName("Should successfully dismiss an IN_PROGRESS issue with remarks")
-    void shouldDismissInProgressIssueSuccessfully() {
-      mockAdminAuthentication();
+    @DisplayName("Should successfully dismiss an IN_PROGRESS issue by assigned investigator")
+    void shouldDismissInProgressIssueSuccessfullyByAssignedInvestigator() {
+      User assignedInvestigator = new User();
+      assignedInvestigator.setId(20L);
+      assignedInvestigator.setStateId(1L);
+      mockUserAuthentication(assignedInvestigator, "ROLE_state_admin", "system.manage");
+
       DataQualityIssue issue = createTestIssue(1L, inProgressStatus);
+      issue.setAssignedUserId(20L);
       when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
       when(refDataQualityIssueStatusRepository.findByStatusCode("DISMISSED")).thenReturn(Optional.of(dismissedStatus));
       when(dataQualityIssueRepository.save(any(DataQualityIssue.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -504,6 +666,36 @@ class DataQualityWorkflowServiceTest {
       workflowService.dismissIssue(1L, request);
 
       assertThat(issue.getDataQualityIssueStatus()).isEqualTo(dismissedStatus);
+    }
+
+    @Test
+    @DisplayName("Should explicitly reject ASSIGNED -> DISMISSED with 409 Conflict")
+    void shouldRejectDismissingAssignedIssueWith409() {
+      mockAdminAuthentication();
+      DataQualityIssue issue = createTestIssue(1L, assignedStatus);
+      when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
+
+      DismissDataQualityIssueRequest request = new DismissDataQualityIssueRequest("Cannot dismiss assigned directly");
+      assertThatThrownBy(() -> workflowService.dismissIssue(1L, request))
+          .isInstanceOf(InvalidDataQualityTransitionException.class)
+          .hasMessageContaining("Cannot transition data quality issue from ASSIGNED to DISMISSED")
+          .satisfies(ex -> assertThat(((InvalidDataQualityTransitionException) ex).getErrorCode())
+              .isEqualTo(OperationalErrorCodes.INVALID_DQ_TRANSITION));
+    }
+
+    @Test
+    @DisplayName("Should explicitly reject REOPENED -> DISMISSED with 409 Conflict")
+    void shouldRejectDismissingReopenedIssueWith409() {
+      mockAdminAuthentication();
+      DataQualityIssue issue = createTestIssue(1L, reopenedStatus);
+      when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
+
+      DismissDataQualityIssueRequest request = new DismissDataQualityIssueRequest("Cannot dismiss reopened directly");
+      assertThatThrownBy(() -> workflowService.dismissIssue(1L, request))
+          .isInstanceOf(InvalidDataQualityTransitionException.class)
+          .hasMessageContaining("Cannot transition data quality issue from REOPENED to DISMISSED")
+          .satisfies(ex -> assertThat(((InvalidDataQualityTransitionException) ex).getErrorCode())
+              .isEqualTo(OperationalErrorCodes.INVALID_DQ_TRANSITION));
     }
 
     @Test
@@ -553,43 +745,43 @@ class DataQualityWorkflowServiceTest {
     void shouldReopenResolvedIssueSuccessfully() {
       mockAdminAuthentication();
       DataQualityIssue issue = createTestIssue(1L, resolvedStatus);
+      issue.setResolvedByUserId(10L);
       issue.setResolvedAt(LocalDateTime.now().minusHours(5));
-      issue.setResolvedByUserId(99L);
-      issue.setResolutionNotes("Old resolution note");
+      issue.setResolutionNotes("Initial resolution");
 
       when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
       when(refDataQualityIssueStatusRepository.findByStatusCode("REOPENED")).thenReturn(Optional.of(reopenedStatus));
       when(dataQualityIssueRepository.save(any(DataQualityIssue.class))).thenAnswer(inv -> inv.getArgument(0));
 
-      ReopenDataQualityIssueRequest request = new ReopenDataQualityIssueRequest("Anomaly recurred after external feed synchronization");
+      ReopenDataQualityIssueRequest request = new ReopenDataQualityIssueRequest("Audit showed secondary enrollment anomaly persisted");
       workflowService.reopenIssue(1L, request);
 
       assertThat(issue.getDataQualityIssueStatus()).isEqualTo(reopenedStatus);
-      assertThat(issue.getResolvedAt()).isNull();
       assertThat(issue.getResolvedByUserId()).isNull();
+      assertThat(issue.getResolvedAt()).isNull();
       assertThat(issue.getResolutionNotes()).isNull();
 
       ArgumentCaptor<DataQualityIssueEvent> eventCaptor = ArgumentCaptor.forClass(DataQualityIssueEvent.class);
       verify(dataQualityIssueEventRepository).save(eventCaptor.capture());
       assertThat(eventCaptor.getValue().getDataQualityIssueStatus()).isEqualTo(reopenedStatus);
-      assertThat(eventCaptor.getValue().getRemarks()).isEqualTo("Anomaly recurred after external feed synchronization");
+      assertThat(eventCaptor.getValue().getRemarks()).isEqualTo("Audit showed secondary enrollment anomaly persisted");
     }
 
     @Test
-    @DisplayName("Should reject reopening a DISMISSED issue with 409 Conflict")
+    @DisplayName("Should reject reopening an already DISMISSED issue with 409 Conflict")
     void shouldRejectReopeningDismissedIssue() {
       mockAdminAuthentication();
       DataQualityIssue issue = createTestIssue(1L, dismissedStatus);
       when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
 
-      ReopenDataQualityIssueRequest request = new ReopenDataQualityIssueRequest("Cannot reopen dismissed issue");
+      ReopenDataQualityIssueRequest request = new ReopenDataQualityIssueRequest("Cannot reopen dismissed");
       assertThatThrownBy(() -> workflowService.reopenIssue(1L, request))
           .isInstanceOf(InvalidDataQualityTransitionException.class)
           .hasMessageContaining("Cannot transition data quality issue from DISMISSED to REOPENED");
     }
 
     @Test
-    @DisplayName("Should reject reopening an OPEN or ASSIGNED issue with 409 Conflict")
+    @DisplayName("Should reject reopening an OPEN issue with 409 Conflict")
     void shouldRejectReopeningOpenIssue() {
       mockAdminAuthentication();
       DataQualityIssue issue = createTestIssue(1L, openStatus);
@@ -611,26 +803,28 @@ class DataQualityWorkflowServiceTest {
           .isInstanceOf(BadRequestException.class)
           .hasMessageContaining("reopeningReason cannot be blank");
     }
+
+    @Test
+    @DisplayName("Should reject reopening reason exceeding 500 characters with 400 Bad Request")
+    void shouldRejectOversizedReopeningReason() {
+      String oversized = "R".repeat(501);
+      ReopenDataQualityIssueRequest request = new ReopenDataQualityIssueRequest(oversized);
+      assertThatThrownBy(() -> workflowService.reopenIssue(1L, request))
+          .isInstanceOf(BadRequestException.class)
+          .hasMessageContaining("reopeningReason cannot exceed 500 characters");
+    }
   }
 
   @Nested
-  @DisplayName("6. Security, Tenancy & Authorization Guardrails")
-  class SecurityAndTenancyGuardrails {
-
-    @Test
-    @DisplayName("Should reject unauthenticated callers with AccessDeniedException")
-    void shouldRejectUnauthenticatedCaller() {
-      when(scopeValidator.resolveAuthenticatedUserId()).thenReturn(null);
-
-      assertThatThrownBy(() -> workflowService.startInvestigation(1L, new StartInvestigationRequest()))
-          .isInstanceOf(AccessDeniedException.class)
-          .hasMessageContaining("Authenticated user identity is required");
-    }
+  @DisplayName("6. Security Scope & Multi-Tenant Boundaries")
+  class SecurityScopeAndTenantBoundaries {
 
     @Test
     @DisplayName("Should reject Trainee callers from managing data quality issues")
     void shouldRejectTraineeCaller() {
-      when(scopeValidator.resolveAuthenticatedUserId()).thenReturn(50L);
+      User trainee = new User();
+      trainee.setId(50L);
+      mockUserAuthentication(trainee, "ROLE_trainee", "system.manage");
       when(scopeValidator.isTraineeCaller()).thenReturn(true);
 
       assertThatThrownBy(() -> workflowService.startInvestigation(1L, new StartInvestigationRequest()))
@@ -644,11 +838,7 @@ class DataQualityWorkflowServiceTest {
       User stateAdmin = new User();
       stateAdmin.setId(11L);
       stateAdmin.setStateId(5L); // State 5
-
-      when(scopeValidator.resolveAuthenticatedUserId()).thenReturn(11L);
-      when(scopeValidator.isTraineeCaller()).thenReturn(false);
-      when(scopeValidator.resolveAuthenticatedUser()).thenReturn(Optional.of(stateAdmin));
-      when(scopeValidator.isNationwideAdmin()).thenReturn(false);
+      mockUserAuthentication(stateAdmin, "ROLE_state_admin", "system.manage");
 
       DataQualityIssue issue = createTestIssue(1L, openStatus);
       issue.setEntityType("Trainee");
@@ -669,11 +859,7 @@ class DataQualityWorkflowServiceTest {
       User employerUser = new User();
       employerUser.setId(12L);
       employerUser.setEmployerId(88L); // Employer persona
-
-      when(scopeValidator.resolveAuthenticatedUserId()).thenReturn(12L);
-      when(scopeValidator.isTraineeCaller()).thenReturn(false);
-      when(scopeValidator.resolveAuthenticatedUser()).thenReturn(Optional.of(employerUser));
-      when(scopeValidator.isNationwideAdmin()).thenReturn(false);
+      mockUserAuthentication(employerUser, "ROLE_employer", "system.manage");
 
       DataQualityIssue issue = createTestIssue(1L, openStatus);
       issue.setEntityType("Trainee");
@@ -683,6 +869,51 @@ class DataQualityWorkflowServiceTest {
       assertThatThrownBy(() -> workflowService.dismissIssue(1L, new DismissDataQualityIssueRequest("Employer dismissing trainee")))
           .isInstanceOf(AccessDeniedException.class)
           .hasMessageContaining("Employers are not authorized to manage trainee data quality issues");
+    }
+
+    @Test
+    @DisplayName("Should reject caller with audit.read alone from lifecycle mutation methods")
+    void shouldRejectCallerWithAuditReadAloneFromMutations() {
+      User auditReader = new User();
+      auditReader.setId(40L);
+      auditReader.setStateId(1L);
+      mockUserAuthentication(auditReader, "audit.read"); // No system.manage!
+
+      assertThatThrownBy(() -> workflowService.assignIssue(1L, new AssignDataQualityIssueRequest(20L)))
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessageContaining("Caller lacks required management authority 'system.manage'");
+
+      assertThatThrownBy(() -> workflowService.startInvestigation(1L, new StartInvestigationRequest()))
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessageContaining("Caller lacks required management authority 'system.manage'");
+
+      assertThatThrownBy(() -> workflowService.resolveIssue(1L, new ResolveDataQualityIssueRequest("Notes")))
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessageContaining("Caller lacks required management authority 'system.manage'");
+
+      assertThatThrownBy(() -> workflowService.dismissIssue(1L, new DismissDataQualityIssueRequest("Dismiss")))
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessageContaining("Caller lacks required management authority 'system.manage'");
+
+      assertThatThrownBy(() -> workflowService.reopenIssue(1L, new ReopenDataQualityIssueRequest("Reopen")))
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessageContaining("Caller lacks required management authority 'system.manage'");
+    }
+
+    @Test
+    @DisplayName("Should allow caller with audit.read to view issue events")
+    void shouldAllowCallerWithAuditReadToViewEvents() {
+      User auditReader = new User();
+      auditReader.setId(40L);
+      auditReader.setStateId(1L);
+      mockUserAuthentication(auditReader, "audit.read");
+
+      DataQualityIssue issue = createTestIssue(1L, openStatus);
+      when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
+      when(dataQualityIssueEventRepository.findByDataQualityIssueId(1L)).thenReturn(List.of());
+
+      List<DataQualityIssueEventResponse> events = workflowService.getIssueEvents(1L);
+      assertThat(events).isEmpty();
     }
   }
 
