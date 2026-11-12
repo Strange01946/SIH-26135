@@ -1,19 +1,33 @@
 package in.gov.sih.sih26135.controller;
 
-import org.springframework.validation.annotation.Validated;
-import jakarta.validation.constraints.Positive;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateImportBatchRequest;
 import in.gov.sih.sih26135.dto.request.UpdateImportBatchRequest;
+import in.gov.sih.sih26135.dto.response.ImportBatchProgressResponse;
 import in.gov.sih.sih26135.dto.response.ImportBatchResponse;
+import in.gov.sih.sih26135.dto.response.ImportRecordResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.response.ApiResponse;
+import in.gov.sih.sih26135.response.PagedResponse;
+import in.gov.sih.sih26135.response.PaginationUtils;
+import in.gov.sih.sih26135.service.ImportBatchProcessingWorkflow;
 import in.gov.sih.sih26135.service.ImportBatchService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Positive;
 import java.util.List;
+import java.util.Set;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,26 +36,36 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
- * REST controller for managing Import Batch domain resources.
+ * REST controller for managing Import Batch domain resources and staged bulk ingestion workflows.
  *
- * <p>Base Route: /api/v1/import-batches
- * Consumes: CreateImportBatchRequest, UpdateImportBatchRequest
- * Produces: ImportBatchResponse enveloped in ApiResponse
+ * <p>Base Routes: /api/v1/import-batches, /api/v1/import/batches
+ * Consumes: CreateImportBatchRequest, UpdateImportBatchRequest, multipart/form-data uploads
+ * Produces: ImportBatchResponse, ImportBatchProgressResponse, ImportRecordResponse enveloped in ApiResponse
  */
 @Validated
 @RestController
-@RequestMapping("/api/v1/import-batches")
-@PreAuthorize("hasAnyAuthority('system.manage', 'audit.read')")
+@RequestMapping({"/api/v1/import-batches", "/api/v1/import/batches"})
+@PreAuthorize("hasAnyAuthority('system.manage', 'audit.read', 'trainee.read', 'trainee.write', 'placement.manage')")
 public class ImportBatchController {
 
   private final ImportBatchService importBatchService;
+  private final ImportBatchProcessingWorkflow importBatchProcessingWorkflow;
+
+  @Autowired
+  public ImportBatchController(
+      ImportBatchService importBatchService,
+      ImportBatchProcessingWorkflow importBatchProcessingWorkflow) {
+    this.importBatchService = importBatchService;
+    this.importBatchProcessingWorkflow = importBatchProcessingWorkflow;
+  }
 
   public ImportBatchController(ImportBatchService importBatchService) {
-    this.importBatchService = importBatchService;
+    this(importBatchService, null);
   }
 
   /**
@@ -147,13 +171,129 @@ public class ImportBatchController {
   }
 
   /**
+   * Stages a multipart CSV, JSON, or NDJSON file for bulk import and registers a PENDING batch.
+   *
+   * @param file multipart import file
+   * @param entityType target entity type (Trainee or PlacementRecord)
+   * @param sourceSystem optional source system identifier
+   * @param httpRequest HTTP servlet request for URI extraction
+   * @return 201 Created with staged ImportBatchResponse enveloped in ApiResponse
+   */
+  @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  @PreAuthorize("hasAnyAuthority('system.manage', 'trainee.write', 'placement.manage')")
+  public ResponseEntity<ApiResponse<ImportBatchResponse>> uploadBatch(
+      @RequestPart("file") MultipartFile file,
+      @RequestParam(value = "entityType", required = false) String entityType,
+      @RequestParam(value = "sourceSystem", required = false) String sourceSystem,
+      HttpServletRequest httpRequest) {
+    ImportBatchResponse response = requireWorkflow().stageUpload(file, entityType, sourceSystem);
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(ApiResponse.success(
+            "Import batch staged successfully",
+            response,
+            httpRequest.getRequestURI()));
+  }
+
+  /**
+   * Executes chunked validation, persistence, row quarantine, and finalization for a staged batch.
+   *
+   * @param id import batch identifier
+   * @param httpRequest HTTP servlet request for URI extraction
+   * @return 200 OK with reconciled ImportBatchProgressResponse enveloped in ApiResponse
+   */
+  @PostMapping("/{id}/process")
+  @PreAuthorize("hasAnyAuthority('system.manage', 'trainee.write', 'placement.manage')")
+  public ResponseEntity<ApiResponse<ImportBatchProgressResponse>> processBatch(
+      @PathVariable @Positive Long id,
+      HttpServletRequest httpRequest) {
+    ImportBatchProgressResponse response = requireWorkflow().processBatch(id);
+    return ResponseEntity.ok(ApiResponse.success(
+        "Import batch processed",
+        response,
+        httpRequest.getRequestURI()));
+  }
+
+  /**
+   * Retrieves reconciled batch status and row outcome progress counters.
+   *
+   * @param id import batch identifier
+   * @return 200 OK with ImportBatchProgressResponse enveloped in ApiResponse
+   */
+  @GetMapping("/{id}/progress")
+  public ResponseEntity<ApiResponse<ImportBatchProgressResponse>> getBatchProgress(
+      @PathVariable @Positive Long id) {
+    ImportBatchProgressResponse response = requireWorkflow().getBatchProgress(id);
+    return ResponseEntity.ok(ApiResponse.ok(response));
+  }
+
+  /**
+   * Retrieves paginated import records for a batch, optionally filtered by outcome status code.
+   *
+   * @param id import batch identifier
+   * @param status optional outcome status filter (SUCCESS, FAILED, SKIPPED, DUPLICATE)
+   * @param page zero-based page index
+   * @param size page size (1..100)
+   * @param sort sort field
+   * @param direction sort direction (ASC or DESC)
+   * @param httpRequest HTTP servlet request for query parameter allowlist verification
+   * @return 200 OK with PagedResponse of ImportRecordResponse enveloped in ApiResponse
+   */
+  @GetMapping("/{id}/records")
+  public ResponseEntity<ApiResponse<PagedResponse<ImportRecordResponse>>> getBatchRecords(
+      @PathVariable @Positive Long id,
+      @RequestParam(value = "status", required = false) String status,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
+      @RequestParam(value = "sort", defaultValue = "sourceRowNumber") String sort,
+      @RequestParam(value = "direction", defaultValue = "ASC") String direction,
+      HttpServletRequest httpRequest) {
+    validateAllowedQueryParameters(httpRequest, Set.of("status", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.IMPORT_RECORD_SORT_FIELDS,
+        "sourceRowNumber", Sort.Direction.ASC, Sort.Direction.ASC);
+    Page<ImportRecordResponse> records = requireWorkflow().getBatchRecords(id, status, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(records)));
+  }
+
+  /**
+   * Retrieves paginated quarantined rows (FAILED, plus optionally DUPLICATE) for an import batch.
+   *
+   * @param id import batch identifier
+   * @param includeDuplicates whether DUPLICATE rows should be included alongside FAILED rows
+   * @param page zero-based page index
+   * @param size page size (1..100)
+   * @param sort sort field
+   * @param direction sort direction (ASC or DESC)
+   * @param httpRequest HTTP servlet request for query parameter allowlist verification
+   * @return 200 OK with PagedResponse of quarantined ImportRecordResponse enveloped in ApiResponse
+   */
+  @GetMapping("/{id}/quarantine")
+  public ResponseEntity<ApiResponse<PagedResponse<ImportRecordResponse>>> getQuarantinedRecords(
+      @PathVariable @Positive Long id,
+      @RequestParam(value = "includeDuplicates", defaultValue = "true") boolean includeDuplicates,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
+      @RequestParam(value = "sort", defaultValue = "sourceRowNumber") String sort,
+      @RequestParam(value = "direction", defaultValue = "ASC") String direction,
+      HttpServletRequest httpRequest) {
+    validateAllowedQueryParameters(
+        httpRequest, Set.of("includeDuplicates", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.IMPORT_RECORD_SORT_FIELDS,
+        "sourceRowNumber", Sort.Direction.ASC, Sort.Direction.ASC);
+    Page<ImportRecordResponse> records = requireWorkflow().getQuarantinedRecords(id, includeDuplicates, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(records)));
+  }
+
+  /**
    * Creates a new import batch.
    *
    * @param request batch creation payload
    * @param httpRequest HTTP servlet request for URI extraction
    * @return 201 Created with created ImportBatchResponse enveloped in ApiResponse
    */
-  @PostMapping
+  @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
+  @PreAuthorize("hasAuthority('system.manage')")
   public ResponseEntity<ApiResponse<ImportBatchResponse>> createImportBatch(
       @Valid @RequestBody CreateImportBatchRequest request,
       HttpServletRequest httpRequest) {
@@ -173,6 +313,7 @@ public class ImportBatchController {
    * @return 200 OK with updated ImportBatchResponse enveloped in ApiResponse
    */
   @PutMapping("/{id}")
+  @PreAuthorize("hasAuthority('system.manage')")
   public ResponseEntity<ApiResponse<ImportBatchResponse>> updateImportBatch(
       @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateImportBatchRequest request) {
@@ -189,6 +330,7 @@ public class ImportBatchController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
+  @PreAuthorize("hasAuthority('system.manage')")
   public ResponseEntity<ApiResponse<Void>> deleteImportBatch(@PathVariable @Positive Long id) {
     importBatchService.deleteImportBatch(id);
     return ResponseEntity.ok(ApiResponse.success("Import batch deleted successfully"));
@@ -203,5 +345,23 @@ public class ImportBatchController {
         );
       }
     }
+  }
+
+  private void validateAllowedQueryParameters(HttpServletRequest request, Set<String> allowedParams) {
+    for (String paramName : request.getParameterMap().keySet()) {
+      if (!allowedParams.contains(paramName)) {
+        throw new BadRequestException(
+            "Unsupported query parameter: " + paramName,
+            "UNSUPPORTED_PARAMETER"
+        );
+      }
+    }
+  }
+
+  private ImportBatchProcessingWorkflow requireWorkflow() {
+    if (importBatchProcessingWorkflow == null) {
+      throw new IllegalStateException("ImportBatchProcessingWorkflow is not configured");
+    }
+    return importBatchProcessingWorkflow;
   }
 }

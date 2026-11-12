@@ -1,19 +1,26 @@
 package in.gov.sih.sih26135.controller;
 
-import org.springframework.validation.annotation.Validated;
-import jakarta.validation.constraints.Positive;
-import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateImportRecordRequest;
 import in.gov.sih.sih26135.dto.request.UpdateImportRecordRequest;
 import in.gov.sih.sih26135.dto.response.ImportRecordResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.response.ApiResponse;
+import in.gov.sih.sih26135.response.PagedResponse;
+import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.service.ImportRecordService;
 import jakarta.servlet.http.HttpServletRequest;
-import java.util.List;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Positive;
 import java.util.Set;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,19 +30,18 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.security.access.prepost.PreAuthorize;
 
 /**
  * REST controller for managing Import Record domain resources.
  *
  * <p>Base Route: /api/v1/import-records
  * Consumes: CreateImportRecordRequest, UpdateImportRecordRequest
- * Produces: ImportRecordResponse enveloped in ApiResponse
+ * Produces: ImportRecordResponse and PagedResponse enveloped in ApiResponse
  */
 @Validated
 @RestController
 @RequestMapping("/api/v1/import-records")
-@PreAuthorize("hasAnyAuthority('system.manage', 'audit.read')")
+@PreAuthorize("hasAnyAuthority('system.manage', 'audit.read', 'trainee.read', 'trainee.write', 'placement.manage')")
 public class ImportRecordController {
 
   private final ImportRecordService importRecordService;
@@ -86,50 +92,80 @@ public class ImportRecordController {
   @GetMapping(params = {
       "batchId", "!sourceRowNumber", "!statusId", "!entityType", "!entityId"
   })
-  public ResponseEntity<ApiResponse<List<ImportRecordResponse>>> getByBatchId(
+  public ResponseEntity<ApiResponse<PagedResponse<ImportRecordResponse>>> getByBatchId(
       @RequestParam("batchId") @Positive Long batchId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
+      @RequestParam(value = "sort", defaultValue = "sourceRowNumber") String sort,
+      @RequestParam(value = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "batchId");
-    List<ImportRecordResponse> records = importRecordService.getRecordsByBatchId(batchId);
-    return ResponseEntity.ok(ApiResponse.ok(records));
+    validateCompoundQueryParameters(httpRequest, Set.of("batchId", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.IMPORT_RECORD_SORT_FIELDS,
+        "sourceRowNumber", Sort.Direction.ASC, Sort.Direction.ASC);
+    Page<ImportRecordResponse> records = importRecordService.getRecordsByBatchId(batchId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(records)));
   }
 
   /**
-   * Retrieves all import records with a specific record status.
+   * Retrieves paginated import records matching a specific record status within caller scope.
    *
    * @param statusId import record status reference identifier
+   * @param page zero-based page index
+   * @param size page size (1..100)
+   * @param sort sort field
+   * @param direction sort direction (ASC or DESC)
    * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with list of ImportRecordResponse enveloped in ApiResponse
+   * @return 200 OK with PagedResponse of ImportRecordResponse enveloped in ApiResponse
    */
   @GetMapping(params = {
       "statusId", "!batchId", "!sourceRowNumber", "!entityType", "!entityId"
   })
-  public ResponseEntity<ApiResponse<List<ImportRecordResponse>>> getByStatusId(
+  public ResponseEntity<ApiResponse<PagedResponse<ImportRecordResponse>>> getByStatusId(
       @RequestParam("statusId") @Positive Long statusId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
+      @RequestParam(value = "sort", defaultValue = "sourceRowNumber") String sort,
+      @RequestParam(value = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateOnlyQueryParameter(httpRequest, "statusId");
-    List<ImportRecordResponse> records = importRecordService.getRecordsByStatusId(statusId);
-    return ResponseEntity.ok(ApiResponse.ok(records));
+    validateCompoundQueryParameters(httpRequest, Set.of("statusId", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.IMPORT_RECORD_SORT_FIELDS,
+        "sourceRowNumber", Sort.Direction.ASC, Sort.Direction.ASC);
+    Page<ImportRecordResponse> records = importRecordService.getRecordsByStatusId(statusId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(records)));
   }
 
   /**
-   * Retrieves all import records linked to a specific entity type and entity identifier.
+   * Retrieves paginated import records linked to a specific entity within caller scope.
    *
-   * @param entityType target entity type name
-   * @param entityId target entity primary key identifier
+   * @param entityType domain entity type name
+   * @param entityId domain entity identifier
+   * @param page zero-based page index
+   * @param size page size (1..100)
+   * @param sort sort field
+   * @param direction sort direction (ASC or DESC)
    * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with list of ImportRecordResponse enveloped in ApiResponse
+   * @return 200 OK with PagedResponse of ImportRecordResponse enveloped in ApiResponse
    */
   @GetMapping(params = {
       "entityType", "entityId", "!batchId", "!sourceRowNumber", "!statusId"
   })
-  public ResponseEntity<ApiResponse<List<ImportRecordResponse>>> getByEntity(
+  public ResponseEntity<ApiResponse<PagedResponse<ImportRecordResponse>>> getByEntity(
       @RequestParam("entityType") String entityType,
       @RequestParam("entityId") @Positive Long entityId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
+      @RequestParam(value = "sort", defaultValue = "sourceRowNumber") String sort,
+      @RequestParam(value = "direction", defaultValue = "ASC") String direction,
       HttpServletRequest httpRequest) {
-    validateCompoundQueryParameters(httpRequest, Set.of("entityType", "entityId"));
-    List<ImportRecordResponse> records = importRecordService.getRecordsByEntity(entityType, entityId);
-    return ResponseEntity.ok(ApiResponse.ok(records));
+    validateCompoundQueryParameters(
+        httpRequest, Set.of("entityType", "entityId", "page", "size", "sort", "direction"));
+    Pageable pageable = PaginationUtils.buildPageable(
+        page, size, sort, direction, PaginationUtils.IMPORT_RECORD_SORT_FIELDS,
+        "sourceRowNumber", Sort.Direction.ASC, Sort.Direction.ASC);
+    Page<ImportRecordResponse> records = importRecordService.getRecordsByEntity(entityType, entityId, pageable);
+    return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(records)));
   }
 
   /**
@@ -140,6 +176,7 @@ public class ImportRecordController {
    * @return 201 Created with created ImportRecordResponse enveloped in ApiResponse
    */
   @PostMapping
+  @PreAuthorize("hasAuthority('system.manage')")
   public ResponseEntity<ApiResponse<ImportRecordResponse>> createImportRecord(
       @Valid @RequestBody CreateImportRecordRequest request,
       HttpServletRequest httpRequest) {
@@ -159,6 +196,7 @@ public class ImportRecordController {
    * @return 200 OK with updated ImportRecordResponse enveloped in ApiResponse
    */
   @PutMapping("/{id}")
+  @PreAuthorize("hasAuthority('system.manage')")
   public ResponseEntity<ApiResponse<ImportRecordResponse>> updateImportRecord(
       @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateImportRecordRequest request) {
@@ -175,20 +213,10 @@ public class ImportRecordController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
+  @PreAuthorize("hasAuthority('system.manage')")
   public ResponseEntity<ApiResponse<Void>> deleteImportRecord(@PathVariable @Positive Long id) {
     importRecordService.deleteImportRecord(id);
     return ResponseEntity.ok(ApiResponse.success("Import record deleted successfully"));
-  }
-
-  private void validateOnlyQueryParameter(HttpServletRequest request, String allowedParam) {
-    for (String paramName : request.getParameterMap().keySet()) {
-      if (!paramName.equals(allowedParam)) {
-        throw new BadRequestException(
-            "Unsupported query parameter: " + paramName,
-            "UNSUPPORTED_PARAMETER"
-        );
-      }
-    }
   }
 
   private void validateCompoundQueryParameters(HttpServletRequest request, Set<String> allowedParams) {

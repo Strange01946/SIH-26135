@@ -784,6 +784,28 @@ public final class PaginationUtils {
       entry("allowance_claimed", "allowanceClaimed")
   );
 
+  public static final Map<String, String> IMPORT_RECORD_SORT_FIELDS = Map.ofEntries(
+      entry("id", "id"),
+      entry("sourcerownumber", "sourceRowNumber"),
+      entry("sourceRowNumber", "sourceRowNumber"),
+      entry("source_row_number", "sourceRowNumber"),
+      entry("entitytype", "entityType"),
+      entry("entityType", "entityType"),
+      entry("entity_type", "entityType"),
+      entry("entityid", "entityId"),
+      entry("entityId", "entityId"),
+      entry("entity_id", "entityId"),
+      entry("errorcode", "errorCode"),
+      entry("errorCode", "errorCode"),
+      entry("error_code", "errorCode"),
+      entry("createdat", "createdAt"),
+      entry("createdAt", "createdAt"),
+      entry("created_at", "createdAt"),
+      entry("updatedat", "updatedAt"),
+      entry("updatedAt", "updatedAt"),
+      entry("updated_at", "updatedAt")
+  );
+
   public static final int MAX_SORT_FIELD_LENGTH = 64;
   public static final int MAX_SORT_DIRECTION_LENGTH = 16;
 

@@ -50,6 +50,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
@@ -708,6 +711,26 @@ public class GlobalExceptionHandler {
       case OperationalErrorCodes.INVALID_DQ_TRANSITION -> "Invalid data quality issue state transition";
       case OperationalErrorCodes.IMPORT_BATCH_TERMINAL -> "Import batch is in a terminal state and cannot be modified";
       case OperationalErrorCodes.IMPORT_ROW_LIMIT_EXCEEDED -> "Requested import exceeds maximum allowed row limit";
+      case "EMPTY_IMPORT_FILE" -> "Uploaded import file cannot be empty";
+      case "UNSUPPORTED_FILE_FORMAT" -> "Unsupported import file format; supported extensions: .csv, .json, .ndjson";
+      case "ENTITY_TYPE_REQUIRED" -> "Import entityType parameter is required";
+      case "UNSUPPORTED_IMPORT_ENTITY_TYPE" -> "Unsupported import entityType; allowed values: Trainee, PlacementRecord";
+      case "FILE_SIZE_LIMIT_EXCEEDED" -> "Uploaded file exceeds maximum allowed size limit";
+      case "MISSING_FILE_PART" -> "Required multipart file part is missing";
+      case "MALFORMED_MULTIPART_REQUEST" -> "Malformed or unreadable multipart upload request";
+      case "IMPORT_BATCH_ALREADY_RUNNING" -> "Import batch is already running";
+      case "IMPORT_BATCH_INVALID_STATE" -> "Import batch is not in an executable state";
+      case "STAGED_FILE_NOT_FOUND" -> "Staged import file could not be located for this batch";
+      case "INVALID_CSV_HEADER" -> "CSV header row is missing, contains duplicates, or violates the import schema contract";
+      case "NO_DATA_ROWS" -> "Import file contains no data records";
+      case "MALFORMED_JSON_FILE" -> "Malformed or unreadable JSON import stream";
+      case "MALFORMED_IMPORT_FILE" -> "Malformed or unreadable import file stream";
+      case "ROW_TOO_LARGE" -> "Import row exceeds maximum allowed byte length";
+      case "INVALID_BATCH_ID" -> "Import batch ID must be a positive integer";
+      case "INVALID_BATCH_CODE" -> "Invalid import batch code format";
+      case "SOURCE_SYSTEM_TOO_LONG" -> "Source system value exceeds maximum allowed length";
+      case "INVALID_STATUS" -> "Unsupported import record status filter";
+      case "CSV_READ_ERROR", "JSON_READ_ERROR", "IMPORT_STREAM_ERROR" -> "Unable to read import stream safely";
       default -> {
         if (status == null || status.is5xxServerError()) {
           yield "An unexpected error occurred. Please try again later.";
@@ -1565,6 +1588,57 @@ public class GlobalExceptionHandler {
         HttpStatus.BAD_REQUEST.getReasonPhrase(),
         "MISSING_HEADER",
         message,
+        uri
+    );
+    return buildSanitizedResponse(errorResponse, HttpStatus.BAD_REQUEST);
+  }
+
+  @ExceptionHandler(MaxUploadSizeExceededException.class)
+  public ResponseEntity<ErrorResponse> handleMaxUploadSizeExceeded(
+      MaxUploadSizeExceededException ex,
+      HttpServletRequest request) {
+    String uri = sanitizeUri(request);
+    log.warn("Multipart upload size limit exceeded on {}: status={}, code={}, exception={}",
+        uri, HttpStatus.PAYLOAD_TOO_LARGE.value(), "FILE_SIZE_LIMIT_EXCEEDED", ex.getClass().getSimpleName());
+    ErrorResponse errorResponse = new ErrorResponse(
+        HttpStatus.PAYLOAD_TOO_LARGE.value(),
+        HttpStatus.PAYLOAD_TOO_LARGE.getReasonPhrase(),
+        "FILE_SIZE_LIMIT_EXCEEDED",
+        "Uploaded file exceeds maximum allowed size limit",
+        uri
+    );
+    return buildSanitizedResponse(errorResponse, HttpStatus.PAYLOAD_TOO_LARGE);
+  }
+
+  @ExceptionHandler(MissingServletRequestPartException.class)
+  public ResponseEntity<ErrorResponse> handleMissingServletRequestPart(
+      MissingServletRequestPartException ex,
+      HttpServletRequest request) {
+    String uri = sanitizeUri(request);
+    log.warn("Missing multipart request part on {}: status={}, code={}, exception={}",
+        uri, HttpStatus.BAD_REQUEST.value(), "MISSING_FILE_PART", ex.getClass().getSimpleName());
+    ErrorResponse errorResponse = new ErrorResponse(
+        HttpStatus.BAD_REQUEST.value(),
+        HttpStatus.BAD_REQUEST.getReasonPhrase(),
+        "MISSING_FILE_PART",
+        "Required multipart file part is missing",
+        uri
+    );
+    return buildSanitizedResponse(errorResponse, HttpStatus.BAD_REQUEST);
+  }
+
+  @ExceptionHandler(MultipartException.class)
+  public ResponseEntity<ErrorResponse> handleMultipartException(
+      MultipartException ex,
+      HttpServletRequest request) {
+    String uri = sanitizeUri(request);
+    log.warn("Malformed multipart request on {}: status={}, code={}, exception={}",
+        uri, HttpStatus.BAD_REQUEST.value(), "MALFORMED_MULTIPART_REQUEST", ex.getClass().getSimpleName());
+    ErrorResponse errorResponse = new ErrorResponse(
+        HttpStatus.BAD_REQUEST.value(),
+        HttpStatus.BAD_REQUEST.getReasonPhrase(),
+        "MALFORMED_MULTIPART_REQUEST",
+        "Malformed or unreadable multipart upload request",
         uri
     );
     return buildSanitizedResponse(errorResponse, HttpStatus.BAD_REQUEST);

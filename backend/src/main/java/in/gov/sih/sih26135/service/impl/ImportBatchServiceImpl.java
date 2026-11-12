@@ -14,10 +14,15 @@ import in.gov.sih.sih26135.repository.ImportRecordRepository;
 import in.gov.sih.sih26135.repository.RefImportBatchStatusRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
 import in.gov.sih.sih26135.service.ImportBatchService;
+import in.gov.sih.sih26135.service.ingestion.ImportContractSchema;
+import in.gov.sih.sih26135.service.ingestion.ImportSecurityScopeValidator;
+import in.gov.sih.sih26135.service.ingestion.ImportSecurityScopeValidator.CallerScope;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +37,23 @@ public class ImportBatchServiceImpl implements ImportBatchService {
   private final UserRepository userRepository;
   private final ImportRecordRepository importRecordRepository;
   private final ImportBatchMapper mapper;
+  private final ImportSecurityScopeValidator importSecurityScopeValidator;
+
+  @Autowired
+  public ImportBatchServiceImpl(
+      ImportBatchRepository importBatchRepository,
+      RefImportBatchStatusRepository refImportBatchStatusRepository,
+      UserRepository userRepository,
+      ImportRecordRepository importRecordRepository,
+      ImportBatchMapper mapper,
+      ImportSecurityScopeValidator importSecurityScopeValidator) {
+    this.importBatchRepository = importBatchRepository;
+    this.refImportBatchStatusRepository = refImportBatchStatusRepository;
+    this.userRepository = userRepository;
+    this.importRecordRepository = importRecordRepository;
+    this.mapper = mapper;
+    this.importSecurityScopeValidator = importSecurityScopeValidator;
+  }
 
   public ImportBatchServiceImpl(
       ImportBatchRepository importBatchRepository,
@@ -39,11 +61,14 @@ public class ImportBatchServiceImpl implements ImportBatchService {
       UserRepository userRepository,
       ImportRecordRepository importRecordRepository,
       ImportBatchMapper mapper) {
-    this.importBatchRepository = importBatchRepository;
-    this.refImportBatchStatusRepository = refImportBatchStatusRepository;
-    this.userRepository = userRepository;
-    this.importRecordRepository = importRecordRepository;
-    this.mapper = mapper;
+    this(
+        importBatchRepository,
+        refImportBatchStatusRepository,
+        userRepository,
+        importRecordRepository,
+        mapper,
+        null
+    );
   }
 
   @Override
@@ -59,10 +84,6 @@ public class ImportBatchServiceImpl implements ImportBatchService {
     if (batchCode.length() > 32) {
       throw new BadRequestException("Batch code must not exceed 32 characters", "BATCH_CODE_TOO_LONG");
     }
-    if (importBatchRepository.existsByBatchCode(batchCode)) {
-      throw new ConflictException("Batch code already exists: " + batchCode, "BATCH_CODE_EXISTS");
-    }
-
     if (request.getSourceSystem() == null || request.getSourceSystem().isBlank()) {
       throw new BadRequestException("Source system is required", "SOURCE_SYSTEM_REQUIRED");
     }
@@ -77,6 +98,14 @@ public class ImportBatchServiceImpl implements ImportBatchService {
       throw new BadRequestException("Entity type must not exceed 64 characters", "ENTITY_TYPE_TOO_LONG");
     }
 
+    ImportSecurityScopeValidator validator = requireScopeValidator();
+    String normalizedEntity = validator.normalizeEntityTypeLenient(request.getEntityType());
+    CallerScope callerScope = validator.resolveAndValidateUploadOrProcessCaller(normalizedEntity);
+
+    if (importBatchRepository.existsByBatchCode(batchCode)) {
+      throw new ConflictException("Batch code already exists: " + batchCode, "BATCH_CODE_EXISTS");
+    }
+
     RefImportBatchStatus status;
     if (request.getImportBatchStatusId() != null) {
       status = refImportBatchStatusRepository.findById(request.getImportBatchStatusId())
@@ -86,7 +115,13 @@ public class ImportBatchServiceImpl implements ImportBatchService {
           .orElseThrow(() -> new ResourceNotFoundException("RefImportBatchStatus", "statusCode"));
     }
 
-    if (request.getInitiatedByUserId() != null && !userRepository.existsById(request.getInitiatedByUserId())) {
+    Long initiatedByUserId = request.getInitiatedByUserId();
+    if (!callerScope.nationwideAdmin()) {
+      if (initiatedByUserId != null && !initiatedByUserId.equals(callerScope.caller().getId())) {
+        throw new AccessDeniedException("Scoped caller cannot initiate an import batch on behalf of another user");
+      }
+      initiatedByUserId = callerScope.caller().getId();
+    } else if (initiatedByUserId != null && !userRepository.existsById(initiatedByUserId)) {
       throw new ResourceNotFoundException("User", "id");
     }
 
@@ -94,17 +129,20 @@ public class ImportBatchServiceImpl implements ImportBatchService {
       throw new BadRequestException("Row count must be non-negative", "INVALID_ROW_COUNT");
     }
 
+    LocalDateTime now = LocalDateTime.now();
     ImportBatch batch = new ImportBatch(
         batchCode,
         request.getSourceSystem().trim(),
         request.getEntityType().trim(),
         status
     );
-    batch.setInitiatedByUserId(request.getInitiatedByUserId());
+    batch.setInitiatedByUserId(initiatedByUserId);
     batch.setRowCount(request.getRowCount() != null ? request.getRowCount() : 0);
     batch.setSuccessCount(0);
     batch.setFailureCount(0);
     batch.setStartedAt(request.getStartedAt());
+    batch.setCreatedAt(now);
+    batch.setUpdatedAt(now);
 
     ImportBatch saved = importBatchRepository.save(batch);
     log.info("Created import batch id={}, batchCode={}", saved.getId(), saved.getBatchCode());
@@ -121,8 +159,12 @@ public class ImportBatchServiceImpl implements ImportBatchService {
       throw new BadRequestException("Request body cannot be null", "REQUEST_BODY_NULL");
     }
 
+    ImportSecurityScopeValidator validator = requireScopeValidator();
+    CallerScope callerScope = validator.resolveAndValidateGenericWriteCaller();
+
     ImportBatch batch = importBatchRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("ImportBatch", "id"));
+    validator.validateCallerCanWriteBatch(callerScope, batch);
 
     boolean currentIsTerminal = Boolean.TRUE.equals(batch.getImportBatchStatus().getIsTerminalFlag());
     if (currentIsTerminal) {
@@ -203,8 +245,11 @@ public class ImportBatchServiceImpl implements ImportBatchService {
     if (id == null) {
       throw new BadRequestException("Batch ID is required");
     }
+    ImportSecurityScopeValidator validator = requireScopeValidator();
+    CallerScope callerScope = validator.resolveAndValidateReadCaller(null);
     ImportBatch batch = importBatchRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("ImportBatch", "id"));
+    validator.validateCallerCanAccessBatch(callerScope, batch);
     return mapper.toResponse(batch);
   }
 
@@ -213,8 +258,11 @@ public class ImportBatchServiceImpl implements ImportBatchService {
     if (batchCode == null || batchCode.isBlank()) {
       throw new BadRequestException("Batch code is required");
     }
+    ImportSecurityScopeValidator validator = requireScopeValidator();
+    CallerScope callerScope = validator.resolveAndValidateReadCaller(null);
     ImportBatch batch = importBatchRepository.findByBatchCode(batchCode.trim())
         .orElseThrow(() -> new ResourceNotFoundException("ImportBatch", "batchCode"));
+    validator.validateCallerCanAccessBatch(callerScope, batch);
     return mapper.toResponse(batch);
   }
 
@@ -223,7 +271,10 @@ public class ImportBatchServiceImpl implements ImportBatchService {
     if (statusId == null) {
       throw new BadRequestException("Status ID is required");
     }
+    ImportSecurityScopeValidator validator = requireScopeValidator();
+    CallerScope callerScope = validator.resolveAndValidateReadCaller(null);
     return importBatchRepository.findByImportBatchStatusId(statusId).stream()
+        .filter(batch -> validator.canCallerViewBatchSilently(callerScope, batch))
         .map(mapper::toResponse)
         .toList();
   }
@@ -233,7 +284,14 @@ public class ImportBatchServiceImpl implements ImportBatchService {
     if (entityType == null || entityType.isBlank()) {
       throw new BadRequestException("Entity type is required");
     }
+    ImportSecurityScopeValidator validator = requireScopeValidator();
+    CallerScope callerScope = validator.resolveAndValidateReadCaller(entityType);
+    if (callerScope.isEmployerScoped()
+        && ImportContractSchema.ENTITY_TRAINEE.equals(validator.normalizeEntityTypeLenient(entityType))) {
+      throw new AccessDeniedException("Employers are not authorized to access trainee import batches");
+    }
     return importBatchRepository.findByEntityType(entityType.trim()).stream()
+        .filter(batch -> validator.canCallerViewBatchSilently(callerScope, batch))
         .map(mapper::toResponse)
         .toList();
   }
@@ -243,7 +301,10 @@ public class ImportBatchServiceImpl implements ImportBatchService {
     if (sourceSystem == null || sourceSystem.isBlank()) {
       throw new BadRequestException("Source system is required");
     }
+    ImportSecurityScopeValidator validator = requireScopeValidator();
+    CallerScope callerScope = validator.resolveAndValidateReadCaller(null);
     return importBatchRepository.findBySourceSystem(sourceSystem.trim()).stream()
+        .filter(batch -> validator.canCallerViewBatchSilently(callerScope, batch))
         .map(mapper::toResponse)
         .toList();
   }
@@ -253,7 +314,10 @@ public class ImportBatchServiceImpl implements ImportBatchService {
     if (initiatedByUserId == null) {
       throw new BadRequestException("Initiated-by user ID is required");
     }
+    ImportSecurityScopeValidator validator = requireScopeValidator();
+    CallerScope callerScope = validator.resolveAndValidateReadCaller(null);
     return importBatchRepository.findByInitiatedByUserId(initiatedByUserId).stream()
+        .filter(batch -> validator.canCallerViewBatchSilently(callerScope, batch))
         .map(mapper::toResponse)
         .toList();
   }
@@ -264,8 +328,12 @@ public class ImportBatchServiceImpl implements ImportBatchService {
     if (id == null) {
       throw new BadRequestException("Batch ID is required", "ID_REQUIRED");
     }
+    ImportSecurityScopeValidator validator = requireScopeValidator();
+    CallerScope callerScope = validator.resolveAndValidateGenericWriteCaller();
+
     ImportBatch batch = importBatchRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("ImportBatch", "id"));
+    validator.validateCallerCanWriteBatch(callerScope, batch);
 
     if ("RUNNING".equalsIgnoreCase(batch.getImportBatchStatus().getStatusCode())) {
       throw new BadRequestException("Cannot delete a running import batch", "BATCH_IS_RUNNING");
@@ -277,5 +345,12 @@ public class ImportBatchServiceImpl implements ImportBatchService {
 
     importBatchRepository.delete(batch);
     log.info("Deleted import batch id={}", id);
+  }
+
+  private ImportSecurityScopeValidator requireScopeValidator() {
+    if (importSecurityScopeValidator == null) {
+      throw new IllegalStateException("ImportSecurityScopeValidator is not configured");
+    }
+    return importSecurityScopeValidator;
   }
 }
