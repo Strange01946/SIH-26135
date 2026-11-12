@@ -165,9 +165,12 @@ public class SystemEventLogQueryRepository {
       params.add("[cid=" + escapedCorr + "]%");
     }
     if (criteria.getRequestId() != null && !criteria.getRequestId().isBlank()) {
-      String escapedReq = escapeLike(criteria.getRequestId().trim());
-      where.append(" AND sel.event_summary LIKE ? ESCAPE '!'");
-      params.add("%|rid=" + escapedReq + "]%");
+      String targetReq = criteria.getRequestId().trim();
+      // Match strictly against the leading canonical [cid=<corr>|rid=<req>] prefix (never body text)
+      where.append(
+          " AND sel.event_summary LIKE '[cid=%|rid=%]%'" +
+              " AND SUBSTRING_INDEX(SUBSTRING_INDEX(sel.event_summary, ']', 1), '|rid=', -1) = ?");
+      params.add(targetReq);
     }
     if (criteria.getStart() != null) {
       where.append(" AND sel.occurred_at >= ?");

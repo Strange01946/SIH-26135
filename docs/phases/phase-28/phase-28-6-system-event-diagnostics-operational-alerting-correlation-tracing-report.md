@@ -4,7 +4,7 @@
 
 Phase 28.6 implements structured system-event diagnostics, operational alerting persistence/throttling, end-to-end `X-Correlation-Id` and `X-Request-Id` propagation, and a multi-criteria, tenant-isolated diagnostic query API over `GET /api/v1/system-event-logs` in the SIH-26135 Spring Boot backend (`E:\project\backend`, branch `main`).
 
-All implementation work and integration testing operated strictly within the frozen MySQL 8 schema (`ddl-auto=validate`) using `SIH26135_TEST` exclusively, with zero DDL modifications, zero production `SIH26135` database access, and zero Git state mutations. After the final edit, the focused Phase 28.6 and contract verification run (`165` tests) passed cleanly and the complete backend regression suite passed against `SIH26135_TEST` (**1,946 tests run, 0 failures, 0 errors, 0 skipped**).
+All implementation work, targeted correlation integrity corrections, and integration testing operated strictly within the frozen MySQL 8 schema (`ddl-auto=validate`) using `SIH26135_TEST` exclusively, with zero DDL modifications, zero production `SIH26135` database access, and zero Git state mutations. After the final edit, the focused Phase 28.6 and correlation verification run (`145` tests) passed cleanly and the complete backend regression suite passed against `SIH26135_TEST` (**1,949 tests run, 0 failures, 0 errors, 0 skipped**).
 
 **Final Verdict:** **READY FOR INDEPENDENT REVIEW**
 
@@ -40,7 +40,7 @@ Created `SystemEventLoggingService` (`service/SystemEventLoggingService.java`) a
 ## 4. `X-Correlation-Id` & `X-Request-Id` End-to-End Propagation
 
 - **`CorrelationContextHolder` (`correlation/CorrelationContextHolder.java`):** Added `CURRENT_REQUEST_ID` thread-local alongside `CURRENT_CORRELATION_ID`, `ContextSnapshot`, `captureSnapshot()`, `restore(ContextSnapshot)`, and `clear()`.
-- **`CorrelationIdFilter` (`correlation/CorrelationIdFilter.java`):** Preserves existing HTTP precedence and header validation (`[A-Za-z0-9._-]`, max 64 chars, LF/CR/control stripping via server UUID replacement), binds both `CorrelationContextHolder.setCorrelationId` and `setRequestId` and SLF4J MDC (`correlationId`, `requestId`), and cleans up in `finally` while preserving existing `CorrelationTrackingIntegrationTest` HTTP header contracts.
+- **`CorrelationIdFilter` (`correlation/CorrelationIdFilter.java`):** Independently validates incoming `X-Correlation-Id` and `X-Request-Id` headers (`^[A-Za-z0-9_-]{1,64}$`), preserves both distinctly when both are valid (e.g. `trace-123` / `request-456`), preserves compatible single-header fallbacks when only one header is provided, and independently replaces invalid/oversized/missing headers with safe server UUIDs. Stores both `CORRELATION_ID_ATTRIBUTE` and `REQUEST_ID_ATTRIBUTE` on error dispatches, binds both `CorrelationContextHolder` and SLF4J MDC (`correlationId`, `requestId`), emits both response headers cleanly, and restores/clears all context in `finally`.
 - **`AsyncConfig` (`config/AsyncConfig.java`):** Added `@Bean TaskDecorator correlationTaskDecorator()` wired onto `auditTaskExecutor`. Captures validated parent `correlationId` (or generates a server UUID if absent), mints a distinct per-execution async `requestId` UUID, populates worker thread MDC and `CorrelationContextHolder`, and restores/clears prior worker thread state in `finally`.
 - **Non-HTTP / Background Operations:** Both `ImportBatchProcessingWorkflowImpl.processBatch(...)` and `DataQualityEngineServiceImpl.executeScan(...)` generate server-owned UUID correlation/request IDs when invoked without an active HTTP correlation context and restore/clear the thread state in `finally`.
 
@@ -81,13 +81,14 @@ Created `SystemEventLoggingService` (`service/SystemEventLoggingService.java`) a
   - `ROLE_trainee` callers, deleted users, users with conflicting persona roles, non-nationwide users with missing or ambiguous (`rootCount != 1`, provider/employer + geographic `state_id`/`district_id`) tenancy fail closed with `403 AccessDeniedException`.
 - **DB/Service-Boundary Tenant Isolation (`SystemEventLogQueryRepository`):**
   - Because `system_event_logs` stores no native tenant columns, `SystemEventLogQueryRepository` uses parameterized `JdbcTemplate` queries joining `users` (`actor_user_id` and `entity_type='USER'`), `import_batches` (`entity_type='IMPORTBATCH'`), `training_providers`, and `employers` to enforce SQL-level `WHERE` predicates scoped strictly to the caller's verified `state_id`, `(state_id, district_id)`, `training_provider_id`, or `employer_id` — including across `?correlationId=...`, `?requestId=...`, and `GET /api/v1/system-event-logs/{id}` lookups (`403` on cross-tenant ID).
+  - Canonical prefix matching enforces position-0 bracket anchoring (`[cid=...]` for `correlationId`, and leading `[cid=%|rid=%]%` with `SUBSTRING_INDEX(SUBSTRING_INDEX(sel.event_summary, ']', 1), '|rid=', -1) = ?` for `requestId`) so body text can never spoof tracing filters.
   - Using `@Repository` with `JdbcTemplate` keeps Spring Data JPA interface count (`137`) and `@Query` annotation count (`2`) unchanged.
 
 ---
 
-## 8. Sanitization, Bounded Sizing & Configuration
+## 8. Sanitization, Anti-Forgery, Bounded Sizing & Configuration
 
-- **`SystemEventSanitizer`:** Strips CR/LF/control characters; redacts JDBC URLs, JWT tokens, `Bearer` headers, key-value credentials (`password`, `secret`, `token`, `jwt`, `api_key`, etc.), Aadhaar patterns (`XXXX-XXXX-<last4>`), PAN patterns (`XXXXX<digits><check>`), and stack-trace frames; normalizes/truncates `eventCode` and identifiers to `64` characters and formatted summaries (including `[cid=...|rid=...]`) to `500` characters.
+- **`SystemEventSanitizer` & `SystemEventLogServiceImpl`:** Strips CR/LF/control characters; removes/escapes all client-supplied `[cid=...]` / `[rid=...]` bracket tags and `|rid=` / `cid=` / `rid=` fragments from untrusted message text (`CORRELATION_BRACKET_TAG_PATTERN`, `CORRELATION_KV_FRAGMENT_PATTERN`) before prepending a single canonical `[cid=<serverCorr>|rid=<serverReq>] ` prefix derived strictly from trusted server `CorrelationContextHolder`/`MDC` (or generated server UUID when absent); redacts JDBC URLs, JWT tokens, `Bearer` headers, key-value credentials (`password`, `secret`, `token`, `jwt`, `api_key`, etc.), Aadhaar patterns (`XXXX-XXXX-<last4>`), PAN patterns (`XXXXX<digits><check>`), and stack-trace frames; normalizes/truncates `eventCode` and identifiers to `64` characters and formatted summaries to `500` characters.
 - **Configuration (`application.properties` & `test/resources/application.properties`):**
   - `system-events.rate-limit-alert-cooldown-seconds=60`
   - `system-events.dedup-window-seconds=60`
@@ -103,14 +104,14 @@ Created `SystemEventLoggingService` (`service/SystemEventLoggingService.java`) a
 
 - **Database Safety:** Verified `MysqlConnectionTest.assertDedicatedTestCatalog` against `SIH26135_TEST` in every integration suite `@BeforeEach`; `ddl-auto=validate` passed across every Spring Boot test context; zero DDL changes and zero production `SIH26135` access.
 - **Focused Verification Run (before full suite, after final code edit):**
-  - Executed `SystemEventDiagnosticsUnitTest`, `SystemEventDiagnosticsIntegrationTest`, `OperationalLogEventPaginationTest`, `CorrelationTrackingIntegrationTest`, `AccountLockoutAndSecurityAuditTest`, `AuditLogImmutabilityAndTimelineTest`, `OperationalErrorCodeContractTest`, `ResponseEnvelopeAlignmentContractTest`, and `ControllerPathQueryHeaderValidationTest`.
-  - Result: **165 tests run, 0 failures, 0 errors, 0 skipped** (`01:28 min`, `BUILD SUCCESS`).
+  - Executed `SystemEventDiagnosticsUnitTest`, `SystemEventDiagnosticsIntegrationTest`, `CorrelationTrackingIntegrationTest`, `OperationalLogEventPaginationTest`, `AccountLockoutAndSecurityAuditTest`, `OperationalErrorCodeContractTest`, `ResponseEnvelopeAlignmentContractTest`, and `ControllerPathQueryHeaderValidationTest`.
+  - Result: **145 tests run, 0 failures, 0 errors, 0 skipped** (`01:54 min`, `BUILD SUCCESS`).
 - **Full Backend Regression Run (`mvn -f "E:\project\backend\pom.xml" test` after final edit):**
-  - Result: **1,946 tests run, 0 failures, 0 errors, 0 skipped** (`05:38 min`, `BUILD SUCCESS`).
+  - Result: **1,949 tests run, 0 failures, 0 errors, 0 skipped** (`06:14 min`, `BUILD SUCCESS`).
   - Phase 28.6 tests included in full run:
-    - `SystemEventDiagnosticsUnitTest`: `4` tests passed (all 5 categories x 4 severities + server metadata, secret/Aadhaar/PAN/CRLF/stack sanitization + 500-char bounding, DB failure fallback + recursion guard + same-request dedup, and `AsyncConfig.correlationTaskDecorator()` parent/async/cleanup behavior).
-    - `SystemEventDiagnosticsIntegrationTest`: `7` tests across `6` nested groups passed against live MySQL `SIH26135_TEST` (HTTP & `@Async("auditTaskExecutor")` correlation/request ID propagation, real HTTP account lockout & audit persistence, export `429` rate-limit trigger + cooldown throttling, Phase 28.5 partial quarantine vs `FAILED` batch isolation & background server correlation cleanup, Phase 28.3 data-quality spike threshold/cooldown/provider isolation, and diagnostic API RBAC/multi-criteria filters/sorting/tenant isolation/400 validation/safe `POST`).
-    - Regression checks verified green in full run: `AccountLockoutAndSecurityAuditTest` (`17`), `AuditLogImmutabilityAndTimelineTest` (`23`), `OperationalLogEventPaginationTest` (`23`), `OperationalErrorCodeContractTest` (`8`), `DataQualityAnomalyDetectorsTest` (`13`), `DataQualityIssueServiceSecurityTest` (`10`), `DataQualityRuleCatalogTest` (`5`), `DataQualityDeduplicationAndScanApiTest` (`23`), `CorrelationTrackingIntegrationTest`, `AnalyticsExportTest`, `ImportBatchProcessingIntegrationTest`, `ControllerPathQueryHeaderValidationTest`.
+    - `SystemEventDiagnosticsUnitTest`: `5` tests passed (all 5 categories x 4 severities + server metadata, secret/Aadhaar/PAN/CRLF/stack sanitization + 500-char bounding, forged `[cid=...]` / `|rid=` stripping with single canonical prefix, DB failure fallback + recursion guard + same-request dedup, and `AsyncConfig.correlationTaskDecorator()` parent/async/cleanup behavior).
+    - `SystemEventDiagnosticsIntegrationTest`: `9` tests across `6` nested groups passed against live MySQL `SIH26135_TEST` (independent HTTP `X-Correlation-Id: trace-123` & `X-Request-Id: request-456` preservation across headers/context/MDC/persisted events + missing/invalid/oversized replacement, `@Async("auditTaskExecutor")` propagation, real HTTP account lockout & audit persistence, export `429` rate-limit trigger + cooldown throttling, Phase 28.5 partial quarantine vs `FAILED` batch isolation & background server correlation cleanup, Phase 28.3 data-quality spike threshold/cooldown/provider isolation, diagnostic API RBAC/multi-criteria filters/sorting/tenant isolation/400 validation/safe `POST`, and adversarial forged correlation/request marker rejection preserving tenant isolation).
+    - Regression checks verified green in full run: `CorrelationTrackingIntegrationTest` (with `1.4` updated to assert distinct `X-Request-Id` preservation alongside `X-Correlation-Id` governance), `AccountLockoutAndSecurityAuditTest` (`17`), `AuditLogImmutabilityAndTimelineTest` (`23`), `OperationalLogEventPaginationTest` (`23`), `OperationalErrorCodeContractTest` (`8`), `DataQualityAnomalyDetectorsTest` (`13`), `DataQualityIssueServiceSecurityTest` (`10`), `DataQualityRuleCatalogTest` (`5`), `DataQualityDeduplicationAndScanApiTest` (`23`), `AnalyticsExportTest`, `ImportBatchProcessingIntegrationTest`, `ControllerPathQueryHeaderValidationTest`.
 - **Architecture Invariants:**
   - Spring Data JPA repository interfaces: `137` (`Found 137 JPA repository interfaces.` in Spring Boot test logs).
   - `@Query(` annotations: `2`.
@@ -142,9 +143,10 @@ Created `SystemEventLoggingService` (`service/SystemEventLoggingService.java`) a
   - `backend/src/main/java/in/gov/sih/sih26135/service/impl/SystemEventLogServiceImpl.java`
   - `backend/src/main/resources/application.properties`
   - `backend/src/test/resources/application.properties`
-- **New & Modified Test Files (`3`):**
+- **New & Modified Test Files (`4`):**
   - `backend/src/test/java/in/gov/sih/sih26135/service/event/SystemEventDiagnosticsUnitTest.java` (new)
   - `backend/src/test/java/in/gov/sih/sih26135/controller/SystemEventDiagnosticsIntegrationTest.java` (new)
+  - `backend/src/test/java/in/gov/sih/sih26135/correlation/CorrelationTrackingIntegrationTest.java` (updated `1.4` assertion for independent `X-Request-Id` preservation)
   - `backend/src/test/java/in/gov/sih/sih26135/service/auth/AccountLockoutAndSecurityAuditTest.java` (updated mock verification to `recordInternalAuditLog`)
 - **Report Artifacts (`2` synchronized copies):**
   - `phase-28-6-system-event-diagnostics-operational-alerting-correlation-tracing-report.md`

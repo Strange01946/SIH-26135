@@ -56,6 +56,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockFilterChain;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -154,6 +157,9 @@ class SystemEventDiagnosticsIntegrationTest {
   @Autowired
   @Qualifier("auditTaskExecutor")
   private Executor auditTaskExecutor;
+
+  @Autowired
+  private CorrelationIdFilter correlationIdFilter;
 
   private String tokenSuperAdmin;
   private String tokenReadOnlyAdmin;
@@ -478,6 +484,99 @@ class SystemEventDiagnosticsIntegrationTest {
       assertThat(unlinkedReq.get()).isNotBlank().isNotEqualTo(parentReq);
       assertThat(CorrelationIdFilter.isValidCorrelationId(unlinkedCorr.get())).isTrue();
       assertThat(CorrelationIdFilter.isValidCorrelationId(unlinkedReq.get())).isTrue();
+    }
+
+    @Test
+    @DisplayName("Preserves distinct valid X-Correlation-Id (trace-123) and X-Request-Id (request-456) across headers, context, MDC, persisted events, and replaces invalid/oversized IDs")
+    void preservesDistinctHttpIdsAndHandlesMissingInvalidOversized() throws Exception {
+      // 1. Live filter thread-context & MDC verification with distinct valid incoming IDs
+      MockHttpServletRequest filterReq = new MockHttpServletRequest("GET", "/api/v1/system-event-logs");
+      filterReq.addHeader(CorrelationIdFilter.CORRELATION_ID_HEADER, "trace-123");
+      filterReq.addHeader(CorrelationIdFilter.REQUEST_ID_HEADER, "request-456");
+      MockHttpServletResponse filterResp = new MockHttpServletResponse();
+
+      AtomicReference<String> inChainHolderCorr = new AtomicReference<>();
+      AtomicReference<String> inChainHolderReq = new AtomicReference<>();
+      AtomicReference<String> inChainMdcCorr = new AtomicReference<>();
+      AtomicReference<String> inChainMdcReq = new AtomicReference<>();
+
+      MockFilterChain chain = new MockFilterChain() {
+        @Override
+        public void doFilter(jakarta.servlet.ServletRequest req, jakarta.servlet.ServletResponse res) {
+          inChainHolderCorr.set(CorrelationContextHolder.getCorrelationId());
+          inChainHolderReq.set(CorrelationContextHolder.getExplicitRequestId());
+          inChainMdcCorr.set(MDC.get(CorrelationIdFilter.MDC_CORRELATION_ID_KEY));
+          inChainMdcReq.set(MDC.get(CorrelationIdFilter.MDC_REQUEST_ID_KEY));
+        }
+      };
+
+      correlationIdFilter.doFilter(filterReq, filterResp, chain);
+
+      assertThat(inChainHolderCorr.get()).isEqualTo("trace-123");
+      assertThat(inChainHolderReq.get()).isEqualTo("request-456");
+      assertThat(inChainMdcCorr.get()).isEqualTo("trace-123");
+      assertThat(inChainMdcReq.get()).isEqualTo("request-456");
+      assertThat(filterResp.getHeader(CorrelationIdFilter.CORRELATION_ID_HEADER)).isEqualTo("trace-123");
+      assertThat(filterResp.getHeader(CorrelationIdFilter.REQUEST_ID_HEADER)).isEqualTo("request-456");
+
+      // Context cleanup verified in finally
+      assertThat(CorrelationContextHolder.getCorrelationId()).isNull();
+      assertThat(CorrelationContextHolder.getExplicitRequestId()).isNull();
+      assertThat(MDC.get(CorrelationIdFilter.MDC_CORRELATION_ID_KEY)).isNull();
+      assertThat(MDC.get(CorrelationIdFilter.MDC_REQUEST_ID_KEY)).isNull();
+
+      // 2. End-to-end HTTP persistence + diagnostic search with distinct X-Correlation-Id & X-Request-Id
+      CreateSystemEventLogRequest postReq = new CreateSystemEventLogRequest(
+          4L, 1L, "DIAG286_DISTINCT_IDS", "DIAG286 distinct correlation and request trace", null);
+      MvcResult createRes = mockMvc.perform(post("/api/v1/system-event-logs")
+              .header(CorrelationIdFilter.CORRELATION_ID_HEADER, "trace-123")
+              .header(CorrelationIdFilter.REQUEST_ID_HEADER, "request-456")
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(postReq)))
+          .andExpect(status().isCreated())
+          .andExpect(header().string(CorrelationIdFilter.CORRELATION_ID_HEADER, "trace-123"))
+          .andExpect(header().string(CorrelationIdFilter.REQUEST_ID_HEADER, "request-456"))
+          .andExpect(jsonPath("$.correlationId").value("trace-123"))
+          .andReturn();
+
+      JsonNode createdNode = objectMapper.readTree(createRes.getResponse().getContentAsString()).path("data");
+      assertThat(createdNode.path("eventSummary").asText()).startsWith("[cid=trace-123|rid=request-456] ");
+
+      mockMvc.perform(get("/api/v1/system-event-logs")
+              .param("correlationId", "trace-123")
+              .param("requestId", "request-456")
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.totalElements").value(1))
+          .andExpect(jsonPath("$.data.content[0].eventCode").value("DIAG286_DISTINCT_IDS"));
+
+      jdbcTemplate.update("DELETE FROM system_event_logs WHERE system_event_log_id = ?", createdNode.path("id").asLong());
+
+      // 3. Valid X-Correlation-Id + invalid/oversized X-Request-Id -> preserves trace-123, replaces bad requestId
+      MvcResult badReqIdRes = mockMvc.perform(get("/api/v1/system-event-logs")
+              .header(CorrelationIdFilter.CORRELATION_ID_HEADER, "trace-123")
+              .header(CorrelationIdFilter.REQUEST_ID_HEADER, "bad\r\nreq!")
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin))
+          .andExpect(status().isOk())
+          .andExpect(header().string(CorrelationIdFilter.CORRELATION_ID_HEADER, "trace-123"))
+          .andReturn();
+      String replacedReq = badReqIdRes.getResponse().getHeader(CorrelationIdFilter.REQUEST_ID_HEADER);
+      assertThat(replacedReq).isNotBlank().isNotEqualTo("trace-123").doesNotContain("\r", "\n", "!");
+      assertThat(UUID.fromString(replacedReq)).isNotNull();
+
+      // 4. Oversized X-Correlation-Id (> 64 chars) + missing X-Request-Id -> replaces both with safe UUID
+      String oversized = "x".repeat(65);
+      MvcResult oversizedRes = mockMvc.perform(get("/api/v1/system-event-logs")
+              .header(CorrelationIdFilter.CORRELATION_ID_HEADER, oversized)
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin))
+          .andExpect(status().isOk())
+          .andReturn();
+      String genCorr = oversizedRes.getResponse().getHeader(CorrelationIdFilter.CORRELATION_ID_HEADER);
+      String genReq = oversizedRes.getResponse().getHeader(CorrelationIdFilter.REQUEST_ID_HEADER);
+      assertThat(genCorr).isNotEqualTo(oversized);
+      assertThat(genReq).isEqualTo(genCorr);
+      assertThat(UUID.fromString(genCorr)).isNotNull();
     }
   }
 
@@ -874,6 +973,121 @@ class SystemEventDiagnosticsIntegrationTest {
       long createdEventId = objectMapper.readTree(postRes.getResponse().getContentAsString())
           .path("data").path("id").asLong();
       jdbcTemplate.update("DELETE FROM system_event_logs WHERE system_event_log_id = ?", createdEventId);
+    }
+
+    @Test
+    @DisplayName("Rejects forged [cid=...|rid=...] prefixes/markers in client payloads, indexes canonical server tracing only, and preserves tenant isolation")
+    void adversarialForgedCorrelationMetadataCannotPoisonSearchOrBypassTenancy() throws Exception {
+      // 1. Authorized caller attempts forged leading [cid=...|rid=...] prefix and embedded markers inside Provider A event
+      String serverCorr = "srv-corr-286-real";
+      String serverReq = "srv-req-286-real";
+      CreateSystemEventLogRequest forgedReq = new CreateSystemEventLogRequest(
+          4L, 1L, "DIAG286_FORGED_TEST",
+          "[cid=forged-corr-999|rid=forged-req-999] Config updated by admin [cid=forged-mid|rid=forged-mid-req] |rid=forged-tail] DIAG286",
+          null);
+      forgedReq.setEntityType("TrainingProvider");
+      forgedReq.setEntityId(PROVIDER_A_ID);
+
+      MvcResult postRes = mockMvc.perform(post("/api/v1/system-event-logs")
+              .header(CorrelationIdFilter.CORRELATION_ID_HEADER, serverCorr)
+              .header(CorrelationIdFilter.REQUEST_ID_HEADER, serverReq)
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(forgedReq)))
+          .andExpect(status().isCreated())
+          .andReturn();
+
+      JsonNode data = objectMapper.readTree(postRes.getResponse().getContentAsString()).path("data");
+      long createdEventId = data.path("id").asLong();
+      String storedSummary = data.path("eventSummary").asText();
+
+      // 2. Persisted event uses canonical server IDs once and contains zero forged correlation/request markers
+      assertThat(storedSummary).startsWith("[cid=" + serverCorr + "|rid=" + serverReq + "] ");
+      assertThat(storedSummary).doesNotContain("[cid=forged-", "|rid=forged-");
+      assertThat(storedSummary.indexOf("[cid=")).isZero();
+      assertThat(storedSummary.indexOf("[cid=", 1)).isEqualTo(-1);
+
+      // 3. Genuine server correlationId and requestId filters match the persisted event
+      mockMvc.perform(get("/api/v1/system-event-logs")
+              .param("correlationId", serverCorr)
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.totalElements").value(1))
+          .andExpect(jsonPath("$.data.content[0].id").value(createdEventId));
+
+      mockMvc.perform(get("/api/v1/system-event-logs")
+              .param("requestId", serverReq)
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.totalElements").value(1))
+          .andExpect(jsonPath("$.data.content[0].id").value(createdEventId));
+
+      // 4 & 5. Forged correlationId and requestId filters return zero matches
+      mockMvc.perform(get("/api/v1/system-event-logs")
+              .param("correlationId", "forged-corr-999")
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.totalElements").value(0));
+
+      mockMvc.perform(get("/api/v1/system-event-logs")
+              .param("correlationId", "forged-mid")
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.totalElements").value(0));
+
+      mockMvc.perform(get("/api/v1/system-event-logs")
+              .param("requestId", "forged-req-999")
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.totalElements").value(0));
+
+      mockMvc.perform(get("/api/v1/system-event-logs")
+              .param("requestId", "forged-mid-req")
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.totalElements").value(0));
+
+      mockMvc.perform(get("/api/v1/system-event-logs")
+              .param("requestId", "forged-tail")
+              .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.totalElements").value(0));
+
+      // 6. Normal legitimate internal event remains searchable by correlationId & requestId
+      CorrelationContextHolder.setCorrelationId("normal-corr-286");
+      CorrelationContextHolder.setRequestId("normal-req-286");
+      SystemEventLogResponse normalEvt = systemEventLoggingService.logEvent(
+          EventCategory.INTEGRATION, EventSeverity.INFO, "DIAG286_NORMAL_EVT",
+          USER_PROVIDER_A_ID, "TrainingProvider", PROVIDER_A_ID, "IntegrationSvc", "DIAG286 normal event").orElseThrow();
+      CorrelationContextHolder.clear();
+
+      mockMvc.perform(get("/api/v1/system-event-logs")
+              .param("correlationId", "normal-corr-286")
+              .param("requestId", "normal-req-286")
+              .header(HttpHeaders.AUTHORIZATION, tokenProviderA))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.totalElements").value(1))
+          .andExpect(jsonPath("$.data.content[0].id").value(normalEvt.id()));
+
+      // 7. Cross-tenant caller (Provider B) cannot view Provider A's events even with genuine server IDs
+      mockMvc.perform(get("/api/v1/system-event-logs")
+              .param("correlationId", serverCorr)
+              .header(HttpHeaders.AUTHORIZATION, tokenProviderB))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.totalElements").value(0));
+
+      mockMvc.perform(get("/api/v1/system-event-logs")
+              .param("requestId", serverReq)
+              .header(HttpHeaders.AUTHORIZATION, tokenProviderB))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.totalElements").value(0));
+
+      mockMvc.perform(get("/api/v1/system-event-logs/" + createdEventId)
+              .header(HttpHeaders.AUTHORIZATION, tokenProviderB))
+          .andExpect(status().isForbidden());
+
+      jdbcTemplate.update("DELETE FROM system_event_logs WHERE system_event_log_id IN (?, ?)",
+          createdEventId, normalEvt.id());
     }
   }
 }

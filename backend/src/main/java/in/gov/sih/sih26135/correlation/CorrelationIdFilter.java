@@ -39,6 +39,7 @@ public class CorrelationIdFilter extends OncePerRequestFilter implements Ordered
   public static final String CORRELATION_ID_HEADER = "X-Correlation-Id";
   public static final String REQUEST_ID_HEADER = "X-Request-Id";
   public static final String CORRELATION_ID_ATTRIBUTE = "in.gov.sih.sih26135.correlationId";
+  public static final String REQUEST_ID_ATTRIBUTE = "in.gov.sih.sih26135.requestId";
 
   public static final String MDC_CORRELATION_ID_KEY = "correlationId";
   public static final String MDC_REQUEST_ID_KEY = "requestId";
@@ -79,18 +80,21 @@ public class CorrelationIdFilter extends OncePerRequestFilter implements Ordered
     String previousContextHolderId = CorrelationContextHolder.getCorrelationId();
     String previousContextRequestId = CorrelationContextHolder.getExplicitRequestId();
 
-    String correlationId = resolveCorrelationId(request);
+    ResolvedTracingIds resolved = resolveTracingIds(request);
+    String correlationId = resolved.correlationId();
+    String requestId = resolved.requestId();
 
-    // Bind to request attribute, context holder, and SLF4J MDC
+    // Bind to request attributes, context holder, and SLF4J MDC
     request.setAttribute(CORRELATION_ID_ATTRIBUTE, correlationId);
+    request.setAttribute(REQUEST_ID_ATTRIBUTE, requestId);
     CorrelationContextHolder.setCorrelationId(correlationId);
-    CorrelationContextHolder.setRequestId(correlationId);
+    CorrelationContextHolder.setRequestId(requestId);
     MDC.put(MDC_CORRELATION_ID_KEY, correlationId);
-    MDC.put(MDC_REQUEST_ID_KEY, correlationId);
+    MDC.put(MDC_REQUEST_ID_KEY, requestId);
 
     // Set response headers upfront before any downstream filter or handler writes to response
     response.setHeader(CORRELATION_ID_HEADER, correlationId);
-    response.setHeader(REQUEST_ID_HEADER, correlationId);
+    response.setHeader(REQUEST_ID_HEADER, requestId);
 
     try {
       filterChain.doFilter(request, response);
@@ -122,33 +126,60 @@ public class CorrelationIdFilter extends OncePerRequestFilter implements Ordered
     }
   }
 
+  private record ResolvedTracingIds(String correlationId, String requestId) {}
+
   /**
-   * Resolves a sanitized correlation ID from incoming request headers or generates a fresh UUID.
-   *
-   * @param request the incoming HTTP servlet request
-   * @return a validated, safe correlation identifier string
+   * Resolves and independently validates correlation and request identifiers from incoming
+   * headers (or prior error-dispatch attributes), preserving single-header fallbacks and
+   * generating safe server UUIDs when required.
    */
-  private String resolveCorrelationId(HttpServletRequest request) {
-    Object existingAttr = request.getAttribute(CORRELATION_ID_ATTRIBUTE);
-    if (existingAttr instanceof String existingId && isValidCorrelationId(existingId)) {
-      return existingId;
+  private ResolvedTracingIds resolveTracingIds(HttpServletRequest request) {
+    Object existingCorrAttr = request.getAttribute(CORRELATION_ID_ATTRIBUTE);
+    Object existingReqAttr = request.getAttribute(REQUEST_ID_ATTRIBUTE);
+    if (existingCorrAttr instanceof String existingCorr && isValidCorrelationId(existingCorr)) {
+      String resolvedReq = (existingReqAttr instanceof String existingReq && isValidCorrelationId(existingReq))
+          ? existingReq
+          : existingCorr;
+      return new ResolvedTracingIds(existingCorr, resolvedReq);
     }
 
     String rawCorrelationId = request.getHeader(CORRELATION_ID_HEADER);
-    if (isValidCorrelationId(rawCorrelationId)) {
-      return rawCorrelationId;
-    }
-
     String rawRequestId = request.getHeader(REQUEST_ID_HEADER);
-    if (isValidCorrelationId(rawRequestId)) {
-      return rawRequestId;
+    boolean validCorr = isValidCorrelationId(rawCorrelationId);
+    boolean validReq = isValidCorrelationId(rawRequestId);
+
+    if (validCorr && validReq) {
+      return new ResolvedTracingIds(rawCorrelationId, rawRequestId);
+    }
+    if (validCorr && rawRequestId == null) {
+      // Compatible fallback when only X-Correlation-Id is supplied
+      return new ResolvedTracingIds(rawCorrelationId, rawCorrelationId);
+    }
+    if (rawCorrelationId == null && validReq) {
+      // Compatible fallback when only X-Request-Id is supplied
+      return new ResolvedTracingIds(rawRequestId, rawRequestId);
     }
 
     if (rawCorrelationId != null || rawRequestId != null) {
-      log.debug("Invalid or untrusted correlation/request ID header received; generated new identifier.");
+      log.debug("Invalid or untrusted correlation/request ID header received; generated safe server identifier.");
     }
 
-    return UUID.randomUUID().toString();
+    if (rawCorrelationId == null && rawRequestId == null) {
+      String generated = UUID.randomUUID().toString();
+      return new ResolvedTracingIds(generated, generated);
+    }
+
+    // One header supplied and invalid, or both invalid: independently replace invalid value(s)
+    String effectiveCorr = validCorr ? rawCorrelationId : UUID.randomUUID().toString();
+    String effectiveReq;
+    if (validReq) {
+      effectiveReq = rawRequestId;
+    } else if (!validCorr) {
+      effectiveReq = (rawRequestId == null) ? effectiveCorr : UUID.randomUUID().toString();
+    } else {
+      effectiveReq = UUID.randomUUID().toString();
+    }
+    return new ResolvedTracingIds(effectiveCorr, effectiveReq);
   }
 
   /**

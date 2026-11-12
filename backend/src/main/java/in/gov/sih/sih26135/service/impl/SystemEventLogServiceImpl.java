@@ -603,22 +603,26 @@ public class SystemEventLogServiceImpl implements SystemEventLogService {
 
   private String resolveValidContextCorrelationId() {
     String corrId = CorrelationContextHolder.getCorrelationId();
-    if (!CorrelationIdFilter.isValidCorrelationId(corrId)) {
-      String mdc = MDC.get(CorrelationIdFilter.MDC_CORRELATION_ID_KEY);
-      return CorrelationIdFilter.isValidCorrelationId(mdc) ? mdc : null;
+    if (CorrelationIdFilter.isValidCorrelationId(corrId)) {
+      return corrId;
     }
-    return corrId;
+    String mdc = MDC.get(CorrelationIdFilter.MDC_CORRELATION_ID_KEY);
+    return CorrelationIdFilter.isValidCorrelationId(mdc) ? mdc : java.util.UUID.randomUUID().toString();
   }
 
   private String resolveValidContextRequestId(String fallbackCorrelationId) {
-    String reqId = CorrelationContextHolder.getRequestId();
-    if (!CorrelationIdFilter.isValidCorrelationId(reqId)) {
-      String mdc = MDC.get(CorrelationIdFilter.MDC_REQUEST_ID_KEY);
-      if (CorrelationIdFilter.isValidCorrelationId(mdc)) {
-        return mdc;
-      }
-      return fallbackCorrelationId;
+    String explicitReqId = CorrelationContextHolder.getExplicitRequestId();
+    if (CorrelationIdFilter.isValidCorrelationId(explicitReqId)) {
+      return explicitReqId;
     }
-    return reqId;
+    String mdc = MDC.get(CorrelationIdFilter.MDC_REQUEST_ID_KEY);
+    if (CorrelationIdFilter.isValidCorrelationId(mdc)) {
+      return mdc;
+    }
+    String holderReqId = CorrelationContextHolder.getRequestId();
+    if (CorrelationIdFilter.isValidCorrelationId(holderReqId)) {
+      return holderReqId;
+    }
+    return fallbackCorrelationId;
   }
 }

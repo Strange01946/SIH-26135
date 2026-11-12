@@ -30,6 +30,8 @@ public final class SystemEventSanitizer {
       "(?i)\\b(password|passwd|pwd|secret|token|jwt|api_?key|access_token|refresh_token|client_secret|authorization|auth)\\s*[:=]\\s*[^\\s,;]+");
   private static final Pattern JDBC_URL_PATTERN = Pattern.compile("(?i)\\bjdbc:[a-z0-9:]+://[^\\s,;]+");
   private static final Pattern STACK_TRACE_PATTERN = Pattern.compile("(?i)\\b(at\\s+[a-z0-9_.$]+\\([^)]*\\)|caused\\s+by:)");
+  private static final Pattern CORRELATION_BRACKET_TAG_PATTERN = Pattern.compile("(?i)\\[\\s*(?:cid|rid)\\s*=[^\\]]*(?:\\]|$)");
+  private static final Pattern CORRELATION_KV_FRAGMENT_PATTERN = Pattern.compile("(?i)(\\|?\\s*)\\b(cid|rid)\\s*=");
 
   private SystemEventSanitizer() {
   }
@@ -69,6 +71,8 @@ public final class SystemEventSanitizer {
       return "Operational event recorded";
     }
     String sanitized = CONTROL_AND_WHITESPACE.matcher(base.trim()).replaceAll(" ");
+    sanitized = CORRELATION_BRACKET_TAG_PATTERN.matcher(sanitized).replaceAll(" ");
+    sanitized = CORRELATION_KV_FRAGMENT_PATTERN.matcher(sanitized).replaceAll("$1$2:");
     sanitized = JDBC_URL_PATTERN.matcher(sanitized).replaceAll("[REDACTED_URL]");
     sanitized = JWT_PATTERN.matcher(sanitized).replaceAll("[REDACTED_JWT]");
     sanitized = BEARER_PATTERN.matcher(sanitized).replaceAll("Bearer ***REDACTED***");
@@ -79,11 +83,11 @@ public final class SystemEventSanitizer {
     if (stackIdx > 0) {
       sanitized = sanitized.substring(0, stackIdx).trim();
     } else if (stackIdx == 0) {
-      sanitized = fallback != null && !fallback.isBlank() ? fallback : "Operational event recorded";
+      sanitized = fallback != null && !fallback.isBlank() ? sanitizeFallback(fallback) : "Operational event recorded";
     }
     sanitized = sanitized.replaceAll("\\s{2,}", " ").trim();
     if (sanitized.isEmpty()) {
-      return fallback != null && !fallback.isBlank() ? fallback : "Operational event recorded";
+      return fallback != null && !fallback.isBlank() ? sanitizeFallback(fallback) : "Operational event recorded";
     }
     return sanitized.length() > MAX_EVENT_SUMMARY_LENGTH
         ? sanitized.substring(0, MAX_EVENT_SUMMARY_LENGTH)
@@ -91,8 +95,9 @@ public final class SystemEventSanitizer {
   }
 
   /**
-   * Formats a schema-compliant 500-character event summary prefixed with validated correlation and
-   * request identifiers when present, avoiding duplicate prefixes if already attached.
+   * Formats a schema-compliant 500-character event summary prefixed with authoritative server
+   * correlation and request identifiers. Any client-supplied correlation-like markers are stripped
+   * from untrusted message text before attaching the single canonical server prefix.
    */
   public static String formatWithCorrelation(
       String rawMessage,
@@ -108,16 +113,18 @@ public final class SystemEventSanitizer {
     }
 
     String tokenPrefix = "[cid=" + validCorr + "|rid=" + validReq + "]";
-    if (cleanMessage.startsWith("[cid=")) {
-      return cleanMessage.length() > MAX_EVENT_SUMMARY_LENGTH
-          ? cleanMessage.substring(0, MAX_EVENT_SUMMARY_LENGTH)
-          : cleanMessage;
-    }
-
     String combined = tokenPrefix + " " + cleanMessage;
     return combined.length() > MAX_EVENT_SUMMARY_LENGTH
         ? combined.substring(0, MAX_EVENT_SUMMARY_LENGTH)
         : combined;
+  }
+
+  private static String sanitizeFallback(String fallback) {
+    String cleaned = CONTROL_AND_WHITESPACE.matcher(fallback.trim()).replaceAll(" ");
+    cleaned = CORRELATION_BRACKET_TAG_PATTERN.matcher(cleaned).replaceAll(" ");
+    cleaned = CORRELATION_KV_FRAGMENT_PATTERN.matcher(cleaned).replaceAll("$1$2:");
+    cleaned = cleaned.replaceAll("\\s{2,}", " ").trim();
+    return cleaned.isEmpty() ? "Operational event recorded" : cleaned;
   }
 
   private static int findStackTraceIndex(String value) {

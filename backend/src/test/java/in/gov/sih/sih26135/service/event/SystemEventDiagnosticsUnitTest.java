@@ -273,4 +273,26 @@ class SystemEventDiagnosticsUnitTest {
       singleWorker.shutdownNow();
     }
   }
+
+  @Test
+  @DisplayName("Strips/escapes forged correlation markers, applies single canonical prefix, and honors 500-char limit")
+  void stripsForgedCorrelationMarkersWithoutDuplicatingCanonicalPrefix() {
+    String forgedPrefix = "[cid=forged-c1|rid=forged-r1] Admin action detail " + "Z".repeat(490);
+    String formattedLeading = SystemEventSanitizer.formatWithCorrelation(
+        forgedPrefix, "FALLBACK", "srv-corr-1", "srv-req-1");
+    assertThat(formattedLeading).startsWith("[cid=srv-corr-1|rid=srv-req-1] Admin action detail");
+    assertThat(formattedLeading).doesNotContain("[cid=forged-", "|rid=forged-");
+    assertThat(formattedLeading).hasSizeLessThanOrEqualTo(500);
+
+    String forgedMiddle = "Note [cid=forged-mid|rid=forged-mid-req] and |rid=tail-forgery] with password=Secret#1";
+    String formattedMiddle = SystemEventSanitizer.formatWithCorrelation(
+        forgedMiddle, "FALLBACK", "srv-corr-2", "srv-req-2");
+    assertThat(formattedMiddle).startsWith("[cid=srv-corr-2|rid=srv-req-2] ");
+    assertThat(formattedMiddle).doesNotContain("[cid=forged-", "|rid=forged-", "|rid=tail-forgery", "Secret#1");
+    assertThat(formattedMiddle).contains("password=***REDACTED***");
+
+    // Prefix appears only once at position 0
+    assertThat(formattedMiddle.indexOf("[cid=")).isZero();
+    assertThat(formattedMiddle.indexOf("[cid=", 1)).isEqualTo(-1);
+  }
 }

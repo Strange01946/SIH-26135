@@ -163,7 +163,7 @@ public class CorrelationTrackingIntegrationTest {
     }
 
     @Test
-    @DisplayName("1.4 X-Correlation-Id takes strict precedence over X-Request-Id in conflict")
+    @DisplayName("1.4 X-Correlation-Id governs correlationId while preserving distinct valid X-Request-Id")
     void testPrecedence_xCorrelationIdTakesPrecedenceOverXRequestId() throws Exception {
       String correlationId = "primary-corr-111";
       String requestId = "secondary-req-222";
@@ -175,12 +175,12 @@ public class CorrelationTrackingIntegrationTest {
               .content("{}"))
           .andExpect(status().isBadRequest())
           .andExpect(header().string("X-Correlation-Id", correlationId))
-          .andExpect(header().string("X-Request-Id", correlationId))
+          .andExpect(header().string("X-Request-Id", requestId))
           .andExpect(jsonPath("$.correlationId").value(correlationId))
           .andReturn();
 
       assertThat(result.getResponse().getHeader("X-Correlation-Id")).isEqualTo(correlationId);
-      assertThat(result.getResponse().getHeader("X-Request-Id")).isEqualTo(correlationId);
+      assertThat(result.getResponse().getHeader("X-Request-Id")).isEqualTo(requestId);
     }
   }
 
