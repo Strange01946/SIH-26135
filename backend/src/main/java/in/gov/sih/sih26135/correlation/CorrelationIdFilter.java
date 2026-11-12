@@ -77,12 +77,14 @@ public class CorrelationIdFilter extends OncePerRequestFilter implements Ordered
     String previousCorrelationId = MDC.get(MDC_CORRELATION_ID_KEY);
     String previousRequestId = MDC.get(MDC_REQUEST_ID_KEY);
     String previousContextHolderId = CorrelationContextHolder.getCorrelationId();
+    String previousContextRequestId = CorrelationContextHolder.getExplicitRequestId();
 
     String correlationId = resolveCorrelationId(request);
 
     // Bind to request attribute, context holder, and SLF4J MDC
     request.setAttribute(CORRELATION_ID_ATTRIBUTE, correlationId);
     CorrelationContextHolder.setCorrelationId(correlationId);
+    CorrelationContextHolder.setRequestId(correlationId);
     MDC.put(MDC_CORRELATION_ID_KEY, correlationId);
     MDC.put(MDC_REQUEST_ID_KEY, correlationId);
 
@@ -97,7 +99,13 @@ public class CorrelationIdFilter extends OncePerRequestFilter implements Ordered
       if (previousContextHolderId != null) {
         CorrelationContextHolder.setCorrelationId(previousContextHolderId);
       } else {
-        CorrelationContextHolder.clear();
+        CorrelationContextHolder.setCorrelationId(null);
+      }
+
+      if (previousContextRequestId != null) {
+        CorrelationContextHolder.setRequestId(previousContextRequestId);
+      } else {
+        CorrelationContextHolder.setRequestId(null);
       }
 
       if (previousCorrelationId != null) {

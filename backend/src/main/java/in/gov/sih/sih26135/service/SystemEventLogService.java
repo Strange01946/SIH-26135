@@ -1,6 +1,7 @@
 package in.gov.sih.sih26135.service;
 
 import in.gov.sih.sih26135.dto.request.CreateSystemEventLogRequest;
+import in.gov.sih.sih26135.dto.request.OperationalEventFilterCriteria;
 import in.gov.sih.sih26135.dto.response.SystemEventLogResponse;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -10,6 +11,10 @@ import org.springframework.data.domain.Pageable;
 public interface SystemEventLogService {
 
   SystemEventLogResponse recordSystemEvent(CreateSystemEventLogRequest request);
+
+  SystemEventLogResponse recordSystemEventFromApi(CreateSystemEventLogRequest request);
+
+  Page<SystemEventLogResponse> searchEvents(OperationalEventFilterCriteria criteria, Long categoryId, Long severityId);
 
   SystemEventLogResponse getEventById(Long id);
 

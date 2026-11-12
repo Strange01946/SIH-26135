@@ -45,6 +45,27 @@ public class DataQualityEngineProperties {
    */
   private Map<String, BigDecimal> stateMinimumWages = new HashMap<>();
 
+  /**
+   * Minimum newly created issues in a single tenant-scoped scan that constitutes an operational spike.
+   */
+  private int spikeNewIssuesThreshold = 20;
+
+  /**
+   * Minimum newly created issues for a HIGH-severity rule in a single scan to trigger a spike event.
+   */
+  private int spikeHighSeverityThreshold = 10;
+
+  /**
+   * Minimum newly created issues for a CRITICAL-severity rule in a single scan to trigger a spike event.
+   */
+  private int spikeCriticalSeverityThreshold = 1;
+
+  /**
+   * Cooldown interval (in seconds) suppressing repeated CRITICAL/ERROR spike events for the same
+   * unresolved (tenantScope, ruleCode) signal.
+   */
+  private int spikeAlertCooldownSeconds = 300;
+
   public int getBatchChunkSize() {
     return batchChunkSize;
   }
@@ -96,5 +117,45 @@ public class DataQualityEngineProperties {
       return wage;
     }
     return stateMinimumWages.get("STATE_" + stateId);
+  }
+
+  public int getSpikeNewIssuesThreshold() {
+    return spikeNewIssuesThreshold;
+  }
+
+  public void setSpikeNewIssuesThreshold(int spikeNewIssuesThreshold) {
+    if (spikeNewIssuesThreshold >= 1 && spikeNewIssuesThreshold <= 10000) {
+      this.spikeNewIssuesThreshold = spikeNewIssuesThreshold;
+    }
+  }
+
+  public int getSpikeHighSeverityThreshold() {
+    return spikeHighSeverityThreshold;
+  }
+
+  public void setSpikeHighSeverityThreshold(int spikeHighSeverityThreshold) {
+    if (spikeHighSeverityThreshold >= 1 && spikeHighSeverityThreshold <= 10000) {
+      this.spikeHighSeverityThreshold = spikeHighSeverityThreshold;
+    }
+  }
+
+  public int getSpikeCriticalSeverityThreshold() {
+    return spikeCriticalSeverityThreshold;
+  }
+
+  public void setSpikeCriticalSeverityThreshold(int spikeCriticalSeverityThreshold) {
+    if (spikeCriticalSeverityThreshold >= 1 && spikeCriticalSeverityThreshold <= 10000) {
+      this.spikeCriticalSeverityThreshold = spikeCriticalSeverityThreshold;
+    }
+  }
+
+  public int getSpikeAlertCooldownSeconds() {
+    return spikeAlertCooldownSeconds;
+  }
+
+  public void setSpikeAlertCooldownSeconds(int spikeAlertCooldownSeconds) {
+    if (spikeAlertCooldownSeconds >= 0 && spikeAlertCooldownSeconds <= 86400) {
+      this.spikeAlertCooldownSeconds = spikeAlertCooldownSeconds;
+    }
   }
 }

@@ -28,6 +28,9 @@ import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import in.gov.sih.sih26135.correlation.CorrelationContextHolder;
 import in.gov.sih.sih26135.response.PaginationUtils;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
+import in.gov.sih.sih26135.service.SystemEventLoggingService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -68,6 +71,12 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 public class GlobalExceptionHandler {
 
   private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+  @Autowired(required = false)
+  private SystemEventLoggingService systemEventLoggingService;
+
+  @Autowired(required = false)
+  private WorkflowSecurityScopeValidator securityScopeValidator;
 
   /**
    * Defense-in-depth regex pattern for detecting potential sensitive data patterns.
@@ -753,6 +762,12 @@ public class GlobalExceptionHandler {
           "Explicit worker-termination confirmation (confirmWorkerTerminated=true) is required before recovering a RUNNING batch";
       case "MULTI_INSTANCE_RECOVERY_UNSUPPORTED" ->
           "Interrupted batch recovery is disabled in MULTI_INSTANCE deployment without shared worker lease coordination";
+      case "EVENT_CATEGORY_REQUIRED" -> "System event category is required";
+      case "EVENT_SEVERITY_REQUIRED" -> "System event severity is required";
+      case "INVALID_EVENT_CATEGORY" -> "Unsupported system event category code";
+      case "INVALID_EVENT_SEVERITY" -> "Unsupported system event severity code";
+      case "INVALID_CORRELATION_ID" -> "Invalid correlationId filter format";
+      case "INVALID_REQUEST_ID" -> "Invalid requestId filter format";
       default -> {
         if (status == null || status.is5xxServerError()) {
           yield "An unexpected error occurred. Please try again later.";
@@ -937,6 +952,7 @@ public class GlobalExceptionHandler {
     String uri = sanitizeUri(request);
     log.warn("Rate limit exception on {}: status={}, code={}, retryAfter={}",
         uri, ex.getStatus().value(), ex.getErrorCode(), ex.getRetryAfterSeconds());
+    recordRateLimitEventSafely(ex, uri);
     ErrorResponse errorResponse = new ErrorResponse(
         ex.getStatus().value(),
         ex.getStatus().getReasonPhrase(),
@@ -949,6 +965,30 @@ public class GlobalExceptionHandler {
       headers.set(HttpHeaders.RETRY_AFTER, String.valueOf(ex.getRetryAfterSeconds()));
     }
     return buildSanitizedResponse(errorResponse, headers, ex.getStatus());
+  }
+
+  private void recordRateLimitEventSafely(RateLimitExceededException ex, String sanitizedRoute) {
+    if (systemEventLoggingService == null) {
+      return;
+    }
+    try {
+      Long actorUserId = null;
+      if (securityScopeValidator != null) {
+        actorUserId = securityScopeValidator.resolveAuthenticatedUserId();
+      }
+      String code = ex.getErrorCode() != null && !ex.getErrorCode().isBlank()
+          ? ex.getErrorCode()
+          : "RATE_LIMIT_EXCEEDED";
+      String safeSummary = "Request rejected due to rate or concurrency limit (" + code + ")";
+      systemEventLoggingService.logRateLimitViolation(
+          code,
+          actorUserId,
+          sanitizedRoute,
+          "EXPORT_RATE_LIMITER",
+          safeSummary);
+    } catch (Exception loggingEx) {
+      log.warn("Failed to record rate-limit system event safely: {}", loggingEx.getClass().getSimpleName());
+    }
   }
 
   @ExceptionHandler(BaseException.class)

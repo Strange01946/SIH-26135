@@ -2,6 +2,9 @@ package in.gov.sih.sih26135.service.impl;
 
 import in.gov.sih.sih26135.config.ImportPipelineProperties;
 import in.gov.sih.sih26135.config.ImportPipelineProperties.DeploymentMode;
+import in.gov.sih.sih26135.correlation.CorrelationContextHolder;
+import in.gov.sih.sih26135.correlation.CorrelationContextHolder.ContextSnapshot;
+import in.gov.sih.sih26135.correlation.CorrelationIdFilter;
 import in.gov.sih.sih26135.dto.response.ImportBatchProgressResponse;
 import in.gov.sih.sih26135.dto.response.ImportBatchResponse;
 import in.gov.sih.sih26135.dto.response.ImportRecordResponse;
@@ -10,6 +13,7 @@ import in.gov.sih.sih26135.entity.ImportRecord;
 import in.gov.sih.sih26135.entity.RefImportBatchStatus;
 import in.gov.sih.sih26135.entity.RefImportRecordStatus;
 import in.gov.sih.sih26135.exception.BadRequestException;
+import in.gov.sih.sih26135.exception.BaseException;
 import in.gov.sih.sih26135.exception.ConflictException;
 import in.gov.sih.sih26135.exception.ImportBatchTerminalException;
 import in.gov.sih.sih26135.exception.ImportRowLimitExceededException;
@@ -21,6 +25,9 @@ import in.gov.sih.sih26135.repository.ImportRecordRepository;
 import in.gov.sih.sih26135.repository.RefImportBatchStatusRepository;
 import in.gov.sih.sih26135.repository.RefImportRecordStatusRepository;
 import in.gov.sih.sih26135.service.ImportBatchProcessingWorkflow;
+import in.gov.sih.sih26135.service.SystemEventLoggingService;
+import in.gov.sih.sih26135.service.SystemEventLoggingService.EventCategory;
+import in.gov.sih.sih26135.service.SystemEventLoggingService.EventSeverity;
 import in.gov.sih.sih26135.service.ingestion.ImportContractSchema;
 import in.gov.sih.sih26135.service.ingestion.ImportErrorSanitizer;
 import in.gov.sih.sih26135.service.ingestion.ImportFileStagingService;
@@ -53,6 +60,8 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.dao.TransientDataAccessException;
 import org.springframework.data.domain.Page;
@@ -115,6 +124,9 @@ public class ImportBatchProcessingWorkflowImpl implements ImportBatchProcessingW
   private final JdbcTemplate jdbcTemplate;
   private final TransactionTemplate requiresNewTxTemplate;
   private final ConcurrentMap<Long, String> activeBatchExecutions = new ConcurrentHashMap<>();
+
+  @Autowired(required = false)
+  private SystemEventLoggingService systemEventLoggingService;
 
   @PersistenceContext
   private EntityManager entityManager;
@@ -184,6 +196,9 @@ public class ImportBatchProcessingWorkflowImpl implements ImportBatchProcessingW
 
       if (created == null || !fileStagingService.hasStagedFile(batchCode)) {
         fileStagingService.deleteStagedFileQuietly(staged.stagedPath());
+        recordBatchFailureEventSafely(
+            null, batchCode, callerScope.caller().getId(),
+            "IMPORT_STAGING_FAILED", "Staged upload persistence verification failed");
         throw new IllegalStateException("Staged upload persistence verification failed");
       }
 
@@ -192,6 +207,9 @@ public class ImportBatchProcessingWorkflowImpl implements ImportBatchProcessingW
       return created;
     } catch (RuntimeException ex) {
       fileStagingService.deleteStagedFileQuietly(staged.stagedPath());
+      recordBatchFailureEventSafely(
+          null, batchCode, callerScope.caller().getId(),
+          "IMPORT_STAGING_FAILED", "Import batch staging failed before registration");
       throw ex;
     }
   }
@@ -209,10 +227,36 @@ public class ImportBatchProcessingWorkflowImpl implements ImportBatchProcessingW
           "IMPORT_BATCH_ALREADY_RUNNING");
     }
 
+    ContextSnapshot previousSnapshot = CorrelationContextHolder.captureSnapshot();
+    String previousMdcCorr = MDC.get(CorrelationIdFilter.MDC_CORRELATION_ID_KEY);
+    String previousMdcReq = MDC.get(CorrelationIdFilter.MDC_REQUEST_ID_KEY);
+    boolean generatedServerCorrelation = false;
+    if (!CorrelationIdFilter.isValidCorrelationId(previousSnapshot.correlationId())) {
+      String serverCorrId = UUID.randomUUID().toString();
+      CorrelationContextHolder.setCorrelationId(serverCorrId);
+      CorrelationContextHolder.setRequestId(serverCorrId);
+      MDC.put(CorrelationIdFilter.MDC_CORRELATION_ID_KEY, serverCorrId);
+      MDC.put(CorrelationIdFilter.MDC_REQUEST_ID_KEY, serverCorrId);
+      generatedServerCorrelation = true;
+    }
+
     try {
       return executeClaimedBatch(batchId);
     } finally {
       activeBatchExecutions.remove(batchId, executionToken);
+      if (generatedServerCorrelation) {
+        CorrelationContextHolder.restore(previousSnapshot);
+        if (previousMdcCorr != null) {
+          MDC.put(CorrelationIdFilter.MDC_CORRELATION_ID_KEY, previousMdcCorr);
+        } else {
+          MDC.remove(CorrelationIdFilter.MDC_CORRELATION_ID_KEY);
+        }
+        if (previousMdcReq != null) {
+          MDC.put(CorrelationIdFilter.MDC_REQUEST_ID_KEY, previousMdcReq);
+        } else {
+          MDC.remove(CorrelationIdFilter.MDC_REQUEST_ID_KEY);
+        }
+      }
     }
   }
 
@@ -275,11 +319,30 @@ public class ImportBatchProcessingWorkflowImpl implements ImportBatchProcessingW
     // 3. Reconcile counters from committed import_records & finalize batch in isolated tx
     boolean finalFatal = fatalFailure;
     ImportBatchProgressResponse finalized;
+    boolean failureEventLogged = false;
     try {
       finalized = finalizeBatch(claimed.batchId(), finalFatal, claimed.startedAt());
     } catch (RuntimeException finalizeEx) {
       markBatchFailedSafely(claimed.batchId(), claimed.startedAt());
+      recordBatchFailureEventSafely(
+          claimed.batchId(),
+          claimed.batchCode(),
+          callerScope.caller().getId(),
+          "IMPORT_FINALIZATION_FAILED",
+          "Import batch finalization failed unexpectedly for batchCode=" + claimed.batchCode());
+      failureEventLogged = true;
       throw finalizeEx;
+    }
+
+    if (!failureEventLogged && "FAILED".equalsIgnoreCase(finalized.status())) {
+      String reasonCode = resolveBatchFailureReasonCode(finalized, deferredFailure);
+      recordBatchFailureEventSafely(
+          claimed.batchId(),
+          claimed.batchCode(),
+          callerScope.caller().getId(),
+          "IMPORT_BATCH_FAILED",
+          "Import batch terminated in FAILED state: batchCode=" + claimed.batchCode()
+              + ", reason=" + reasonCode + ", committedRows=" + finalized.rowCount());
     }
 
     if (!finalFatal && finalized.rowCount() == 0) {
@@ -396,6 +459,13 @@ public class ImportBatchProcessingWorkflowImpl implements ImportBatchProcessingW
       throw new IllegalStateException("Interrupted batch recovery failed unexpectedly");
     }
     if (outcome.stagedFileMissing()) {
+      ImportBatchProgressResponse failedProg = outcome.progress();
+      recordBatchFailureEventSafely(
+          failedProg != null ? failedProg.importBatchId() : batchId,
+          failedProg != null ? failedProg.batchCode() : null,
+          failedProg != null ? failedProg.initiatedByUserId() : null,
+          "IMPORT_BATCH_FAILED",
+          "Import batch recovery aborted because staged file is missing; batch marked FAILED");
       throw new BadRequestException(
           "Staged import file is unavailable for recovery; incomplete batch marked FAILED with partial counts preserved",
           "STAGED_FILE_NOT_FOUND");
@@ -807,5 +877,47 @@ public class ImportBatchProcessingWorkflowImpl implements ImportBatchProcessingW
       throw new BadRequestException("sourceSystem cannot exceed 64 characters", "SOURCE_SYSTEM_TOO_LONG");
     }
     return trimmed;
+  }
+
+  private String resolveBatchFailureReasonCode(ImportBatchProgressResponse finalized, RuntimeException deferredFailure) {
+    if (deferredFailure instanceof BaseException base && base.getErrorCode() != null) {
+      return base.getErrorCode();
+    }
+    if (deferredFailure != null) {
+      return deferredFailure.getClass().getSimpleName();
+    }
+    if (finalized != null && finalized.rowCount() == 0) {
+      return "NO_DATA_ROWS";
+    }
+    return "BATCH_EXECUTION_FAILED";
+  }
+
+  private void recordBatchFailureEventSafely(
+      Long batchId,
+      String batchCode,
+      Long actorUserId,
+      String eventCode,
+      String summary) {
+    if (systemEventLoggingService == null) {
+      return;
+    }
+    try {
+      String message = summary != null ? summary : "Import batch execution failed";
+      if (batchCode != null && !message.contains(batchCode)) {
+        message = message + " batchCode=" + batchCode;
+      }
+      systemEventLoggingService.logEvent(
+          EventCategory.BATCH_JOB,
+          EventSeverity.ERROR,
+          eventCode,
+          actorUserId,
+          batchId != null ? "ImportBatch" : "ImportStaging",
+          batchId,
+          "IMPORT_WORKFLOW",
+          message);
+    } catch (Exception loggingEx) {
+      log.warn("Safe fallback: failed recording BATCH_JOB event for batchId={}: {}",
+          batchId, loggingEx.getClass().getSimpleName());
+    }
   }
 }

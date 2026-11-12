@@ -39,6 +39,12 @@ public class OperationalEventFilterCriteria {
   @Size(max = 64, message = "correlationId cannot exceed 64 characters")
   private String correlationId;
 
+  @Size(max = 64, message = "requestId cannot exceed 64 characters")
+  private String requestId;
+
+  @Size(max = 64, message = "sourceComponent cannot exceed 64 characters")
+  private String sourceComponent;
+
   @Min(value = 0, message = "page index cannot be negative")
   private int page = 0;
 
@@ -160,6 +166,22 @@ public class OperationalEventFilterCriteria {
 
   public void setCorrelationId(String correlationId) {
     this.correlationId = correlationId;
+  }
+
+  public String getRequestId() {
+    return requestId;
+  }
+
+  public void setRequestId(String requestId) {
+    this.requestId = requestId;
+  }
+
+  public String getSourceComponent() {
+    return sourceComponent;
+  }
+
+  public void setSourceComponent(String sourceComponent) {
+    this.sourceComponent = sourceComponent;
   }
 
   public int getPage() {

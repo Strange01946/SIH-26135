@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -477,13 +478,18 @@ class AccountLockoutAndSecurityAuditTest {
       return false;
     }));
 
-    // Verify AuditLog summary is sanitized
-    verify(auditLogService).recordAuditLog(argThat(req -> {
-      assertThat(req.getChangeSummary()).isEqualTo("Account locked after repeated authentication failures");
-      assertThat(req.getChangeSummary()).doesNotContain("until");
-      assertThat(req.getChangeSummary()).doesNotContain("attempt");
-      return true;
-    }));
+    // Verify AuditLog summary is sanitized via internal unauthenticated service recording
+    verify(auditLogService).recordInternalAuditLog(
+        eq(13L),
+        eq(updateAuditAction.getId()),
+        eq("User"),
+        eq(13L),
+        argThat(summary -> {
+          assertThat(summary).isEqualTo("Account locked after repeated authentication failures");
+          assertThat(summary).doesNotContain("until");
+          assertThat(summary).doesNotContain("attempt");
+          return true;
+        }));
   }
 
   @Test
@@ -539,6 +545,7 @@ class AccountLockoutAndSecurityAuditTest {
     verify(userRepository, never()).save(any());
     verify(systemEventLogService, never()).recordSystemEvent(any());
     verify(auditLogService, never()).recordAuditLog(any());
+    verify(auditLogService, never()).recordInternalAuditLog(any(), any(), any(), any(), any());
   }
 
   @Test

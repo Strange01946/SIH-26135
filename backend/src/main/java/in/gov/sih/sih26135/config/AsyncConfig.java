@@ -1,18 +1,23 @@
 package in.gov.sih.sih26135.config;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.aop.interceptor.AsyncUncaughtExceptionHandler;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.scheduling.annotation.AsyncConfigurer;
-import org.springframework.scheduling.annotation.EnableAsync;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
-
+import in.gov.sih.sih26135.correlation.CorrelationContextHolder;
+import in.gov.sih.sih26135.correlation.CorrelationIdFilter;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicLong;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
+import org.springframework.aop.interceptor.AsyncUncaughtExceptionHandler;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.task.TaskDecorator;
+import org.springframework.scheduling.annotation.AsyncConfigurer;
+import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 /**
  * Asynchronous execution configuration providing bounded, resilient thread pools
@@ -36,6 +41,7 @@ public class AsyncConfig implements AsyncConfigurer {
     executor.setMaxPoolSize(16);
     executor.setQueueCapacity(500);
     executor.setThreadNamePrefix("audit-exec-");
+    executor.setTaskDecorator(correlationTaskDecorator());
     executor.setRejectedExecutionHandler(rejectionHandler);
     executor.setWaitForTasksToCompleteOnShutdown(true);
     executor.setAwaitTerminationSeconds(30);
@@ -86,5 +92,65 @@ public class AsyncConfig implements AsyncConfigurer {
     public void reset() {
       rejectedTaskCount.set(0);
     }
+  }
+
+  /**
+   * Propagates validated correlation context and SLF4J MDC across asynchronous task boundaries,
+   * assigning a distinct async request ID while preserving the parent correlation ID (or generating
+   * server-owned IDs for background tasks lacking an originating HTTP context), and restores/clears
+   * worker thread context in {@code finally}.
+   */
+  @Bean
+  public TaskDecorator correlationTaskDecorator() {
+    return runnable -> {
+      Map<String, String> capturedMdc = MDC.getCopyOfContextMap();
+      String rawParentCorr = CorrelationContextHolder.getCorrelationId();
+      if (rawParentCorr == null && capturedMdc != null) {
+        rawParentCorr = capturedMdc.get(CorrelationIdFilter.MDC_CORRELATION_ID_KEY);
+      }
+      final String parentCorrelationId = CorrelationIdFilter.isValidCorrelationId(rawParentCorr)
+          ? rawParentCorr
+          : null;
+
+      return () -> {
+        Map<String, String> previousMdc = MDC.getCopyOfContextMap();
+        String previousContextCorr = CorrelationContextHolder.getCorrelationId();
+        String previousContextReq = CorrelationContextHolder.getExplicitRequestId();
+
+        String effectiveCorrelationId = parentCorrelationId != null
+            ? parentCorrelationId
+            : UUID.randomUUID().toString();
+        String distinctAsyncRequestId = UUID.randomUUID().toString();
+
+        try {
+          if (capturedMdc != null) {
+            MDC.setContextMap(capturedMdc);
+          } else {
+            MDC.clear();
+          }
+          MDC.put(CorrelationIdFilter.MDC_CORRELATION_ID_KEY, effectiveCorrelationId);
+          MDC.put(CorrelationIdFilter.MDC_REQUEST_ID_KEY, distinctAsyncRequestId);
+          CorrelationContextHolder.setCorrelationId(effectiveCorrelationId);
+          CorrelationContextHolder.setRequestId(distinctAsyncRequestId);
+          runnable.run();
+        } finally {
+          if (previousContextCorr != null) {
+            CorrelationContextHolder.setCorrelationId(previousContextCorr);
+          } else {
+            CorrelationContextHolder.setCorrelationId(null);
+          }
+          if (previousContextReq != null) {
+            CorrelationContextHolder.setRequestId(previousContextReq);
+          } else {
+            CorrelationContextHolder.setRequestId(null);
+          }
+          if (previousMdc != null) {
+            MDC.setContextMap(previousMdc);
+          } else {
+            MDC.clear();
+          }
+        }
+      };
+    };
   }
 }

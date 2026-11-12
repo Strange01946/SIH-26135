@@ -4,7 +4,6 @@ import in.gov.sih.sih26135.dto.auth.AuthResponse;
 import in.gov.sih.sih26135.dto.auth.AuthenticatedUserResponse;
 import in.gov.sih.sih26135.dto.auth.LoginRequest;
 import in.gov.sih.sih26135.dto.auth.RefreshTokenRequest;
-import in.gov.sih.sih26135.dto.request.CreateAuditLogRequest;
 import in.gov.sih.sih26135.dto.request.CreateSystemEventLogRequest;
 import in.gov.sih.sih26135.dto.response.RolePermissionResponse;
 import in.gov.sih.sih26135.dto.response.UserRoleResponse;
@@ -360,16 +359,8 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
   private void recordAuditLog(Long actorUserId, String entityType, Long entityId, String summary) {
     Long actionId = resolveAuditActionId(ACTION_UPDATE);
-
-    CreateAuditLogRequest auditRequest = new CreateAuditLogRequest();
-    auditRequest.setAuditActionId(actionId);
-    auditRequest.setActorUserId(actorUserId);
-    auditRequest.setEntityType(entityType);
-    auditRequest.setEntityId(entityId);
-    auditRequest.setChangeSummary(summary);
-    auditRequest.setOccurredAt(LocalDateTime.now());
-
-    auditLogService.recordAuditLog(auditRequest);
+    // Use internal audit recording because login lockout runs before any SecurityContext exists
+    auditLogService.recordInternalAuditLog(actorUserId, actionId, entityType, entityId, summary);
   }
 
   private Long resolveCategoryId(String categoryCode) {

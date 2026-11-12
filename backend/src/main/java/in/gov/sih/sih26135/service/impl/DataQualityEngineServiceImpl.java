@@ -1,27 +1,38 @@
 package in.gov.sih.sih26135.service.impl;
 
+import in.gov.sih.sih26135.config.DataQualityEngineProperties;
+import in.gov.sih.sih26135.correlation.CorrelationContextHolder;
+import in.gov.sih.sih26135.correlation.CorrelationContextHolder.ContextSnapshot;
+import in.gov.sih.sih26135.correlation.CorrelationIdFilter;
 import in.gov.sih.sih26135.dto.request.DataQualityScanRequest;
 import in.gov.sih.sih26135.dto.response.DataQualityRuleExecutionSummary;
 import in.gov.sih.sih26135.entity.DataQualityRule;
+import in.gov.sih.sih26135.entity.RefDataQualitySeverity;
 import in.gov.sih.sih26135.entity.User;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.DataQualityEngineService;
 import in.gov.sih.sih26135.service.DataQualityRuleCatalogService;
+import in.gov.sih.sih26135.service.SystemEventLoggingService;
+import in.gov.sih.sih26135.service.SystemEventLoggingService.EventSeverity;
 import in.gov.sih.sih26135.service.dq.DataQualityDetector;
 import in.gov.sih.sih26135.service.dq.ScanScopeContext;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.stereotype.Service;
-
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
+import org.hibernate.Hibernate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
 
 /**
  * Production implementation of DataQualityEngineService.
@@ -50,6 +61,13 @@ public class DataQualityEngineServiceImpl implements DataQualityEngineService {
   private final WorkflowSecurityScopeValidator scopeValidator;
   private final Map<String, DataQualityDetector> detectorRegistry = new HashMap<>();
 
+  @Autowired(required = false)
+  private DataQualityEngineProperties engineProperties;
+
+  @Autowired(required = false)
+  private SystemEventLoggingService systemEventLoggingService;
+
+  @Autowired
   public DataQualityEngineServiceImpl(
       DataQualityRuleCatalogService catalogService,
       WorkflowSecurityScopeValidator scopeValidator,
@@ -65,6 +83,39 @@ public class DataQualityEngineServiceImpl implements DataQualityEngineService {
 
   @Override
   public List<DataQualityRuleExecutionSummary> executeScan(DataQualityScanRequest request) {
+    ContextSnapshot previousSnapshot = CorrelationContextHolder.captureSnapshot();
+    String previousMdcCorr = MDC.get(CorrelationIdFilter.MDC_CORRELATION_ID_KEY);
+    String previousMdcReq = MDC.get(CorrelationIdFilter.MDC_REQUEST_ID_KEY);
+    boolean generatedServerCorrelation = false;
+    if (!CorrelationIdFilter.isValidCorrelationId(previousSnapshot.correlationId())) {
+      String serverCorr = UUID.randomUUID().toString();
+      CorrelationContextHolder.setCorrelationId(serverCorr);
+      CorrelationContextHolder.setRequestId(serverCorr);
+      MDC.put(CorrelationIdFilter.MDC_CORRELATION_ID_KEY, serverCorr);
+      MDC.put(CorrelationIdFilter.MDC_REQUEST_ID_KEY, serverCorr);
+      generatedServerCorrelation = true;
+    }
+
+    try {
+      return executeScanInternal(request);
+    } finally {
+      if (generatedServerCorrelation) {
+        CorrelationContextHolder.restore(previousSnapshot);
+        if (previousMdcCorr != null) {
+          MDC.put(CorrelationIdFilter.MDC_CORRELATION_ID_KEY, previousMdcCorr);
+        } else {
+          MDC.remove(CorrelationIdFilter.MDC_CORRELATION_ID_KEY);
+        }
+        if (previousMdcReq != null) {
+          MDC.put(CorrelationIdFilter.MDC_REQUEST_ID_KEY, previousMdcReq);
+        } else {
+          MDC.remove(CorrelationIdFilter.MDC_REQUEST_ID_KEY);
+        }
+      }
+    }
+  }
+
+  private List<DataQualityRuleExecutionSummary> executeScanInternal(DataQualityScanRequest request) {
     // 1. Authorize caller and determine tenancy boundary (fails closed on missing scope)
     ScanScopeContext scopeContext = resolveAndValidateScope(request);
 
@@ -88,6 +139,11 @@ public class DataQualityEngineServiceImpl implements DataQualityEngineService {
     }
 
     List<DataQualityRuleExecutionSummary> summaries = new ArrayList<>();
+    long totalNewIssues = 0L;
+    long maxCriticalRuleNewIssues = 0L;
+    long maxHighRuleNewIssues = 0L;
+    DataQualityRule topSpikingCriticalOrHighRule = null;
+    long topSpikingCount = 0L;
 
     // 5. Execute detectors for each resolved rule
     for (DataQualityRule rule : rules) {
@@ -112,6 +168,22 @@ public class DataQualityEngineServiceImpl implements DataQualityEngineService {
       try {
         DataQualityRuleExecutionSummary summary = detector.executeScan(rule, request, scopeContext);
         summaries.add(summary);
+
+        long created = summary != null && summary.newIssuesCreated() != null ? summary.newIssuesCreated() : 0L;
+        if (created > 0) {
+          totalNewIssues += created;
+          String ruleSeverity = resolveRuleSeverityCode(rule);
+          if ("CRITICAL".equals(ruleSeverity) && created > maxCriticalRuleNewIssues) {
+            maxCriticalRuleNewIssues = created;
+          }
+          if ("HIGH".equals(ruleSeverity) && created > maxHighRuleNewIssues) {
+            maxHighRuleNewIssues = created;
+          }
+          if (("CRITICAL".equals(ruleSeverity) || "HIGH".equals(ruleSeverity)) && created > topSpikingCount) {
+            topSpikingCount = created;
+            topSpikingCriticalOrHighRule = rule;
+          }
+        }
       } catch (AccessDeniedException ade) {
         // Security boundary violations must fail closed immediately
         log.warn("Security boundary violation during execution of rule {}: {}", rule.getRuleCode(), ade.getMessage());
@@ -134,7 +206,107 @@ public class DataQualityEngineServiceImpl implements DataQualityEngineService {
       }
     }
 
+    evaluateAndRecordDataQualitySpikeSafely(
+        scopeContext,
+        totalNewIssues,
+        maxCriticalRuleNewIssues,
+        maxHighRuleNewIssues,
+        topSpikingCriticalOrHighRule);
+
     return summaries;
+  }
+
+  private String resolveRuleSeverityCode(DataQualityRule rule) {
+    if (rule == null || rule.getDataQualitySeverity() == null) {
+      return "";
+    }
+    RefDataQualitySeverity severity = rule.getDataQualitySeverity();
+    if (Hibernate.isInitialized(severity)) {
+      String code = severity.getSeverityCode();
+      return code != null ? code.toUpperCase(Locale.ROOT) : "";
+    }
+    Long severityId = severity.getId();
+    if (Long.valueOf(4L).equals(severityId)) {
+      return "CRITICAL";
+    }
+    if (Long.valueOf(3L).equals(severityId)) {
+      return "HIGH";
+    }
+    if (Long.valueOf(2L).equals(severityId)) {
+      return "MEDIUM";
+    }
+    if (Long.valueOf(1L).equals(severityId)) {
+      return "LOW";
+    }
+    return "";
+  }
+
+  private void evaluateAndRecordDataQualitySpikeSafely(
+      ScanScopeContext scopeContext,
+      long totalNewIssues,
+      long maxCriticalRuleNewIssues,
+      long maxHighRuleNewIssues,
+      DataQualityRule topSpikingRule) {
+    if (systemEventLoggingService == null || totalNewIssues <= 0) {
+      return;
+    }
+
+    int criticalThreshold = engineProperties != null ? engineProperties.getSpikeCriticalSeverityThreshold() : 1;
+    int highThreshold = engineProperties != null ? engineProperties.getSpikeHighSeverityThreshold() : 10;
+    int newIssuesThreshold = engineProperties != null ? engineProperties.getSpikeNewIssuesThreshold() : 20;
+    int cooldownSeconds = engineProperties != null ? engineProperties.getSpikeAlertCooldownSeconds() : 300;
+
+    boolean criticalSpike = maxCriticalRuleNewIssues >= criticalThreshold;
+    boolean highVolumeSpike = totalNewIssues >= newIssuesThreshold;
+    boolean highRuleSpike = maxHighRuleNewIssues >= highThreshold;
+    if (!criticalSpike && !highVolumeSpike && !highRuleSpike) {
+      return;
+    }
+
+    try {
+      String tenantScopeKey;
+      String entityType;
+      Long entityId;
+      if (!scopeContext.canScanNationwide() && scopeContext.isTrainingProvider() && scopeContext.trainingProviderId() != null) {
+        tenantScopeKey = "PROVIDER:" + scopeContext.trainingProviderId();
+        entityType = "TrainingProvider";
+        entityId = scopeContext.trainingProviderId();
+      } else if (!scopeContext.canScanNationwide() && scopeContext.isEmployer() && scopeContext.employerId() != null) {
+        tenantScopeKey = "EMPLOYER:" + scopeContext.employerId();
+        entityType = "Employer";
+        entityId = scopeContext.employerId();
+      } else if (!scopeContext.canScanNationwide() && scopeContext.isStateAdmin() && scopeContext.stateId() != null) {
+        tenantScopeKey = "STATE:" + scopeContext.stateId();
+        entityType = "State";
+        entityId = scopeContext.stateId();
+      } else {
+        tenantScopeKey = "NATIONWIDE";
+        entityType = "DataQualityRule";
+        entityId = topSpikingRule != null ? topSpikingRule.getId() : null;
+      }
+
+      EventSeverity severity = (criticalSpike || highVolumeSpike) ? EventSeverity.CRITICAL : EventSeverity.ERROR;
+      String ruleTag = topSpikingRule != null ? topSpikingRule.getRuleCode() : "SCAN_AGGREGATE";
+      String signalKey = (criticalSpike ? "CRIT:" : highVolumeSpike ? "VOL:" : "HIGH:") + ruleTag;
+      String message = "Data-quality anomaly spike detected: scope=" + tenantScopeKey
+          + ", newIssuesCreated=" + totalNewIssues
+          + ", criticalNew=" + maxCriticalRuleNewIssues
+          + ", highNew=" + maxHighRuleNewIssues
+          + ", rule=" + ruleTag;
+
+      systemEventLoggingService.logDataQualitySpike(
+          severity,
+          "DATA_QUALITY_CRITICAL_SPIKE",
+          scopeContext.callerUserId(),
+          tenantScopeKey,
+          signalKey,
+          entityType,
+          entityId,
+          cooldownSeconds,
+          message);
+    } catch (Exception ex) {
+      log.warn("Safe fallback: failed recording data-quality spike event: {}", ex.getClass().getSimpleName());
+    }
   }
 
   private ScanScopeContext resolveAndValidateScope(DataQualityScanRequest request) {

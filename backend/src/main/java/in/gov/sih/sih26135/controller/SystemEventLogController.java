@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateSystemEventLogRequest;
+import in.gov.sih.sih26135.dto.request.OperationalEventFilterCriteria;
 import in.gov.sih.sih26135.dto.response.SystemEventLogResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.response.ApiResponse;
@@ -43,8 +44,14 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 @RestController
 @RequestMapping("/api/v1/system-event-logs")
-@PreAuthorize("hasAnyAuthority('audit.read', 'system.manage')")
+@PreAuthorize("hasAnyAuthority('audit.read', 'system.manage', 'system.event.read', 'system.event.manage')")
 public class SystemEventLogController {
+
+  private static final Set<String> ALLOWED_SEARCH_PARAMS = Set.of(
+      "categoryId", "categoryCode", "severityId", "severityCode", "eventCode",
+      "correlationId", "requestId", "actorUserId", "entityType", "entityId",
+      "sourceComponent", "start", "end", "page", "size", "sort", "direction"
+  );
 
   private final SystemEventLogService systemEventLogService;
 
@@ -65,30 +72,47 @@ public class SystemEventLogController {
   }
 
   /**
-   * Retrieves paginated system event log entries across the entire system.
-   *
-   * @param page zero-based page index (default: 0)
-   * @param size page size (default: 20, max: 100)
-   * @param sort sort field (default: occurredAt)
-   * @param direction sort direction (ASC or DESC, default: DESC)
-   * @param httpRequest HTTP servlet request to verify query parameters
-   * @return 200 OK with paginated SystemEventLogResponse enveloped in ApiResponse
+   * Searches and retrieves paginated, tenant-scoped system event log entries using multi-criteria filters.
    */
-  @GetMapping(params = {
-      "!categoryId", "!severityId", "!eventCode", "!actorUserId",
-      "!entityType", "!entityId", "!sourceComponent", "!start", "!end"
-  })
+  @GetMapping
   public ResponseEntity<ApiResponse<PagedResponse<SystemEventLogResponse>>> getAllEvents(
+      @RequestParam(value = "categoryId", required = false) @Positive Long categoryId,
+      @RequestParam(value = "categoryCode", required = false) String categoryCode,
+      @RequestParam(value = "severityId", required = false) @Positive Long severityId,
+      @RequestParam(value = "severityCode", required = false) String severityCode,
+      @RequestParam(value = "eventCode", required = false) String eventCode,
+      @RequestParam(value = "correlationId", required = false) String correlationId,
+      @RequestParam(value = "requestId", required = false) String requestId,
+      @RequestParam(value = "actorUserId", required = false) @Positive Long actorUserId,
+      @RequestParam(value = "entityType", required = false) String entityType,
+      @RequestParam(value = "entityId", required = false) @Positive Long entityId,
+      @RequestParam(value = "sourceComponent", required = false) String sourceComponent,
+      @RequestParam(value = "start", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
+      @RequestParam(value = "end", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end,
       @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
       @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "occurredAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
-    validateAllowedQueryParameters(httpRequest, Set.of("page", "size", "sort", "direction"));
-    Pageable pageable = PaginationUtils.buildPageable(
-        page, size, sort, direction, PaginationUtils.SYSTEM_EVENT_LOG_SORT_FIELDS, "occurredAt", Sort.Direction.DESC
+    validateAllowedQueryParameters(httpRequest, ALLOWED_SEARCH_PARAMS);
+    OperationalEventFilterCriteria criteria = new OperationalEventFilterCriteria(
+        categoryCode,
+        severityCode,
+        eventCode,
+        actorUserId,
+        entityType,
+        entityId,
+        start,
+        end,
+        correlationId,
+        page,
+        size,
+        sort,
+        direction
     );
-    Page<SystemEventLogResponse> events = systemEventLogService.getAllEvents(pageable);
+    criteria.setRequestId(requestId);
+    criteria.setSourceComponent(sourceComponent);
+    Page<SystemEventLogResponse> events = systemEventLogService.searchEvents(criteria, categoryId, severityId);
     return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(events)));
   }
 
@@ -104,7 +128,7 @@ public class SystemEventLogController {
    * @return 200 OK with paginated SystemEventLogResponse enveloped in ApiResponse
    */
   @GetMapping(params = {
-      "categoryId", "!severityId", "!eventCode", "!actorUserId",
+      "categoryId", "!categoryCode", "!severityId", "!severityCode", "!eventCode", "!correlationId", "!requestId", "!actorUserId",
       "!entityType", "!entityId", "!sourceComponent", "!start", "!end"
   })
   public ResponseEntity<ApiResponse<PagedResponse<SystemEventLogResponse>>> getByCategoryId(
@@ -134,7 +158,7 @@ public class SystemEventLogController {
    * @return 200 OK with paginated SystemEventLogResponse enveloped in ApiResponse
    */
   @GetMapping(params = {
-      "severityId", "!categoryId", "!eventCode", "!actorUserId",
+      "severityId", "!categoryId", "!categoryCode", "!severityCode", "!eventCode", "!correlationId", "!requestId", "!actorUserId",
       "!entityType", "!entityId", "!sourceComponent", "!start", "!end"
   })
   public ResponseEntity<ApiResponse<PagedResponse<SystemEventLogResponse>>> getBySeverityId(
@@ -164,7 +188,7 @@ public class SystemEventLogController {
    * @return 200 OK with paginated SystemEventLogResponse enveloped in ApiResponse
    */
   @GetMapping(params = {
-      "eventCode", "!categoryId", "!severityId", "!actorUserId",
+      "eventCode", "!categoryId", "!categoryCode", "!severityId", "!severityCode", "!correlationId", "!requestId", "!actorUserId",
       "!entityType", "!entityId", "!sourceComponent", "!start", "!end"
   })
   public ResponseEntity<ApiResponse<PagedResponse<SystemEventLogResponse>>> getByEventCode(
@@ -194,7 +218,7 @@ public class SystemEventLogController {
    * @return 200 OK with paginated SystemEventLogResponse enveloped in ApiResponse
    */
   @GetMapping(params = {
-      "actorUserId", "!categoryId", "!severityId", "!eventCode",
+      "actorUserId", "!categoryId", "!categoryCode", "!severityId", "!severityCode", "!eventCode", "!correlationId", "!requestId",
       "!entityType", "!entityId", "!sourceComponent", "!start", "!end"
   })
   public ResponseEntity<ApiResponse<PagedResponse<SystemEventLogResponse>>> getByActorUserId(
@@ -225,8 +249,8 @@ public class SystemEventLogController {
    * @return 200 OK with paginated SystemEventLogResponse enveloped in ApiResponse
    */
   @GetMapping(params = {
-      "entityType", "entityId", "!categoryId", "!severityId",
-      "!eventCode", "!actorUserId", "!sourceComponent", "!start", "!end"
+      "entityType", "entityId", "!categoryId", "!categoryCode", "!severityId", "!severityCode",
+      "!eventCode", "!correlationId", "!requestId", "!actorUserId", "!sourceComponent", "!start", "!end"
   })
   public ResponseEntity<ApiResponse<PagedResponse<SystemEventLogResponse>>> getByEntity(
       @RequestParam("entityType") String entityType,
@@ -256,8 +280,8 @@ public class SystemEventLogController {
    * @return 200 OK with paginated SystemEventLogResponse enveloped in ApiResponse
    */
   @GetMapping(params = {
-      "entityType", "!entityId", "!categoryId", "!severityId",
-      "!eventCode", "!actorUserId", "!sourceComponent", "!start", "!end"
+      "entityType", "!entityId", "!categoryId", "!categoryCode", "!severityId", "!severityCode",
+      "!eventCode", "!correlationId", "!requestId", "!actorUserId", "!sourceComponent", "!start", "!end"
   })
   public ResponseEntity<ApiResponse<PagedResponse<SystemEventLogResponse>>> getByEntityType(
       @RequestParam("entityType") String entityType,
@@ -286,7 +310,7 @@ public class SystemEventLogController {
    * @return 200 OK with paginated SystemEventLogResponse enveloped in ApiResponse
    */
   @GetMapping(params = {
-      "sourceComponent", "!categoryId", "!severityId", "!eventCode",
+      "sourceComponent", "!categoryId", "!categoryCode", "!severityId", "!severityCode", "!eventCode", "!correlationId", "!requestId",
       "!actorUserId", "!entityType", "!entityId", "!start", "!end"
   })
   public ResponseEntity<ApiResponse<PagedResponse<SystemEventLogResponse>>> getBySourceComponent(
@@ -317,7 +341,7 @@ public class SystemEventLogController {
    * @return 200 OK with paginated SystemEventLogResponse enveloped in ApiResponse
    */
   @GetMapping(params = {
-      "start", "end", "!categoryId", "!severityId", "!eventCode",
+      "start", "end", "!categoryId", "!categoryCode", "!severityId", "!severityCode", "!eventCode", "!correlationId", "!requestId",
       "!actorUserId", "!entityType", "!entityId", "!sourceComponent"
   })
   public ResponseEntity<ApiResponse<PagedResponse<SystemEventLogResponse>>> getByOccurredAtBetween(
@@ -344,10 +368,11 @@ public class SystemEventLogController {
    * @return 201 Created with created SystemEventLogResponse enveloped in ApiResponse
    */
   @PostMapping
+  @PreAuthorize("hasAnyAuthority('system.manage', 'system.event.manage')")
   public ResponseEntity<ApiResponse<SystemEventLogResponse>> recordSystemEvent(
       @Valid @RequestBody CreateSystemEventLogRequest request,
       HttpServletRequest httpRequest) {
-    SystemEventLogResponse response = systemEventLogService.recordSystemEvent(request);
+    SystemEventLogResponse response = systemEventLogService.recordSystemEventFromApi(request);
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(ApiResponse.success(
             "System event log recorded successfully",
