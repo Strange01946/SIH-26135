@@ -4,12 +4,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import in.gov.sih.sih26135.config.ImportPipelineProperties;
+import in.gov.sih.sih26135.config.ImportPipelineProperties.DeploymentMode;
+import in.gov.sih.sih26135.entity.ImportBatch;
 import in.gov.sih.sih26135.entity.RefImportBatchStatus;
+import in.gov.sih.sih26135.entity.RefImportRecordStatus;
 import in.gov.sih.sih26135.entity.User;
 import in.gov.sih.sih26135.exception.BadRequestException;
+import in.gov.sih.sih26135.exception.ConflictException;
 import in.gov.sih.sih26135.mapper.ImportBatchMapper;
 import in.gov.sih.sih26135.mapper.ImportRecordMapper;
 import in.gov.sih.sih26135.repository.ImportBatchRepository;
@@ -23,6 +29,7 @@ import in.gov.sih.sih26135.service.ingestion.ImportFileStagingService.StagedFile
 import in.gov.sih.sih26135.service.ingestion.ImportSecurityScopeValidator.CallerScope;
 import in.gov.sih.sih26135.service.ingestion.ParsedImportRow.RowKind;
 import in.gov.sih.sih26135.service.ingestion.StreamingImportParser.ImportStreamParseException;
+import jakarta.persistence.EntityManager;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -33,6 +40,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -40,6 +51,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 import org.springframework.web.multipart.MultipartFile;
@@ -421,6 +433,176 @@ class ImportPipelineStreamingAndValidationUnitTest {
       try (var stream = Files.list(tempDir)) {
         assertThat(stream.count()).isZero();
       }
+    }
+
+    @Test
+    @DisplayName("Blocks recovery while a worker thread is deterministically active on the target batch")
+    void blocksRecoveryWhileActiveWorkerExecutesDeterministically(@TempDir Path tempDir) throws Exception {
+      ImportPipelineProperties props = new ImportPipelineProperties();
+      props.setStagingDirectory(tempDir.toString());
+
+      ImportBatchRepository batchRepo = mock(ImportBatchRepository.class);
+      when(batchRepo.existsByBatchCode(anyString())).thenReturn(false);
+      ImportFileStagingService staging = new ImportFileStagingService(props, batchRepo);
+      MockMultipartFile validCsv = new MockMultipartFile(
+          "file", "trainees.csv", "text/csv",
+          "registrationNumber,firstName,genderId,stateId,districtId,currentEmploymentStatusId,profileStatusId\nR1,Asha,1,1,1,1,1\n"
+              .getBytes(StandardCharsets.UTF_8));
+      String batchCode = "IMP-20261112-ACTIVEWORKER01";
+      staging.stageFile(validCsv, batchCode, FileFormat.CSV);
+
+      RefImportBatchStatus pending = new RefImportBatchStatus();
+      pending.setId(1L);
+      pending.setStatusCode("PENDING");
+      pending.setIsTerminalFlag(false);
+      RefImportBatchStatus running = new RefImportBatchStatus();
+      running.setId(2L);
+      running.setStatusCode("RUNNING");
+      running.setIsTerminalFlag(false);
+      RefImportBatchStatus completed = new RefImportBatchStatus();
+      completed.setId(3L);
+      completed.setStatusCode("COMPLETED");
+      completed.setIsTerminalFlag(true);
+      RefImportBatchStatus failed = new RefImportBatchStatus();
+      failed.setId(4L);
+      failed.setStatusCode("FAILED");
+      failed.setIsTerminalFlag(true);
+
+      ImportBatch batch = new ImportBatch(batchCode, "UNIT", "Trainee", pending);
+      batch.setId(77L);
+      batch.setInitiatedByUserId(99L);
+
+      when(batchRepo.findById(77L)).thenReturn(Optional.of(batch));
+      when(batchRepo.saveAndFlush(org.mockito.ArgumentMatchers.any())).thenAnswer(inv -> inv.getArgument(0));
+
+      RefImportBatchStatusRepository statusRepo = mock(RefImportBatchStatusRepository.class);
+      when(statusRepo.findByStatusCode("PENDING")).thenReturn(Optional.of(pending));
+      when(statusRepo.findByStatusCode("RUNNING")).thenReturn(Optional.of(running));
+      when(statusRepo.findByStatusCode("COMPLETED")).thenReturn(Optional.of(completed));
+      when(statusRepo.findByStatusCode("FAILED")).thenReturn(Optional.of(failed));
+
+      RefImportRecordStatusRepository recStatusRepo = mock(RefImportRecordStatusRepository.class);
+      for (long i = 1; i <= 4; i++) {
+        RefImportRecordStatus st = new RefImportRecordStatus();
+        st.setId(i);
+        String code = switch ((int) i) {
+          case 1 -> "SUCCESS";
+          case 2 -> "FAILED";
+          case 3 -> "SKIPPED";
+          default -> "DUPLICATE";
+        };
+        st.setStatusCode(code);
+        when(recStatusRepo.findByStatusCode(code)).thenReturn(Optional.of(st));
+      }
+
+      ImportSecurityScopeValidator scopeValidator = mock(ImportSecurityScopeValidator.class);
+      User caller = new User();
+      caller.setId(99L);
+      CallerScope scope = new CallerScope(caller, true, null, null, null, null, null, Set.of("ROLE_super_admin", "system.manage"));
+      when(scopeValidator.normalizeImportEntityType("Trainee")).thenReturn("Trainee");
+      when(scopeValidator.resolveAndValidateGenericWriteCaller()).thenReturn(scope);
+      when(scopeValidator.resolveAndValidateUploadOrProcessCaller("Trainee")).thenReturn(scope);
+
+      CountDownLatch workerInsideChunk = new CountDownLatch(1);
+      CountDownLatch allowWorkerFinish = new CountDownLatch(1);
+      TraineeImportRowProcessor traineeProcessor = mock(TraineeImportRowProcessor.class);
+      when(traineeProcessor.validateAndPersist(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+          .thenAnswer(inv -> {
+            workerInsideChunk.countDown();
+            allowWorkerFinish.await(5, TimeUnit.SECONDS);
+            return RowOutcomeResult.success("Trainee", 500L);
+          });
+
+      PlatformTransactionManager txManager = mock(PlatformTransactionManager.class);
+      when(txManager.getTransaction(org.mockito.ArgumentMatchers.any())).thenReturn(new SimpleTransactionStatus());
+
+      JdbcTemplate jdbcMock = mock(JdbcTemplate.class);
+      when(jdbcMock.queryForList(org.mockito.ArgumentMatchers.contains("GROUP BY rirs.status_code"), org.mockito.ArgumentMatchers.eq(77L)))
+          .thenReturn(List.of(java.util.Map.of("status_code", "SUCCESS", "cnt", 1L)));
+
+      ImportBatchProcessingWorkflowImpl workflow = new ImportBatchProcessingWorkflowImpl(
+          props,
+          staging,
+          scopeValidator,
+          traineeProcessor,
+          mock(PlacementImportRowProcessor.class),
+          batchRepo,
+          mock(ImportRecordRepository.class),
+          statusRepo,
+          recStatusRepo,
+          mock(ImportBatchMapper.class),
+          mock(ImportRecordMapper.class),
+          jdbcMock,
+          txManager
+      );
+      ReflectionTestUtils.setField(workflow, "entityManager", mock(EntityManager.class));
+
+      var pool = Executors.newSingleThreadExecutor();
+      Future<?> workerFuture = pool.submit(() -> workflow.processBatch(77L));
+      assertThat(workerInsideChunk.await(5, TimeUnit.SECONDS)).isTrue();
+
+      assertThatThrownBy(() -> workflow.recoverInterruptedBatch(77L, true))
+          .isInstanceOf(ConflictException.class)
+          .satisfies(ex -> assertThat(((ConflictException) ex).getErrorCode()).isEqualTo("IMPORT_BATCH_ALREADY_RUNNING"));
+
+      allowWorkerFinish.countDown();
+      workerFuture.get(5, TimeUnit.SECONDS);
+      pool.shutdownNow();
+    }
+
+    @Test
+    @DisplayName("Fails closed for RUNNING-batch recovery in MULTI_INSTANCE mode even when worker-termination flag is true")
+    void blocksRecoveryInMultiInstanceModeEvenWithConfirmation(@TempDir Path tempDir) throws Exception {
+      ImportPipelineProperties props = new ImportPipelineProperties();
+      props.setStagingDirectory(tempDir.toString());
+      props.setDeploymentMode(DeploymentMode.MULTI_INSTANCE);
+
+      ImportBatchRepository batchRepo = mock(ImportBatchRepository.class);
+      ImportFileStagingService staging = new ImportFileStagingService(props, batchRepo);
+
+      RefImportBatchStatus running = new RefImportBatchStatus();
+      running.setId(2L);
+      running.setStatusCode("RUNNING");
+      running.setIsTerminalFlag(false);
+
+      ImportBatch batch = new ImportBatch("IMP-20261112-MULTIINST01", "UNIT", "Trainee", running);
+      batch.setId(88L);
+      batch.setInitiatedByUserId(99L);
+      when(batchRepo.findById(88L)).thenReturn(Optional.of(batch));
+
+      ImportSecurityScopeValidator scopeValidator = mock(ImportSecurityScopeValidator.class);
+      User caller = new User();
+      caller.setId(99L);
+      CallerScope scope = new CallerScope(caller, true, null, null, null, null, null, Set.of("ROLE_super_admin", "system.manage"));
+      when(scopeValidator.normalizeImportEntityType("Trainee")).thenReturn("Trainee");
+      when(scopeValidator.resolveAndValidateGenericWriteCaller()).thenReturn(scope);
+      when(scopeValidator.resolveAndValidateUploadOrProcessCaller("Trainee")).thenReturn(scope);
+
+      PlatformTransactionManager txManager = mock(PlatformTransactionManager.class);
+      when(txManager.getTransaction(org.mockito.ArgumentMatchers.any())).thenReturn(new SimpleTransactionStatus());
+
+      ImportBatchProcessingWorkflowImpl workflow = new ImportBatchProcessingWorkflowImpl(
+          props,
+          staging,
+          scopeValidator,
+          mock(TraineeImportRowProcessor.class),
+          mock(PlacementImportRowProcessor.class),
+          batchRepo,
+          mock(ImportRecordRepository.class),
+          mock(RefImportBatchStatusRepository.class),
+          mock(RefImportRecordStatusRepository.class),
+          mock(ImportBatchMapper.class),
+          mock(ImportRecordMapper.class),
+          mock(JdbcTemplate.class),
+          txManager
+      );
+      ReflectionTestUtils.setField(workflow, "entityManager", mock(EntityManager.class));
+
+      assertThatThrownBy(() -> workflow.recoverInterruptedBatch(88L, true))
+          .isInstanceOf(ConflictException.class)
+          .satisfies(ex -> assertThat(((ConflictException) ex).getErrorCode()).isEqualTo("MULTI_INSTANCE_RECOVERY_UNSUPPORTED"));
+
+      verify(batchRepo, never()).saveAndFlush(org.mockito.ArgumentMatchers.any());
     }
   }
 }

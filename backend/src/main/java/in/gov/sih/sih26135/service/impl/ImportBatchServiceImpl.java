@@ -7,6 +7,7 @@ import in.gov.sih.sih26135.entity.ImportBatch;
 import in.gov.sih.sih26135.entity.RefImportBatchStatus;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ConflictException;
+import in.gov.sih.sih26135.exception.ImportBatchTerminalException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.mapper.ImportBatchMapper;
 import in.gov.sih.sih26135.repository.ImportBatchRepository;
@@ -15,13 +16,18 @@ import in.gov.sih.sih26135.repository.RefImportBatchStatusRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
 import in.gov.sih.sih26135.service.ImportBatchService;
 import in.gov.sih.sih26135.service.ingestion.ImportContractSchema;
+import in.gov.sih.sih26135.service.ingestion.ImportFileStagingService;
 import in.gov.sih.sih26135.service.ingestion.ImportSecurityScopeValidator;
 import in.gov.sih.sih26135.service.ingestion.ImportSecurityScopeValidator.CallerScope;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +44,11 @@ public class ImportBatchServiceImpl implements ImportBatchService {
   private final ImportRecordRepository importRecordRepository;
   private final ImportBatchMapper mapper;
   private final ImportSecurityScopeValidator importSecurityScopeValidator;
+  private final ImportFileStagingService importFileStagingService;
+  private final JdbcTemplate jdbcTemplate;
+
+  @PersistenceContext
+  private EntityManager entityManager;
 
   @Autowired
   public ImportBatchServiceImpl(
@@ -46,13 +57,17 @@ public class ImportBatchServiceImpl implements ImportBatchService {
       UserRepository userRepository,
       ImportRecordRepository importRecordRepository,
       ImportBatchMapper mapper,
-      ImportSecurityScopeValidator importSecurityScopeValidator) {
+      ImportSecurityScopeValidator importSecurityScopeValidator,
+      ImportFileStagingService importFileStagingService,
+      JdbcTemplate jdbcTemplate) {
     this.importBatchRepository = importBatchRepository;
     this.refImportBatchStatusRepository = refImportBatchStatusRepository;
     this.userRepository = userRepository;
     this.importRecordRepository = importRecordRepository;
     this.mapper = mapper;
     this.importSecurityScopeValidator = importSecurityScopeValidator;
+    this.importFileStagingService = importFileStagingService;
+    this.jdbcTemplate = jdbcTemplate;
   }
 
   public ImportBatchServiceImpl(
@@ -67,6 +82,8 @@ public class ImportBatchServiceImpl implements ImportBatchService {
         userRepository,
         importRecordRepository,
         mapper,
+        null,
+        null,
         null
     );
   }
@@ -101,6 +118,9 @@ public class ImportBatchServiceImpl implements ImportBatchService {
     ImportSecurityScopeValidator validator = requireScopeValidator();
     String normalizedEntity = validator.normalizeEntityTypeLenient(request.getEntityType());
     CallerScope callerScope = validator.resolveAndValidateUploadOrProcessCaller(normalizedEntity);
+    if (!callerScope.authorities().contains("system.manage")) {
+      throw new AccessDeniedException("Caller lacks system.manage authority for legacy batch creation");
+    }
 
     if (importBatchRepository.existsByBatchCode(batchCode)) {
       throw new ConflictException("Batch code already exists: " + batchCode, "BATCH_CODE_EXISTS");
@@ -110,9 +130,30 @@ public class ImportBatchServiceImpl implements ImportBatchService {
     if (request.getImportBatchStatusId() != null) {
       status = refImportBatchStatusRepository.findById(request.getImportBatchStatusId())
           .orElseThrow(() -> new ResourceNotFoundException("RefImportBatchStatus", "id"));
+      if (!"PENDING".equalsIgnoreCase(status.getStatusCode())) {
+        throw new BadRequestException(
+            "Import batches must start in PENDING status; non-PENDING status cannot be set on creation",
+            "IMPORT_LIFECYCLE_BYPASS_PROHIBITED");
+      }
     } else {
       status = refImportBatchStatusRepository.findByStatusCode("PENDING")
           .orElseThrow(() -> new ResourceNotFoundException("RefImportBatchStatus", "statusCode"));
+    }
+
+    if (request.getRowCount() != null) {
+      if (request.getRowCount() < 0) {
+        throw new BadRequestException("Row count must be non-negative", "INVALID_ROW_COUNT");
+      }
+      if (request.getRowCount() > 0) {
+        throw new BadRequestException(
+            "Client-supplied rowCount > 0 is not permitted on batch creation",
+            "IMPORT_COUNTER_MANIPULATION_PROHIBITED");
+      }
+    }
+    if (request.getStartedAt() != null) {
+      throw new BadRequestException(
+          "Client-supplied startedAt is not permitted on batch creation",
+          "IMPORT_LIFECYCLE_BYPASS_PROHIBITED");
     }
 
     Long initiatedByUserId = request.getInitiatedByUserId();
@@ -125,10 +166,6 @@ public class ImportBatchServiceImpl implements ImportBatchService {
       throw new ResourceNotFoundException("User", "id");
     }
 
-    if (request.getRowCount() != null && request.getRowCount() < 0) {
-      throw new BadRequestException("Row count must be non-negative", "INVALID_ROW_COUNT");
-    }
-
     LocalDateTime now = LocalDateTime.now();
     ImportBatch batch = new ImportBatch(
         batchCode,
@@ -137,10 +174,11 @@ public class ImportBatchServiceImpl implements ImportBatchService {
         status
     );
     batch.setInitiatedByUserId(initiatedByUserId);
-    batch.setRowCount(request.getRowCount() != null ? request.getRowCount() : 0);
+    batch.setRowCount(0);
     batch.setSuccessCount(0);
     batch.setFailureCount(0);
-    batch.setStartedAt(request.getStartedAt());
+    batch.setStartedAt(null);
+    batch.setCompletedAt(null);
     batch.setCreatedAt(now);
     batch.setUpdatedAt(now);
 
@@ -161,77 +199,70 @@ public class ImportBatchServiceImpl implements ImportBatchService {
 
     ImportSecurityScopeValidator validator = requireScopeValidator();
     CallerScope callerScope = validator.resolveAndValidateGenericWriteCaller();
-
-    ImportBatch batch = importBatchRepository.findById(id)
-        .orElseThrow(() -> new ResourceNotFoundException("ImportBatch", "id"));
-    validator.validateCallerCanWriteBatch(callerScope, batch);
-
-    boolean currentIsTerminal = Boolean.TRUE.equals(batch.getImportBatchStatus().getIsTerminalFlag());
-    if (currentIsTerminal) {
-      throw new ConflictException("Terminal import batch cannot be updated", "BATCH_IS_TERMINAL");
+    if (!callerScope.authorities().contains("system.manage")) {
+      throw new AccessDeniedException("Caller lacks system.manage authority for legacy batch updates");
     }
 
-    RefImportBatchStatus targetStatus = batch.getImportBatchStatus();
+    ImportBatch batch = lockAndLoadBatchForMutation(id);
+    validator.validateCallerCanWriteBatch(callerScope, batch);
+
+    RefImportBatchStatus currentStatus = batch.getImportBatchStatus();
+    String currentCode = currentStatus != null && currentStatus.getStatusCode() != null
+        ? currentStatus.getStatusCode().toUpperCase()
+        : "PENDING";
+
+    if ("RUNNING".equalsIgnoreCase(currentCode)) {
+      throw new ConflictException(
+          "Cannot modify a RUNNING import batch outside processing workflow",
+          "IMPORT_BATCH_RUNNING_PROTECTED");
+    }
+    if (currentStatus != null && Boolean.TRUE.equals(currentStatus.getIsTerminalFlag())) {
+      throw new ImportBatchTerminalException(id, currentCode);
+    }
+    if (isWorkflowManagedBatch(batch)) {
+      throw new ConflictException(
+          "Staged or workflow-owned import batches cannot be modified via generic update endpoint",
+          "WORKFLOW_BATCH_PROTECTED");
+    }
+
+    if (request.getRowCount() != null || request.getSuccessCount() != null || request.getFailureCount() != null) {
+      throw new BadRequestException(
+          "Batch counters cannot be modified directly outside processing workflow",
+          "IMPORT_COUNTER_MANIPULATION_PROHIBITED");
+    }
+
+    RefImportBatchStatus targetStatus = currentStatus;
     if (request.getImportBatchStatusId() != null) {
       targetStatus = refImportBatchStatusRepository.findById(request.getImportBatchStatusId())
           .orElseThrow(() -> new ResourceNotFoundException("RefImportBatchStatus", "id"));
+      String targetCode = targetStatus.getStatusCode() != null ? targetStatus.getStatusCode().toUpperCase() : "";
+      if (!"PENDING".equals(targetCode) && !"CANCELLED".equals(targetCode)) {
+        throw new BadRequestException(
+            "Generic batch update may only keep PENDING or transition an empty unstaged batch to CANCELLED",
+            "IMPORT_LIFECYCLE_BYPASS_PROHIBITED");
+      }
       batch.setImportBatchStatus(targetStatus);
     }
 
-    boolean targetIsTerminal = Boolean.TRUE.equals(targetStatus.getIsTerminalFlag());
-    if (targetIsTerminal) {
-      LocalDateTime completedAt = request.getCompletedAt() != null ? request.getCompletedAt() : batch.getCompletedAt();
-      if (completedAt == null) {
-        completedAt = LocalDateTime.now();
-      }
-      batch.setCompletedAt(completedAt);
-
-      if (request.getStartedAt() != null) {
-        batch.setStartedAt(request.getStartedAt());
-      } else if (batch.getStartedAt() == null) {
-        batch.setStartedAt(completedAt);
-      }
-    } else {
-      if (request.getStartedAt() != null) {
-        batch.setStartedAt(request.getStartedAt());
-      }
-      if (request.getCompletedAt() != null) {
-        batch.setCompletedAt(request.getCompletedAt());
-      }
+    String effectiveTargetCode = targetStatus != null && targetStatus.getStatusCode() != null
+        ? targetStatus.getStatusCode().toUpperCase()
+        : "PENDING";
+    if (request.getStartedAt() != null
+        || (request.getCompletedAt() != null && !"CANCELLED".equals(effectiveTargetCode))) {
+      throw new BadRequestException(
+          "Execution timestamps cannot be modified directly outside processing workflow",
+          "IMPORT_LIFECYCLE_BYPASS_PROHIBITED");
     }
 
-    if (batch.getStartedAt() != null && batch.getCompletedAt() != null
-        && batch.getCompletedAt().isBefore(batch.getStartedAt())) {
-      throw new BadRequestException("Completed at date cannot be before started at date", "COMPLETED_DATE_BEFORE_STARTED");
-    }
-
-    if (request.getRowCount() != null) {
-      if (request.getRowCount() < 0) {
-        throw new BadRequestException("Row count must be non-negative", "INVALID_ROW_COUNT");
+    if ("CANCELLED".equals(effectiveTargetCode)) {
+      LocalDateTime cancelledAt = request.getCompletedAt() != null ? request.getCompletedAt() : LocalDateTime.now();
+      if (batch.getStartedAt() == null) {
+        batch.setStartedAt(cancelledAt);
       }
-      batch.setRowCount(request.getRowCount());
-    }
-    if (request.getSuccessCount() != null) {
-      if (request.getSuccessCount() < 0) {
-        throw new BadRequestException("Success count must be non-negative", "INVALID_SUCCESS_COUNT");
+      if (cancelledAt.isBefore(batch.getStartedAt())) {
+        throw new BadRequestException("Completed at date cannot be before started at date", "COMPLETED_DATE_BEFORE_STARTED");
       }
-      batch.setSuccessCount(request.getSuccessCount());
-    }
-    if (request.getFailureCount() != null) {
-      if (request.getFailureCount() < 0) {
-        throw new BadRequestException("Failure count must be non-negative", "INVALID_FAILURE_COUNT");
-      }
-      batch.setFailureCount(request.getFailureCount());
-    }
-
-    Integer rowCount = batch.getRowCount();
-    Integer successCount = batch.getSuccessCount();
-    Integer failureCount = batch.getFailureCount();
-    if (rowCount != null && rowCount > 0) {
-      int totalProcessed = (successCount != null ? successCount : 0) + (failureCount != null ? failureCount : 0);
-      if (totalProcessed > rowCount) {
-        throw new BadRequestException("Sum of success and failure counts cannot exceed total row count", "COUNTS_EXCEED_ROW_COUNT");
-      }
+      batch.setCompletedAt(cancelledAt);
     }
 
     batch.setUpdatedAt(LocalDateTime.now());
@@ -330,21 +361,65 @@ public class ImportBatchServiceImpl implements ImportBatchService {
     }
     ImportSecurityScopeValidator validator = requireScopeValidator();
     CallerScope callerScope = validator.resolveAndValidateGenericWriteCaller();
-
-    ImportBatch batch = importBatchRepository.findById(id)
-        .orElseThrow(() -> new ResourceNotFoundException("ImportBatch", "id"));
-    validator.validateCallerCanWriteBatch(callerScope, batch);
-
-    if ("RUNNING".equalsIgnoreCase(batch.getImportBatchStatus().getStatusCode())) {
-      throw new BadRequestException("Cannot delete a running import batch", "BATCH_IS_RUNNING");
+    if (!callerScope.authorities().contains("system.manage")) {
+      throw new AccessDeniedException("Caller lacks system.manage authority for legacy batch deletion");
     }
 
-    if (!importRecordRepository.findByImportBatchId(id).isEmpty()) {
+    ImportBatch batch = lockAndLoadBatchForMutation(id);
+    validator.validateCallerCanWriteBatch(callerScope, batch);
+
+    RefImportBatchStatus status = batch.getImportBatchStatus();
+    String statusCode = status != null && status.getStatusCode() != null
+        ? status.getStatusCode().toUpperCase()
+        : "PENDING";
+
+    if ("RUNNING".equalsIgnoreCase(statusCode)) {
+      throw new ConflictException(
+          "Cannot delete an actively running import batch",
+          "IMPORT_BATCH_RUNNING_PROTECTED");
+    }
+    if ("COMPLETED".equalsIgnoreCase(statusCode) || "FAILED".equalsIgnoreCase(statusCode)) {
+      throw new ImportBatchTerminalException(id, statusCode);
+    }
+    if (importFileStagingService != null && importFileStagingService.hasStagedFile(batch.getBatchCode())) {
+      throw new ConflictException(
+          "Cannot delete a staged workflow import batch via generic CRUD endpoint",
+          "WORKFLOW_BATCH_PROTECTED");
+    }
+    if (importRecordRepository.existsByImportBatchId(id)) {
       throw new ConflictException("Cannot delete import batch with existing records", "BATCH_HAS_RECORDS");
     }
 
     importBatchRepository.delete(batch);
     log.info("Deleted import batch id={}", id);
+  }
+
+  private ImportBatch lockAndLoadBatchForMutation(Long id) {
+    if (jdbcTemplate != null) {
+      try {
+        jdbcTemplate.queryForObject(
+            "SELECT import_batch_id FROM import_batches WHERE import_batch_id = ? FOR UPDATE",
+            Long.class, id);
+      } catch (EmptyResultDataAccessException e) {
+        throw new ResourceNotFoundException("ImportBatch", "id");
+      }
+    }
+    ImportBatch batch = importBatchRepository.findById(id)
+        .orElseThrow(() -> new ResourceNotFoundException("ImportBatch", "id"));
+    if (entityManager != null) {
+      entityManager.refresh(batch);
+    }
+    return batch;
+  }
+
+  private boolean isWorkflowManagedBatch(ImportBatch batch) {
+    if (batch == null) {
+      return false;
+    }
+    if (importFileStagingService != null && importFileStagingService.hasStagedFile(batch.getBatchCode())) {
+      return true;
+    }
+    return batch.getId() != null && importRecordRepository.existsByImportBatchId(batch.getId());
   }
 
   private ImportSecurityScopeValidator requireScopeValidator() {

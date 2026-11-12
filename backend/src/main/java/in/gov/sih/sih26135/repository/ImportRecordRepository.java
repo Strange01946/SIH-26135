@@ -17,6 +17,8 @@ public interface ImportRecordRepository extends JpaRepository<ImportRecord, Long
 
   boolean existsByImportBatchIdAndSourceRowNumber(Long importBatchId, Integer sourceRowNumber);
 
+  boolean existsByImportBatchId(Long importBatchId);
+
   List<ImportRecord> findByImportBatchId(Long importBatchId);
 
   Page<ImportRecord> findByImportBatchId(Long importBatchId, Pageable pageable);

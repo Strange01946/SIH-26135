@@ -214,6 +214,28 @@ public class ImportBatchController {
   }
 
   /**
+   * Controlled recovery for an interrupted RUNNING import batch after confirming no active worker remains.
+   *
+   * @param id import batch identifier
+   * @param confirmWorkerTerminated explicit confirmation that any prior crashed/terminated worker is stopped
+   * @param httpRequest HTTP servlet request for query parameter verification and URI extraction
+   * @return 200 OK with reconciled ImportBatchProgressResponse in PENDING status ready for resume
+   */
+  @PostMapping("/{id}/recover")
+  @PreAuthorize("hasAnyAuthority('system.manage', 'trainee.write', 'placement.manage')")
+  public ResponseEntity<ApiResponse<ImportBatchProgressResponse>> recoverInterruptedBatch(
+      @PathVariable @Positive Long id,
+      @RequestParam(value = "confirmWorkerTerminated", defaultValue = "false") boolean confirmWorkerTerminated,
+      HttpServletRequest httpRequest) {
+    validateAllowedQueryParameters(httpRequest, Set.of("confirmWorkerTerminated"));
+    ImportBatchProgressResponse response = requireWorkflow().recoverInterruptedBatch(id, confirmWorkerTerminated);
+    return ResponseEntity.ok(ApiResponse.success(
+        "Interrupted import batch recovered to PENDING",
+        response,
+        httpRequest.getRequestURI()));
+  }
+
+  /**
    * Retrieves reconciled batch status and row outcome progress counters.
    *
    * @param id import batch identifier

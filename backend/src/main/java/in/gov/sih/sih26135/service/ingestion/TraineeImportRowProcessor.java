@@ -60,17 +60,14 @@ public class TraineeImportRowProcessor {
 
       validateTenantOwnership(callerScope, dto, providerId, centerId, batchId);
 
+      User linkedUser = null;
+      if (dto.getUserId() != null) {
+        linkedUser = validateAndLoadEligibleTraineeUser(dto.getUserId(), callerScope, dto, providerId);
+      }
+
       RowOutcomeResult duplicateResult = checkDuplicateTrainee(dto, seenKeys);
       if (duplicateResult != null) {
         return duplicateResult;
-      }
-
-      User linkedUser = null;
-      if (dto.getUserId() != null) {
-        linkedUser = userRepository.findById(dto.getUserId())
-            .filter(u -> u.getDeletedAt() == null)
-            .orElseThrow(() -> new RowValidationFailureException("FOREIGN_KEY_NOT_FOUND",
-                "Referenced userId does not exist or has been deleted"));
       }
 
       Trainee entity = traineeMapper.toEntity(dto, linkedUser);
@@ -178,10 +175,140 @@ public class TraineeImportRowProcessor {
             jdbcTemplate, "ref_education_level", "education_level_id", dto.getEducationLevelId(), false)) {
       throw new RowValidationFailureException("FOREIGN_KEY_NOT_FOUND", "Referenced educationLevelId does not exist");
     }
-    if (dto.getUserId() != null
-        && !ImportRowFieldParser.existsActiveById(jdbcTemplate, "users", "user_id", dto.getUserId(), true)) {
-      throw new RowValidationFailureException("FOREIGN_KEY_NOT_FOUND", "Referenced userId does not exist");
+  }
+
+  private User validateAndLoadEligibleTraineeUser(
+      Long userId,
+      CallerScope scope,
+      CreateTraineeRequest dto,
+      Long rowProviderId) {
+    User linkedUser = userRepository.findById(userId)
+        .orElseThrow(() -> new RowValidationFailureException("FOREIGN_KEY_NOT_FOUND",
+            "Referenced userId does not exist"));
+
+    if (linkedUser.getDeletedAt() != null) {
+      throw new RowValidationFailureException("USER_INACTIVE",
+          "Referenced userId account has been deleted");
     }
+    if (linkedUser.getLockedUntil() != null && linkedUser.getLockedUntil().isAfter(LocalDateTime.now())) {
+      throw new RowValidationFailureException("USER_INACTIVE",
+          "Referenced userId account is locked");
+    }
+
+    String statusCode = null;
+    if (linkedUser.getUserStatusId() != null) {
+      List<String> codes = jdbcTemplate.queryForList(
+          "SELECT status_code FROM ref_user_status WHERE user_status_id = ?",
+          String.class,
+          linkedUser.getUserStatusId());
+      if (!codes.isEmpty()) {
+        statusCode = codes.get(0);
+      }
+    }
+    if (statusCode == null || !"ACTIVE".equalsIgnoreCase(statusCode.trim())) {
+      throw new RowValidationFailureException("USER_INACTIVE",
+          "Referenced userId account is not active");
+    }
+
+    // Domain role eligibility: reject staff, admin, provider, employer, verifier, or analyst accounts
+    List<String> activeRoles = jdbcTemplate.queryForList(
+        "SELECT r.role_code FROM user_roles ur " +
+            "JOIN roles r ON ur.role_id = r.role_id " +
+            "WHERE ur.user_id = ? AND r.deleted_at IS NULL " +
+            "AND (r.lifecycle_status_id IS NULL OR r.lifecycle_status_id = 1)",
+        String.class,
+        linkedUser.getId());
+    for (String rawRole : activeRoles) {
+      if (rawRole == null) {
+        continue;
+      }
+      String normRole = rawRole.trim().toLowerCase(Locale.ROOT);
+      if (normRole.startsWith("role_")) {
+        normRole = normRole.substring(5);
+      }
+      if (!"trainee".equals(normRole)) {
+        throw new RowValidationFailureException("INVALID_TRAINEE_USER",
+            "Referenced user holds non-trainee role and cannot be linked to a trainee");
+      }
+    }
+
+    if (linkedUser.getEmployerId() != null) {
+      throw new RowValidationFailureException("CROSS_TENANT_REFERENCE",
+          "Referenced user carries an employer affiliation and cannot be linked to a trainee");
+    }
+
+    Long userProviderId = linkedUser.getTrainingProviderId();
+    Long providerStateId = null;
+    Long providerDistrictId = null;
+    if (userProviderId != null) {
+      List<Map<String, Object>> provRows = jdbcTemplate.queryForList(
+          "SELECT state_id, district_id FROM training_providers WHERE provider_id = ? AND deleted_at IS NULL",
+          userProviderId);
+      if (provRows.isEmpty()) {
+        throw new RowValidationFailureException("FOREIGN_KEY_NOT_FOUND",
+            "Referenced user trainingProviderId does not exist or has been deleted");
+      }
+      Map<String, Object> pRow = provRows.get(0);
+      providerStateId = pRow.get("state_id") != null ? ((Number) pRow.get("state_id")).longValue() : null;
+      providerDistrictId = pRow.get("district_id") != null ? ((Number) pRow.get("district_id")).longValue() : null;
+
+      if (rowProviderId != null && !userProviderId.equals(rowProviderId)) {
+        throw new RowValidationFailureException("CROSS_TENANT_REFERENCE",
+            "Referenced user training provider conflicts with row providerId");
+      }
+      if (linkedUser.getStateId() != null && providerStateId != null
+          && !linkedUser.getStateId().equals(providerStateId)) {
+        throw new RowValidationFailureException("CROSS_TENANT_REFERENCE",
+            "Referenced user has conflicting state and training provider tenancy");
+      }
+      if (linkedUser.getDistrictId() != null && providerDistrictId != null
+          && !linkedUser.getDistrictId().equals(providerDistrictId)) {
+        throw new RowValidationFailureException("CROSS_TENANT_REFERENCE",
+            "Referenced user has conflicting district and training provider tenancy");
+      }
+    }
+
+    Long effectiveUserStateId = linkedUser.getStateId() != null ? linkedUser.getStateId() : providerStateId;
+    Long effectiveUserDistrictId = linkedUser.getDistrictId() != null ? linkedUser.getDistrictId() : providerDistrictId;
+
+    // Compatible geographic scope between referenced user and imported trainee row (applies to all callers)
+    if (effectiveUserStateId != null && !effectiveUserStateId.equals(dto.getStateId())) {
+      throw new RowValidationFailureException("CROSS_TENANT_REFERENCE",
+          "Referenced user state scope does not match trainee stateId");
+    }
+    if (effectiveUserDistrictId != null && !effectiveUserDistrictId.equals(dto.getDistrictId())) {
+      throw new RowValidationFailureException("CROSS_TENANT_REFERENCE",
+          "Referenced user district scope does not match trainee districtId");
+    }
+
+    if (scope.nationwideAdmin()) {
+      return linkedUser;
+    }
+
+    if (scope.isProviderScoped()) {
+      if (userProviderId == null || !userProviderId.equals(scope.trainingProviderId())) {
+        throw new RowValidationFailureException("CROSS_TENANT_REFERENCE",
+            "Referenced userId is outside caller training provider scope");
+      }
+      return linkedUser;
+    }
+
+    if (scope.isStateOrDistrictScoped()) {
+      if (effectiveUserStateId == null || !effectiveUserStateId.equals(scope.stateId())) {
+        throw new RowValidationFailureException("CROSS_TENANT_REFERENCE",
+            "Referenced userId is outside caller state scope or lacks verifiable state ownership");
+      }
+      if (scope.districtId() != null) {
+        if (effectiveUserDistrictId == null || !effectiveUserDistrictId.equals(scope.districtId())) {
+          throw new RowValidationFailureException("CROSS_TENANT_REFERENCE",
+              "Referenced userId is outside caller district scope or lacks verifiable district ownership");
+        }
+      }
+      return linkedUser;
+    }
+
+    throw new RowValidationFailureException("CROSS_TENANT_REFERENCE",
+        "Caller lacks authorized tenant scope to link userId to trainee");
   }
 
   private void validateTenantOwnership(

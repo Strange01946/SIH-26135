@@ -13,6 +13,21 @@ import org.springframework.stereotype.Component;
 public class ImportPipelineProperties {
 
   /**
+   * Supported runtime topology for bulk import execution and interrupted-batch recovery.
+   */
+  public enum DeploymentMode {
+    SINGLE_INSTANCE,
+    MULTI_INSTANCE
+  }
+
+  /**
+   * Declared deployment topology (defaults to {@link DeploymentMode#SINGLE_INSTANCE}).
+   * Multi-instance mode fails closed on manual RUNNING-batch recovery because worker liveness
+   * cannot be verified across JVMs without shared lease coordination in the frozen schema.
+   */
+  private DeploymentMode deploymentMode = DeploymentMode.SINGLE_INSTANCE;
+
+  /**
    * Default transactional persistence chunk size (recommended range: 50-100).
    */
   private int chunkSize = 100;
@@ -37,6 +52,14 @@ public class ImportPipelineProperties {
    */
   private String stagingDirectory =
       Path.of(System.getProperty("java.io.tmpdir"), "sih26135-import-staging").toString();
+
+  public DeploymentMode getDeploymentMode() {
+    return deploymentMode;
+  }
+
+  public void setDeploymentMode(DeploymentMode deploymentMode) {
+    this.deploymentMode = deploymentMode;
+  }
 
   public int getChunkSize() {
     return chunkSize;

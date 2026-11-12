@@ -731,6 +731,28 @@ public class GlobalExceptionHandler {
       case "SOURCE_SYSTEM_TOO_LONG" -> "Source system value exceeds maximum allowed length";
       case "INVALID_STATUS" -> "Unsupported import record status filter";
       case "CSV_READ_ERROR", "JSON_READ_ERROR", "IMPORT_STREAM_ERROR" -> "Unable to read import stream safely";
+      case "IMPORT_LIFECYCLE_BYPASS_PROHIBITED" ->
+          "Import batch lifecycle statuses and execution timestamps cannot be bypassed outside the ingestion workflow";
+      case "IMPORT_COUNTER_MANIPULATION_PROHIBITED" ->
+          "Import batch counters cannot be fabricated or modified directly outside the ingestion workflow";
+      case "IMPORT_BATCH_RUNNING_PROTECTED" ->
+          "Cannot modify or delete an actively running import batch outside workflow execution";
+      case "WORKFLOW_BATCH_PROTECTED" ->
+          "Staged or workflow-owned import batches cannot be modified or deleted via generic CRUD endpoints";
+      case "WORKFLOW_RECORD_PROTECTED" ->
+          "Cannot manually insert import records into a staged, running, or finalized workflow batch";
+      case "WORKFLOW_RECORD_IMMUTABLE" ->
+          "Workflow-generated or committed import records are immutable and cannot be modified or deleted";
+      case "UNVERIFIABLE_SUCCESS_ENTITY" ->
+          "SUCCESS import records require a valid supported entityType and committed entityId";
+      case "ENTITY_NOT_FOUND_FOR_SUCCESS_RECORD" ->
+          "Referenced domain entity for SUCCESS import record does not exist or has been deleted";
+      case "INVALID_RECORD_OUTCOME" ->
+          "Non-SUCCESS import records cannot reference a committed entity identifier";
+      case "RECOVERY_CONFIRMATION_REQUIRED" ->
+          "Explicit worker-termination confirmation (confirmWorkerTerminated=true) is required before recovering a RUNNING batch";
+      case "MULTI_INSTANCE_RECOVERY_UNSUPPORTED" ->
+          "Interrupted batch recovery is disabled in MULTI_INSTANCE deployment without shared worker lease coordination";
       default -> {
         if (status == null || status.is5xxServerError()) {
           yield "An unexpected error occurred. Please try again later.";

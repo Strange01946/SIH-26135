@@ -1,9 +1,12 @@
 package in.gov.sih.sih26135.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -11,8 +14,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import in.gov.sih.sih26135.MysqlConnectionTest;
 import in.gov.sih.sih26135.config.ImportPipelineProperties;
+import in.gov.sih.sih26135.config.ImportPipelineProperties.DeploymentMode;
+import in.gov.sih.sih26135.dto.request.CreateImportBatchRequest;
+import in.gov.sih.sih26135.dto.request.CreateImportRecordRequest;
+import in.gov.sih.sih26135.exception.BadRequestException;
+import in.gov.sih.sih26135.exception.ConflictException;
 import in.gov.sih.sih26135.exception.GlobalExceptionHandler;
 import in.gov.sih.sih26135.security.jwt.JwtTokenProvider;
+import in.gov.sih.sih26135.service.ImportBatchService;
+import in.gov.sih.sih26135.service.ImportRecordService;
 import in.gov.sih.sih26135.service.ingestion.ImportFileStagingService;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -38,6 +48,8 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -90,6 +102,16 @@ class ImportBatchProcessingIntegrationTest {
   private static final long USER_AUDITOR_A_ID = 9949L;
   private static final long USER_UNSCOPED_ID = 99499L;
 
+  private static final long LINK_USER_PROV_A_ID = 99410L;
+  private static final long LINK_USER_PROV_B_ID = 99411L;
+  private static final long LINK_USER_DIST_A2_ID = 99412L;
+  private static final long LINK_USER_DIST_A1_ID = 99413L;
+  private static final long LINK_USER_UNSCOPED_ID = 99414L;
+  private static final long LINK_USER_EMPLOYER_STAFF_ID = 99415L;
+  private static final long LINK_USER_DISABLED_ID = 99416L;
+  private static final long LINK_USER_PENDING_ID = 99417L;
+  private static final long LINK_USER_PROV_STAFF_ID = 99418L;
+
   @Autowired
   private DataSource dataSource;
 
@@ -114,6 +136,12 @@ class ImportBatchProcessingIntegrationTest {
   @Autowired
   private GlobalExceptionHandler globalExceptionHandler;
 
+  @Autowired
+  private ImportBatchService importBatchService;
+
+  @Autowired
+  private ImportRecordService importRecordService;
+
   private String tokenSuperAdmin;
   private String tokenStateA;
   private String tokenStateB;
@@ -128,6 +156,8 @@ class ImportBatchProcessingIntegrationTest {
 
   private long originalMaxFileSizeBytes;
   private int originalChunkSize;
+  private int originalMaxRowsPerBatch;
+  private DeploymentMode originalDeploymentMode;
 
   @BeforeEach
   void setUp() throws Exception {
@@ -139,6 +169,8 @@ class ImportBatchProcessingIntegrationTest {
 
     originalMaxFileSizeBytes = properties.getMaxFileSizeBytes();
     originalChunkSize = properties.getChunkSize();
+    originalMaxRowsPerBatch = properties.getMaxRowsPerBatch();
+    originalDeploymentMode = properties.getDeploymentMode();
     cleanUpTestData();
 
     // Geographic hierarchy
@@ -286,6 +318,17 @@ class ImportBatchProcessingIntegrationTest {
         USER_AUDITOR_A_ID, "imp_auditor_a", List.of("ROLE_state_admin", "audit.read"));
     tokenUnscoped = "Bearer " + jwtTokenProvider.generateAccessToken(
         USER_UNSCOPED_ID, "imp_unscoped", List.of("ROLE_state_admin", "system.manage"));
+
+    // Eligible & adversarial trainee-linkage user fixtures
+    insertUserWithStatus(LINK_USER_PROV_A_ID, "imp_link_pa", "linkpa@test.gov.in", 2L, STATE_A_ID, DISTRICT_A1_ID, PROVIDER_A_ID, null, "trainee");
+    insertUserWithStatus(LINK_USER_PROV_B_ID, "imp_link_pb", "linkpb@test.gov.in", 2L, STATE_B_ID, DISTRICT_B1_ID, PROVIDER_B_ID, null, "trainee");
+    insertUserWithStatus(LINK_USER_DIST_A2_ID, "imp_link_da2", "linkda2@test.gov.in", 2L, STATE_A_ID, DISTRICT_A2_ID, null, null, "trainee");
+    insertUserWithStatus(LINK_USER_DIST_A1_ID, "imp_link_da1", "linkda1@test.gov.in", 2L, STATE_A_ID, DISTRICT_A1_ID, null, null, "trainee");
+    insertUserWithStatus(LINK_USER_UNSCOPED_ID, "imp_link_unscoped", "linkun@test.gov.in", 2L, null, null, null, null, "trainee");
+    insertUserWithStatus(LINK_USER_EMPLOYER_STAFF_ID, "imp_link_emp", "linkemp@test.gov.in", 2L, STATE_A_ID, DISTRICT_A1_ID, null, EMPLOYER_A_ID, "employer");
+    insertUserWithStatus(LINK_USER_DISABLED_ID, "imp_link_dis", "linkdis@test.gov.in", 4L, STATE_A_ID, DISTRICT_A1_ID, PROVIDER_A_ID, null, "trainee");
+    insertUserWithStatus(LINK_USER_PENDING_ID, "imp_link_pend", "linkpend@test.gov.in", 1L, STATE_A_ID, DISTRICT_A1_ID, PROVIDER_A_ID, null, "trainee");
+    insertUserWithStatus(LINK_USER_PROV_STAFF_ID, "imp_link_pstaff", "linkps@test.gov.in", 2L, STATE_A_ID, DISTRICT_A1_ID, PROVIDER_A_ID, null, "training_provider");
   }
 
   @AfterEach
@@ -293,7 +336,30 @@ class ImportBatchProcessingIntegrationTest {
     SecurityContextHolder.clearContext();
     properties.setMaxFileSizeBytes(originalMaxFileSizeBytes);
     properties.setChunkSize(originalChunkSize);
+    properties.setMaxRowsPerBatch(originalMaxRowsPerBatch);
+    properties.setDeploymentMode(originalDeploymentMode);
     cleanUpTestData();
+  }
+
+  private void insertUserWithStatus(
+      Long userId,
+      String username,
+      String email,
+      Long statusId,
+      Long stateId,
+      Long districtId,
+      Long providerId,
+      Long employerId,
+      String roleCode) {
+    jdbcTemplate.update(
+        "INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, state_id, district_id, training_provider_id, employer_id, created_at, updated_at) "
+            + "VALUES (?, ?, ?, 'hash', 'argon2id', ?, ?, ?, ?, ?, NOW(), NOW())",
+        userId, username, email, statusId, stateId, districtId, providerId, employerId);
+    if (roleCode != null) {
+      jdbcTemplate.update(
+          "INSERT INTO user_roles (user_id, role_id, assigned_at) SELECT ?, role_id, NOW() FROM roles WHERE role_code = ? LIMIT 1",
+          userId, roleCode);
+    }
   }
 
   private void insertUser(
@@ -324,23 +390,27 @@ class ImportBatchProcessingIntegrationTest {
         "DELETE FROM import_batches WHERE (initiated_by_user_id BETWEEN 9940 AND 99499) OR source_system LIKE 'IMP285_%'");
 
     jdbcTemplate.update("DELETE FROM placement_records WHERE placement_number LIKE 'IMP285-%' OR placement_id = ?", SEED_PLACEMENT_A_ID);
-    jdbcTemplate.update("DELETE FROM training_enrollments WHERE enrollment_id IN (?, ?)", ENROLLMENT_A_ID, ENROLLMENT_B_ID);
-    jdbcTemplate.update("DELETE FROM trainees WHERE registration_number LIKE 'IMP285-%' OR trainee_id IN (?, ?, ?)",
+    jdbcTemplate.update("DELETE FROM training_enrollments WHERE enrollment_id IN (?, ?, 9947)", ENROLLMENT_A_ID, ENROLLMENT_B_ID);
+    jdbcTemplate.update("DELETE FROM trainees WHERE registration_number LIKE 'IMP285-%' OR trainee_id IN (?, ?, ?, 9947, 9948)",
         SEED_TRAINEE_A_ID, SEED_TRAINEE_B_ID, SEED_TRAINEE_USER_ROW_ID);
 
     jdbcTemplate.update(
-        "DELETE FROM user_roles WHERE user_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "DELETE FROM user_roles WHERE user_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         USER_SUPER_ADMIN_ID, USER_STATE_A_ID, USER_STATE_B_ID, USER_DISTRICT_A1_ID, USER_DISTRICT_A2_ID,
-        USER_PROVIDER_A_ID, USER_PROVIDER_B_ID, USER_EMPLOYER_A_ID, USER_TRAINEE_ID, USER_AUDITOR_A_ID, USER_UNSCOPED_ID);
+        USER_PROVIDER_A_ID, USER_PROVIDER_B_ID, USER_EMPLOYER_A_ID, USER_TRAINEE_ID, USER_AUDITOR_A_ID, USER_UNSCOPED_ID,
+        LINK_USER_PROV_A_ID, LINK_USER_PROV_B_ID, LINK_USER_DIST_A2_ID, LINK_USER_DIST_A1_ID,
+        LINK_USER_UNSCOPED_ID, LINK_USER_EMPLOYER_STAFF_ID, LINK_USER_DISABLED_ID, LINK_USER_PENDING_ID, LINK_USER_PROV_STAFF_ID);
     jdbcTemplate.update(
-        "DELETE FROM users WHERE user_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "DELETE FROM users WHERE user_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         USER_SUPER_ADMIN_ID, USER_STATE_A_ID, USER_STATE_B_ID, USER_DISTRICT_A1_ID, USER_DISTRICT_A2_ID,
-        USER_PROVIDER_A_ID, USER_PROVIDER_B_ID, USER_EMPLOYER_A_ID, USER_TRAINEE_ID, USER_AUDITOR_A_ID, USER_UNSCOPED_ID);
+        USER_PROVIDER_A_ID, USER_PROVIDER_B_ID, USER_EMPLOYER_A_ID, USER_TRAINEE_ID, USER_AUDITOR_A_ID, USER_UNSCOPED_ID,
+        LINK_USER_PROV_A_ID, LINK_USER_PROV_B_ID, LINK_USER_DIST_A2_ID, LINK_USER_DIST_A1_ID,
+        LINK_USER_UNSCOPED_ID, LINK_USER_EMPLOYER_STAFF_ID, LINK_USER_DISABLED_ID, LINK_USER_PENDING_ID, LINK_USER_PROV_STAFF_ID);
 
-    jdbcTemplate.update("DELETE FROM training_batches WHERE batch_id IN (?, ?)", BATCH_A_ID, BATCH_B_ID);
-    jdbcTemplate.update("DELETE FROM training_centers WHERE center_id IN (?, ?)", CENTER_A_ID, CENTER_B_ID);
+    jdbcTemplate.update("DELETE FROM training_batches WHERE batch_id IN (?, ?, 9947)", BATCH_A_ID, BATCH_B_ID);
+    jdbcTemplate.update("DELETE FROM training_centers WHERE center_id IN (?, ?, 9947)", CENTER_A_ID, CENTER_B_ID);
     jdbcTemplate.update("DELETE FROM employers WHERE employer_id IN (?, ?)", EMPLOYER_A_ID, EMPLOYER_B_ID);
-    jdbcTemplate.update("DELETE FROM training_providers WHERE provider_id IN (?, ?)", PROVIDER_A_ID, PROVIDER_B_ID);
+    jdbcTemplate.update("DELETE FROM training_providers WHERE provider_id IN (?, ?, 9947)", PROVIDER_A_ID, PROVIDER_B_ID);
     jdbcTemplate.update("DELETE FROM programs WHERE program_id = ?", PROGRAM_ID);
     jdbcTemplate.update("DELETE FROM schemes WHERE scheme_id = ?", SCHEME_ID);
     jdbcTemplate.update("DELETE FROM departments WHERE department_id = ?", DEPT_ID);
@@ -976,6 +1046,608 @@ class ImportBatchProcessingIntegrationTest {
           "SELECT COUNT(*) FROM trainees WHERE registration_number = 'IMP285-OVLP-1'",
           Integer.class);
       assertThat(distinctOverlapTrainees).isEqualTo(1);
+    }
+  }
+
+  @Nested
+  @DisplayName("5. Legacy CRUD Integrity, Trainee userId Tenant Scope & Crash Recovery")
+  class CrudIntegrityUserScopeAndRecoveryTests {
+
+    @Test
+    @DisplayName("Blocks legacy CRUD from bypassing workflow status/counters or fabricating/destroying import outcomes")
+    void blocksLegacyCrudWorkflowBypassAndFabricatedOutcomes() throws Exception {
+      // 1. Reject creating a fake workflow batch with non-PENDING status, rowCount > 0, or startedAt
+      mockMvc.perform(post("/api/v1/import-batches")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"batchCode\":\"IMP285-FAKE-ST\",\"sourceSystem\":\"IMP285_CRUD\",\"entityType\":\"Trainee\",\"importBatchStatusId\":3}")
+              .header("Authorization", tokenSuperAdmin))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("IMPORT_LIFECYCLE_BYPASS_PROHIBITED"));
+
+      mockMvc.perform(post("/api/v1/import-batches")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"batchCode\":\"IMP285-FAKE-CNT\",\"sourceSystem\":\"IMP285_CRUD\",\"entityType\":\"Trainee\",\"rowCount\":50}")
+              .header("Authorization", tokenSuperAdmin))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("IMPORT_COUNTER_MANIPULATION_PROHIBITED"));
+
+      // Service-boundary check for startedAt bypass
+      SecurityContextHolder.getContext().setAuthentication(
+          new UsernamePasswordAuthenticationToken(
+              "imp_superadmin",
+              null,
+              List.of(new SimpleGrantedAuthority("ROLE_super_admin"), new SimpleGrantedAuthority("system.manage"))));
+      try {
+        CreateImportBatchRequest badStartReq = new CreateImportBatchRequest(
+            "IMP285-FAKE-TM", "IMP285_CRUD", "Trainee", 1L);
+        badStartReq.setRowCount(0);
+        badStartReq.setStartedAt(java.time.LocalDateTime.now());
+        assertThatThrownBy(() -> importBatchService.createImportBatch(badStartReq))
+            .isInstanceOf(BadRequestException.class)
+            .satisfies(ex -> assertThat(((BadRequestException) ex).getErrorCode()).isEqualTo("IMPORT_LIFECYCLE_BYPASS_PROHIBITED"));
+      } finally {
+        SecurityContextHolder.clearContext();
+      }
+
+      // 2. Stage and process a real workflow batch with 1 valid + 1 invalid row
+      String wfCsv = String.join("\n",
+          "registrationNumber,firstName,phone,genderId,stateId,districtId,currentEmploymentStatusId,profileStatusId",
+          "IMP285-CRUD-OK1,CrudValid,9793000001,1," + STATE_A_ID + "," + DISTRICT_A1_ID + ",1,1",
+          "IMP285-CRUD-BAD,CrudInvalid,9793000002,1," + STATE_A_ID + ",99999999,1,1");
+      Long stagedBatchId = stageBatchViaApi(
+          tokenSuperAdmin, "crud-guard.csv", "text/csv", wfCsv.getBytes(StandardCharsets.UTF_8), "Trainee");
+
+      // Staged PENDING batch cannot be mutated or deleted via generic CRUD
+      mockMvc.perform(put("/api/v1/import-batches/" + stagedBatchId)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"importBatchStatusId\":3,\"rowCount\":99,\"successCount\":99}")
+              .header("Authorization", tokenSuperAdmin))
+          .andExpect(status().isConflict())
+          .andExpect(jsonPath("$.code").value("WORKFLOW_BATCH_PROTECTED"));
+
+      mockMvc.perform(delete("/api/v1/import-batches/" + stagedBatchId)
+              .header("Authorization", tokenSuperAdmin))
+          .andExpect(status().isConflict())
+          .andExpect(jsonPath("$.code").value("WORKFLOW_BATCH_PROTECTED"));
+
+      // Process workflow batch -> 1 SUCCESS, 1 FAILED
+      mockMvc.perform(post("/api/v1/import/batches/" + stagedBatchId + "/process")
+              .header("Authorization", tokenSuperAdmin))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+
+      Long failedRecId = jdbcTemplate.queryForObject(
+          "SELECT import_record_id FROM import_records WHERE import_batch_id = ? AND source_row_number = 2",
+          Long.class, stagedBatchId);
+
+      // Cannot fabricate, alter, or delete records in workflow-managed batch
+      mockMvc.perform(post("/api/v1/import-records")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"importBatchId\":" + stagedBatchId + ",\"sourceRowNumber\":3,\"importRecordStatusId\":1,\"entityType\":\"Trainee\",\"entityId\":" + SEED_TRAINEE_A_ID + "}")
+              .header("Authorization", tokenSuperAdmin))
+          .andExpect(status().isConflict())
+          .andExpect(jsonPath("$.code").value("WORKFLOW_RECORD_PROTECTED"));
+
+      mockMvc.perform(put("/api/v1/import-records/" + failedRecId)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"importRecordStatusId\":1,\"entityType\":\"Trainee\",\"entityId\":" + SEED_TRAINEE_A_ID + "}")
+              .header("Authorization", tokenSuperAdmin))
+          .andExpect(status().isConflict())
+          .andExpect(jsonPath("$.code").value("WORKFLOW_RECORD_IMMUTABLE"));
+
+      mockMvc.perform(delete("/api/v1/import-records/" + failedRecId)
+              .header("Authorization", tokenSuperAdmin))
+          .andExpect(status().isConflict())
+          .andExpect(jsonPath("$.code").value("WORKFLOW_RECORD_IMMUTABLE"));
+
+      // RUNNING batch cannot be modified/finalized via generic PUT
+      jdbcTemplate.update("UPDATE import_batches SET import_batch_status_id = 2 WHERE import_batch_id = ?", stagedBatchId);
+      mockMvc.perform(put("/api/v1/import-batches/" + stagedBatchId)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"importBatchStatusId\":3}")
+              .header("Authorization", tokenSuperAdmin))
+          .andExpect(status().isConflict())
+          .andExpect(jsonPath("$.code").value("IMPORT_BATCH_RUNNING_PROTECTED"));
+      jdbcTemplate.update("UPDATE import_batches SET import_batch_status_id = 3 WHERE import_batch_id = ?", stagedBatchId);
+
+      // 3. Legitimate unstaged empty legacy PENDING batch works for PENDING -> CANCELLED & empty DELETE,
+      //    but still blocks fabricated SUCCESS without a committed domain entity and blocks setting RUNNING/COMPLETED
+      MvcResult legacyRes = mockMvc.perform(post("/api/v1/import-batches")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"batchCode\":\"IMP285-LEG-OK\",\"sourceSystem\":\"IMP285_CRUD\",\"entityType\":\"Trainee\"}")
+              .header("Authorization", tokenSuperAdmin))
+          .andExpect(status().isCreated())
+          .andExpect(jsonPath("$.data.importBatchStatusCode").value("PENDING"))
+          .andReturn();
+      Long legacyBatchId = objectMapper.readTree(legacyRes.getResponse().getContentAsString()).path("data").path("id").asLong();
+
+      mockMvc.perform(put("/api/v1/import-batches/" + legacyBatchId)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"importBatchStatusId\":3,\"rowCount\":10,\"successCount\":10}")
+              .header("Authorization", tokenSuperAdmin))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("IMPORT_COUNTER_MANIPULATION_PROHIBITED"));
+
+      // Fabricated SUCCESS without entityId or with non-existent entityId is rejected at API & service boundary
+      mockMvc.perform(post("/api/v1/import-records")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"importBatchId\":" + legacyBatchId + ",\"sourceRowNumber\":1,\"importRecordStatusId\":1,\"entityType\":\"Trainee\"}")
+              .header("Authorization", tokenSuperAdmin))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("UNVERIFIABLE_SUCCESS_ENTITY"));
+
+      SecurityContextHolder.getContext().setAuthentication(
+          new UsernamePasswordAuthenticationToken(
+              "imp_superadmin",
+              null,
+              List.of(new SimpleGrantedAuthority("ROLE_super_admin"), new SimpleGrantedAuthority("system.manage"))));
+      try {
+        CreateImportRecordRequest fakeSuccess = new CreateImportRecordRequest(legacyBatchId, 1, 1L);
+        fakeSuccess.setEntityType("Trainee");
+        fakeSuccess.setEntityId(99999999L);
+        assertThatThrownBy(() -> importRecordService.createImportRecord(fakeSuccess))
+            .isInstanceOf(BadRequestException.class)
+            .satisfies(ex -> assertThat(((BadRequestException) ex).getErrorCode()).isEqualTo("ENTITY_NOT_FOUND_FOR_SUCCESS_RECORD"));
+      } finally {
+        SecurityContextHolder.clearContext();
+      }
+
+      // Safe cancellation & cleanup of empty unstaged legacy batch remains preserved
+      mockMvc.perform(put("/api/v1/import-batches/" + legacyBatchId)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"importBatchStatusId\":5}")
+              .header("Authorization", tokenSuperAdmin))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.importBatchStatusCode").value("CANCELLED"));
+
+      mockMvc.perform(delete("/api/v1/import-batches/" + legacyBatchId)
+              .header("Authorization", tokenSuperAdmin))
+          .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("Enforces tenant, role, and active status validation on imported Trainee userId while committing valid siblings")
+    void enforcesTenantAndEligibilityScopeOnTraineeUserIdLinkage() throws Exception {
+      // Provider A batch: 1 valid Provider-A trainee user, cross-provider user, unscoped user, employer/provider staff users, disabled/pending users, 1 valid sibling
+      String provCsv = String.join("\n",
+          "registrationNumber,firstName,phone,genderId,stateId,districtId,currentEmploymentStatusId,profileStatusId,userId",
+          "IMP285-UID-OK1,ValidProvLink,9794000001,1," + STATE_A_ID + "," + DISTRICT_A1_ID + ",1,1," + LINK_USER_PROV_A_ID,
+          "IMP285-UID-XB,CrossProvLink,9794000002,1," + STATE_A_ID + "," + DISTRICT_A1_ID + ",1,1," + LINK_USER_PROV_B_ID,
+          "IMP285-UID-UN,UnscopedLink,9794000003,1," + STATE_A_ID + "," + DISTRICT_A1_ID + ",1,1," + LINK_USER_UNSCOPED_ID,
+          "IMP285-UID-EMP,EmployerUser,9794000004,1," + STATE_A_ID + "," + DISTRICT_A1_ID + ",1,1," + LINK_USER_EMPLOYER_STAFF_ID,
+          "IMP285-UID-PST,ProvStaffUser,9794000005,1," + STATE_A_ID + "," + DISTRICT_A1_ID + ",1,1," + LINK_USER_PROV_STAFF_ID,
+          "IMP285-UID-DIS,DisabledUser,9794000006,1," + STATE_A_ID + "," + DISTRICT_A1_ID + ",1,1," + LINK_USER_DISABLED_ID,
+          "IMP285-UID-PND,PendingUser,9794000007,1," + STATE_A_ID + "," + DISTRICT_A1_ID + ",1,1," + LINK_USER_PENDING_ID,
+          "IMP285-UID-OK2,ValidSibling,9794000008,1," + STATE_A_ID + "," + DISTRICT_A1_ID + ",1,1,");
+
+      Long provBatchId = stageBatchViaApi(
+          tokenProviderA, "prov-user-link.csv", "text/csv", provCsv.getBytes(StandardCharsets.UTF_8), "Trainee");
+
+      mockMvc.perform(post("/api/v1/import/batches/" + provBatchId + "/process")
+              .header("Authorization", tokenProviderA))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.status").value("COMPLETED"))
+          .andExpect(jsonPath("$.data.rowCount").value(8))
+          .andExpect(jsonPath("$.data.successCount").value(2))
+          .andExpect(jsonPath("$.data.failureCount").value(6));
+
+      Integer committedProv = jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM trainees WHERE registration_number LIKE 'IMP285-UID-%'",
+          Integer.class);
+      assertThat(committedProv).isEqualTo(2);
+
+      // Verify specific error codes on cross-tenant / ineligible rows
+      String errCrossProv = jdbcTemplate.queryForObject(
+          "SELECT error_code FROM import_records WHERE import_batch_id = ? AND source_row_number = 2",
+          String.class, provBatchId);
+      String errUnscoped = jdbcTemplate.queryForObject(
+          "SELECT error_code FROM import_records WHERE import_batch_id = ? AND source_row_number = 3",
+          String.class, provBatchId);
+      String errEmp = jdbcTemplate.queryForObject(
+          "SELECT error_code FROM import_records WHERE import_batch_id = ? AND source_row_number = 4",
+          String.class, provBatchId);
+      String errStaff = jdbcTemplate.queryForObject(
+          "SELECT error_code FROM import_records WHERE import_batch_id = ? AND source_row_number = 5",
+          String.class, provBatchId);
+      String errDisabled = jdbcTemplate.queryForObject(
+          "SELECT error_code FROM import_records WHERE import_batch_id = ? AND source_row_number = 6",
+          String.class, provBatchId);
+      String errPending = jdbcTemplate.queryForObject(
+          "SELECT error_code FROM import_records WHERE import_batch_id = ? AND source_row_number = 7",
+          String.class, provBatchId);
+      assertThat(errCrossProv).isEqualTo("CROSS_TENANT_REFERENCE");
+      assertThat(errUnscoped).isEqualTo("CROSS_TENANT_REFERENCE");
+      assertThat(errEmp).isEqualTo("INVALID_TRAINEE_USER");
+      assertThat(errStaff).isEqualTo("INVALID_TRAINEE_USER");
+      assertThat(errDisabled).isEqualTo("USER_INACTIVE");
+      assertThat(errPending).isEqualTo("USER_INACTIVE");
+
+      // District-restricted caller referencing out-of-district user (State A, District A2) vs in-district user (District A1)
+      String distCsv = String.join("\n",
+          "registrationNumber,firstName,phone,genderId,stateId,districtId,currentEmploymentStatusId,profileStatusId,userId",
+          "IMP285-DUID-OK,DistInScope,9794000011,1," + STATE_A_ID + "," + DISTRICT_A1_ID + ",1,1," + LINK_USER_DIST_A1_ID,
+          "IMP285-DUID-X,DistOutScope,9794000012,1," + STATE_A_ID + "," + DISTRICT_A1_ID + ",1,1," + LINK_USER_DIST_A2_ID,
+          "IMP285-DUID-U,DistUnscoped,9794000013,1," + STATE_A_ID + "," + DISTRICT_A1_ID + ",1,1," + LINK_USER_UNSCOPED_ID);
+
+      Long distBatchId = stageBatchViaApi(
+          tokenDistrictA1, "dist-user-link.csv", "text/csv", distCsv.getBytes(StandardCharsets.UTF_8), "Trainee");
+      mockMvc.perform(post("/api/v1/import/batches/" + distBatchId + "/process")
+              .header("Authorization", tokenDistrictA1))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.status").value("COMPLETED"))
+          .andExpect(jsonPath("$.data.successCount").value(1))
+          .andExpect(jsonPath("$.data.failureCount").value(2));
+
+      assertThat(jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM trainees WHERE registration_number IN ('IMP285-DUID-X', 'IMP285-DUID-U')",
+          Integer.class)).isEqualTo(0);
+
+      // Nationwide admin preserves linking to unscoped active trainee user, while rejecting mismatched state/district user
+      String natCsv = String.join("\n",
+          "registrationNumber,firstName,phone,genderId,stateId,districtId,currentEmploymentStatusId,profileStatusId,userId",
+          "IMP285-NUID-OK,NatUnscopedOk,9794000021,1," + STATE_A_ID + "," + DISTRICT_A1_ID + ",1,1," + LINK_USER_UNSCOPED_ID,
+          "IMP285-NUID-X,NatMismatch,9794000022,1," + STATE_A_ID + "," + DISTRICT_A1_ID + ",1,1," + LINK_USER_DIST_A2_ID);
+      Long natBatchId = stageBatchViaApi(
+          tokenSuperAdmin, "nat-user-link.csv", "text/csv", natCsv.getBytes(StandardCharsets.UTF_8), "Trainee");
+      mockMvc.perform(post("/api/v1/import/batches/" + natBatchId + "/process")
+              .header("Authorization", tokenSuperAdmin))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.successCount").value(1))
+          .andExpect(jsonPath("$.data.failureCount").value(1));
+    }
+
+    @Test
+    @DisplayName("Safely recovers interrupted RUNNING batch after committed chunk without duplicating rows or bypassing active workers")
+    void recoversInterruptedRunningBatchSafelyAndHandlesMissingStagedFile() throws Exception {
+      // 1. Stage 150-row CSV (row 125 invalid FK)
+      StringBuilder csv = new StringBuilder(
+          "registrationNumber,firstName,phone,genderId,stateId,districtId,currentEmploymentStatusId,profileStatusId\n");
+      for (int i = 1; i <= 150; i++) {
+        String phone = String.format("9795%06d", i);
+        long district = (i == 125) ? 99999999L : DISTRICT_A1_ID;
+        csv.append("IMP285-RCV-").append(i).append(",RecoverUser").append(i).append(',').append(phone)
+            .append(",1,").append(STATE_A_ID).append(',').append(district).append(",1,1\n");
+      }
+
+      Long batchId = stageBatchViaApi(
+          tokenStateA, "recover-150.csv", "text/csv", csv.toString().getBytes(StandardCharsets.UTF_8), "Trainee");
+
+      // Commit Chunk 1 (rows 1..100) via real workflow and interrupt before completion, leaving DB in RUNNING
+      properties.setMaxRowsPerBatch(100);
+      mockMvc.perform(post("/api/v1/import/batches/" + batchId + "/process")
+              .header("Authorization", tokenStateA))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("IMPORT_ROW_LIMIT_EXCEEDED"));
+      properties.setMaxRowsPerBatch(originalMaxRowsPerBatch);
+
+      Integer chunk1Trainees = jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM trainees WHERE registration_number LIKE 'IMP285-RCV-%'",
+          Integer.class);
+      assertThat(chunk1Trainees).isEqualTo(100);
+
+      // Simulate worker crash state right after Chunk 1 commit: RUNNING, completed_at=NULL, stale 0 counts
+      jdbcTemplate.update(
+          "UPDATE import_batches SET import_batch_status_id = 2, completed_at = NULL, row_count = 0, success_count = 0, failure_count = 0 WHERE import_batch_id = ?",
+          batchId);
+
+      // Direct process attempt on RUNNING batch is rejected (never runs two workers / never skips)
+      mockMvc.perform(post("/api/v1/import/batches/" + batchId + "/process")
+              .header("Authorization", tokenStateA))
+          .andExpect(status().isConflict())
+          .andExpect(jsonPath("$.code").value("IMPORT_BATCH_ALREADY_RUNNING"));
+
+      // Recovery without confirmWorkerTerminated=true is rejected
+      mockMvc.perform(post("/api/v1/import/batches/" + batchId + "/recover")
+              .header("Authorization", tokenStateA))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("RECOVERY_CONFIRMATION_REQUIRED"));
+
+      // Cross-tenant recovery attempt is rejected (403)
+      mockMvc.perform(post("/api/v1/import/batches/" + batchId + "/recover")
+              .param("confirmWorkerTerminated", "true")
+              .header("Authorization", tokenStateB))
+          .andExpect(status().isForbidden());
+
+      // Authorized recovery after confirmed termination transitions RUNNING -> PENDING preserving committed Chunk 1
+      mockMvc.perform(post("/api/v1/import/batches/" + batchId + "/recover")
+              .param("confirmWorkerTerminated", "true")
+              .header("Authorization", tokenStateA))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.status").value("PENDING"))
+          .andExpect(jsonPath("$.data.rowCount").value(100))
+          .andExpect(jsonPath("$.data.successCount").value(100));
+
+      // Resuming batch processes remaining rows 101..150 idempotently (zero duplicates on 1..100, quarantines row 125)
+      mockMvc.perform(post("/api/v1/import/batches/" + batchId + "/process")
+              .header("Authorization", tokenStateA))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.status").value("COMPLETED"))
+          .andExpect(jsonPath("$.data.isTerminal").value(true))
+          .andExpect(jsonPath("$.data.rowCount").value(150))
+          .andExpect(jsonPath("$.data.successCount").value(149))
+          .andExpect(jsonPath("$.data.failureCount").value(1))
+          .andExpect(jsonPath("$.data.duplicateCount").value(0))
+          .andExpect(jsonPath("$.data.skippedCount").value(0));
+
+      assertThat(jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM trainees WHERE registration_number LIKE 'IMP285-RCV-%'",
+          Integer.class)).isEqualTo(149);
+      assertThat(jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM import_records WHERE import_batch_id = ?",
+          Integer.class, batchId)).isEqualTo(150);
+
+      // 2. If staged file is missing during interrupted recovery, batch transitions to FAILED (never COMPLETED) with accurate partial counts
+      StringBuilder csvMissing = new StringBuilder(
+          "registrationNumber,firstName,phone,genderId,stateId,districtId,currentEmploymentStatusId,profileStatusId\n");
+      for (int i = 1; i <= 120; i++) {
+        csvMissing.append("IMP285-LOST-").append(i).append(",Lost").append(i).append(',')
+            .append(String.format("9796%06d", i))
+            .append(",1,").append(STATE_A_ID).append(',').append(DISTRICT_A1_ID).append(",1,1\n");
+      }
+      Long lostBatchId = stageBatchViaApi(
+          tokenStateA, "lost-recover.csv", "text/csv", csvMissing.toString().getBytes(StandardCharsets.UTF_8), "Trainee");
+      String lostBatchCode = jdbcTemplate.queryForObject(
+          "SELECT batch_code FROM import_batches WHERE import_batch_id = ?",
+          String.class, lostBatchId);
+
+      properties.setMaxRowsPerBatch(100);
+      mockMvc.perform(post("/api/v1/import/batches/" + lostBatchId + "/process")
+              .header("Authorization", tokenStateA))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("IMPORT_ROW_LIMIT_EXCEEDED"));
+      properties.setMaxRowsPerBatch(originalMaxRowsPerBatch);
+
+      jdbcTemplate.update(
+          "UPDATE import_batches SET import_batch_status_id = 2, completed_at = NULL, row_count = 0, success_count = 0 WHERE import_batch_id = ?",
+          lostBatchId);
+      fileStagingService.deleteStagedFileQuietly(lostBatchCode);
+
+      mockMvc.perform(post("/api/v1/import/batches/" + lostBatchId + "/recover")
+              .param("confirmWorkerTerminated", "true")
+              .header("Authorization", tokenStateA))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("STAGED_FILE_NOT_FOUND"));
+
+      mockMvc.perform(get("/api/v1/import/batches/" + lostBatchId + "/progress")
+              .header("Authorization", tokenStateA))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.status").value("FAILED"))
+          .andExpect(jsonPath("$.data.isTerminal").value(true))
+          .andExpect(jsonPath("$.data.rowCount").value(100))
+          .andExpect(jsonPath("$.data.successCount").value(100));
+    }
+
+    @Test
+    @DisplayName("Enforces verifiable provider ownership for legacy Trainee SUCCESS import records on create and update")
+    void enforcesProviderOwnershipOnLegacyTraineeSuccessRecords() throws Exception {
+      // Seed second provider C in the SAME state & district as Provider A, plus its enrolled trainee and an unowned trainee
+      long providerCId = 9947L;
+      long centerCId = 9947L;
+      long batchCId = 9947L;
+      long traineeProvCSameStateId = 9947L;
+      long enrollmentCId = 9947L;
+      long traineeUnownedSameStateId = 9948L;
+
+      jdbcTemplate.update(
+          "INSERT INTO training_providers (provider_id, provider_code, provider_name, registration_number, organization_type_id, state_id, district_id, accreditation_status_id, lifecycle_status_id, created_at, updated_at, deleted_at) "
+              + "VALUES (?, 'PRV-IMP-9947', 'Import Provider C SameState', 'REG-PRV-9947', 1, ?, ?, 1, 1, NOW(), NOW(), NULL)",
+          providerCId, STATE_A_ID, DISTRICT_A1_ID);
+      jdbcTemplate.update(
+          "INSERT INTO training_centers (center_id, provider_id, center_code, center_name, state_id, district_id, lifecycle_status_id, created_at, updated_at, deleted_at) "
+              + "VALUES (?, ?, 'CTR-IMP-9947', 'Import Center C', ?, ?, 1, NOW(), NOW(), NULL)",
+          centerCId, providerCId, STATE_A_ID, DISTRICT_A1_ID);
+      jdbcTemplate.update(
+          "INSERT INTO training_batches (batch_id, batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at, deleted_at) "
+              + "VALUES (?, 'BAT-IMP-9947', ?, ?, ?, ?, '2026-01-01', 30, 1, NOW(), NOW(), NULL)",
+          batchCId, COURSE_ID, providerCId, centerCId, PROGRAM_ID);
+
+      jdbcTemplate.update(
+          "INSERT INTO trainees (trainee_id, registration_number, first_name, phone, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at, deleted_at) "
+              + "VALUES (?, 'IMP285-OWN-C1', 'OtherProvSameState', '9797000001', 1, ?, ?, 1, 1, NOW(), NOW(), NULL)",
+          traineeProvCSameStateId, STATE_A_ID, DISTRICT_A1_ID);
+      jdbcTemplate.update(
+          "INSERT INTO training_enrollments (enrollment_id, enrollment_number, trainee_id, program_id, course_id, provider_id, center_id, batch_id, enrollment_date, enrollment_status_id, created_at, updated_at, deleted_at) "
+              + "VALUES (?, 'IMP285-ENR-9947', ?, ?, ?, ?, ?, ?, '2026-01-06', 1, NOW(), NOW(), NULL)",
+          enrollmentCId, traineeProvCSameStateId, PROGRAM_ID, COURSE_ID, providerCId, centerCId, batchCId);
+      jdbcTemplate.update(
+          "INSERT INTO trainees (trainee_id, registration_number, first_name, phone, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at, deleted_at) "
+              + "VALUES (?, 'IMP285-OWN-UN', 'UnownedSameState', '9797000002', 1, ?, ?, 1, 1, NOW(), NOW(), NULL)",
+          traineeUnownedSameStateId, STATE_A_ID, DISTRICT_A1_ID);
+
+      String tokenProviderAManage = "Bearer " + jwtTokenProvider.generateAccessToken(
+          USER_PROVIDER_A_ID, "imp_prov_a",
+          List.of("ROLE_training_provider", "system.manage", "trainee.write", "placement.manage", "trainee.read"));
+      String tokenStateAManage = "Bearer " + jwtTokenProvider.generateAccessToken(
+          USER_STATE_A_ID, "imp_state_a",
+          List.of("ROLE_state_admin", "system.manage", "trainee.write", "placement.manage", "audit.read"));
+
+      // Provider A unstaged legacy PENDING batch
+      MvcResult provBatchRes = mockMvc.perform(post("/api/v1/import-batches")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"batchCode\":\"IMP285-OWN-PB\",\"sourceSystem\":\"IMP285_CRUD\",\"entityType\":\"Trainee\"}")
+              .header("Authorization", tokenProviderAManage))
+          .andExpect(status().isCreated())
+          .andReturn();
+      Long provLegacyBatchId = objectMapper.readTree(provBatchRes.getResponse().getContentAsString())
+          .path("data").path("id").asLong();
+
+      // 1. Provider A referencing Provider A's own enrolled trainee (SEED_TRAINEE_A_ID): ACCEPTED
+      mockMvc.perform(post("/api/v1/import-records")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"importBatchId\":" + provLegacyBatchId + ",\"sourceRowNumber\":1,\"importRecordStatusId\":1,\"entityType\":\"Trainee\",\"entityId\":" + SEED_TRAINEE_A_ID + "}")
+              .header("Authorization", tokenProviderAManage))
+          .andExpect(status().isCreated())
+          .andExpect(jsonPath("$.data.importRecordStatusCode").value("SUCCESS"))
+          .andExpect(jsonPath("$.data.entityId").value(SEED_TRAINEE_A_ID));
+
+      // 2. Provider A referencing Provider C's trainee in the SAME state/district: REJECTED (403)
+      mockMvc.perform(post("/api/v1/import-records")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"importBatchId\":" + provLegacyBatchId + ",\"sourceRowNumber\":2,\"importRecordStatusId\":1,\"entityType\":\"Trainee\",\"entityId\":" + traineeProvCSameStateId + "}")
+              .header("Authorization", tokenProviderAManage))
+          .andExpect(status().isForbidden());
+
+      // 3. Provider A referencing same-state trainee without verifiable provider ownership: REJECTED (403)
+      mockMvc.perform(post("/api/v1/import-records")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"importBatchId\":" + provLegacyBatchId + ",\"sourceRowNumber\":3,\"importRecordStatusId\":1,\"entityType\":\"Trainee\",\"entityId\":" + traineeUnownedSameStateId + "}")
+              .header("Authorization", tokenProviderAManage))
+          .andExpect(status().isForbidden());
+
+      // 4. Generic PUT upgrade of legacy FAILED record -> SUCCESS enforces same provider ownership checks
+      MvcResult failedRecRes = mockMvc.perform(post("/api/v1/import-records")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"importBatchId\":" + provLegacyBatchId + ",\"sourceRowNumber\":4,\"importRecordStatusId\":2,\"entityType\":\"Trainee\",\"errorCode\":\"TEMP_ERR\",\"errorMessage\":\"Retry\"}")
+              .header("Authorization", tokenProviderAManage))
+          .andExpect(status().isCreated())
+          .andReturn();
+      Long mutableRecordId = objectMapper.readTree(failedRecRes.getResponse().getContentAsString())
+          .path("data").path("id").asLong();
+
+      mockMvc.perform(put("/api/v1/import-records/" + mutableRecordId)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"importRecordStatusId\":1,\"entityType\":\"Trainee\",\"entityId\":" + traineeProvCSameStateId + "}")
+              .header("Authorization", tokenProviderAManage))
+          .andExpect(status().isForbidden());
+
+      mockMvc.perform(put("/api/v1/import-records/" + mutableRecordId)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"importRecordStatusId\":1,\"entityType\":\"Trainee\",\"entityId\":" + traineeUnownedSameStateId + "}")
+              .header("Authorization", tokenProviderAManage))
+          .andExpect(status().isForbidden());
+
+      mockMvc.perform(put("/api/v1/import-records/" + mutableRecordId)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"importRecordStatusId\":1,\"entityType\":\"Trainee\",\"entityId\":" + SEED_TRAINEE_A_ID + "}")
+              .header("Authorization", tokenProviderAManage))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.importRecordStatusCode").value("SUCCESS"))
+          .andExpect(jsonPath("$.data.entityId").value(SEED_TRAINEE_A_ID));
+
+      // 5. Authorized State A & Nationwide callers preserve legacy Trainee SUCCESS creation within their scope
+      MvcResult stateBatchRes = mockMvc.perform(post("/api/v1/import-batches")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"batchCode\":\"IMP285-OWN-SB\",\"sourceSystem\":\"IMP285_CRUD\",\"entityType\":\"Trainee\"}")
+              .header("Authorization", tokenStateAManage))
+          .andExpect(status().isCreated())
+          .andReturn();
+      Long stateLegacyBatchId = objectMapper.readTree(stateBatchRes.getResponse().getContentAsString())
+          .path("data").path("id").asLong();
+
+      mockMvc.perform(post("/api/v1/import-records")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"importBatchId\":" + stateLegacyBatchId + ",\"sourceRowNumber\":1,\"importRecordStatusId\":1,\"entityType\":\"Trainee\",\"entityId\":" + traineeProvCSameStateId + "}")
+              .header("Authorization", tokenStateAManage))
+          .andExpect(status().isCreated())
+          .andExpect(jsonPath("$.data.importRecordStatusCode").value("SUCCESS"));
+
+      MvcResult natBatchRes = mockMvc.perform(post("/api/v1/import-batches")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"batchCode\":\"IMP285-OWN-NB\",\"sourceSystem\":\"IMP285_CRUD\",\"entityType\":\"Trainee\"}")
+              .header("Authorization", tokenSuperAdmin))
+          .andExpect(status().isCreated())
+          .andReturn();
+      Long natLegacyBatchId = objectMapper.readTree(natBatchRes.getResponse().getContentAsString())
+          .path("data").path("id").asLong();
+
+      mockMvc.perform(post("/api/v1/import-records")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"importBatchId\":" + natLegacyBatchId + ",\"sourceRowNumber\":1,\"importRecordStatusId\":1,\"entityType\":\"Trainee\",\"entityId\":" + traineeUnownedSameStateId + "}")
+              .header("Authorization", tokenSuperAdmin))
+          .andExpect(status().isCreated())
+          .andExpect(jsonPath("$.data.importRecordStatusCode").value("SUCCESS"));
+
+      // 6. Workflow-generated records remain immutable even for authorized owners
+      String wfCsv = "registrationNumber,firstName,phone,genderId,stateId,districtId,currentEmploymentStatusId,profileStatusId\n"
+          + "IMP285-OWN-WF1,WorkflowImm,9797000003,1," + STATE_A_ID + "," + DISTRICT_A1_ID + ",1,1\n";
+      Long wfBatchId = stageBatchViaApi(
+          tokenProviderA, "wf-imm.csv", "text/csv", wfCsv.getBytes(StandardCharsets.UTF_8), "Trainee");
+      mockMvc.perform(post("/api/v1/import/batches/" + wfBatchId + "/process")
+              .header("Authorization", tokenProviderA))
+          .andExpect(status().isOk());
+      Long wfRecId = jdbcTemplate.queryForObject(
+          "SELECT import_record_id FROM import_records WHERE import_batch_id = ? AND source_row_number = 1",
+          Long.class, wfBatchId);
+
+      mockMvc.perform(put("/api/v1/import-records/" + wfRecId)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"errorMessage\":\"Tamper\"}")
+              .header("Authorization", tokenProviderAManage))
+          .andExpect(status().isConflict())
+          .andExpect(jsonPath("$.code").value("WORKFLOW_RECORD_IMMUTABLE"));
+
+      mockMvc.perform(delete("/api/v1/import-records/" + wfRecId)
+              .header("Authorization", tokenProviderAManage))
+          .andExpect(status().isConflict())
+          .andExpect(jsonPath("$.code").value("WORKFLOW_RECORD_IMMUTABLE"));
+    }
+
+    @Test
+    @DisplayName("Fails closed on interrupted RUNNING-batch recovery when MULTI_INSTANCE deployment mode is configured")
+    void blocksRecoveryInMultiInstanceModeWithoutSharedWorkerCoordination() throws Exception {
+      StringBuilder csv = new StringBuilder(
+          "registrationNumber,firstName,phone,genderId,stateId,districtId,currentEmploymentStatusId,profileStatusId\n");
+      for (int i = 1; i <= 120; i++) {
+        csv.append("IMP285-MI-").append(i).append(",MultiInst").append(i).append(',')
+            .append(String.format("9798%06d", i))
+            .append(",1,").append(STATE_A_ID).append(',').append(DISTRICT_A1_ID).append(",1,1\n");
+      }
+
+      Long batchId = stageBatchViaApi(
+          tokenStateA, "multi-inst.csv", "text/csv", csv.toString().getBytes(StandardCharsets.UTF_8), "Trainee");
+
+      // Commit Chunk 1 (rows 1..100) cleanly, then simulate RUNNING interrupted state with no local worker in activeBatchExecutions
+      properties.setMaxRowsPerBatch(100);
+      mockMvc.perform(post("/api/v1/import/batches/" + batchId + "/process")
+              .header("Authorization", tokenStateA))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("IMPORT_ROW_LIMIT_EXCEEDED"));
+      properties.setMaxRowsPerBatch(originalMaxRowsPerBatch);
+
+      jdbcTemplate.update(
+          "UPDATE import_batches SET import_batch_status_id = 2, completed_at = NULL, row_count = 0, success_count = 0 WHERE import_batch_id = ?",
+          batchId);
+
+      // In MULTI_INSTANCE deployment mode, even with confirmWorkerTerminated=true and empty local map, recovery FAILS CLOSED
+      properties.setDeploymentMode(DeploymentMode.MULTI_INSTANCE);
+      mockMvc.perform(post("/api/v1/import/batches/" + batchId + "/recover")
+              .param("confirmWorkerTerminated", "true")
+              .header("Authorization", tokenStateA))
+          .andExpect(status().isConflict())
+          .andExpect(jsonPath("$.code").value("MULTI_INSTANCE_RECOVERY_UNSUPPORTED"));
+
+      // RUNNING state and committed Chunk 1 rows/outcomes remain completely intact
+      Long statusId = jdbcTemplate.queryForObject(
+          "SELECT import_batch_status_id FROM import_batches WHERE import_batch_id = ?",
+          Long.class, batchId);
+      assertThat(statusId).isEqualTo(2L);
+      assertThat(jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM trainees WHERE registration_number LIKE 'IMP285-MI-%'",
+          Integer.class)).isEqualTo(100);
+      assertThat(jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM import_records WHERE import_batch_id = ?",
+          Integer.class, batchId)).isEqualTo(100);
+
+      // Switching back to supported SINGLE_INSTANCE mode permits confirmed recovery and idempotent completion
+      properties.setDeploymentMode(DeploymentMode.SINGLE_INSTANCE);
+      mockMvc.perform(post("/api/v1/import/batches/" + batchId + "/recover")
+              .param("confirmWorkerTerminated", "true")
+              .header("Authorization", tokenStateA))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.status").value("PENDING"))
+          .andExpect(jsonPath("$.data.rowCount").value(100))
+          .andExpect(jsonPath("$.data.successCount").value(100));
+
+      mockMvc.perform(post("/api/v1/import/batches/" + batchId + "/process")
+              .header("Authorization", tokenStateA))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.status").value("COMPLETED"))
+          .andExpect(jsonPath("$.data.rowCount").value(120))
+          .andExpect(jsonPath("$.data.successCount").value(120));
+
+      assertThat(jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM trainees WHERE registration_number LIKE 'IMP285-MI-%'",
+          Integer.class)).isEqualTo(120);
     }
   }
 }

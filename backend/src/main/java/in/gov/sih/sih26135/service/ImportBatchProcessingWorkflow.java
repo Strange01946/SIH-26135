@@ -26,6 +26,14 @@ public interface ImportBatchProcessingWorkflow {
   ImportBatchProgressResponse processBatch(Long batchId);
 
   /**
+   * Controlled recovery for a genuinely interrupted {@code RUNNING} batch after confirming no active
+   * worker remains running on the batch. Reconciles previously committed chunks without discarding
+   * rows or marking an incomplete batch {@code COMPLETED}, transitioning {@code RUNNING -> PENDING}
+   * so processing can resume idempotently from the first uncommitted source row.
+   */
+  ImportBatchProgressResponse recoverInterruptedBatch(Long batchId, boolean confirmWorkerTerminated);
+
+  /**
    * Retrieves reconciled batch status and row outcome progress for an authorized caller.
    */
   ImportBatchProgressResponse getBatchProgress(Long batchId);

@@ -1,6 +1,7 @@
 package in.gov.sih.sih26135.service.impl;
 
 import in.gov.sih.sih26135.config.ImportPipelineProperties;
+import in.gov.sih.sih26135.config.ImportPipelineProperties.DeploymentMode;
 import in.gov.sih.sih26135.dto.response.ImportBatchProgressResponse;
 import in.gov.sih.sih26135.dto.response.ImportBatchResponse;
 import in.gov.sih.sih26135.dto.response.ImportRecordResponse;
@@ -46,6 +47,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -110,6 +114,7 @@ public class ImportBatchProcessingWorkflowImpl implements ImportBatchProcessingW
   private final ImportRecordMapper recordMapper;
   private final JdbcTemplate jdbcTemplate;
   private final TransactionTemplate requiresNewTxTemplate;
+  private final ConcurrentMap<Long, String> activeBatchExecutions = new ConcurrentHashMap<>();
 
   @PersistenceContext
   private EntityManager entityManager;
@@ -197,6 +202,21 @@ public class ImportBatchProcessingWorkflowImpl implements ImportBatchProcessingW
       throw new BadRequestException("Import batch ID must be a positive integer", "INVALID_BATCH_ID");
     }
 
+    String executionToken = UUID.randomUUID().toString();
+    if (activeBatchExecutions.putIfAbsent(batchId, executionToken) != null) {
+      throw new ConflictException(
+          "Import batch is already being processed",
+          "IMPORT_BATCH_ALREADY_RUNNING");
+    }
+
+    try {
+      return executeClaimedBatch(batchId);
+    } finally {
+      activeBatchExecutions.remove(batchId, executionToken);
+    }
+  }
+
+  private ImportBatchProgressResponse executeClaimedBatch(Long batchId) {
     // 1. Atomic claim transaction (PENDING -> RUNNING under DB FOR UPDATE lock)
     ClaimedBatchContext claimed = claimBatchForProcessing(batchId);
     CallerScope callerScope = importSecurityScopeValidator.resolveAndValidateUploadOrProcessCaller(
@@ -270,6 +290,117 @@ public class ImportBatchProcessingWorkflowImpl implements ImportBatchProcessingW
       throw deferredFailure;
     }
     return finalized;
+  }
+
+  private record RecoveryTxOutcome(boolean stagedFileMissing, ImportBatchProgressResponse progress) {}
+
+  @Override
+  public ImportBatchProgressResponse recoverInterruptedBatch(Long batchId, boolean confirmWorkerTerminated) {
+    if (batchId == null || batchId <= 0) {
+      throw new BadRequestException("Import batch ID must be a positive integer", "INVALID_BATCH_ID");
+    }
+
+    // Verify caller identity and write authority before inspecting batch state or confirmation flags.
+    importSecurityScopeValidator.resolveAndValidateGenericWriteCaller();
+
+    if (!confirmWorkerTerminated) {
+      throw new BadRequestException(
+          "Explicit worker-termination confirmation (confirmWorkerTerminated=true) is required to recover a RUNNING batch",
+          "RECOVERY_CONFIRMATION_REQUIRED");
+    }
+
+    if (activeBatchExecutions.containsKey(batchId)) {
+      throw new ConflictException(
+          "Cannot recover import batch while an active worker execution is still running",
+          "IMPORT_BATCH_ALREADY_RUNNING");
+    }
+
+    RecoveryTxOutcome outcome = requiresNewTxTemplate.execute(status -> {
+      try {
+        jdbcTemplate.queryForObject(
+            "SELECT import_batch_id FROM import_batches WHERE import_batch_id = ? FOR UPDATE",
+            Long.class, batchId);
+      } catch (EmptyResultDataAccessException e) {
+        throw new ResourceNotFoundException("ImportBatch", "id");
+      }
+
+      ImportBatch batch = importBatchRepository.findById(batchId)
+          .orElseThrow(() -> new ResourceNotFoundException("ImportBatch", "id"));
+      entityManager.refresh(batch);
+
+      String normalizedEntityType = importSecurityScopeValidator.normalizeImportEntityType(batch.getEntityType());
+      CallerScope callerScope = importSecurityScopeValidator.resolveAndValidateUploadOrProcessCaller(normalizedEntityType);
+      importSecurityScopeValidator.validateCallerCanAccessBatch(callerScope, batch);
+
+      if (activeBatchExecutions.containsKey(batchId)) {
+        throw new ConflictException(
+            "Cannot recover import batch while an active worker execution is still running",
+            "IMPORT_BATCH_ALREADY_RUNNING");
+      }
+
+      RefImportBatchStatus currentStatus = batch.getImportBatchStatus();
+      String statusCode = currentStatus != null && currentStatus.getStatusCode() != null
+          ? currentStatus.getStatusCode().toUpperCase(Locale.ROOT)
+          : "PENDING";
+
+      if (currentStatus != null && Boolean.TRUE.equals(currentStatus.getIsTerminalFlag())) {
+        throw new ImportBatchTerminalException(batchId, statusCode);
+      }
+      if (!"RUNNING".equals(statusCode)) {
+        throw new ConflictException(
+            "Only RUNNING import batches can be recovered; current status: " + statusCode,
+            "IMPORT_BATCH_INVALID_STATE");
+      }
+      if (properties.getDeploymentMode() != DeploymentMode.SINGLE_INSTANCE) {
+        throw new ConflictException(
+            "Interrupted RUNNING batch recovery is disabled in MULTI_INSTANCE deployment without shared worker lease coordination",
+            "MULTI_INSTANCE_RECOVERY_UNSUPPORTED");
+      }
+
+      ReconciledCounts counts = queryCommittedCounts(batchId);
+      LocalDateTime now = LocalDateTime.now();
+
+      if (!fileStagingService.hasStagedFile(batch.getBatchCode())) {
+        RefImportBatchStatus failedStatus = refImportBatchStatusRepository.findByStatusCode("FAILED")
+            .orElseThrow(() -> new ResourceNotFoundException("RefImportBatchStatus", "statusCode=FAILED"));
+        LocalDateTime startedAt = batch.getStartedAt() != null ? batch.getStartedAt() : now;
+        LocalDateTime completedAt = now.isBefore(startedAt) ? startedAt : now;
+        batch.setImportBatchStatus(failedStatus);
+        batch.setStartedAt(startedAt);
+        batch.setCompletedAt(completedAt);
+        batch.setRowCount(counts.rowCount());
+        batch.setSuccessCount(counts.successCount());
+        batch.setFailureCount(counts.failureCount());
+        batch.setUpdatedAt(now);
+        ImportBatch savedFailed = importBatchRepository.saveAndFlush(batch);
+        log.warn("Recovery aborted for batchId={}: staged file missing; finalized FAILED with rowCount={}",
+            batchId, counts.rowCount());
+        return new RecoveryTxOutcome(true, buildProgressResponse(savedFailed, counts));
+      }
+
+      RefImportBatchStatus pendingStatus = refImportBatchStatusRepository.findByStatusCode("PENDING")
+          .orElseThrow(() -> new ResourceNotFoundException("RefImportBatchStatus", "statusCode=PENDING"));
+      batch.setImportBatchStatus(pendingStatus);
+      batch.setCompletedAt(null);
+      batch.setRowCount(counts.rowCount());
+      batch.setSuccessCount(counts.successCount());
+      batch.setFailureCount(counts.failureCount());
+      batch.setUpdatedAt(now);
+      ImportBatch savedPending = importBatchRepository.saveAndFlush(batch);
+      log.info("Recovered interrupted batchId={} back to PENDING with committed counts rowCount={}, success={}, failure={}",
+          batchId, counts.rowCount(), counts.successCount(), counts.failureCount());
+      return new RecoveryTxOutcome(false, buildProgressResponse(savedPending, counts));
+    });
+
+    if (outcome == null) {
+      throw new IllegalStateException("Interrupted batch recovery failed unexpectedly");
+    }
+    if (outcome.stagedFileMissing()) {
+      throw new BadRequestException(
+          "Staged import file is unavailable for recovery; incomplete batch marked FAILED with partial counts preserved",
+          "STAGED_FILE_NOT_FOUND");
+    }
+    return outcome.progress();
   }
 
   @Override
@@ -371,14 +502,16 @@ public class ImportBatchProcessingWorkflowImpl implements ImportBatchProcessingW
           .orElseThrow(() -> new ResourceNotFoundException("RefImportBatchStatus", "statusCode=RUNNING"));
       RecordStatusIds recordStatusIds = loadRecordStatusIds();
 
-      LocalDateTime startedAt = LocalDateTime.now();
+      LocalDateTime now = LocalDateTime.now();
+      LocalDateTime startedAt = batch.getStartedAt() != null ? batch.getStartedAt() : now;
+      ReconciledCounts existingCounts = queryCommittedCounts(batchId);
       batch.setImportBatchStatus(runningStatus);
       batch.setStartedAt(startedAt);
       batch.setCompletedAt(null);
-      batch.setRowCount(0);
-      batch.setSuccessCount(0);
-      batch.setFailureCount(0);
-      batch.setUpdatedAt(startedAt);
+      batch.setRowCount(existingCounts.rowCount());
+      batch.setSuccessCount(existingCounts.successCount());
+      batch.setFailureCount(existingCounts.failureCount());
+      batch.setUpdatedAt(now);
       importBatchRepository.saveAndFlush(batch);
 
       return new ClaimedBatchContext(batchId, batch.getBatchCode(), normalizedEntityType, startedAt, recordStatusIds);
