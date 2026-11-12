@@ -150,10 +150,10 @@ public class ResponseEnvelopeAlignmentContractTest {
           .sorted(Comparator.comparing(Class::getName))
           .toList();
 
-      // Baseline comparison: User specification noted 54 as baseline; verified actual production count is 63 (55 baseline + ExecutiveDashboardController + GeographicDashboardController + InstitutionalAnalyticsController + EconomicOutcomeDashboardController + RetentionAttritionDashboardController + SkillGapDashboardController + DataIntegrityDashboardController + AnalyticsExportController).
+      // Baseline comparison: 64 production controllers (63 Phase 28.6 baseline + OperationalDashboardController).
       assertThat(productionControllers)
-          .as("Audit must discover exactly 63 production REST controllers across core domain, analytics, auth, workflows, and exports")
-          .hasSize(63);
+          .as("Audit must discover exactly 64 production REST controllers across core domain, analytics, auth, workflows, exports, and operational monitoring")
+          .hasSize(64);
 
       int totalAuditedEndpoints = 0;
       List<String> violations = new ArrayList<>();
@@ -210,7 +210,7 @@ public class ResponseEnvelopeAlignmentContractTest {
 
       assertThat(totalAuditedEndpoints)
           .as("Audit must inspect and verify all endpoints across all controllers")
-          .isEqualTo(665);
+          .isEqualTo(668);
     }
 
     @Test
