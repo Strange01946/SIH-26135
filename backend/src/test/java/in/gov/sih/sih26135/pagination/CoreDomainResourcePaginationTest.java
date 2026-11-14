@@ -124,6 +124,7 @@ class CoreDomainResourcePaginationTest {
         1L,
         "admin",
         List.of(
+            "ROLE_super_admin",
             "trainee.read",
             "placement.manage",
             "course.manage",

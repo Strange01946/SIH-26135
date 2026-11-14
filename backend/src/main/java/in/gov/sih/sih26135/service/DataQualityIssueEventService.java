@@ -10,9 +10,21 @@ public interface DataQualityIssueEventService {
 
   DataQualityIssueEventResponse getIssueEventById(Long id);
 
-  List<DataQualityIssueEventResponse> getIssueEventsByIssueId(Long issueId);
+  default List<DataQualityIssueEventResponse> getIssueEventsByIssueId(Long issueId) {
+    return getIssueEventsByIssueId(issueId, 0, 100);
+  }
 
-  List<DataQualityIssueEventResponse> getIssueEventsByStatusId(Long statusId);
+  List<DataQualityIssueEventResponse> getIssueEventsByIssueId(Long issueId, int page, int size);
 
-  List<DataQualityIssueEventResponse> getIssueEventsByChangedByUserId(Long changedByUserId);
+  default List<DataQualityIssueEventResponse> getIssueEventsByStatusId(Long statusId) {
+    return getIssueEventsByStatusId(statusId, 0, 100);
+  }
+
+  List<DataQualityIssueEventResponse> getIssueEventsByStatusId(Long statusId, int page, int size);
+
+  default List<DataQualityIssueEventResponse> getIssueEventsByChangedByUserId(Long changedByUserId) {
+    return getIssueEventsByChangedByUserId(changedByUserId, 0, 100);
+  }
+
+  List<DataQualityIssueEventResponse> getIssueEventsByChangedByUserId(Long changedByUserId, int page, int size);
 }

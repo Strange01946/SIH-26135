@@ -100,27 +100,7 @@ final class TrainingTenantScopeSupport {
       return new CallerScope(false, caller.getStateId(), caller.getDistrictId(), null);
     }
 
-    // Legacy core administrative callers whose DB user holds super_admin / government_admin without tenant restrictions
-    if (!roleProvider && !roleStateAdmin && !roleOfficer
-        && (hasUnscopedDbAdminRole(caller.getId(), jdbcTemplate) || isBootstrapSystemAdmin(caller, authorities))) {
-      return new CallerScope(true, null, null, null);
-    }
-
     throw new AccessDeniedException("Caller lacks authorized tenant scope");
-  }
-
-  private static boolean isBootstrapSystemAdmin(User caller, Set<String> authorities) {
-    return Long.valueOf(1L).equals(caller.getId())
-        && "admin".equalsIgnoreCase(caller.getUsername())
-        && caller.getStateId() == null
-        && caller.getDistrictId() == null
-        && caller.getTrainingProviderId() == null
-        && caller.getEmployerId() == null
-        && !authorities.contains("ROLE_verifier")
-        && !authorities.contains("ROLE_analyst")
-        && authorities.contains("center.manage")
-        && authorities.contains("course.manage")
-        && authorities.contains("provider.manage");
   }
 
   static void validateCenterOwnership(CallerScope scope, Long providerId, Long stateId, Long districtId) {
@@ -167,18 +147,5 @@ final class TrainingTenantScopeSupport {
       return;
     }
     throw new AccessDeniedException("Caller lacks authorized scope for training batch");
-  }
-
-  private static boolean hasUnscopedDbAdminRole(Long userId, JdbcTemplate jdbcTemplate) {
-    if (userId == null || jdbcTemplate == null) {
-      return false;
-    }
-    Integer count = jdbcTemplate.queryForObject(
-        "SELECT COUNT(*) FROM user_roles ur JOIN roles r ON ur.role_id = r.role_id " +
-            "WHERE ur.user_id = ? AND r.deleted_at IS NULL " +
-            "AND (r.lifecycle_status_id IS NULL OR r.lifecycle_status_id = 1) " +
-            "AND r.role_code IN ('super_admin', 'government_admin', 'ROLE_super_admin', 'ROLE_government_admin')",
-        Integer.class, userId);
-    return count != null && count > 0;
   }
 }

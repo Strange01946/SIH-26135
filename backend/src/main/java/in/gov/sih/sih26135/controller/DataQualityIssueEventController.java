@@ -1,6 +1,8 @@
 package in.gov.sih.sih26135.controller;
 
 import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateDataQualityIssueEventRequest;
@@ -10,6 +12,7 @@ import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.service.DataQualityIssueEventService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -35,6 +38,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @RequestMapping("/api/v1/data-quality-issue-events")
 @PreAuthorize("hasAnyAuthority('audit.read', 'system.manage')")
 public class DataQualityIssueEventController {
+
+  private static final Set<String> ALLOWED_PAGINATION_PARAMS = Set.of("page", "size", "sort", "direction");
 
   private final DataQualityIssueEventService dataQualityIssueEventService;
 
@@ -66,9 +71,11 @@ public class DataQualityIssueEventController {
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueEventResponse>>> getByIssueId(
       @RequestParam("issueId") @Positive Long issueId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "100") @Min(1) @Max(100) int size,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "issueId");
-    List<DataQualityIssueEventResponse> events = dataQualityIssueEventService.getIssueEventsByIssueId(issueId);
+    List<DataQualityIssueEventResponse> events = dataQualityIssueEventService.getIssueEventsByIssueId(issueId, page, size);
     return ResponseEntity.ok(ApiResponse.ok(events));
   }
 
@@ -84,9 +91,11 @@ public class DataQualityIssueEventController {
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueEventResponse>>> getByStatusId(
       @RequestParam("statusId") @Positive Long statusId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "100") @Min(1) @Max(100) int size,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "statusId");
-    List<DataQualityIssueEventResponse> events = dataQualityIssueEventService.getIssueEventsByStatusId(statusId);
+    List<DataQualityIssueEventResponse> events = dataQualityIssueEventService.getIssueEventsByStatusId(statusId, page, size);
     return ResponseEntity.ok(ApiResponse.ok(events));
   }
 
@@ -102,9 +111,11 @@ public class DataQualityIssueEventController {
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueEventResponse>>> getByChangedByUserId(
       @RequestParam("changedByUserId") @Positive Long changedByUserId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "100") @Min(1) @Max(100) int size,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "changedByUserId");
-    List<DataQualityIssueEventResponse> events = dataQualityIssueEventService.getIssueEventsByChangedByUserId(changedByUserId);
+    List<DataQualityIssueEventResponse> events = dataQualityIssueEventService.getIssueEventsByChangedByUserId(changedByUserId, page, size);
     return ResponseEntity.ok(ApiResponse.ok(events));
   }
 
@@ -130,7 +141,7 @@ public class DataQualityIssueEventController {
 
   private void validateOnlyQueryParameter(HttpServletRequest request, String allowedParam) {
     for (String paramName : request.getParameterMap().keySet()) {
-      if (!paramName.equals(allowedParam)) {
+      if (!paramName.equals(allowedParam) && !ALLOWED_PAGINATION_PARAMS.contains(paramName)) {
         throw new BadRequestException(
             "Unsupported query parameter: " + paramName,
             "UNSUPPORTED_PARAMETER"

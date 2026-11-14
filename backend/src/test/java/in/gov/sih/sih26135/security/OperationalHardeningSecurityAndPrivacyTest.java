@@ -407,8 +407,8 @@ class OperationalHardeningSecurityAndPrivacyTest {
     try {
       jdbcTemplate.update("DELETE FROM audit_logs WHERE audit_log_id BETWEEN 974000 AND 974999 OR actor_user_id BETWEEN 9740 AND 9749 OR actor_user_id IN (97401, 97402) OR correlation_id LIKE 'p288-%'");
       jdbcTemplate.update("DELETE FROM system_event_logs WHERE system_event_log_id BETWEEN 974000 AND 974999 OR actor_user_id BETWEEN 9740 AND 9749 OR actor_user_id IN (97401, 97402) OR event_code LIKE 'P288%'");
-      jdbcTemplate.update("DELETE FROM data_quality_issue_events WHERE data_quality_issue_event_id BETWEEN 974000 AND 974999 OR data_quality_issue_id BETWEEN 974000 AND 974999 OR remarks LIKE 'P288-WR-%'");
-      jdbcTemplate.update("DELETE FROM data_quality_issues WHERE data_quality_issue_id BETWEEN 974000 AND 974999");
+      jdbcTemplate.update("DELETE FROM data_quality_issue_events WHERE data_quality_issue_event_id BETWEEN 974000 AND 979999 OR data_quality_issue_id BETWEEN 974000 AND 979999 OR remarks LIKE 'P288-%'");
+      jdbcTemplate.update("DELETE FROM data_quality_issues WHERE data_quality_issue_id BETWEEN 974000 AND 979999");
       jdbcTemplate.update("DELETE FROM data_quality_rules WHERE data_quality_rule_id = ? OR rule_code LIKE 'P288_%'", DQ_RULE_ID);
       jdbcTemplate.update("DELETE FROM import_records WHERE import_record_id BETWEEN 974000 AND 974999 OR import_batch_id BETWEEN 974000 AND 974999");
       jdbcTemplate.update("DELETE FROM import_batches WHERE import_batch_id BETWEEN 974000 AND 974999 OR initiated_by_user_id BETWEEN 9740 AND 9749");
@@ -461,6 +461,29 @@ class OperationalHardeningSecurityAndPrivacyTest {
       mockMvc.perform(get("/api/v1/audit-logs")
               .header("Authorization", scopedGovAdminToken))
           .andExpect(status().isForbidden());
+
+      // User ID 1 / username "admin" with management permissions but WITHOUT verified nationwide role rejected
+      String adminWithoutRoleToken = bearer(1L, "admin",
+          List.of("center.manage", "course.manage", "provider.manage"));
+      mockMvc.perform(get("/api/v1/training-centers/{id}", CENTER_A1_ID)
+              .header("Authorization", adminWithoutRoleToken))
+          .andExpect(status().isForbidden());
+
+      mockMvc.perform(get("/api/v1/training-batches/{id}", BATCH_A1_ID)
+              .header("Authorization", adminWithoutRoleToken))
+          .andExpect(status().isForbidden());
+
+      // Unscoped caller with management permissions is strictly rejected
+      String unscopedManageToken = bearer(USER_UNSCOPED_ID, "p288_unscoped_mgr",
+          List.of("center.manage", "course.manage", "provider.manage"));
+      mockMvc.perform(get("/api/v1/training-centers/{id}", CENTER_A1_ID)
+              .header("Authorization", unscopedManageToken))
+          .andExpect(status().isForbidden());
+
+      // Verified nationwide administrator is accepted
+      mockMvc.perform(get("/api/v1/training-centers/{id}", CENTER_A1_ID)
+              .header("Authorization", nationwideToken))
+          .andExpect(status().isOk());
     }
 
     @Test
@@ -668,6 +691,26 @@ class OperationalHardeningSecurityAndPrivacyTest {
           .andExpect(jsonPath("$.data.errorMessage", containsString("XXXX-XXXX-0123")))
           .andExpect(jsonPath("$.data.errorMessage", containsString("XXXXXX123X")))
           .andExpect(jsonPath("$.data.errorMessage", not(containsString("ImpSecret123"))));
+
+      // Nested JSON sensitive values: {"password":{"value":"..."}} and {"accessToken":["..."]}
+      String nestedJsonAudit = "{\"password\":{\"value\":\"NestedSecretPwd99\"},\"accessToken\":[\"tokA\",\"tokB\"],\"info\":\"safeVal\"}";
+      Long nestedAuditId = 974099L;
+      jdbcTemplate.update(
+          "INSERT INTO audit_logs (audit_log_id, actor_user_id, audit_action_id, entity_type, entity_id, occurred_at, correlation_id, change_summary, created_at) "
+              + "VALUES (?, ?, ?, 'TrainingCenter', ?, NOW(), 'p288-corr-nest', ?, NOW())",
+          nestedAuditId, USER_PROVIDER_A1_ID, defaultAuditActionId, CENTER_A1_ID, nestedJsonAudit);
+      try {
+        mockMvc.perform(get("/api/v1/audit-logs/{id}", nestedAuditId)
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.changeSummary", containsString("\"password\":\"[REDACTED]\"")))
+            .andExpect(jsonPath("$.data.changeSummary", containsString("\"accessToken\":\"[REDACTED]\"")))
+            .andExpect(jsonPath("$.data.changeSummary", containsString("\"info\":\"safeVal\"")))
+            .andExpect(jsonPath("$.data.changeSummary", not(containsString("NestedSecretPwd99"))))
+            .andExpect(jsonPath("$.data.changeSummary", not(containsString("tokA"))));
+      } finally {
+        jdbcTemplate.update("DELETE FROM audit_logs WHERE audit_log_id = ?", nestedAuditId);
+      }
     }
 
     @Test
@@ -816,6 +859,210 @@ class OperationalHardeningSecurityAndPrivacyTest {
           .path("data").path("content");
       assertThat(stateAContent.toString()).doesNotContain("B1");
       assertThat(provA1.getResponse().getContentAsString()).doesNotContain("EvtPwd88");
+    }
+
+    @Test
+    @DisplayName("Bounds legacy operational collection queries and enforces SQL-level tenant isolation")
+    void boundsLegacyOperationalCollectionsInSql() throws Exception {
+      // DataQualityIssue queries are bounded and scoped in SQL
+      mockMvc.perform(get("/api/v1/data-quality-issues?ruleId={id}", DQ_RULE_ID)
+              .header("Authorization", providerA1Token))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.length()").value(1))
+          .andExpect(jsonPath("$.data[0].id").value(DQ_ISSUE_A1_ID));
+
+      mockMvc.perform(get("/api/v1/data-quality-issues?entityType=Trainee")
+              .header("Authorization", providerA1Token))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.length()").value(1))
+          .andExpect(jsonPath("$.data[0].id").value(DQ_ISSUE_A1_ID));
+
+      // DataQualityIssueEvents queries are bounded and scoped in SQL
+      mockMvc.perform(get("/api/v1/data-quality-issue-events?statusId=1")
+              .header("Authorization", providerA1Token))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.length()").value(1))
+          .andExpect(jsonPath("$.data[0].id").value(DQ_EVENT_A1_ID));
+
+      // AuditLogs queries bounded with LIMIT 100
+      mockMvc.perform(get("/api/v1/audit-logs?entityType=TrainingCenter&entityId={id}", CENTER_A1_ID)
+              .header("Authorization", providerA1Token))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.content.length()").value(1))
+          .andExpect(jsonPath("$.data.content[0].id").value(AUDIT_A1_ID));
+    }
+
+    @Test
+    @DisplayName("Navigates high-volume operational collections beyond 100 records with deterministic ordering and tenant isolation")
+    void verifiesHighVolumeOperationalPaginationAndTenancy() throws Exception {
+      try {
+        // 1. Seed > 100 matching issues for Provider A1 (105 additional issues: 975001..975105)
+        // and 5 issues for Provider B1 (975201..975205)
+        for (int i = 1; i <= 105; i++) {
+          long issueId = 975000L + i;
+          jdbcTemplate.update(
+              "INSERT INTO data_quality_issues (data_quality_issue_id, data_quality_rule_id, data_quality_category_id, data_quality_severity_id, data_quality_issue_status_id, data_quality_detection_source_id, entity_type, entity_id, issue_summary, detected_at, created_at, updated_at) "
+                  + "VALUES (?, ?, 2, 3, 1, 1, 'Trainee', ?, ?, NOW(), NOW(), NOW())",
+              issueId, DQ_RULE_ID, TRAINEE_A1_ID, "Provider A1 High-Volume Issue " + i);
+        }
+        for (int i = 1; i <= 5; i++) {
+          long issueId = 975200L + i;
+          jdbcTemplate.update(
+              "INSERT INTO data_quality_issues (data_quality_issue_id, data_quality_rule_id, data_quality_category_id, data_quality_severity_id, data_quality_issue_status_id, data_quality_detection_source_id, entity_type, entity_id, issue_summary, detected_at, created_at, updated_at) "
+                  + "VALUES (?, ?, 2, 3, 1, 1, 'Trainee', ?, ?, NOW(), NOW(), NOW())",
+              issueId, DQ_RULE_ID, TRAINEE_B1_ID, "Provider B1 Issue " + i);
+        }
+
+        // 2. Seed > 100 matching issue events for Provider A1 (105 events: 976001..976105)
+        // and 5 events for Provider B1 (976201..976205)
+        for (int i = 1; i <= 105; i++) {
+          long eventId = 976000L + i;
+          jdbcTemplate.update(
+              "INSERT INTO data_quality_issue_events (data_quality_issue_event_id, data_quality_issue_id, data_quality_issue_status_id, changed_by_user_id, remarks, created_at) "
+                  + "VALUES (?, ?, 1, ?, ?, NOW())",
+              eventId, DQ_ISSUE_A1_ID, USER_PROVIDER_A1_ID, "Provider A1 Event " + i);
+        }
+        for (int i = 1; i <= 5; i++) {
+          long eventId = 976200L + i;
+          jdbcTemplate.update(
+              "INSERT INTO data_quality_issue_events (data_quality_issue_event_id, data_quality_issue_id, data_quality_issue_status_id, changed_by_user_id, remarks, created_at) "
+                  + "VALUES (?, ?, 1, ?, ?, NOW())",
+              eventId, DQ_ISSUE_B1_ID, USER_STATE_B_ID, "Provider B1 Event " + i);
+        }
+
+        // 3. Verify DataQualityIssue pagination: page 0 returns 50 most recent records
+        MvcResult page0Result = mockMvc.perform(get("/api/v1/data-quality-issues?ruleId=" + DQ_RULE_ID + "&page=0&size=50")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.length()").value(50))
+            .andExpect(jsonPath("$.data[0].id").value(975105L))
+            .andReturn();
+
+        JsonNode page0Array = objectMapper.readTree(page0Result.getResponse().getContentAsString()).path("data");
+        List<Long> page0Ids = new java.util.ArrayList<>();
+        for (JsonNode item : page0Array) {
+          page0Ids.add(item.path("id").asLong());
+        }
+
+        // 4. Verify DataQualityIssue pagination: page 1 returns next 50 records in descending order
+        MvcResult page1Result = mockMvc.perform(get("/api/v1/data-quality-issues?ruleId=" + DQ_RULE_ID + "&page=1&size=50")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.length()").value(50))
+            .andExpect(jsonPath("$.data[0].id").value(975055L))
+            .andReturn();
+
+        JsonNode page1Array = objectMapper.readTree(page1Result.getResponse().getContentAsString()).path("data");
+        List<Long> page1Ids = new java.util.ArrayList<>();
+        for (JsonNode item : page1Array) {
+          page1Ids.add(item.path("id").asLong());
+        }
+
+        // Page 0 and Page 1 return completely disjoint sets of records
+        assertThat(page0Ids).doesNotContainAnyElementsOf(page1Ids);
+        // Page 0 elements are strictly newer (higher ID) than Page 1 elements
+        assertThat(page0Ids.get(page0Ids.size() - 1)).isGreaterThan(page1Ids.get(0));
+
+        // 5. Verify older records remain accessible on subsequent pages (page 2)
+        mockMvc.perform(get("/api/v1/data-quality-issues?ruleId=" + DQ_RULE_ID + "&page=2&size=50")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.length()").value(6)) // 5 remaining 975005..975001 + original DQ_ISSUE_A1_ID
+            .andExpect(jsonPath("$.data[5].id").value(DQ_ISSUE_A1_ID)); // Original oldest record is accessible!
+
+        // 6. Verify Tenancy: Provider A1 cannot retrieve Provider B1 records on ANY page
+        for (int p = 0; p <= 2; p++) {
+          MvcResult pageRes = mockMvc.perform(get("/api/v1/data-quality-issues?ruleId=" + DQ_RULE_ID + "&page=" + p + "&size=50")
+                  .header("Authorization", providerA1Token))
+              .andExpect(status().isOk())
+              .andReturn();
+          String content = pageRes.getResponse().getContentAsString();
+          assertThat(content)
+              .doesNotContain("975201")
+              .doesNotContain("975202")
+              .doesNotContain("975203")
+              .doesNotContain("975204")
+              .doesNotContain("975205")
+              .doesNotContain(String.valueOf(DQ_ISSUE_B1_ID));
+        }
+
+        // Provider B1 querying ruleId sees ONLY their own records
+        mockMvc.perform(get("/api/v1/data-quality-issues?ruleId=" + DQ_RULE_ID + "&page=0&size=50")
+                .header("Authorization", stateBToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.length()").value(6)) // 5 newly seeded + 1 original DQ_ISSUE_B1_ID
+            .andExpect(jsonPath("$.data[0].id").value(975205L));
+
+        // 7. Verify invalid page and size parameters are rejected with 400 Bad Request
+        mockMvc.perform(get("/api/v1/data-quality-issues?ruleId=" + DQ_RULE_ID + "&page=-1&size=10")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/api/v1/data-quality-issues?ruleId=" + DQ_RULE_ID + "&page=0&size=0")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/api/v1/data-quality-issues?ruleId=" + DQ_RULE_ID + "&page=0&size=101")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/api/v1/data-quality-issues?ruleId=" + DQ_RULE_ID + "&page=0&size=50&bogusParam=true")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isBadRequest());
+
+        // 8. Verify DataQualityIssueEvent pagination and tenancy
+        MvcResult evPage0Result = mockMvc.perform(get("/api/v1/data-quality-issue-events?issueId=" + DQ_ISSUE_A1_ID + "&page=0&size=50")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.length()").value(50))
+            .andExpect(jsonPath("$.data[0].id").value(976105L))
+            .andReturn();
+
+        MvcResult evPage1Result = mockMvc.perform(get("/api/v1/data-quality-issue-events?issueId=" + DQ_ISSUE_A1_ID + "&page=1&size=50")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.length()").value(50))
+            .andExpect(jsonPath("$.data[0].id").value(976055L))
+            .andReturn();
+
+        JsonNode evPage0Array = objectMapper.readTree(evPage0Result.getResponse().getContentAsString()).path("data");
+        JsonNode evPage1Array = objectMapper.readTree(evPage1Result.getResponse().getContentAsString()).path("data");
+        List<Long> evPage0Ids = new java.util.ArrayList<>();
+        List<Long> evPage1Ids = new java.util.ArrayList<>();
+        for (JsonNode n : evPage0Array) { evPage0Ids.add(n.path("id").asLong()); }
+        for (JsonNode n : evPage1Array) { evPage1Ids.add(n.path("id").asLong()); }
+        assertThat(evPage0Ids).doesNotContainAnyElementsOf(evPage1Ids);
+        assertThat(evPage0Ids.get(evPage0Ids.size() - 1)).isGreaterThan(evPage1Ids.get(0));
+
+        // Older events accessible on page 2
+        mockMvc.perform(get("/api/v1/data-quality-issue-events?issueId=" + DQ_ISSUE_A1_ID + "&page=2&size=50")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.length()").value(6)) // 5 remaining 976005..976001 + original DQ_EVENT_A1_ID
+            .andExpect(jsonPath("$.data[5].id").value(DQ_EVENT_A1_ID));
+
+        // Provider A1 cannot access Provider B1's issue events
+        mockMvc.perform(get("/api/v1/data-quality-issue-events?issueId=" + DQ_ISSUE_B1_ID)
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isForbidden());
+
+        // Invalid page/size for issue events rejected
+        mockMvc.perform(get("/api/v1/data-quality-issue-events?statusId=1&page=-1&size=10")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/api/v1/data-quality-issue-events?statusId=1&page=0&size=0")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/api/v1/data-quality-issue-events?statusId=1&page=0&size=101")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isBadRequest());
+
+      } finally {
+        jdbcTemplate.update("DELETE FROM data_quality_issue_events WHERE data_quality_issue_event_id BETWEEN 975000 AND 977000");
+        jdbcTemplate.update("DELETE FROM data_quality_issues WHERE data_quality_issue_id BETWEEN 975000 AND 977000");
+      }
     }
   }
 }

@@ -1,6 +1,8 @@
 package in.gov.sih.sih26135.controller;
 
 import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.AssignDataQualityIssueRequest;
@@ -48,6 +50,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @PreAuthorize("hasAnyAuthority('audit.read', 'system.manage')")
 public class DataQualityIssueController {
 
+  private static final Set<String> ALLOWED_PAGINATION_PARAMS = Set.of("page", "size", "sort", "direction");
+
   private final DataQualityIssueService dataQualityIssueService;
   private final DataQualityWorkflowService dataQualityWorkflowService;
 
@@ -84,9 +88,11 @@ public class DataQualityIssueController {
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueResponse>>> getByRuleId(
       @RequestParam("ruleId") @Positive Long ruleId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "100") @Min(1) @Max(100) int size,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "ruleId");
-    List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByRuleId(ruleId);
+    List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByRuleId(ruleId, page, size);
     return ResponseEntity.ok(ApiResponse.ok(issues));
   }
 
@@ -103,9 +109,11 @@ public class DataQualityIssueController {
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueResponse>>> getByCategoryId(
       @RequestParam("categoryId") @Positive Long categoryId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "100") @Min(1) @Max(100) int size,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "categoryId");
-    List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByCategoryId(categoryId);
+    List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByCategoryId(categoryId, page, size);
     return ResponseEntity.ok(ApiResponse.ok(issues));
   }
 
@@ -122,9 +130,11 @@ public class DataQualityIssueController {
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueResponse>>> getBySeverityId(
       @RequestParam("severityId") @Positive Long severityId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "100") @Min(1) @Max(100) int size,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "severityId");
-    List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesBySeverityId(severityId);
+    List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesBySeverityId(severityId, page, size);
     return ResponseEntity.ok(ApiResponse.ok(issues));
   }
 
@@ -141,9 +151,11 @@ public class DataQualityIssueController {
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueResponse>>> getByStatusId(
       @RequestParam("statusId") @Positive Long statusId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "100") @Min(1) @Max(100) int size,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "statusId");
-    List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByStatusId(statusId);
+    List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByStatusId(statusId, page, size);
     return ResponseEntity.ok(ApiResponse.ok(issues));
   }
 
@@ -160,9 +172,11 @@ public class DataQualityIssueController {
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueResponse>>> getByDetectionSourceId(
       @RequestParam("sourceId") @Positive Long sourceId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "100") @Min(1) @Max(100) int size,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "sourceId");
-    List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByDetectionSourceId(sourceId);
+    List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByDetectionSourceId(sourceId, page, size);
     return ResponseEntity.ok(ApiResponse.ok(issues));
   }
 
@@ -181,9 +195,11 @@ public class DataQualityIssueController {
   public ResponseEntity<ApiResponse<List<DataQualityIssueResponse>>> getByEntity(
       @RequestParam("entityType") String entityType,
       @RequestParam("entityId") @Positive Long entityId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "100") @Min(1) @Max(100) int size,
       HttpServletRequest httpRequest) {
     validateCompoundQueryParameters(httpRequest, Set.of("entityType", "entityId"));
-    List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByEntity(entityType, entityId);
+    List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByEntity(entityType, entityId, page, size);
     return ResponseEntity.ok(ApiResponse.ok(issues));
   }
 
@@ -200,9 +216,11 @@ public class DataQualityIssueController {
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueResponse>>> getByEntityType(
       @RequestParam("entityType") String entityType,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "100") @Min(1) @Max(100) int size,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "entityType");
-    List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByEntityType(entityType);
+    List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByEntityType(entityType, page, size);
     return ResponseEntity.ok(ApiResponse.ok(issues));
   }
 
@@ -219,9 +237,11 @@ public class DataQualityIssueController {
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueResponse>>> getByAssignedUserId(
       @RequestParam("assignedUserId") @Positive Long assignedUserId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "100") @Min(1) @Max(100) int size,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "assignedUserId");
-    List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByAssignedUserId(assignedUserId);
+    List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByAssignedUserId(assignedUserId, page, size);
     return ResponseEntity.ok(ApiResponse.ok(issues));
   }
 
@@ -238,9 +258,11 @@ public class DataQualityIssueController {
   })
   public ResponseEntity<ApiResponse<List<DataQualityIssueResponse>>> getByResolvedByUserId(
       @RequestParam("resolvedByUserId") @Positive Long resolvedByUserId,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "100") @Min(1) @Max(100) int size,
       HttpServletRequest httpRequest) {
     validateOnlyQueryParameter(httpRequest, "resolvedByUserId");
-    List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByResolvedByUserId(resolvedByUserId);
+    List<DataQualityIssueResponse> issues = dataQualityIssueService.getIssuesByResolvedByUserId(resolvedByUserId, page, size);
     return ResponseEntity.ok(ApiResponse.ok(issues));
   }
 
@@ -401,7 +423,7 @@ public class DataQualityIssueController {
 
   private void validateOnlyQueryParameter(HttpServletRequest request, String allowedParam) {
     for (String paramName : request.getParameterMap().keySet()) {
-      if (!paramName.equals(allowedParam)) {
+      if (!paramName.equals(allowedParam) && !ALLOWED_PAGINATION_PARAMS.contains(paramName)) {
         throw new BadRequestException(
             "Unsupported query parameter: " + paramName,
             "UNSUPPORTED_PARAMETER"
@@ -412,7 +434,7 @@ public class DataQualityIssueController {
 
   private void validateCompoundQueryParameters(HttpServletRequest request, Set<String> allowedParams) {
     for (String paramName : request.getParameterMap().keySet()) {
-      if (!allowedParams.contains(paramName)) {
+      if (!allowedParams.contains(paramName) && !ALLOWED_PAGINATION_PARAMS.contains(paramName)) {
         throw new BadRequestException(
             "Unsupported query parameter: " + paramName,
             "UNSUPPORTED_PARAMETER"

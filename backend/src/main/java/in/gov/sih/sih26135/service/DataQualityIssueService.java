@@ -18,21 +18,57 @@ public interface DataQualityIssueService {
 
   DataQualityIssueResponse getIssueById(Long id);
 
-  List<DataQualityIssueResponse> getIssuesByRuleId(Long ruleId);
+  default List<DataQualityIssueResponse> getIssuesByRuleId(Long ruleId) {
+    return getIssuesByRuleId(ruleId, 0, 100);
+  }
 
-  List<DataQualityIssueResponse> getIssuesByCategoryId(Long categoryId);
+  List<DataQualityIssueResponse> getIssuesByRuleId(Long ruleId, int page, int size);
 
-  List<DataQualityIssueResponse> getIssuesBySeverityId(Long severityId);
+  default List<DataQualityIssueResponse> getIssuesByCategoryId(Long categoryId) {
+    return getIssuesByCategoryId(categoryId, 0, 100);
+  }
 
-  List<DataQualityIssueResponse> getIssuesByStatusId(Long statusId);
+  List<DataQualityIssueResponse> getIssuesByCategoryId(Long categoryId, int page, int size);
 
-  List<DataQualityIssueResponse> getIssuesByDetectionSourceId(Long sourceId);
+  default List<DataQualityIssueResponse> getIssuesBySeverityId(Long severityId) {
+    return getIssuesBySeverityId(severityId, 0, 100);
+  }
 
-  List<DataQualityIssueResponse> getIssuesByEntityType(String entityType);
+  List<DataQualityIssueResponse> getIssuesBySeverityId(Long severityId, int page, int size);
 
-  List<DataQualityIssueResponse> getIssuesByEntity(String entityType, Long entityId);
+  default List<DataQualityIssueResponse> getIssuesByStatusId(Long statusId) {
+    return getIssuesByStatusId(statusId, 0, 100);
+  }
 
-  List<DataQualityIssueResponse> getIssuesByAssignedUserId(Long assignedUserId);
+  List<DataQualityIssueResponse> getIssuesByStatusId(Long statusId, int page, int size);
 
-  List<DataQualityIssueResponse> getIssuesByResolvedByUserId(Long resolvedByUserId);
+  default List<DataQualityIssueResponse> getIssuesByDetectionSourceId(Long sourceId) {
+    return getIssuesByDetectionSourceId(sourceId, 0, 100);
+  }
+
+  List<DataQualityIssueResponse> getIssuesByDetectionSourceId(Long sourceId, int page, int size);
+
+  default List<DataQualityIssueResponse> getIssuesByEntityType(String entityType) {
+    return getIssuesByEntityType(entityType, 0, 100);
+  }
+
+  List<DataQualityIssueResponse> getIssuesByEntityType(String entityType, int page, int size);
+
+  default List<DataQualityIssueResponse> getIssuesByEntity(String entityType, Long entityId) {
+    return getIssuesByEntity(entityType, entityId, 0, 100);
+  }
+
+  List<DataQualityIssueResponse> getIssuesByEntity(String entityType, Long entityId, int page, int size);
+
+  default List<DataQualityIssueResponse> getIssuesByAssignedUserId(Long assignedUserId) {
+    return getIssuesByAssignedUserId(assignedUserId, 0, 100);
+  }
+
+  List<DataQualityIssueResponse> getIssuesByAssignedUserId(Long assignedUserId, int page, int size);
+
+  default List<DataQualityIssueResponse> getIssuesByResolvedByUserId(Long resolvedByUserId) {
+    return getIssuesByResolvedByUserId(resolvedByUserId, 0, 100);
+  }
+
+  List<DataQualityIssueResponse> getIssuesByResolvedByUserId(Long resolvedByUserId, int page, int size);
 }

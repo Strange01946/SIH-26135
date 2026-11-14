@@ -678,4 +678,198 @@ final class DataQualityIssueScopeSupport {
       default -> null;
     };
   }
+
+  static void appendIssueTenantWhereClause(
+      CallerScope scope,
+      StringBuilder sql,
+      String normalizedEntityType,
+      List<Object> params) {
+    if (scope == null || scope.caller() == null) {
+      sql.append(" AND 1 = 0");
+      return;
+    }
+    if (scope.nationwideAdmin()) {
+      return;
+    }
+
+    if (scope.isProviderScoped()) {
+      if (normalizedEntityType != null) {
+        switch (normalizedEntityType) {
+          case "Trainee" -> {
+            sql.append(" AND EXISTS (SELECT 1 FROM training_enrollments te JOIN trainees t ON te.trainee_id = t.trainee_id "
+                + "WHERE te.trainee_id = dqi.entity_id AND te.provider_id = ? AND te.deleted_at IS NULL AND t.deleted_at IS NULL)");
+            params.add(scope.trainingProviderId());
+          }
+          case "AttendanceRecord" -> {
+            sql.append(" AND EXISTS (SELECT 1 FROM attendance_records ar JOIN training_enrollments te ON ar.enrollment_id = te.enrollment_id "
+                + "WHERE ar.attendance_id = dqi.entity_id AND te.provider_id = ? AND te.deleted_at IS NULL)");
+            params.add(scope.trainingProviderId());
+          }
+          case "PlacementRecord" -> {
+            sql.append(" AND EXISTS (SELECT 1 FROM placement_records pr "
+                + "WHERE pr.placement_id = dqi.entity_id AND pr.provider_id = ? AND pr.deleted_at IS NULL)");
+            params.add(scope.trainingProviderId());
+          }
+          case "EmploymentRecord" -> {
+            sql.append(" AND EXISTS (SELECT 1 FROM employment_records er JOIN training_enrollments te ON er.enrollment_id = te.enrollment_id "
+                + "WHERE er.employment_id = dqi.entity_id AND te.provider_id = ? AND te.deleted_at IS NULL AND er.deleted_at IS NULL)");
+            params.add(scope.trainingProviderId());
+          }
+          case "BatchEnrollment" -> {
+            sql.append(" AND EXISTS (SELECT 1 FROM training_enrollments te "
+                + "WHERE te.enrollment_id = dqi.entity_id AND te.provider_id = ? AND te.deleted_at IS NULL)");
+            params.add(scope.trainingProviderId());
+          }
+          default -> sql.append(" AND 1 = 0");
+        }
+      } else {
+        sql.append(" AND ( "
+            + "(UPPER(REPLACE(dqi.entity_type, '_', '')) = 'TRAINEE' AND EXISTS ("
+            + "  SELECT 1 FROM training_enrollments te JOIN trainees t ON te.trainee_id = t.trainee_id "
+            + "  WHERE te.trainee_id = dqi.entity_id AND te.provider_id = ? AND te.deleted_at IS NULL AND t.deleted_at IS NULL)) "
+            + "OR (UPPER(REPLACE(dqi.entity_type, '_', '')) IN ('ATTENDANCERECORD', 'ATTENDANCE') AND EXISTS ("
+            + "  SELECT 1 FROM attendance_records ar JOIN training_enrollments te ON ar.enrollment_id = te.enrollment_id "
+            + "  WHERE ar.attendance_id = dqi.entity_id AND te.provider_id = ? AND te.deleted_at IS NULL)) "
+            + "OR (UPPER(REPLACE(dqi.entity_type, '_', '')) IN ('PLACEMENTRECORD', 'PLACEMENT') AND EXISTS ("
+            + "  SELECT 1 FROM placement_records pr "
+            + "  WHERE pr.placement_id = dqi.entity_id AND pr.provider_id = ? AND pr.deleted_at IS NULL)) "
+            + "OR (UPPER(REPLACE(dqi.entity_type, '_', '')) IN ('EMPLOYMENTRECORD', 'EMPLOYMENT') AND EXISTS ("
+            + "  SELECT 1 FROM employment_records er JOIN training_enrollments te ON er.enrollment_id = te.enrollment_id "
+            + "  WHERE er.employment_id = dqi.entity_id AND te.provider_id = ? AND te.deleted_at IS NULL AND er.deleted_at IS NULL)) "
+            + "OR (UPPER(REPLACE(dqi.entity_type, '_', '')) IN ('BATCHENROLLMENT', 'TRAININGENROLLMENT', 'ENROLLMENT') AND EXISTS ("
+            + "  SELECT 1 FROM training_enrollments te "
+            + "  WHERE te.enrollment_id = dqi.entity_id AND te.provider_id = ? AND te.deleted_at IS NULL)) "
+            + ")");
+        params.add(scope.trainingProviderId());
+        params.add(scope.trainingProviderId());
+        params.add(scope.trainingProviderId());
+        params.add(scope.trainingProviderId());
+        params.add(scope.trainingProviderId());
+      }
+      return;
+    }
+
+    if (scope.isStateScoped()) {
+      boolean hasDistrict = scope.districtId() != null;
+      if (normalizedEntityType != null) {
+        switch (normalizedEntityType) {
+          case "Trainee" -> {
+            sql.append(hasDistrict
+                ? " AND EXISTS (SELECT 1 FROM trainees t WHERE t.trainee_id = dqi.entity_id AND t.state_id = ? AND t.district_id = ? AND t.deleted_at IS NULL)"
+                : " AND EXISTS (SELECT 1 FROM trainees t WHERE t.trainee_id = dqi.entity_id AND t.state_id = ? AND t.deleted_at IS NULL)");
+            params.add(scope.stateId());
+            if (hasDistrict) params.add(scope.districtId());
+          }
+          case "AttendanceRecord" -> {
+            sql.append(hasDistrict
+                ? " AND EXISTS (SELECT 1 FROM attendance_records ar JOIN training_batches tb ON ar.batch_id = tb.batch_id JOIN training_centers tc ON tb.center_id = tc.center_id WHERE ar.attendance_id = dqi.entity_id AND tc.state_id = ? AND tc.district_id = ? AND tc.deleted_at IS NULL)"
+                : " AND EXISTS (SELECT 1 FROM attendance_records ar JOIN training_batches tb ON ar.batch_id = tb.batch_id JOIN training_centers tc ON tb.center_id = tc.center_id WHERE ar.attendance_id = dqi.entity_id AND tc.state_id = ? AND tc.deleted_at IS NULL)");
+            params.add(scope.stateId());
+            if (hasDistrict) params.add(scope.districtId());
+          }
+          case "PlacementRecord" -> {
+            sql.append(hasDistrict
+                ? " AND EXISTS (SELECT 1 FROM placement_records pr WHERE pr.placement_id = dqi.entity_id AND pr.work_state_id = ? AND pr.work_district_id = ? AND pr.deleted_at IS NULL)"
+                : " AND EXISTS (SELECT 1 FROM placement_records pr WHERE pr.placement_id = dqi.entity_id AND pr.work_state_id = ? AND pr.deleted_at IS NULL)");
+            params.add(scope.stateId());
+            if (hasDistrict) params.add(scope.districtId());
+          }
+          case "EmploymentRecord" -> {
+            sql.append(hasDistrict
+                ? " AND EXISTS (SELECT 1 FROM employment_records er WHERE er.employment_id = dqi.entity_id AND er.work_state_id = ? AND er.work_district_id = ? AND er.deleted_at IS NULL)"
+                : " AND EXISTS (SELECT 1 FROM employment_records er WHERE er.employment_id = dqi.entity_id AND er.work_state_id = ? AND er.deleted_at IS NULL)");
+            params.add(scope.stateId());
+            if (hasDistrict) params.add(scope.districtId());
+          }
+          case "BatchEnrollment" -> {
+            sql.append(hasDistrict
+                ? " AND EXISTS (SELECT 1 FROM training_enrollments te JOIN training_batches tb ON te.batch_id = tb.batch_id JOIN training_centers tc ON tb.center_id = tc.center_id WHERE te.enrollment_id = dqi.entity_id AND tc.state_id = ? AND tc.district_id = ? AND tc.deleted_at IS NULL AND te.deleted_at IS NULL)"
+                : " AND EXISTS (SELECT 1 FROM training_enrollments te JOIN training_batches tb ON te.batch_id = tb.batch_id JOIN training_centers tc ON tb.center_id = tc.center_id WHERE te.enrollment_id = dqi.entity_id AND tc.state_id = ? AND tc.deleted_at IS NULL AND te.deleted_at IS NULL)");
+            params.add(scope.stateId());
+            if (hasDistrict) params.add(scope.districtId());
+          }
+          default -> sql.append(" AND 1 = 0");
+        }
+      } else {
+        if (hasDistrict) {
+          sql.append(" AND ( "
+              + "(UPPER(REPLACE(dqi.entity_type, '_', '')) = 'TRAINEE' AND EXISTS ("
+              + "  SELECT 1 FROM trainees t "
+              + "  WHERE t.trainee_id = dqi.entity_id AND t.state_id = ? AND t.district_id = ? AND t.deleted_at IS NULL)) "
+              + "OR (UPPER(REPLACE(dqi.entity_type, '_', '')) IN ('ATTENDANCERECORD', 'ATTENDANCE') AND EXISTS ("
+              + "  SELECT 1 FROM attendance_records ar JOIN training_batches tb ON ar.batch_id = tb.batch_id JOIN training_centers tc ON tb.center_id = tc.center_id "
+              + "  WHERE ar.attendance_id = dqi.entity_id AND tc.state_id = ? AND tc.district_id = ? AND tc.deleted_at IS NULL)) "
+              + "OR (UPPER(REPLACE(dqi.entity_type, '_', '')) IN ('PLACEMENTRECORD', 'PLACEMENT') AND EXISTS ("
+              + "  SELECT 1 FROM placement_records pr "
+              + "  WHERE pr.placement_id = dqi.entity_id AND pr.work_state_id = ? AND pr.work_district_id = ? AND pr.deleted_at IS NULL)) "
+              + "OR (UPPER(REPLACE(dqi.entity_type, '_', '')) IN ('EMPLOYMENTRECORD', 'EMPLOYMENT') AND EXISTS ("
+              + "  SELECT 1 FROM employment_records er "
+              + "  WHERE er.employment_id = dqi.entity_id AND er.work_state_id = ? AND er.work_district_id = ? AND er.deleted_at IS NULL)) "
+              + "OR (UPPER(REPLACE(dqi.entity_type, '_', '')) IN ('BATCHENROLLMENT', 'TRAININGENROLLMENT', 'ENROLLMENT') AND EXISTS ("
+              + "  SELECT 1 FROM training_enrollments te JOIN training_batches tb ON te.batch_id = tb.batch_id JOIN training_centers tc ON tb.center_id = tc.center_id "
+              + "  WHERE te.enrollment_id = dqi.entity_id AND tc.state_id = ? AND tc.district_id = ? AND tc.deleted_at IS NULL AND te.deleted_at IS NULL)) "
+              + ")");
+          params.add(scope.stateId()); params.add(scope.districtId());
+          params.add(scope.stateId()); params.add(scope.districtId());
+          params.add(scope.stateId()); params.add(scope.districtId());
+          params.add(scope.stateId()); params.add(scope.districtId());
+          params.add(scope.stateId()); params.add(scope.districtId());
+        } else {
+          sql.append(" AND ( "
+              + "(UPPER(REPLACE(dqi.entity_type, '_', '')) = 'TRAINEE' AND EXISTS ("
+              + "  SELECT 1 FROM trainees t "
+              + "  WHERE t.trainee_id = dqi.entity_id AND t.state_id = ? AND t.deleted_at IS NULL)) "
+              + "OR (UPPER(REPLACE(dqi.entity_type, '_', '')) IN ('ATTENDANCERECORD', 'ATTENDANCE') AND EXISTS ("
+              + "  SELECT 1 FROM attendance_records ar JOIN training_batches tb ON ar.batch_id = tb.batch_id JOIN training_centers tc ON tb.center_id = tc.center_id "
+              + "  WHERE ar.attendance_id = dqi.entity_id AND tc.state_id = ? AND tc.deleted_at IS NULL)) "
+              + "OR (UPPER(REPLACE(dqi.entity_type, '_', '')) IN ('PLACEMENTRECORD', 'PLACEMENT') AND EXISTS ("
+              + "  SELECT 1 FROM placement_records pr "
+              + "  WHERE pr.placement_id = dqi.entity_id AND pr.work_state_id = ? AND pr.deleted_at IS NULL)) "
+              + "OR (UPPER(REPLACE(dqi.entity_type, '_', '')) IN ('EMPLOYMENTRECORD', 'EMPLOYMENT') AND EXISTS ("
+              + "  SELECT 1 FROM employment_records er "
+              + "  WHERE er.employment_id = dqi.entity_id AND er.work_state_id = ? AND er.deleted_at IS NULL)) "
+              + "OR (UPPER(REPLACE(dqi.entity_type, '_', '')) IN ('BATCHENROLLMENT', 'TRAININGENROLLMENT', 'ENROLLMENT') AND EXISTS ("
+              + "  SELECT 1 FROM training_enrollments te JOIN training_batches tb ON te.batch_id = tb.batch_id JOIN training_centers tc ON tb.center_id = tc.center_id "
+              + "  WHERE te.enrollment_id = dqi.entity_id AND tc.state_id = ? AND tc.deleted_at IS NULL AND te.deleted_at IS NULL)) "
+              + ")");
+          params.add(scope.stateId());
+          params.add(scope.stateId());
+          params.add(scope.stateId());
+          params.add(scope.stateId());
+          params.add(scope.stateId());
+        }
+      }
+      return;
+    }
+
+    if (scope.isEmployerScoped()) {
+      if (normalizedEntityType != null) {
+        switch (normalizedEntityType) {
+          case "PlacementRecord" -> {
+            sql.append(" AND EXISTS (SELECT 1 FROM placement_records pr WHERE pr.placement_id = dqi.entity_id AND pr.employer_id = ? AND pr.deleted_at IS NULL)");
+            params.add(scope.employerId());
+          }
+          case "EmploymentRecord" -> {
+            sql.append(" AND EXISTS (SELECT 1 FROM employment_records er WHERE er.employment_id = dqi.entity_id AND er.employer_id = ? AND er.deleted_at IS NULL)");
+            params.add(scope.employerId());
+          }
+          default -> sql.append(" AND 1 = 0");
+        }
+      } else {
+        sql.append(" AND ( "
+            + "(UPPER(REPLACE(dqi.entity_type, '_', '')) IN ('PLACEMENTRECORD', 'PLACEMENT') AND EXISTS ("
+            + "  SELECT 1 FROM placement_records pr "
+            + "  WHERE pr.placement_id = dqi.entity_id AND pr.employer_id = ? AND pr.deleted_at IS NULL)) "
+            + "OR (UPPER(REPLACE(dqi.entity_type, '_', '')) IN ('EMPLOYMENTRECORD', 'EMPLOYMENT') AND EXISTS ("
+            + "  SELECT 1 FROM employment_records er "
+            + "  WHERE er.employment_id = dqi.entity_id AND er.employer_id = ? AND er.deleted_at IS NULL)) "
+            + ")");
+        params.add(scope.employerId());
+        params.add(scope.employerId());
+      }
+      return;
+    }
+
+    sql.append(" AND 1 = 0");
+  }
 }

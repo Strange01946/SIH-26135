@@ -87,6 +87,12 @@ public class AuditPayloadMasker {
           + "id_?token|auth_?token|session_?token|csrf_?token|token|jwt|authorization|bearer|"
           + "private_?key|credentials?|passphrase)[\"']\\s*:\\s*)([\"'])([^\"']*)\\2");
 
+  private static final Pattern SENSITIVE_CONTAINER_PATTERN = Pattern.compile(
+      "(?i)([\"']?(?:password(?:_?hash)?|passwd|pwd|new_?password|old_?password|confirm_?password|"
+          + "client_?secret|secret(?:_?key)?|api_?key|x-?api-?key|access_?token|refresh_?token|"
+          + "id_?token|auth_?token|session_?token|csrf_?token|token|jwt|authorization|bearer|"
+          + "private_?key|credentials?|passphrase)[\"']?\\s*[:=]\\s*)(?:\\{[^}\\r\\n]*\\}|\\[(?!REDACTED\\])[^\\]\\r\\n]*\\]|\\{[^\\r\\n]*|\\[(?!REDACTED\\])[^\\r\\n]*)");
+
   private static final Pattern KV_SECRET_PATTERN = Pattern.compile(
       "(?i)\\b(password(?:_?hash)?|passwd|pwd|new_?password|old_?password|confirm_?password|"
           + "client_?secret|secret(?:_?key)?|api_?key|x-?api-?key|access_?token|refresh_?token|"
@@ -164,22 +170,25 @@ public class AuditPayloadMasker {
   private static String maskInternal(String input) {
     String working = input;
     String trimmed = working.trim();
-    if ((trimmed.startsWith("{") && trimmed.endsWith("}"))
-        || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
       try {
         JsonNode root = SHARED_MAPPER.readTree(trimmed);
         JsonNode maskedNode = maskJsonNode(root, 0);
         return SHARED_MAPPER.writeValueAsString(maskedNode);
       } catch (JsonProcessingException | RuntimeException ignored) {
-        // Malformed JSON or deeply nested structure: safely fall back to plain-text masker
+        // Malformed JSON-looking payload that cannot be inspected safely: fail closed
+        return REDACTED_MARKER;
       }
     }
     return maskPlainText(working);
   }
 
   private static JsonNode maskJsonNode(JsonNode node, int depth) {
-    if (node == null || depth >= MAX_JSON_DEPTH) {
-      return node != null && node.isTextual() ? TextNode.valueOf(maskPlainText(node.asText())) : node;
+    if (node == null) {
+      return null;
+    }
+    if (depth >= MAX_JSON_DEPTH) {
+      return TextNode.valueOf(REDACTED_MARKER);
     }
     if (node.isObject()) {
       ObjectNode obj = (ObjectNode) node;
@@ -190,11 +199,7 @@ public class AuditPayloadMasker {
         JsonNode val = entry.getValue();
         if (isSensitiveKey(key)) {
           if (val != null && !val.isNull()) {
-            if (val.isContainerNode()) {
-              maskJsonNode(val, depth + 1);
-            } else {
-              obj.put(key, REDACTED_MARKER);
-            }
+            obj.put(key, REDACTED_MARKER);
           }
         } else {
           obj.set(key, maskJsonNode(val, depth + 1));
@@ -248,7 +253,13 @@ public class AuditPayloadMasker {
     quotedMatcher.appendTail(quotedSb);
     result = quotedSb.toString();
 
-    // 3. Redact plain-text key=value or key: value secrets without double-masking
+    // 3. Redact sensitive keys mapped to uninspected object or array containers in free-text logs
+    Matcher containerMatcher = SENSITIVE_CONTAINER_PATTERN.matcher(result);
+    if (containerMatcher.find()) {
+      result = containerMatcher.replaceAll("$1" + Matcher.quoteReplacement(REDACTED_MARKER));
+    }
+
+    // 4. Redact plain-text key=value or key: value secrets without double-masking
     Matcher kvMatcher = KV_SECRET_PATTERN.matcher(result);
     StringBuilder kvSb = new StringBuilder();
     while (kvMatcher.find()) {
@@ -267,12 +278,12 @@ public class AuditPayloadMasker {
     kvMatcher.appendTail(kvSb);
     result = kvSb.toString();
 
-    // 4. Mask Aadhaar identifiers (preserving final 4 digits: XXXX-XXXX-1234)
+    // 5. Mask Aadhaar identifiers (preserving final 4 digits: XXXX-XXXX-1234)
     result = AADHAAR_LABELED_PATTERN.matcher(result).replaceAll("$1XXXX-XXXX-$4");
     result = AADHAAR_SEPARATED_PATTERN.matcher(result).replaceAll("XXXX-XXXX-$3");
     result = AADHAAR_CONTINUOUS_PATTERN.matcher(result).replaceAll("XXXX-XXXX-$3");
 
-    // 5. Mask PAN identifiers (preserving digits 1..3 as XXXXXX123X)
+    // 6. Mask PAN identifiers (preserving digits 1..3 as XXXXXX123X)
     result = PAN_LABELED_PATTERN.matcher(result).replaceAll("$1XXXXXX$3X");
     result = PAN_STANDARD_PATTERN.matcher(result).replaceAll("XXXXXX$2X");
 

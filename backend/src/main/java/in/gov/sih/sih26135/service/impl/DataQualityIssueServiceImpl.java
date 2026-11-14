@@ -27,7 +27,10 @@ import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.DataQualityIssueService;
 import in.gov.sih.sih26135.service.DataQualityWorkflowService;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
@@ -272,75 +275,121 @@ public class DataQualityIssueServiceImpl implements DataQualityIssueService {
     return mapper.toResponse(entity);
   }
 
+  private static void validatePaginationBounds(int page, int size) {
+    if (page < 0) {
+      throw new BadRequestException("Page index must not be negative", "INVALID_PAGE");
+    }
+    if (size < 1 || size > 100) {
+      throw new BadRequestException("Page size must be between 1 and 100", "INVALID_SIZE");
+    }
+  }
+
   @Override
   public List<DataQualityIssueResponse> getIssuesByRuleId(Long ruleId) {
+    return getIssuesByRuleId(ruleId, 0, 100);
+  }
+
+  @Override
+  public List<DataQualityIssueResponse> getIssuesByRuleId(Long ruleId, int page, int size) {
+    validatePaginationBounds(page, size);
     DataQualityIssueScopeSupport.CallerScope callerScope =
         DataQualityIssueScopeSupport.resolveAndValidateCaller(scopeValidator, jdbcTemplate, false);
     if (ruleId == null) {
       throw new BadRequestException("Rule ID is required");
     }
-    List<DataQualityIssue> issues = dataQualityIssueRepository.findByDataQualityRuleId(ruleId);
-    return mapInScope(callerScope, issues);
+    return findScopedIssues(callerScope, "dqi.data_quality_rule_id = ?", null, page, size, ruleId);
   }
 
   @Override
   public List<DataQualityIssueResponse> getIssuesByCategoryId(Long categoryId) {
+    return getIssuesByCategoryId(categoryId, 0, 100);
+  }
+
+  @Override
+  public List<DataQualityIssueResponse> getIssuesByCategoryId(Long categoryId, int page, int size) {
+    validatePaginationBounds(page, size);
     DataQualityIssueScopeSupport.CallerScope callerScope =
         DataQualityIssueScopeSupport.resolveAndValidateCaller(scopeValidator, jdbcTemplate, false);
     if (categoryId == null) {
       throw new BadRequestException("Category ID is required");
     }
-    List<DataQualityIssue> issues = dataQualityIssueRepository.findByDataQualityCategoryId(categoryId);
-    return mapInScope(callerScope, issues);
+    return findScopedIssues(callerScope, "dqi.data_quality_category_id = ?", null, page, size, categoryId);
   }
 
   @Override
   public List<DataQualityIssueResponse> getIssuesBySeverityId(Long severityId) {
+    return getIssuesBySeverityId(severityId, 0, 100);
+  }
+
+  @Override
+  public List<DataQualityIssueResponse> getIssuesBySeverityId(Long severityId, int page, int size) {
+    validatePaginationBounds(page, size);
     DataQualityIssueScopeSupport.CallerScope callerScope =
         DataQualityIssueScopeSupport.resolveAndValidateCaller(scopeValidator, jdbcTemplate, false);
     if (severityId == null) {
       throw new BadRequestException("Severity ID is required");
     }
-    List<DataQualityIssue> issues = dataQualityIssueRepository.findByDataQualitySeverityId(severityId);
-    return mapInScope(callerScope, issues);
+    return findScopedIssues(callerScope, "dqi.data_quality_severity_id = ?", null, page, size, severityId);
   }
 
   @Override
   public List<DataQualityIssueResponse> getIssuesByStatusId(Long statusId) {
+    return getIssuesByStatusId(statusId, 0, 100);
+  }
+
+  @Override
+  public List<DataQualityIssueResponse> getIssuesByStatusId(Long statusId, int page, int size) {
+    validatePaginationBounds(page, size);
     DataQualityIssueScopeSupport.CallerScope callerScope =
         DataQualityIssueScopeSupport.resolveAndValidateCaller(scopeValidator, jdbcTemplate, false);
     if (statusId == null) {
       throw new BadRequestException("Status ID is required");
     }
-    List<DataQualityIssue> issues = dataQualityIssueRepository.findByDataQualityIssueStatusId(statusId);
-    return mapInScope(callerScope, issues);
+    return findScopedIssues(callerScope, "dqi.data_quality_issue_status_id = ?", null, page, size, statusId);
   }
 
   @Override
   public List<DataQualityIssueResponse> getIssuesByDetectionSourceId(Long sourceId) {
+    return getIssuesByDetectionSourceId(sourceId, 0, 100);
+  }
+
+  @Override
+  public List<DataQualityIssueResponse> getIssuesByDetectionSourceId(Long sourceId, int page, int size) {
+    validatePaginationBounds(page, size);
     DataQualityIssueScopeSupport.CallerScope callerScope =
         DataQualityIssueScopeSupport.resolveAndValidateCaller(scopeValidator, jdbcTemplate, false);
     if (sourceId == null) {
       throw new BadRequestException("Detection source ID is required");
     }
-    List<DataQualityIssue> issues = dataQualityIssueRepository.findByDataQualityDetectionSourceId(sourceId);
-    return mapInScope(callerScope, issues);
+    return findScopedIssues(callerScope, "dqi.data_quality_detection_source_id = ?", null, page, size, sourceId);
   }
 
   @Override
   public List<DataQualityIssueResponse> getIssuesByEntityType(String entityType) {
+    return getIssuesByEntityType(entityType, 0, 100);
+  }
+
+  @Override
+  public List<DataQualityIssueResponse> getIssuesByEntityType(String entityType, int page, int size) {
+    validatePaginationBounds(page, size);
     DataQualityIssueScopeSupport.CallerScope callerScope =
         DataQualityIssueScopeSupport.resolveAndValidateCaller(scopeValidator, jdbcTemplate, false);
     if (entityType == null || entityType.isBlank()) {
       throw new BadRequestException("Entity type is required");
     }
     DataQualityIssueScopeSupport.validateCanQueryEntityType(callerScope, entityType);
-    List<DataQualityIssue> issues = dataQualityIssueRepository.findByEntityType(entityType.trim());
-    return mapInScope(callerScope, issues);
+    String norm = DataQualityIssueScopeSupport.normalizeEntityType(entityType);
+    return findScopedIssues(callerScope, "UPPER(REPLACE(dqi.entity_type, '_', '')) = UPPER(REPLACE(?, '_', ''))", norm, page, size, entityType.trim());
   }
 
   @Override
   public List<DataQualityIssueResponse> getIssuesByEntity(String entityType, Long entityId) {
+    return getIssuesByEntity(entityType, entityId, 0, 100);
+  }
+
+  @Override
+  public List<DataQualityIssueResponse> getIssuesByEntity(String entityType, Long entityId, int page, int size) {
+    validatePaginationBounds(page, size);
     DataQualityIssueScopeSupport.CallerScope callerScope =
         DataQualityIssueScopeSupport.resolveAndValidateCaller(scopeValidator, jdbcTemplate, false);
     if (entityType == null || entityType.isBlank()) {
@@ -350,38 +399,86 @@ public class DataQualityIssueServiceImpl implements DataQualityIssueService {
       throw new BadRequestException("Entity ID is required");
     }
     DataQualityIssueScopeSupport.validateCallerScopeForEntity(callerScope, entityType, entityId, jdbcTemplate);
-    return dataQualityIssueRepository.findByEntityTypeAndEntityId(entityType.trim(), entityId).stream()
-        .map(mapper::toResponse)
-        .toList();
+    String norm = DataQualityIssueScopeSupport.normalizeEntityType(entityType);
+    return findScopedIssues(callerScope, "UPPER(REPLACE(dqi.entity_type, '_', '')) = UPPER(REPLACE(?, '_', '')) AND dqi.entity_id = ?", norm, page, size, entityType.trim(), entityId);
   }
 
   @Override
   public List<DataQualityIssueResponse> getIssuesByAssignedUserId(Long assignedUserId) {
+    return getIssuesByAssignedUserId(assignedUserId, 0, 100);
+  }
+
+  @Override
+  public List<DataQualityIssueResponse> getIssuesByAssignedUserId(Long assignedUserId, int page, int size) {
+    validatePaginationBounds(page, size);
     DataQualityIssueScopeSupport.CallerScope callerScope =
         DataQualityIssueScopeSupport.resolveAndValidateCaller(scopeValidator, jdbcTemplate, false);
     if (assignedUserId == null) {
       throw new BadRequestException("Assigned user ID is required");
     }
-    List<DataQualityIssue> issues = dataQualityIssueRepository.findByAssignedUserId(assignedUserId);
-    return mapInScope(callerScope, issues);
+    return findScopedIssues(callerScope, "dqi.assigned_user_id = ?", null, page, size, assignedUserId);
   }
 
   @Override
   public List<DataQualityIssueResponse> getIssuesByResolvedByUserId(Long resolvedByUserId) {
+    return getIssuesByResolvedByUserId(resolvedByUserId, 0, 100);
+  }
+
+  @Override
+  public List<DataQualityIssueResponse> getIssuesByResolvedByUserId(Long resolvedByUserId, int page, int size) {
+    validatePaginationBounds(page, size);
     DataQualityIssueScopeSupport.CallerScope callerScope =
         DataQualityIssueScopeSupport.resolveAndValidateCaller(scopeValidator, jdbcTemplate, false);
     if (resolvedByUserId == null) {
       throw new BadRequestException("Resolved by user ID is required");
     }
-    List<DataQualityIssue> issues = dataQualityIssueRepository.findByResolvedByUserId(resolvedByUserId);
-    return mapInScope(callerScope, issues);
+    return findScopedIssues(callerScope, "dqi.resolved_by_user_id = ?", null, page, size, resolvedByUserId);
   }
 
-  private List<DataQualityIssueResponse> mapInScope(
-      DataQualityIssueScopeSupport.CallerScope callerScope,
-      List<DataQualityIssue> issues) {
-    return DataQualityIssueScopeSupport.filterIssuesInScope(callerScope, issues, jdbcTemplate).stream()
-        .map(mapper::toResponse)
-        .toList();
+  private List<DataQualityIssueResponse> findScopedIssues(
+      DataQualityIssueScopeSupport.CallerScope scope,
+      String wherePredicate,
+      String normalizedEntityType,
+      int page,
+      int size,
+      Object... whereParams) {
+    if (jdbcTemplate == null) {
+      return List.of();
+    }
+    int safePage = Math.max(0, page);
+    int safeSize = (size >= 1 && size <= 100) ? size : 100;
+    long rawOffset = (long) safePage * (long) safeSize;
+    if (rawOffset > Integer.MAX_VALUE) {
+      return List.of();
+    }
+    StringBuilder sql = new StringBuilder(
+        "SELECT dqi.data_quality_issue_id FROM data_quality_issues dqi WHERE ").append(wherePredicate);
+    List<Object> params = new ArrayList<>();
+    if (whereParams != null) {
+      for (Object p : whereParams) {
+        params.add(p);
+      }
+    }
+    DataQualityIssueScopeSupport.appendIssueTenantWhereClause(scope, sql, normalizedEntityType, params);
+    sql.append(" ORDER BY dqi.data_quality_issue_id DESC LIMIT ? OFFSET ?");
+    params.add(safeSize);
+    params.add((int) rawOffset);
+
+    List<Long> ids = jdbcTemplate.queryForList(sql.toString(), Long.class, params.toArray());
+    if (ids.isEmpty()) {
+      return List.of();
+    }
+    Map<Long, DataQualityIssue> byId = new LinkedHashMap<>();
+    for (DataQualityIssue issue : dataQualityIssueRepository.findAllById(ids)) {
+      byId.put(issue.getId(), issue);
+    }
+    List<DataQualityIssueResponse> ordered = new ArrayList<>(ids.size());
+    for (Long id : ids) {
+      DataQualityIssue issue = byId.get(id);
+      if (issue != null) {
+        ordered.add(mapper.toResponse(issue));
+      }
+    }
+    return ordered;
   }
 }

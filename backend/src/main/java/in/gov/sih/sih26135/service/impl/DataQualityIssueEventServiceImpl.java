@@ -16,7 +16,10 @@ import in.gov.sih.sih26135.security.AuditPayloadMasker;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.DataQualityIssueEventService;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -129,8 +132,23 @@ public class DataQualityIssueEventServiceImpl implements DataQualityIssueEventSe
     return mapper.toResponse(event);
   }
 
+  private static void validatePaginationBounds(int page, int size) {
+    if (page < 0) {
+      throw new BadRequestException("Page index must not be negative", "INVALID_PAGE");
+    }
+    if (size < 1 || size > 100) {
+      throw new BadRequestException("Page size must be between 1 and 100", "INVALID_SIZE");
+    }
+  }
+
   @Override
   public List<DataQualityIssueEventResponse> getIssueEventsByIssueId(Long issueId) {
+    return getIssueEventsByIssueId(issueId, 0, 100);
+  }
+
+  @Override
+  public List<DataQualityIssueEventResponse> getIssueEventsByIssueId(Long issueId, int page, int size) {
+    validatePaginationBounds(page, size);
     DataQualityIssueScopeSupport.CallerScope callerScope =
         DataQualityIssueScopeSupport.resolveAndValidateCaller(scopeValidator, jdbcTemplate, false);
     if (issueId == null) {
@@ -139,34 +157,86 @@ public class DataQualityIssueEventServiceImpl implements DataQualityIssueEventSe
     DataQualityIssue issue = dataQualityIssueRepository.findById(issueId)
         .orElseThrow(() -> new ResourceNotFoundException("DataQualityIssue", "id"));
     DataQualityIssueScopeSupport.validateCallerScopeForIssue(callerScope, issue, jdbcTemplate);
-    return dataQualityIssueEventRepository.findByDataQualityIssueId(issueId).stream()
-        .map(mapper::toResponse)
-        .toList();
+    return findScopedIssueEvents(callerScope, "ev.data_quality_issue_id = ?", page, size, issueId);
   }
 
   @Override
   public List<DataQualityIssueEventResponse> getIssueEventsByStatusId(Long statusId) {
+    return getIssueEventsByStatusId(statusId, 0, 100);
+  }
+
+  @Override
+  public List<DataQualityIssueEventResponse> getIssueEventsByStatusId(Long statusId, int page, int size) {
+    validatePaginationBounds(page, size);
     DataQualityIssueScopeSupport.CallerScope callerScope =
         DataQualityIssueScopeSupport.resolveAndValidateCaller(scopeValidator, jdbcTemplate, false);
     if (statusId == null) {
       throw new BadRequestException("Status ID is required");
     }
-    List<DataQualityIssueEvent> events = dataQualityIssueEventRepository.findByDataQualityIssueStatusId(statusId);
-    return DataQualityIssueScopeSupport.filterIssueEventsInScope(callerScope, events, jdbcTemplate).stream()
-        .map(mapper::toResponse)
-        .toList();
+    return findScopedIssueEvents(callerScope, "ev.data_quality_issue_status_id = ?", page, size, statusId);
   }
 
   @Override
   public List<DataQualityIssueEventResponse> getIssueEventsByChangedByUserId(Long changedByUserId) {
+    return getIssueEventsByChangedByUserId(changedByUserId, 0, 100);
+  }
+
+  @Override
+  public List<DataQualityIssueEventResponse> getIssueEventsByChangedByUserId(Long changedByUserId, int page, int size) {
+    validatePaginationBounds(page, size);
     DataQualityIssueScopeSupport.CallerScope callerScope =
         DataQualityIssueScopeSupport.resolveAndValidateCaller(scopeValidator, jdbcTemplate, false);
     if (changedByUserId == null) {
       throw new BadRequestException("Changed-by user ID is required");
     }
-    List<DataQualityIssueEvent> events = dataQualityIssueEventRepository.findByChangedByUserId(changedByUserId);
-    return DataQualityIssueScopeSupport.filterIssueEventsInScope(callerScope, events, jdbcTemplate).stream()
-        .map(mapper::toResponse)
-        .toList();
+    return findScopedIssueEvents(callerScope, "ev.changed_by_user_id = ?", page, size, changedByUserId);
+  }
+
+  private List<DataQualityIssueEventResponse> findScopedIssueEvents(
+      DataQualityIssueScopeSupport.CallerScope scope,
+      String wherePredicate,
+      int page,
+      int size,
+      Object... whereParams) {
+    if (jdbcTemplate == null) {
+      return List.of();
+    }
+    int safePage = Math.max(0, page);
+    int safeSize = (size >= 1 && size <= 100) ? size : 100;
+    long rawOffset = (long) safePage * (long) safeSize;
+    if (rawOffset > Integer.MAX_VALUE) {
+      return List.of();
+    }
+    StringBuilder sql = new StringBuilder(
+        "SELECT ev.data_quality_issue_event_id FROM data_quality_issue_events ev "
+            + "JOIN data_quality_issues dqi ON ev.data_quality_issue_id = dqi.data_quality_issue_id "
+            + "WHERE ").append(wherePredicate);
+    List<Object> params = new ArrayList<>();
+    if (whereParams != null) {
+      for (Object p : whereParams) {
+        params.add(p);
+      }
+    }
+    DataQualityIssueScopeSupport.appendIssueTenantWhereClause(scope, sql, null, params);
+    sql.append(" ORDER BY ev.data_quality_issue_event_id DESC LIMIT ? OFFSET ?");
+    params.add(safeSize);
+    params.add((int) rawOffset);
+
+    List<Long> ids = jdbcTemplate.queryForList(sql.toString(), Long.class, params.toArray());
+    if (ids.isEmpty()) {
+      return List.of();
+    }
+    Map<Long, DataQualityIssueEvent> byId = new LinkedHashMap<>();
+    for (DataQualityIssueEvent event : dataQualityIssueEventRepository.findAllById(ids)) {
+      byId.put(event.getId(), event);
+    }
+    List<DataQualityIssueEventResponse> ordered = new ArrayList<>(ids.size());
+    for (Long id : ids) {
+      DataQualityIssueEvent event = byId.get(id);
+      if (event != null) {
+        ordered.add(mapper.toResponse(event));
+      }
+    }
+    return ordered;
   }
 }

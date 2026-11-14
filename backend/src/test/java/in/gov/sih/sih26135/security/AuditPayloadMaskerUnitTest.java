@@ -96,16 +96,84 @@ class AuditPayloadMaskerUnitTest {
         .doesNotContain("cs_77")
         .doesNotContain("acc_111");
 
+    // Non-scalar sensitive keys: object and array values redacted entirely
+    String nonScalarJson = "{\"password\":{\"value\":\"PlainSecret123\"},\"accessToken\":[\"secretA\",\"secretB\"]}";
+    String maskedNonScalar = AuditPayloadMasker.mask(nonScalarJson);
+
+    assertThat(maskedNonScalar)
+        .contains("\"password\":\"[REDACTED]\"")
+        .contains("\"accessToken\":\"[REDACTED]\"")
+        .doesNotContain("PlainSecret123")
+        .doesNotContain("secretA")
+        .doesNotContain("secretB");
+
+    // Nesting deeper than 16 levels fails closed to [REDACTED]
+    StringBuilder deepJson = new StringBuilder();
+    for (int i = 0; i < 20; i++) {
+      deepJson.append("{\"layer").append(i).append("\":");
+    }
+    deepJson.append("{\"deepSecret\":\"SuperHidden\"}");
+    for (int i = 0; i < 20; i++) {
+      deepJson.append("}");
+    }
+    String maskedDeep = AuditPayloadMasker.mask(deepJson.toString());
+    assertThat(maskedDeep)
+        .contains("[REDACTED]")
+        .doesNotContain("SuperHidden");
+
+    // Malformed JSON-looking payloads that cannot be inspected safely fail closed to [REDACTED]
     String malformed = "{\"password\":\"BrokenPass\",\"aadhaar\":\"2345-6789-0123\",\"pan\":\"ABCDE1234F\"";
     String maskedMalformed = AuditPayloadMasker.mask(malformed);
-
     assertThat(maskedMalformed)
-        .contains("[REDACTED]")
-        .contains("XXXX-XXXX-0123")
-        .contains("XXXXXX123X")
+        .isEqualTo("[REDACTED]")
         .doesNotContain("BrokenPass")
         .doesNotContain("2345-6789-0123")
         .doesNotContain("ABCDE1234F");
+
+    // Adversarial: Malformed nested password object
+    String malformedPasswordObj = "{\"password\":{\"value\":\"PlainSecret123\"";
+    assertThat(AuditPayloadMasker.mask(malformedPasswordObj))
+        .isEqualTo("[REDACTED]")
+        .doesNotContain("PlainSecret123");
+
+    // Adversarial: Malformed token array
+    String malformedTokenArray = "{\"accessToken\":[\"secretA\",\"secretB\"";
+    assertThat(AuditPayloadMasker.mask(malformedTokenArray))
+        .isEqualTo("[REDACTED]")
+        .doesNotContain("secretA")
+        .doesNotContain("secretB");
+
+    // Adversarial: Excessively deep malformed JSON
+    String malformedDeep = "{{{{{{{{{{{{{{{{{\"password\":{\"value\":\"deepSecret\"";
+    assertThat(AuditPayloadMasker.mask(malformedDeep))
+        .isEqualTo("[REDACTED]")
+        .doesNotContain("deepSecret");
+
+    // Free text containing sensitive container (object or array)
+    String freeTextWithContainer = "Log event with password: {\"value\":\"PlainSecret123\"} for user";
+    assertThat(AuditPayloadMasker.mask(freeTextWithContainer))
+        .contains("password: [REDACTED]")
+        .doesNotContain("PlainSecret123");
+
+    String freeTextWithMalformedContainer = "Log event with password: {\"value\":\"PlainSecret123\"";
+    assertThat(AuditPayloadMasker.mask(freeTextWithMalformedContainer))
+        .contains("password: [REDACTED]")
+        .doesNotContain("PlainSecret123");
+
+    // Free text containing sensitive array container
+    String freeTextWithArray = "Log event with accessToken: [\"secretA\",\"secretB\"] for user";
+    assertThat(AuditPayloadMasker.mask(freeTextWithArray))
+        .contains("accessToken: [REDACTED]")
+        .doesNotContain("secretA")
+        .doesNotContain("secretB");
+
+    // Preserve ordinary non-JSON log sanitization
+    String plainText = "User rohan with aadhaar=2345-6789-0123 and pan=ABCDE1234F logged in with password=MyPass123";
+    assertThat(AuditPayloadMasker.mask(plainText))
+        .contains("XXXX-XXXX-0123")
+        .contains("XXXXXX123X")
+        .contains("password=[REDACTED]")
+        .doesNotContain("MyPass123");
   }
 
   @Test

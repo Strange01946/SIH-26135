@@ -503,6 +503,20 @@ public class AuditLogServiceImpl implements AuditLogService {
     return mapper.toResponse(entity);
   }
 
+  private static final int DEFAULT_LIST_LIMIT = 100;
+  private static final Pageable DEFAULT_BOUNDED_LIST_PAGEABLE =
+      PageRequest.of(0, DEFAULT_LIST_LIMIT, Sort.by(Sort.Direction.DESC, "occurredAt", "id"));
+
+  private static Pageable enforcePageableLimit(Pageable pageable) {
+    if (pageable == null) {
+      return DEFAULT_BOUNDED_LIST_PAGEABLE;
+    }
+    if (pageable.getPageSize() > DEFAULT_LIST_LIMIT) {
+      return PageRequest.of(pageable.getPageNumber(), DEFAULT_LIST_LIMIT, pageable.getSort());
+    }
+    return pageable;
+  }
+
   @Override
   public List<AuditLogResponse> getAuditLogsByActorUserId(Long actorUserId) {
     if (actorUserId == null) {
@@ -511,7 +525,7 @@ public class AuditLogServiceImpl implements AuditLogService {
     if (!isCallerNationwideAdmin()) {
       throw new AccessDeniedException("Actor audit log queries are restricted to nationwide administrative callers");
     }
-    return auditLogRepository.findByActorUserId(actorUserId).stream()
+    return auditLogRepository.findByActorUserId(actorUserId, DEFAULT_BOUNDED_LIST_PAGEABLE).getContent().stream()
         .map(mapper::toResponse)
         .toList();
   }
@@ -524,7 +538,7 @@ public class AuditLogServiceImpl implements AuditLogService {
     if (!isCallerNationwideAdmin()) {
       throw new AccessDeniedException("Unscoped audit log queries are restricted to nationwide administrative callers");
     }
-    return auditLogRepository.findByAuditActionId(auditActionId).stream()
+    return auditLogRepository.findByAuditActionId(auditActionId, DEFAULT_BOUNDED_LIST_PAGEABLE).getContent().stream()
         .map(mapper::toResponse)
         .toList();
   }
@@ -537,7 +551,7 @@ public class AuditLogServiceImpl implements AuditLogService {
     if (!isCallerNationwideAdmin()) {
       throw new AccessDeniedException("Unscoped audit log queries by entity type are restricted to nationwide administrative callers");
     }
-    return auditLogRepository.findByEntityType(entityType.trim()).stream()
+    return auditLogRepository.findByEntityType(entityType.trim(), DEFAULT_BOUNDED_LIST_PAGEABLE).getContent().stream()
         .map(mapper::toResponse)
         .toList();
   }
@@ -553,7 +567,7 @@ public class AuditLogServiceImpl implements AuditLogService {
     if (!isCallerNationwideAdmin()) {
       validateEntityAccess(entityType, entityId);
     }
-    return auditLogRepository.findByEntityTypeAndEntityId(entityType.trim(), entityId).stream()
+    return auditLogRepository.findByEntityTypeAndEntityId(entityType.trim(), entityId, DEFAULT_BOUNDED_LIST_PAGEABLE).getContent().stream()
         .map(mapper::toResponse)
         .toList();
   }
@@ -566,7 +580,7 @@ public class AuditLogServiceImpl implements AuditLogService {
     if (!isCallerNationwideAdmin()) {
       throw new AccessDeniedException("Unscoped audit log queries are restricted to nationwide administrative callers");
     }
-    return auditLogRepository.findByCorrelationId(correlationId.trim()).stream()
+    return auditLogRepository.findByCorrelationId(correlationId.trim(), DEFAULT_BOUNDED_LIST_PAGEABLE).getContent().stream()
         .map(mapper::toResponse)
         .toList();
   }
@@ -582,7 +596,7 @@ public class AuditLogServiceImpl implements AuditLogService {
     if (!isCallerNationwideAdmin()) {
       throw new AccessDeniedException("Unscoped audit log queries are restricted to nationwide administrative callers");
     }
-    return auditLogRepository.findByOccurredAtBetween(start, end).stream()
+    return auditLogRepository.findByOccurredAtBetween(start, end, DEFAULT_BOUNDED_LIST_PAGEABLE).getContent().stream()
         .map(mapper::toResponse)
         .toList();
   }
@@ -592,7 +606,7 @@ public class AuditLogServiceImpl implements AuditLogService {
     if (!isCallerNationwideAdmin()) {
       throw new AccessDeniedException("Unscoped audit log queries are restricted to nationwide administrative callers");
     }
-    return auditLogRepository.findAll(pageable)
+    return auditLogRepository.findAll(enforcePageableLimit(pageable))
         .map(mapper::toResponse);
   }
 
@@ -604,7 +618,7 @@ public class AuditLogServiceImpl implements AuditLogService {
     if (!isCallerNationwideAdmin()) {
       throw new AccessDeniedException("Actor audit log queries are restricted to nationwide administrative callers");
     }
-    return auditLogRepository.findByActorUserId(actorUserId, pageable)
+    return auditLogRepository.findByActorUserId(actorUserId, enforcePageableLimit(pageable))
         .map(mapper::toResponse);
   }
 
@@ -616,7 +630,7 @@ public class AuditLogServiceImpl implements AuditLogService {
     if (!isCallerNationwideAdmin()) {
       throw new AccessDeniedException("Unscoped audit log queries are restricted to nationwide administrative callers");
     }
-    return auditLogRepository.findByAuditActionId(auditActionId, pageable)
+    return auditLogRepository.findByAuditActionId(auditActionId, enforcePageableLimit(pageable))
         .map(mapper::toResponse);
   }
 
@@ -628,7 +642,7 @@ public class AuditLogServiceImpl implements AuditLogService {
     if (!isCallerNationwideAdmin()) {
       throw new AccessDeniedException("Unscoped audit log queries by entity type are restricted to nationwide administrative callers");
     }
-    return auditLogRepository.findByEntityType(entityType.trim(), pageable)
+    return auditLogRepository.findByEntityType(entityType.trim(), enforcePageableLimit(pageable))
         .map(mapper::toResponse);
   }
 
@@ -643,7 +657,7 @@ public class AuditLogServiceImpl implements AuditLogService {
     if (!isCallerNationwideAdmin()) {
       validateEntityAccess(entityType, entityId);
     }
-    return auditLogRepository.findByEntityTypeAndEntityId(entityType.trim(), entityId, pageable)
+    return auditLogRepository.findByEntityTypeAndEntityId(entityType.trim(), entityId, enforcePageableLimit(pageable))
         .map(mapper::toResponse);
   }
 
@@ -655,7 +669,7 @@ public class AuditLogServiceImpl implements AuditLogService {
     if (!isCallerNationwideAdmin()) {
       throw new AccessDeniedException("Unscoped audit log queries are restricted to nationwide administrative callers");
     }
-    return auditLogRepository.findByCorrelationId(correlationId.trim(), pageable)
+    return auditLogRepository.findByCorrelationId(correlationId.trim(), enforcePageableLimit(pageable))
         .map(mapper::toResponse);
   }
 
@@ -670,7 +684,7 @@ public class AuditLogServiceImpl implements AuditLogService {
     if (!isCallerNationwideAdmin()) {
       throw new AccessDeniedException("Unscoped audit log queries are restricted to nationwide administrative callers");
     }
-    return auditLogRepository.findByOccurredAtBetween(start, end, pageable)
+    return auditLogRepository.findByOccurredAtBetween(start, end, enforcePageableLimit(pageable))
         .map(mapper::toResponse);
   }
 }
