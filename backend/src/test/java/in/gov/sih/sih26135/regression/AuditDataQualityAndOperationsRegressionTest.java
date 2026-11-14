@@ -519,9 +519,11 @@ public class AuditDataQualityAndOperationsRegressionTest {
   class AutomatedAuditInterceptionTests {
 
     @Test
-    @DisplayName("A.1: Domain mutation creates audit event with correct entity, actor, and action attribution")
-    void shouldInterceptDomainMutationAndPersistAuditEventWithActorAndEntityMetadata() throws Exception {
-      // Reuse AuditTrailEventListenerTest pattern: dispatch an AuditTrailEvent representing a domain workflow mutation
+    @DisplayName("A.1: Asynchronous audit event listener persists valid events with authoritative actor and entity attribution")
+    void shouldPersistAuditEventViaListenerWithAuthoritativeActorAndEntityMetadata() throws Exception {
+      // Reusing AuditTrailEventListenerTest pattern: verifies that AuditTrailEventListener executes asynchronously
+      // via auditTaskExecutor and persists valid AuditTrailEvents with authoritative actor and entity attribution.
+      // (Note: Automatic AOP method interception is proven by AuditTrailAspectTest.testSuccessfulInterceptionPublishesEvent).
       LocalDateTime now = LocalDateTime.now();
       String correlationId = "p289-corr-aspect-1";
       AuditTrailEvent event = new AuditTrailEvent(
@@ -553,7 +555,7 @@ public class AuditDataQualityAndOperationsRegressionTest {
     }
 
     @Test
-    @DisplayName("A.2: Sensitive payload is sanitized at write time via audit event listener and manual ingestion")
+    @DisplayName("A.2: Sensitive credentials and PII in audit events and manual audit API requests are sanitized at write time")
     void shouldPreserveCorrelationMetadataAndMaskChangeSummaryInAuditRecord() throws Exception {
       // 1. Verify automatic audit trail event sanitization (reusing AuditTrailEventListenerTest pattern)
       String eventCorr = "p289-corr-mask-evt";
@@ -609,12 +611,13 @@ public class AuditDataQualityAndOperationsRegressionTest {
     }
 
     @Test
-    @DisplayName("A.3: Transactional failure in domain mutation prevents audit log persistence")
-    void shouldNotCreateCommittedAuditRecordWhenMutationTransactionRollsBack() throws Exception {
+    @DisplayName("A.3: Fail-closed workflow execution prevents audit event persistence when entity validation fails")
+    void shouldVerifyFailClosedWorkflowPreventsAuditEventWhenTargetEntityNotFound() throws Exception {
       long countBefore = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM audit_logs", Long.class);
 
-      // Exercise a real domain workflow service mutation annotated with @Transactional and @AuditTrail
-      // that fails transactionally due to an invalid/non-existent target entity
+      // Calling an @AuditTrail-annotated workflow method with an invalid target fails closed before writes,
+      // throwing ResourceNotFoundException and ensuring zero phantom audit logs are generated.
+      // (Note: Post-write transactional rollback is proven by WorkflowTransactionRollbackIntegrationTest).
       PlacementToEmploymentTransitionRequest failRequest = new PlacementToEmploymentTransitionRequest();
       failRequest.setPlacementId(999999L); // Non-existent placement ID triggers ResourceNotFoundException
       failRequest.setEmploymentRecordRequest(new CreateEmploymentRecordRequest());
@@ -622,7 +625,7 @@ public class AuditDataQualityAndOperationsRegressionTest {
       assertThatThrownBy(() -> placementEmploymentWorkflowService.transitionPlacementToEmployment(failRequest))
           .isInstanceOf(ResourceNotFoundException.class);
 
-      // Verify that transaction rollback prevented any audit record from being persisted
+      // Verify that fail-closed validation prevented any audit record from being persisted
       long countAfter = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM audit_logs", Long.class);
       assertThat(countAfter).isEqualTo(countBefore);
     }
@@ -1131,11 +1134,24 @@ public class AuditDataQualityAndOperationsRegressionTest {
       String errorMsg = (String) qRecord.get("error_message");
       assertThat(errorMsg).isNotNull();
       assertThat(errorMsg).doesNotContain("SQLException", "INSERT INTO", "java.lang.");
+
+      // 5. Explicitly assert sanitized quarantine endpoint content
+      MvcResult qRes = mockMvc.perform(get("/api/v1/import/batches/{id}/quarantine", batchId)
+              .param("includeDuplicates", "false")
+              .header("Authorization", tokenProviderA1))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.totalElements").value(1))
+          .andExpect(jsonPath("$.data.content[0].errorCode").value("INVALID_DATE_FORMAT"))
+          .andReturn();
+      String qBody = qRes.getResponse().getContentAsString();
+      assertThat(qBody).doesNotContain("SQLException", "INSERT INTO", "java.lang.");
     }
 
     @Test
-    @DisplayName("F.2: Idempotent batch processing prevents duplicate execution on completed batches")
-    void shouldGuaranteeIdempotentBatchProcessingAndPreventConcurrentExecution() throws Exception {
+    @DisplayName("F.2: Reprocessing a completed import batch is rejected with HTTP 409 Conflict (terminal state enforcement)")
+    void shouldPreventReprocessingOfCompletedBatchWithConflict409() throws Exception {
+      // (Note: Multi-threaded concurrency testing with racing worker threads is proven by
+      // ImportBatchProcessingIntegrationTest.enforcesAtomicClaimAndIdempotentTerminalRejection).
       // 1. Stage and process a real batch to completion
       String csv = "registrationNumber,firstName,genderId,stateId,districtId,currentEmploymentStatusId,profileStatusId\n"
           + "P289-F-IDEMP,IdempUser,1," + STATE_A_ID + "," + DISTRICT_A1_ID + ",1,1\n";
