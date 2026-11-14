@@ -65,7 +65,19 @@ public interface DataQualityWorkflowService {
    * Retrieves the historical event audit trail for a specific data quality issue.
    *
    * @param issueId primary key identifier of the issue
+   * @return ordered list of issue events (first 100)
+   */
+  default List<DataQualityIssueEventResponse> getIssueEvents(Long issueId) {
+    return getIssueEvents(issueId, 0, 100);
+  }
+
+  /**
+   * Retrieves a bounded page of the historical event audit trail for a specific data quality issue.
+   *
+   * @param issueId primary key identifier of the issue
+   * @param page zero-based page index (must be >= 0)
+   * @param size page size bounded between 1 and 100
    * @return ordered list of issue events
    */
-  List<DataQualityIssueEventResponse> getIssueEvents(Long issueId);
+  List<DataQualityIssueEventResponse> getIssueEvents(Long issueId, int page, int size);
 }

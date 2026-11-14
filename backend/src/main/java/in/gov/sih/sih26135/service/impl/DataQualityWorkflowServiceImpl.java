@@ -25,9 +25,12 @@ import in.gov.sih.sih26135.security.AuditPayloadMasker;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.DataQualityWorkflowService;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -344,20 +347,75 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
     return issueMapper.toResponse(saved);
   }
 
+  private static void validatePaginationBounds(int page, int size) {
+    if (page < 0) {
+      throw new BadRequestException("Page index must not be negative", "INVALID_PAGE");
+    }
+    if (size < 1 || size > 100) {
+      throw new BadRequestException("Page size must be between 1 and 100", "INVALID_SIZE");
+    }
+  }
+
   @Override
   @Transactional(readOnly = true)
   public List<DataQualityIssueEventResponse> getIssueEvents(Long issueId) {
+    return getIssueEvents(issueId, 0, 100);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<DataQualityIssueEventResponse> getIssueEvents(Long issueId, int page, int size) {
     validateIssueId(issueId);
+    validatePaginationBounds(page, size);
     DataQualityIssueScopeSupport.CallerScope callerScope = resolveAndValidateReaderScope();
     DataQualityIssue issue = findIssue(issueId);
     DataQualityIssueScopeSupport.validateCallerScopeForIssue(callerScope, issue, jdbcTemplate);
 
-    List<DataQualityIssueEvent> events = dataQualityIssueEventRepository.findByDataQualityIssueId(issueId);
-    return events.stream()
-        .sorted(Comparator.comparing(DataQualityIssueEvent::getChangedAt, Comparator.nullsLast(Comparator.naturalOrder()))
-            .thenComparing(DataQualityIssueEvent::getId, Comparator.nullsLast(Comparator.naturalOrder())))
-        .map(eventMapper::toResponse)
-        .toList();
+    int safePage = Math.max(0, page);
+    int safeSize = (size >= 1 && size <= 100) ? size : 100;
+    long rawOffset = (long) safePage * (long) safeSize;
+    if (rawOffset > Integer.MAX_VALUE) {
+      return List.of();
+    }
+    StringBuilder sql = new StringBuilder(
+        "SELECT ev.data_quality_issue_event_id FROM data_quality_issue_events ev "
+            + "JOIN data_quality_issues dqi ON ev.data_quality_issue_id = dqi.data_quality_issue_id "
+            + "WHERE ev.data_quality_issue_id = ?");
+    List<Object> params = new ArrayList<>();
+    params.add(issueId);
+    DataQualityIssueScopeSupport.appendIssueTenantWhereClause(callerScope, sql, null, params);
+    sql.append(" ORDER BY ev.changed_at ASC, ev.data_quality_issue_event_id ASC LIMIT ? OFFSET ?");
+    params.add(safeSize);
+    params.add((int) rawOffset);
+
+    List<Long> ids = jdbcTemplate != null
+        ? jdbcTemplate.queryForList(sql.toString(), Long.class, params.toArray())
+        : List.of();
+    if (ids.isEmpty()) {
+      List<DataQualityIssueEvent> fallbackEvents = dataQualityIssueEventRepository.findByDataQualityIssueId(issueId);
+      if (fallbackEvents != null && !fallbackEvents.isEmpty()) {
+        return fallbackEvents.stream()
+            .sorted(Comparator.comparing(DataQualityIssueEvent::getChangedAt, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(DataQualityIssueEvent::getId, Comparator.nullsLast(Comparator.naturalOrder())))
+            .skip(rawOffset)
+            .limit(safeSize)
+            .map(eventMapper::toResponse)
+            .toList();
+      }
+      return List.of();
+    }
+    Map<Long, DataQualityIssueEvent> byId = new LinkedHashMap<>();
+    for (DataQualityIssueEvent event : dataQualityIssueEventRepository.findAllById(ids)) {
+      byId.put(event.getId(), event);
+    }
+    List<DataQualityIssueEventResponse> ordered = new ArrayList<>(ids.size());
+    for (Long id : ids) {
+      DataQualityIssueEvent event = byId.get(id);
+      if (event != null) {
+        ordered.add(eventMapper.toResponse(event));
+      }
+    }
+    return ordered;
   }
 
   private void validateIssueId(Long issueId) {

@@ -17,6 +17,7 @@ import in.gov.sih.sih26135.security.jwt.JwtTokenProvider;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.List;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
@@ -1062,6 +1063,103 @@ class OperationalHardeningSecurityAndPrivacyTest {
       } finally {
         jdbcTemplate.update("DELETE FROM data_quality_issue_events WHERE data_quality_issue_event_id BETWEEN 975000 AND 977000");
         jdbcTemplate.update("DELETE FROM data_quality_issues WHERE data_quality_issue_id BETWEEN 975000 AND 977000");
+      }
+    }
+
+    @Test
+    @DisplayName("1.5 Verifies High-Volume Timeline Events Bounded Pagination and Multi-Tenant Isolation")
+    void verifiesHighVolumeTimelineEventsBoundedPaginationAndTenancy() throws Exception {
+      jdbcTemplate.update("DELETE FROM data_quality_issue_events WHERE data_quality_issue_event_id BETWEEN 977000 AND 978000");
+
+      try {
+        // Seed 105 events for DQ_ISSUE_A1_ID with distinct ascending timestamps and IDs
+        for (int i = 1; i <= 105; i++) {
+          long eventId = 977000L + i;
+          jdbcTemplate.update(
+              "INSERT INTO data_quality_issue_events (data_quality_issue_event_id, data_quality_issue_id, data_quality_issue_status_id, changed_by_user_id, remarks, created_at, changed_at) "
+                  + "VALUES (?, ?, 1, ?, ?, NOW() + INTERVAL " + i + " MINUTE, NOW() + INTERVAL " + i + " MINUTE)",
+              eventId, DQ_ISSUE_A1_ID, USER_NATIONWIDE_ID, "Timeline event " + i);
+        }
+
+        // 1. Verify page 0 (size 50) and page 1 (size 50) are bounded and non-overlapping
+        MvcResult page0Result = mockMvc.perform(get("/api/v1/data-quality-issues/{id}/events", DQ_ISSUE_A1_ID)
+                .param("page", "0")
+                .param("size", "50")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.length()").value(50))
+            .andReturn();
+
+        MvcResult page1Result = mockMvc.perform(get("/api/v1/data-quality-issues/{id}/events", DQ_ISSUE_A1_ID)
+                .param("page", "1")
+                .param("size", "50")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.length()").value(50))
+            .andReturn();
+
+        JsonNode page0Array = objectMapper.readTree(page0Result.getResponse().getContentAsString()).path("data");
+        JsonNode page1Array = objectMapper.readTree(page1Result.getResponse().getContentAsString()).path("data");
+
+        List<Long> page0Ids = new ArrayList<>();
+        List<Long> page1Ids = new ArrayList<>();
+        for (JsonNode n : page0Array) {
+          page0Ids.add(n.path("id").asLong());
+        }
+        for (JsonNode n : page1Array) {
+          page1Ids.add(n.path("id").asLong());
+        }
+
+        // Non-overlapping verification
+        assertThat(page0Ids).doesNotContainAnyElementsOf(page1Ids);
+
+        // Timeline chronology verification (ascending order)
+        assertThat(page0Ids.get(page0Ids.size() - 1)).isLessThan(page1Ids.get(0));
+
+        // 2. Verify older/subsequent events remain accessible on page 2
+        mockMvc.perform(get("/api/v1/data-quality-issues/{id}/events", DQ_ISSUE_A1_ID)
+                .param("page", "2")
+                .param("size", "50")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.length()").value(6)); // 1 original DQ_EVENT_A1_ID + 105 seeded = 106 total -> page 2 has 6
+
+        // 3. Verify another provider cannot access the issue timeline (HTTP 403 Forbidden)
+        mockMvc.perform(get("/api/v1/data-quality-issues/{id}/events", DQ_ISSUE_B1_ID)
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isForbidden());
+
+        // 4. Verify invalid page and size parameters return HTTP 400 Bad Request
+        mockMvc.perform(get("/api/v1/data-quality-issues/{id}/events", DQ_ISSUE_A1_ID)
+                .param("page", "-1")
+                .param("size", "10")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/api/v1/data-quality-issues/{id}/events", DQ_ISSUE_A1_ID)
+                .param("page", "0")
+                .param("size", "0")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/api/v1/data-quality-issues/{id}/events", DQ_ISSUE_A1_ID)
+                .param("page", "0")
+                .param("size", "101")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/api/v1/data-quality-issues/{id}/events", DQ_ISSUE_A1_ID)
+                .param("page", "0")
+                .param("size", "50")
+                .param("bogusParam", "true")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isBadRequest());
+
+      } finally {
+        jdbcTemplate.update("DELETE FROM data_quality_issue_events WHERE data_quality_issue_event_id BETWEEN 977000 AND 978000");
       }
     }
   }

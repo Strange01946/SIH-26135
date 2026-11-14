@@ -952,6 +952,56 @@ class DataQualityWorkflowServiceTest {
       assertThat(responses.get(0).id()).isEqualTo(101L);
       assertThat(responses.get(1).id()).isEqualTo(102L);
     }
+
+    @Test
+    @DisplayName("Should validate pagination bounds on event audit retrieval")
+    void shouldValidatePaginationBounds() {
+      assertThatThrownBy(() -> workflowService.getIssueEvents(1L, -1, 50))
+          .isInstanceOf(BadRequestException.class)
+          .hasMessageContaining("Page index must not be negative");
+
+      assertThatThrownBy(() -> workflowService.getIssueEvents(1L, 0, 0))
+          .isInstanceOf(BadRequestException.class)
+          .hasMessageContaining("Page size must be between 1 and 100");
+
+      assertThatThrownBy(() -> workflowService.getIssueEvents(1L, 0, 101))
+          .isInstanceOf(BadRequestException.class)
+          .hasMessageContaining("Page size must be between 1 and 100");
+    }
+
+    @Test
+    @DisplayName("Should return bounded page of historical events")
+    void shouldReturnBoundedPageOfOrderedEvents() {
+      mockAdminAuthentication();
+      DataQualityIssue issue = createTestIssue(1L, inProgressStatus);
+      when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
+
+      DataQualityIssueEvent event1 = new DataQualityIssueEvent();
+      event1.setId(101L);
+      event1.setChangedAt(LocalDateTime.now().minusHours(2));
+      event1.setRemarks("Event 1");
+
+      DataQualityIssueEvent event2 = new DataQualityIssueEvent();
+      event2.setId(102L);
+      event2.setChangedAt(LocalDateTime.now().minusHours(1));
+      event2.setRemarks("Event 2");
+
+      when(dataQualityIssueEventRepository.findByDataQualityIssueId(1L)).thenReturn(List.of(event2, event1));
+      when(eventMapper.toResponse(any(DataQualityIssueEvent.class))).thenAnswer(inv -> {
+        DataQualityIssueEvent e = inv.getArgument(0);
+        return new DataQualityIssueEventResponse(
+            e.getId(), 1L, 2L, "STATUS", "Status", 10L, e.getChangedAt(), e.getRemarks(), e.getCreatedAt()
+        );
+      });
+
+      List<DataQualityIssueEventResponse> page0 = workflowService.getIssueEvents(1L, 0, 1);
+      assertThat(page0).hasSize(1);
+      assertThat(page0.get(0).id()).isEqualTo(101L);
+
+      List<DataQualityIssueEventResponse> page1 = workflowService.getIssueEvents(1L, 1, 1);
+      assertThat(page1).hasSize(1);
+      assertThat(page1.get(0).id()).isEqualTo(102L);
+    }
   }
 
   @Nested

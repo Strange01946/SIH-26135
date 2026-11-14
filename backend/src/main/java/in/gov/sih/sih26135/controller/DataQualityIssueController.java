@@ -412,16 +412,26 @@ public class DataQualityIssueController {
    * Retrieves the historical event trail for a data quality issue.
    *
    * @param id primary key identifier of the issue
+   * @param page zero-based page index (defaults to 0)
+   * @param size page size bounded between 1 and 100 (defaults to 100)
+   * @param httpRequest HTTP servlet request to verify query parameters
    * @return 200 OK with list of DataQualityIssueEventResponse enveloped in ApiResponse
    */
   @GetMapping("/{id}/events")
   public ResponseEntity<ApiResponse<List<DataQualityIssueEventResponse>>> getIssueEvents(
-      @PathVariable @Positive Long id) {
-    List<DataQualityIssueEventResponse> response = dataQualityWorkflowService.getIssueEvents(id);
+      @PathVariable @Positive Long id,
+      @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
+      @RequestParam(value = "size", defaultValue = "100") @Min(1) @Max(100) int size,
+      HttpServletRequest httpRequest) {
+    validateOnlyQueryParameter(httpRequest, "");
+    List<DataQualityIssueEventResponse> response = dataQualityWorkflowService.getIssueEvents(id, page, size);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
 
   private void validateOnlyQueryParameter(HttpServletRequest request, String allowedParam) {
+    if (request == null || request.getParameterMap() == null) {
+      return;
+    }
     for (String paramName : request.getParameterMap().keySet()) {
       if (!paramName.equals(allowedParam) && !ALLOWED_PAGINATION_PARAMS.contains(paramName)) {
         throw new BadRequestException(
