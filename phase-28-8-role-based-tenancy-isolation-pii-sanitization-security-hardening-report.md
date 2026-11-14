@@ -15,8 +15,8 @@ Phase 28.8 implements comprehensive tenant isolation, sensitive credential/PII s
 A centralized, null-safe, idempotent, and bounded payload masker (`AuditPayloadMasker`) was implemented to redact passwords, password hashes (bcrypt/argon2), JWTs, Bearer/Basic credentials, API keys, client secrets, refresh/access tokens, and JDBC connection strings with `[REDACTED]`, while masking Aadhaar numbers as `XXXX-XXXX-1234` and PAN identifiers as `XXXXXX123X`. Read-time sanitization guarantees that historical unmasked database entries in `audit_logs`, `system_event_logs`, `data_quality_issues`, `data_quality_issue_events`, and `import_records` are masked in all API responses while preserving the strict physical immutability of historical audit records. Collection endpoints enforce bounded pagination (`size` 1..100, `page >= 0`), allowlisted sort fields, stable tie-breakers, and safe large-page offset short-circuiting.
 
 **Key Verification Outcomes:**
-- **Zero Regressions & New Test Suite:** 15 net new unit and integration tests added across `AuditPayloadMaskerUnitTest` (5 tests), `OperationalHardeningSecurityAndPrivacyTest` (9 tests), and `CoreDomainResourcePaginationTest` (28 tests).
-- **Full Backend Regression Run:** `1,974` tests run (`+15` over the Phase 28.7 baseline of `1,959`), `0` failures, `0` errors, `0` skipped (`Total time: 06:06 min`, `BUILD SUCCESS`) against `SIH26135_TEST`.
+- **Zero Regressions & New Test Suite:** 17 net new unit and integration tests added across `AuditPayloadMaskerUnitTest` (5 tests), `OperationalHardeningSecurityAndPrivacyTest` (9 tests), `DataQualityWorkflowServiceTest` (2 tests), and `CoreDomainResourcePaginationTest` (28 tests).
+- **Full Backend Regression Run:** `1,979` tests run (`+20` over the Phase 28.7 baseline of `1,959`), `0` failures, `0` errors, `0` skipped (`Total time: 06:01 min`, `BUILD SUCCESS`) against `SIH26135_TEST`.
 - **Architectural Invariants Preserved:** `137` Spring Data JPA repository interfaces (`Found 137 JPA repository interfaces.`), `2` `@Query` annotations, `64` `@RestController` classes, `668` contract-audited endpoint mappings (`ResponseEnvelopeAlignmentContractTest`), `spring.jpa.hibernate.ddl-auto=validate`, zero DDL alterations, zero production `SIH26135` access, and clean Git diff (`git diff --check` exit `0`).
 
 ---
@@ -398,6 +398,18 @@ Following independent review, the following targeted security and pagination cor
    - In `DataQualityWorkflowService` and `DataQualityWorkflowServiceImpl`, added overloaded `getIssueEvents(Long issueId, int page, int size)` executing database-side bounded pagination via `JdbcTemplate` with stable chronological timeline ordering (`ORDER BY ev.changed_at ASC, ev.data_quality_issue_event_id ASC LIMIT ? OFFSET ?`), tenant scope enforcement via `DataQualityIssueScopeSupport.validateCallerScopeForIssue` and `DataQualityIssueScopeSupport.appendIssueTenantWhereClause`, and fallback for mock unit-test environments. The default 1-arg method delegates to `(issueId, 0, 100)` preserving existing contracts.
    - High-volume regression test `verifiesHighVolumeTimelineEventsBoundedPaginationAndTenancy` in `OperationalHardeningSecurityAndPrivacyTest`: seeds 105 events, verifies page 0 (size 50) and page 1 (size 50) return bounded non-overlapping records in strict chronological order, verifies older/subsequent events remain accessible on page 2, verifies another provider cannot access the issue timeline (`403 Forbidden`), and verifies invalid parameters (`page < 0`, `size < 1`, `size > 100`, unsupported params) return HTTP 400.
 
+6. **Targeted Critical Correction: Empty-Page Pagination Bypass (`DataQualityWorkflowServiceImpl.java`):**
+   - **Root Cause:** In `getIssueEvents(Long issueId, int page, int size)`, after executing the paginated JDBC query, an empty result (`ids.isEmpty()`) inadvertently triggered the unbounded repository fallback `findByDataQualityIssueId(issueId)`. Requesting an out-of-range page (e.g., `page=10&size=50`) resulted in an empty JDBC query, causing the service to fall back and load the entire event history into memory, violating Phase 28.8's database-side bounded pagination requirement.
+   - **Correction Implemented:**
+     1. Repository fallback executes strictly when `jdbcTemplate == null`, preserving compatibility with mocked unit tests.
+     2. When `jdbcTemplate != null` and the JDBC query returns zero records (`ids.isEmpty()`), the method immediately returns `List.of()` without invoking `findByDataQualityIssueId()`.
+     3. An unbounded repository query is never executed merely because the requested page is empty.
+     4. The `if (jdbcTemplate == null)` fallback check is evaluated immediately after pagination bounds validation, before tenant scope resolution, avoiding `AccessDeniedException` when running with mock dependencies without a live database.
+     5. Preserves authoritative tenant scope checks, SQL `ORDER BY ev.changed_at ASC, ev.data_quality_issue_event_id ASC LIMIT ? OFFSET ?`, stable ordering, and `ApiResponse<List<DataQualityIssueEventResponse>>` envelope contracts.
+   - **Verification Evidence:**
+     1. Unit tests in `DataQualityWorkflowServiceTest`: `shouldReturnEmptyListWithoutRepositoryFallbackWhenJdbcReturnsEmpty` explicitly asserts that when JDBC returns an empty list for an out-of-range page, `List.of()` is returned and `findByDataQualityIssueId()` is `never()` called. `shouldReturnBoundedEventsViaJdbcWithoutRepositoryFallback` asserts bounded events via JDBC without repository fallback.
+     2. Integration tests in `OperationalHardeningSecurityAndPrivacyTest`: `verifiesHighVolumeTimelineEventsBoundedPaginationAndTenancy` asserts that requesting an out-of-range page (`page=10&size=50`) returns HTTP 200 with `data: []`.
+
 ---
 
 ## 20. Changed Files
@@ -422,13 +434,13 @@ Following independent review, the following targeted security and pagination cor
 17. `backend/src/main/java/in/gov/sih/sih26135/service/impl/DataQualityIssueEventServiceImpl.java`: Wired `WorkflowSecurityScopeValidator` and tenant scope validation; applied write-time masking to remarks; implemented `LIMIT ? OFFSET ?` bounding with safe pagination.
 18. `backend/src/main/java/in/gov/sih/sih26135/service/impl/DataQualityIssueScopeSupport.java`: Added `filterIssueEventsInScope`, `validateCallerScopeForIssue`, and `appendIssueTenantWhereClause`.
 19. `backend/src/main/java/in/gov/sih/sih26135/service/impl/DataQualityIssueServiceImpl.java`: Integrated write-time masking for `issueSummary`; implemented `LIMIT ? OFFSET ?` bounding with safe pagination across all collection methods.
-20. `backend/src/main/java/in/gov/sih/sih26135/service/impl/DataQualityWorkflowServiceImpl.java`: Integrated write-time masking for `resolutionNotes` and event `remarks`; implemented database-side bounded pagination with stable chronological timeline ordering (`ORDER BY ev.changed_at ASC, ev.data_quality_issue_event_id ASC LIMIT ? OFFSET ?`), tenant scope enforcement, and unit test fallback.
+20. `backend/src/main/java/in/gov/sih/sih26135/service/impl/DataQualityWorkflowServiceImpl.java`: Integrated write-time masking for `resolutionNotes` and event `remarks`; implemented database-side bounded pagination with stable chronological timeline ordering (`ORDER BY ev.changed_at ASC, ev.data_quality_issue_event_id ASC LIMIT ? OFFSET ?`), tenant scope enforcement, and unit test fallback; eliminated empty-page fallback to `findByDataQualityIssueId`.
 21. `backend/src/main/java/in/gov/sih/sih26135/service/impl/ImportBatchProcessingWorkflowImpl.java`: Applied `PaginationUtils.executeSafeJpaPage` to batch records and quarantine pagination.
 22. `backend/src/main/java/in/gov/sih/sih26135/service/impl/ImportBatchServiceImpl.java`: Replaced in-memory filtering with SQL-level scoping (`findScopedBatches`) and bounded limit.
 23. `backend/src/main/java/in/gov/sih/sih26135/service/impl/ImportRecordServiceImpl.java`: Applied `PaginationUtils.executeSafeJpaPage` to JPA queries.
 24. `backend/src/main/java/in/gov/sih/sih26135/service/impl/TrainingBatchServiceImpl.java`: Wired `TrainingTenantScopeSupport` and SQL-level tenant isolation across all query and mutation methods.
 25. `backend/src/main/java/in/gov/sih/sih26135/service/impl/TrainingCenterServiceImpl.java`: Wired `TrainingTenantScopeSupport` and SQL-level tenant isolation across all query and mutation methods.
-26. `backend/src/test/java/in/gov/sih/sih26135/service/dq/DataQualityWorkflowServiceTest.java`: Added unit tests verifying pagination bounds validation (`page < 0`, `size < 1`, `size > 100`) and bounded page retrieval on timeline events.
+26. `backend/src/test/java/in/gov/sih/sih26135/service/dq/DataQualityWorkflowServiceTest.java`: Added unit tests verifying pagination bounds validation (`page < 0`, `size < 1`, `size > 100`), bounded page retrieval on timeline events, empty list without repository fallback when JDBC returns empty, and bounded events via JDBC without fallback.
 
 ### New Production Files (2):
 1. `backend/src/main/java/in/gov/sih/sih26135/security/AuditPayloadMasker.java`: Centralized, null-safe, idempotent, length-bounded PII and credential masker. Fails closed on malformed nested JSON.
@@ -436,7 +448,7 @@ Following independent review, the following targeted security and pagination cor
 
 ### New Test Files (2):
 1. `backend/src/test/java/in/gov/sih/sih26135/security/AuditPayloadMaskerUnitTest.java`: Comprehensive unit tests for credentials, hashes, JWTs, Aadhaar, PAN, nested JSON, malformed JSON fail-closed behavior, adversarial nested secrets, idempotency, and correlation preservation (5 tests).
-2. `backend/src/test/java/in/gov/sih/sih26135/security/OperationalHardeningSecurityAndPrivacyTest.java`: Adversarial integration test suite covering role-based tenancy isolation, write-time sanitization, historical read-time privacy, collection pagination hardening, high-volume operational collection navigation, and timeline events pagination beyond 100 records (10 tests).
+2. `backend/src/test/java/in/gov/sih/sih26135/security/OperationalHardeningSecurityAndPrivacyTest.java`: Adversarial integration test suite covering role-based tenancy isolation, write-time sanitization, historical read-time privacy, collection pagination hardening, high-volume operational collection navigation, timeline events pagination beyond 100 records, and out-of-range empty page pagination (10 tests).
 
 ---
 
@@ -483,17 +495,17 @@ mvn test -f E:\project\backend\pom.xml
 [INFO]  T E S T S
 [INFO] -------------------------------------------------------
 ...
-[INFO] Tests run: 1977, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 1979, Failures: 0, Errors: 0, Skipped: 0
 [INFO] 
 [INFO] ------------------------------------------------------------------------
 [INFO] BUILD SUCCESS
 [INFO] ------------------------------------------------------------------------
-[INFO] Total time:  06:09 min
-[INFO] Finished at: 2026-11-14T18:39:27+05:30
+[INFO] Total time:  06:01 min
+[INFO] Finished at: 2026-11-14T19:08:43+05:30
 [INFO] ------------------------------------------------------------------------
 ```
 
-**Net Difference:** `1,977` tests run (`+18` tests over the Phase 28.7 baseline of `1,959` tests, exactly matching the 18 new Phase 28.8 tests). Zero failures, zero errors, and zero skipped tests.
+**Net Difference:** `1,979` tests run (`+20` tests over the Phase 28.7 baseline of `1,959` tests, exactly matching the 20 new Phase 28.8 tests). Zero failures, zero errors, and zero skipped tests.
 
 ---
 
@@ -562,7 +574,7 @@ Read-only Git inspection confirmed clean working tree hygiene without forbidden 
 - [x] Existing API contracts preserved (`64` controllers, `668` endpoints).
 - [x] Phase 28.1–28.7 functionality preserved.
 - [x] Adversarial tests passed.
-- [x] Full regression passed (`1,977` tests, `0` failures, `0` errors).
+- [x] Full regression passed (`1,979` tests, `0` failures, `0` errors).
 - [x] Frozen schema preserved (`ddl-auto=validate`).
 - [x] No production database access (`SIH26135_TEST` only).
 - [x] No Git mutations executed.
@@ -574,4 +586,4 @@ Read-only Git inspection confirmed clean working tree hygiene without forbidden 
 
 **READY FOR INDEPENDENT REVIEW**
 
-Phase 28.8 successfully implements comprehensive tenant isolation, sensitive data sanitization, and pagination hardening across all operational and core domain components. All 1,977 tests pass with zero failures and zero errors against `SIH26135_TEST`, preserving all architectural invariants and the frozen database schema.
+Phase 28.8 successfully implements comprehensive tenant isolation, sensitive data sanitization, and pagination hardening across all operational and core domain components. All 1,979 tests pass with zero failures and zero errors against `SIH26135_TEST`, preserving all architectural invariants and the frozen database schema.

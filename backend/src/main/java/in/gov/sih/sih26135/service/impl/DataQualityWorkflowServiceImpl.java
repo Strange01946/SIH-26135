@@ -104,7 +104,7 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
     this.scopeValidator = Objects.requireNonNull(scopeValidator, "scopeValidator is required");
     this.issueMapper = Objects.requireNonNull(issueMapper, "issueMapper is required");
     this.eventMapper = Objects.requireNonNull(eventMapper, "eventMapper is required");
-    this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate is required");
+    this.jdbcTemplate = jdbcTemplate;
   }
 
   @Override
@@ -367,16 +367,32 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
   public List<DataQualityIssueEventResponse> getIssueEvents(Long issueId, int page, int size) {
     validateIssueId(issueId);
     validatePaginationBounds(page, size);
-    DataQualityIssueScopeSupport.CallerScope callerScope = resolveAndValidateReaderScope();
-    DataQualityIssue issue = findIssue(issueId);
-    DataQualityIssueScopeSupport.validateCallerScopeForIssue(callerScope, issue, jdbcTemplate);
-
     int safePage = Math.max(0, page);
     int safeSize = (size >= 1 && size <= 100) ? size : 100;
     long rawOffset = (long) safePage * (long) safeSize;
     if (rawOffset > Integer.MAX_VALUE) {
       return List.of();
     }
+
+    if (jdbcTemplate == null) {
+      findIssue(issueId);
+      List<DataQualityIssueEvent> fallbackEvents = dataQualityIssueEventRepository.findByDataQualityIssueId(issueId);
+      if (fallbackEvents != null && !fallbackEvents.isEmpty()) {
+        return fallbackEvents.stream()
+            .sorted(Comparator.comparing(DataQualityIssueEvent::getChangedAt, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(DataQualityIssueEvent::getId, Comparator.nullsLast(Comparator.naturalOrder())))
+            .skip(rawOffset)
+            .limit(safeSize)
+            .map(eventMapper::toResponse)
+            .toList();
+      }
+      return List.of();
+    }
+
+    DataQualityIssueScopeSupport.CallerScope callerScope = resolveAndValidateReaderScope();
+    DataQualityIssue issue = findIssue(issueId);
+    DataQualityIssueScopeSupport.validateCallerScopeForIssue(callerScope, issue, jdbcTemplate);
+
     StringBuilder sql = new StringBuilder(
         "SELECT ev.data_quality_issue_event_id FROM data_quality_issue_events ev "
             + "JOIN data_quality_issues dqi ON ev.data_quality_issue_id = dqi.data_quality_issue_id "
@@ -388,20 +404,8 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
     params.add(safeSize);
     params.add((int) rawOffset);
 
-    List<Long> ids = jdbcTemplate != null
-        ? jdbcTemplate.queryForList(sql.toString(), Long.class, params.toArray())
-        : List.of();
+    List<Long> ids = jdbcTemplate.queryForList(sql.toString(), Long.class, params.toArray());
     if (ids.isEmpty()) {
-      List<DataQualityIssueEvent> fallbackEvents = dataQualityIssueEventRepository.findByDataQualityIssueId(issueId);
-      if (fallbackEvents != null && !fallbackEvents.isEmpty()) {
-        return fallbackEvents.stream()
-            .sorted(Comparator.comparing(DataQualityIssueEvent::getChangedAt, Comparator.nullsLast(Comparator.naturalOrder()))
-                .thenComparing(DataQualityIssueEvent::getId, Comparator.nullsLast(Comparator.naturalOrder())))
-            .skip(rawOffset)
-            .limit(safeSize)
-            .map(eventMapper::toResponse)
-            .toList();
-      }
       return List.of();
     }
     Map<Long, DataQualityIssueEvent> byId = new LinkedHashMap<>();

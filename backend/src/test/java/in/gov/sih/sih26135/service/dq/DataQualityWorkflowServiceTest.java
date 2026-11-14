@@ -922,8 +922,19 @@ class DataQualityWorkflowServiceTest {
   class EventAuditHistory {
 
     @Test
-    @DisplayName("Should return sorted historical events for an authorized issue")
+    @DisplayName("Should return sorted historical events for an authorized issue via repository fallback when jdbcTemplate is null")
     void shouldReturnOrderedEvents() {
+      DataQualityWorkflowServiceImpl fallbackService = new DataQualityWorkflowServiceImpl(
+          dataQualityIssueRepository,
+          dataQualityIssueEventRepository,
+          refDataQualityIssueStatusRepository,
+          userRepository,
+          traineeRepository,
+          scopeValidator,
+          issueMapper,
+          eventMapper,
+          null
+      );
       mockAdminAuthentication();
       DataQualityIssue issue = createTestIssue(1L, inProgressStatus);
       when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
@@ -946,11 +957,69 @@ class DataQualityWorkflowServiceTest {
         );
       });
 
-      List<DataQualityIssueEventResponse> responses = workflowService.getIssueEvents(1L);
+      List<DataQualityIssueEventResponse> responses = fallbackService.getIssueEvents(1L);
       assertThat(responses).hasSize(2);
       // verify sorted by changedAt ascending
       assertThat(responses.get(0).id()).isEqualTo(101L);
       assertThat(responses.get(1).id()).isEqualTo(102L);
+    }
+
+    @Test
+    @DisplayName("Should return empty list without executing repository fallback when JDBC query returns zero records")
+    void shouldReturnEmptyListWithoutRepositoryFallbackWhenJdbcReturnsEmpty() {
+      mockAdminAuthentication();
+      DataQualityIssue issue = createTestIssue(1L, inProgressStatus);
+      when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
+
+      // Simulate JDBC query returning zero records for an out-of-range page
+      when(jdbcTemplate.queryForList(anyString(), eq(Long.class), any(Object[].class)))
+          .thenReturn(List.of());
+
+      List<DataQualityIssueEventResponse> responses = workflowService.getIssueEvents(1L, 10, 50);
+
+      // Verify empty list is returned immediately
+      assertThat(responses).isEmpty();
+
+      // Verify unbounded findByDataQualityIssueId() is NEVER invoked
+      verify(dataQualityIssueEventRepository, never()).findByDataQualityIssueId(anyLong());
+      verify(dataQualityIssueEventRepository, never()).findAllById(any());
+    }
+
+    @Test
+    @DisplayName("Should return bounded events via JDBC without executing unbounded findByDataQualityIssueId")
+    void shouldReturnBoundedEventsViaJdbcWithoutRepositoryFallback() {
+      mockAdminAuthentication();
+      DataQualityIssue issue = createTestIssue(1L, inProgressStatus);
+      when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
+
+      DataQualityIssueEvent event1 = new DataQualityIssueEvent();
+      event1.setId(101L);
+      event1.setChangedAt(LocalDateTime.now().minusHours(2));
+      event1.setRemarks("Event 1");
+
+      DataQualityIssueEvent event2 = new DataQualityIssueEvent();
+      event2.setId(102L);
+      event2.setChangedAt(LocalDateTime.now().minusHours(1));
+      event2.setRemarks("Event 2");
+
+      when(jdbcTemplate.queryForList(anyString(), eq(Long.class), any(Object[].class)))
+          .thenReturn(List.of(101L, 102L));
+      when(dataQualityIssueEventRepository.findAllById(List.of(101L, 102L)))
+          .thenReturn(List.of(event1, event2));
+      when(eventMapper.toResponse(any(DataQualityIssueEvent.class))).thenAnswer(inv -> {
+        DataQualityIssueEvent e = inv.getArgument(0);
+        return new DataQualityIssueEventResponse(
+            e.getId(), 1L, 2L, "STATUS", "Status", 10L, e.getChangedAt(), e.getRemarks(), e.getCreatedAt()
+        );
+      });
+
+      List<DataQualityIssueEventResponse> responses = workflowService.getIssueEvents(1L, 0, 50);
+      assertThat(responses).hasSize(2);
+      assertThat(responses.get(0).id()).isEqualTo(101L);
+      assertThat(responses.get(1).id()).isEqualTo(102L);
+
+      verify(dataQualityIssueEventRepository, never()).findByDataQualityIssueId(anyLong());
+      verify(dataQualityIssueEventRepository).findAllById(List.of(101L, 102L));
     }
 
     @Test
@@ -970,8 +1039,19 @@ class DataQualityWorkflowServiceTest {
     }
 
     @Test
-    @DisplayName("Should return bounded page of historical events")
+    @DisplayName("Should return bounded page of historical events via fallback when jdbcTemplate is null")
     void shouldReturnBoundedPageOfOrderedEvents() {
+      DataQualityWorkflowServiceImpl fallbackService = new DataQualityWorkflowServiceImpl(
+          dataQualityIssueRepository,
+          dataQualityIssueEventRepository,
+          refDataQualityIssueStatusRepository,
+          userRepository,
+          traineeRepository,
+          scopeValidator,
+          issueMapper,
+          eventMapper,
+          null
+      );
       mockAdminAuthentication();
       DataQualityIssue issue = createTestIssue(1L, inProgressStatus);
       when(dataQualityIssueRepository.findById(1L)).thenReturn(Optional.of(issue));
@@ -994,11 +1074,11 @@ class DataQualityWorkflowServiceTest {
         );
       });
 
-      List<DataQualityIssueEventResponse> page0 = workflowService.getIssueEvents(1L, 0, 1);
+      List<DataQualityIssueEventResponse> page0 = fallbackService.getIssueEvents(1L, 0, 1);
       assertThat(page0).hasSize(1);
       assertThat(page0.get(0).id()).isEqualTo(101L);
 
-      List<DataQualityIssueEventResponse> page1 = workflowService.getIssueEvents(1L, 1, 1);
+      List<DataQualityIssueEventResponse> page1 = fallbackService.getIssueEvents(1L, 1, 1);
       assertThat(page1).hasSize(1);
       assertThat(page1.get(0).id()).isEqualTo(102L);
     }

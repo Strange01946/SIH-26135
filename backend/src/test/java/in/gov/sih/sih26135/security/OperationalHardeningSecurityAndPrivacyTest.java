@@ -1127,6 +1127,15 @@ class OperationalHardeningSecurityAndPrivacyTest {
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.length()").value(6)); // 1 original DQ_EVENT_A1_ID + 105 seeded = 106 total -> page 2 has 6
 
+        // Out-of-range page returns empty list immediately
+        mockMvc.perform(get("/api/v1/data-quality-issues/{id}/events", DQ_ISSUE_A1_ID)
+                .param("page", "10")
+                .param("size", "50")
+                .header("Authorization", providerA1Token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.length()").value(0));
+
         // 3. Verify another provider cannot access the issue timeline (HTTP 403 Forbidden)
         mockMvc.perform(get("/api/v1/data-quality-issues/{id}/events", DQ_ISSUE_B1_ID)
                 .header("Authorization", providerA1Token))
