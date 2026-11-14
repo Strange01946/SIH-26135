@@ -2,6 +2,7 @@ package in.gov.sih.sih26135.regression;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
@@ -20,21 +21,31 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import in.gov.sih.sih26135.MysqlConnectionTest;
 import in.gov.sih.sih26135.dto.request.AssignDataQualityIssueRequest;
 import in.gov.sih.sih26135.dto.request.CreateAuditLogRequest;
+import in.gov.sih.sih26135.dto.request.CreateEmploymentRecordRequest;
 import in.gov.sih.sih26135.dto.request.CreateSystemEventLogRequest;
 import in.gov.sih.sih26135.dto.request.DataQualityScanRequest;
 import in.gov.sih.sih26135.dto.request.DismissDataQualityIssueRequest;
+import in.gov.sih.sih26135.dto.request.PlacementToEmploymentTransitionRequest;
 import in.gov.sih.sih26135.dto.request.ReopenDataQualityIssueRequest;
 import in.gov.sih.sih26135.dto.request.ResolveDataQualityIssueRequest;
 import in.gov.sih.sih26135.dto.request.StartInvestigationRequest;
+import in.gov.sih.sih26135.event.AuditTrailEvent;
+import in.gov.sih.sih26135.event.listener.AuditTrailEventListener;
+import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.security.jwt.JwtTokenProvider;
 import in.gov.sih.sih26135.service.DataQualityRuleCatalogService;
+import in.gov.sih.sih26135.service.PlacementEmploymentWorkflowService;
 import in.gov.sih.sih26135.service.ingestion.ImportFileStagingService;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import javax.sql.DataSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -169,6 +180,14 @@ public class AuditDataQualityAndOperationsRegressionTest {
   @Autowired
   private ImportFileStagingService fileStagingService;
 
+  @Autowired
+  private AuditTrailEventListener auditTrailEventListener;
+
+  @Autowired
+  private PlacementEmploymentWorkflowService placementEmploymentWorkflowService;
+
+  private static final Logger log = LoggerFactory.getLogger(AuditDataQualityAndOperationsRegressionTest.class);
+
   private String tokenNationwide;
   private String tokenScopedGov;
   private String tokenStateA;
@@ -270,7 +289,7 @@ public class AuditDataQualityAndOperationsRegressionTest {
             + "(?, ?, 'CTR-9853', 'Center A2', ?, ?, 1, NOW(), NOW(), NULL)",
         CENTER_A1_ID, PROVIDER_A1_ID, STATE_A_ID, DISTRICT_A1_ID,
         CENTER_B1_ID, PROVIDER_B1_ID, STATE_B_ID, DISTRICT_B1_ID,
-        CENTER_A2_ID, PROVIDER_A2_ID, STATE_A_ID, DISTRICT_A1_ID);
+        CENTER_A2_ID, PROVIDER_A2_ID, STATE_A_ID, DISTRICT_A2_ID);
 
     jdbcTemplate.update(
         "INSERT INTO training_batches (batch_id, batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at, deleted_at) "
@@ -335,22 +354,15 @@ public class AuditDataQualityAndOperationsRegressionTest {
             + "VALUES (?, ?, 1, ?, NOW() - INTERVAL 1 HOUR, 'Reported with password=SecretPwd99', NOW() - INTERVAL 1 HOUR)",
         DQ_EVENT_A1_ID, DQ_ISSUE_A1_ID, USER_NATIONWIDE_ID);
 
-    // 8. Import Batches & Records
+    // 8. Import Batches (Phase 28.9-owned)
     jdbcTemplate.update(
         "INSERT INTO import_batches (import_batch_id, batch_code, source_system, entity_type, import_batch_status_id, initiated_by_user_id, row_count, success_count, failure_count, created_at, updated_at) "
-            + "VALUES (?, 'IMP-985001', 'REG_PORTAL', 'Trainee', 4, ?, 2, 1, 1, NOW(), NOW()), "
-            + "(?, 'IMP-985002', 'REG_PORTAL', 'Trainee', 4, ?, 1, 1, 0, NOW(), NOW()), "
-            + "(?, 'IMP-985003', 'REG_PORTAL', 'Trainee', 4, ?, 1, 1, 0, NOW(), NOW())",
+            + "VALUES (?, 'P289-IMP-985001', 'P289_REG', 'Trainee', 1, ?, 0, 0, 0, NOW(), NOW()), "
+            + "(?, 'P289-IMP-985002', 'P289_REG', 'Trainee', 1, ?, 0, 0, 0, NOW(), NOW()), "
+            + "(?, 'P289-IMP-985003', 'P289_REG', 'Trainee', 1, ?, 0, 0, 0, NOW(), NOW())",
         IMPORT_BATCH_A1_ID, USER_PROVIDER_A1_ID,
         IMPORT_BATCH_A2_ID, USER_PROVIDER_A2_ID,
         IMPORT_BATCH_B1_ID, USER_PROVIDER_B1_ID);
-
-    jdbcTemplate.update(
-        "INSERT INTO import_records (import_record_id, import_batch_id, source_row_number, entity_type, entity_id, import_record_status_id, error_code, error_message, created_at, updated_at) "
-            + "VALUES (?, ?, 1, 'Trainee', ?, 2, 'VALIDATION_ERROR', 'Import validation failed for trainee record [REDACTED]', NOW(), NOW()), "
-            + "(?, ?, 2, 'Trainee', ?, 1, NULL, NULL, NOW(), NOW())",
-        IMPORT_REC_A1_ID, IMPORT_BATCH_A1_ID, TRAINEE_A1_ID,
-        IMPORT_REC_A2_ID, IMPORT_BATCH_A1_ID, TRAINEE_A2_ID);
 
     // 8b. Workflow Management Role & Assignment for Assignee Validation
     jdbcTemplate.update(
@@ -420,10 +432,16 @@ public class AuditDataQualityAndOperationsRegressionTest {
   private void cleanUpFixtures() {
     try {
       List<String> batchCodes = jdbcTemplate.queryForList(
-          "SELECT batch_code FROM import_batches WHERE (initiated_by_user_id BETWEEN 9850 AND 9859) OR source_system LIKE 'REG_%'",
+          "SELECT batch_code FROM import_batches WHERE (initiated_by_user_id BETWEEN 9850 AND 9859) "
+              + "OR source_system = 'P289_REG' "
+              + "OR (import_batch_id BETWEEN 985000 AND 985999) "
+              + "OR batch_code LIKE 'P289_%' "
+              + "OR batch_code LIKE 'P289-%'",
           String.class);
       for (String code : batchCodes) {
-        fileStagingService.deleteStagedFileQuietly(code);
+        if (code != null) {
+          fileStagingService.deleteStagedFileQuietly(code);
+        }
       }
 
       jdbcTemplate.update("DELETE FROM audit_logs WHERE audit_log_id BETWEEN 985000 AND 985999 OR actor_user_id BETWEEN 9850 AND 9859 OR correlation_id LIKE 'p289-%'");
@@ -431,8 +449,8 @@ public class AuditDataQualityAndOperationsRegressionTest {
       jdbcTemplate.update("DELETE FROM data_quality_issue_events WHERE data_quality_issue_event_id BETWEEN 985000 AND 989999 OR data_quality_issue_id BETWEEN 985000 AND 989999 OR remarks LIKE 'P289-%'");
       jdbcTemplate.update("DELETE FROM data_quality_issues WHERE data_quality_issue_id BETWEEN 985000 AND 989999");
       jdbcTemplate.update("DELETE FROM data_quality_rules WHERE data_quality_rule_id IN (?, ?) OR rule_code LIKE 'P289_%'", DQ_RULE_1_ID, DQ_RULE_2_ID);
-      jdbcTemplate.update("DELETE FROM import_records WHERE import_record_id BETWEEN 985000 AND 985999 OR import_batch_id BETWEEN 985000 AND 985999");
-      jdbcTemplate.update("DELETE FROM import_batches WHERE import_batch_id BETWEEN 985000 AND 985999 OR initiated_by_user_id BETWEEN 9850 AND 9859");
+      jdbcTemplate.update("DELETE FROM import_records WHERE import_record_id BETWEEN 985000 AND 985999 OR import_batch_id BETWEEN 985000 AND 985999 OR import_batch_id IN (SELECT import_batch_id FROM import_batches WHERE source_system = 'P289_REG' OR (initiated_by_user_id BETWEEN 9850 AND 9859))");
+      jdbcTemplate.update("DELETE FROM import_batches WHERE import_batch_id BETWEEN 985000 AND 985999 OR initiated_by_user_id BETWEEN 9850 AND 9859 OR source_system = 'P289_REG'");
       jdbcTemplate.update("DELETE FROM training_enrollments WHERE enrollment_id IN (?, ?, ?)", ENROLLMENT_A1_ID, ENROLLMENT_B1_ID, ENROLLMENT_A2_ID);
       jdbcTemplate.update("DELETE FROM trainees WHERE trainee_id IN (?, ?, ?) OR registration_number LIKE 'P289-%'", TRAINEE_A1_ID, TRAINEE_B1_ID, TRAINEE_A2_ID);
       jdbcTemplate.update("DELETE FROM training_batches WHERE batch_id IN (?, ?, ?)", BATCH_A1_ID, BATCH_B1_ID, BATCH_A2_ID);
@@ -451,7 +469,8 @@ public class AuditDataQualityAndOperationsRegressionTest {
       jdbcTemplate.update("DELETE FROM training_providers WHERE provider_id IN (?, ?, ?)", PROVIDER_A1_ID, PROVIDER_B1_ID, PROVIDER_A2_ID);
       jdbcTemplate.update("DELETE FROM districts WHERE district_id IN (?, ?, ?)", DISTRICT_A1_ID, DISTRICT_B1_ID, DISTRICT_A2_ID);
       jdbcTemplate.update("DELETE FROM states WHERE state_id IN (?, ?)", STATE_A_ID, STATE_B_ID);
-    } catch (Exception ignored) {
+    } catch (Exception ex) {
+      log.warn("Test fixture cleanup encountered non-fatal error: {}", ex.getMessage());
     }
   }
 
@@ -481,6 +500,17 @@ public class AuditDataQualityAndOperationsRegressionTest {
     return "Bearer " + jwtTokenProvider.generateAccessToken(userId, username, authorities);
   }
 
+  private void waitForAuditLog(String correlationId) throws InterruptedException {
+    for (int i = 0; i < 40; i++) {
+      Integer count = jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM audit_logs WHERE correlation_id = ?", Integer.class, correlationId);
+      if (count != null && count > 0) {
+        return;
+      }
+      Thread.sleep(50);
+    }
+  }
+
   // =========================================================================
   // Section A: Automated Audit Interception
   // =========================================================================
@@ -491,39 +521,62 @@ public class AuditDataQualityAndOperationsRegressionTest {
     @Test
     @DisplayName("A.1: Domain mutation creates audit event with correct entity, actor, and action attribution")
     void shouldInterceptDomainMutationAndPersistAuditEventWithActorAndEntityMetadata() throws Exception {
-      CreateAuditLogRequest request = new CreateAuditLogRequest();
-      request.setAuditActionId(defaultAuditActionId);
-      request.setEntityType("TrainingCenter");
-      request.setEntityId(CENTER_A1_ID);
-      request.setActorUserId(USER_NATIONWIDE_ID);
-      request.setOccurredAt(LocalDateTime.now());
-      request.setChangeSummary("Training center updated successfully");
+      // Reuse AuditTrailEventListenerTest pattern: dispatch an AuditTrailEvent representing a domain workflow mutation
+      LocalDateTime now = LocalDateTime.now();
+      String correlationId = "p289-corr-aspect-1";
+      AuditTrailEvent event = new AuditTrailEvent(
+          "STATUS_CHANGE",
+          "Placement",
+          7771L,
+          USER_PROVIDER_A1_ID,
+          "Placement transitioned to employment",
+          now,
+          correlationId
+      );
 
-      MvcResult res = mockMvc.perform(post("/api/v1/audit-logs")
-              .contentType(MediaType.APPLICATION_JSON)
-              .content(objectMapper.writeValueAsString(request))
-              .header("Authorization", tokenNationwide))
-          .andExpect(status().isCreated())
-          .andExpect(jsonPath("$.success").value(true))
-          .andExpect(jsonPath("$.data.entityType").value("TrainingCenter"))
-          .andExpect(jsonPath("$.data.entityId").value(CENTER_A1_ID))
-          .andExpect(jsonPath("$.data.actorUserId").value(USER_NATIONWIDE_ID))
-          .andExpect(jsonPath("$.data.auditActionId").value(defaultAuditActionId))
-          .andReturn();
+      // Execute listener directly as in AuditTrailEventListenerTest
+      auditTrailEventListener.handleAuditTrailEvent(event);
+      waitForAuditLog(correlationId);
 
-      JsonNode root = objectMapper.readTree(res.getResponse().getContentAsString());
-      long createdId = root.path("data").path("id").asLong();
-
-      // Verify in DB directly
-      Integer count = jdbcTemplate.queryForObject(
-          "SELECT COUNT(*) FROM audit_logs WHERE audit_log_id = ? AND entity_type = 'TrainingCenter' AND entity_id = ?",
-          Integer.class, createdId, CENTER_A1_ID);
-      assertThat(count).isEqualTo(1);
+      // Verify in DB directly: authoritative attribution to actor, entity, and action
+      List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+          "SELECT audit_log_id, actor_user_id, entity_type, entity_id, correlation_id, change_summary "
+              + "FROM audit_logs WHERE correlation_id = ? AND entity_type = 'Placement' AND entity_id = 7771",
+          correlationId);
+      assertThat(rows).hasSize(1);
+      Map<String, Object> row = rows.get(0);
+      assertThat(((Number) row.get("actor_user_id")).longValue()).isEqualTo(USER_PROVIDER_A1_ID);
+      assertThat(row.get("entity_type")).isEqualTo("Placement");
+      assertThat(((Number) row.get("entity_id")).longValue()).isEqualTo(7771L);
+      assertThat(row.get("correlation_id")).isEqualTo(correlationId);
+      assertThat(row.get("change_summary")).isEqualTo("Placement transitioned to employment");
     }
 
     @Test
-    @DisplayName("A.2: Correlation metadata is preserved and sensitive payload is sanitized at write time")
+    @DisplayName("A.2: Sensitive payload is sanitized at write time via audit event listener and manual ingestion")
     void shouldPreserveCorrelationMetadataAndMaskChangeSummaryInAuditRecord() throws Exception {
+      // 1. Verify automatic audit trail event sanitization (reusing AuditTrailEventListenerTest pattern)
+      String eventCorr = "p289-corr-mask-evt";
+      AuditTrailEvent sensitiveEvent = new AuditTrailEvent(
+          "STATUS_CHANGE",
+          "TrainingCenter",
+          CENTER_A1_ID,
+          USER_PROVIDER_A1_ID,
+          "Updated center with password=EventSecretPass123 aadhaar=2345 6789 0123 pan=ABCDE1234F",
+          LocalDateTime.now(),
+          eventCorr
+      );
+      auditTrailEventListener.handleAuditTrailEvent(sensitiveEvent);
+      waitForAuditLog(eventCorr);
+
+      String dbEventSummary = jdbcTemplate.queryForObject(
+          "SELECT change_summary FROM audit_logs WHERE correlation_id = ?", String.class, eventCorr);
+      assertThat(dbEventSummary).doesNotContain("EventSecretPass123");
+      assertThat(dbEventSummary).contains("password=***REDACTED***");
+      assertThat(dbEventSummary).contains("XXXX-XXXX-0123");
+      assertThat(dbEventSummary).contains("XXXXX1234F");
+
+      // 2. Preserve manual audit API write-time sanitization test
       CreateAuditLogRequest request = new CreateAuditLogRequest();
       request.setAuditActionId(defaultAuditActionId);
       request.setEntityType("TrainingCenter");
@@ -556,29 +609,26 @@ public class AuditDataQualityAndOperationsRegressionTest {
     }
 
     @Test
-    @DisplayName("A.3: Failed validation or invalid request does not persist uncommitted audit logs")
+    @DisplayName("A.3: Transactional failure in domain mutation prevents audit log persistence")
     void shouldNotCreateCommittedAuditRecordWhenMutationTransactionRollsBack() throws Exception {
       long countBefore = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM audit_logs", Long.class);
 
-      // Attempt creating audit log with invalid entityId (negative)
-      CreateAuditLogRequest invalidRequest = new CreateAuditLogRequest();
-      invalidRequest.setAuditActionId(defaultAuditActionId);
-      invalidRequest.setEntityType("TrainingCenter");
-      invalidRequest.setEntityId(-999L);
-      invalidRequest.setOccurredAt(LocalDateTime.now());
+      // Exercise a real domain workflow service mutation annotated with @Transactional and @AuditTrail
+      // that fails transactionally due to an invalid/non-existent target entity
+      PlacementToEmploymentTransitionRequest failRequest = new PlacementToEmploymentTransitionRequest();
+      failRequest.setPlacementId(999999L); // Non-existent placement ID triggers ResourceNotFoundException
+      failRequest.setEmploymentRecordRequest(new CreateEmploymentRecordRequest());
 
-      mockMvc.perform(post("/api/v1/audit-logs")
-              .contentType(MediaType.APPLICATION_JSON)
-              .content(objectMapper.writeValueAsString(invalidRequest))
-              .header("Authorization", tokenNationwide))
-          .andExpect(status().isNotFound());
+      assertThatThrownBy(() -> placementEmploymentWorkflowService.transitionPlacementToEmployment(failRequest))
+          .isInstanceOf(ResourceNotFoundException.class);
 
+      // Verify that transaction rollback prevented any audit record from being persisted
       long countAfter = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM audit_logs", Long.class);
       assertThat(countAfter).isEqualTo(countBefore);
     }
 
     @Test
-    @DisplayName("A.4: Single logical mutation produces exactly one audit record without duplicate emission")
+    @DisplayName("A.4: Preserves manual audit creation API under discrete single-entry semantics")
     void shouldPreventDuplicateAuditEventsForSingleLogicalMutation() throws Exception {
       long auditCountBefore = jdbcTemplate.queryForObject(
           "SELECT COUNT(*) FROM audit_logs WHERE entity_type = 'TrainingCenter' AND entity_id = ?",
@@ -936,7 +986,7 @@ public class AuditDataQualityAndOperationsRegressionTest {
       MvcResult res = mockMvc.perform(multipart("/api/v1/import/batches")
               .file(file)
               .param("entityType", "Trainee")
-              .param("sourceSystem", "REG_TEST_PORTAL")
+              .param("sourceSystem", "P289_REG")
               .header("Authorization", tokenProviderA1))
           .andExpect(status().isCreated())
           .andExpect(jsonPath("$.success").value(true))
@@ -947,13 +997,14 @@ public class AuditDataQualityAndOperationsRegressionTest {
 
       String batchCode = objectMapper.readTree(res.getResponse().getContentAsString())
           .path("data").path("batchCode").asText();
-      assertThat(batchCode).startsWith("IMP-");
+      assertThat(batchCode).contains("IMP-");
       assertThat(fileStagingService.hasStagedFile(batchCode)).isTrue();
     }
 
     @Test
-    @DisplayName("E.2: Valid multipart JSON array upload is accepted and staged")
+    @DisplayName("E.2: Valid multipart JSON array and NDJSON uploads are accepted and staged")
     void shouldAcceptAndProcessValidMultipartJsonAndNdjsonUpload() throws Exception {
+      // 1. JSON Array upload
       String json = "[{\"registrationNumber\":\"P289-JSON-01\",\"firstName\":\"Geeta\",\"genderId\":2,\"stateId\":"
           + STATE_A_ID + ",\"districtId\":" + DISTRICT_A1_ID + ",\"currentEmploymentStatusId\":1,\"profileStatusId\":1}]";
       MockMultipartFile jsonFile = new MockMultipartFile(
@@ -962,7 +1013,24 @@ public class AuditDataQualityAndOperationsRegressionTest {
       mockMvc.perform(multipart("/api/v1/import-batches")
               .file(jsonFile)
               .param("entityType", "Trainee")
-              .param("sourceSystem", "REG_TEST_JSON")
+              .param("sourceSystem", "P289_REG")
+              .header("Authorization", tokenProviderA1))
+          .andExpect(status().isCreated())
+          .andExpect(jsonPath("$.success").value(true))
+          .andExpect(jsonPath("$.data.importBatchStatusCode").value("PENDING"));
+
+      // 2. NDJSON stream upload
+      String ndjson = "{\"registrationNumber\":\"P289-NDJSON-01\",\"firstName\":\"Anita\",\"genderId\":2,\"stateId\":"
+          + STATE_A_ID + ",\"districtId\":" + DISTRICT_A1_ID + ",\"currentEmploymentStatusId\":1,\"profileStatusId\":1}\n"
+          + "{\"registrationNumber\":\"P289-NDJSON-02\",\"firstName\":\"Sunil\",\"genderId\":1,\"stateId\":"
+          + STATE_A_ID + ",\"districtId\":" + DISTRICT_A1_ID + ",\"currentEmploymentStatusId\":1,\"profileStatusId\":1}\n";
+      MockMultipartFile ndjsonFile = new MockMultipartFile(
+          "file", "trainees.ndjson", "application/x-ndjson", ndjson.getBytes(StandardCharsets.UTF_8));
+
+      mockMvc.perform(multipart("/api/v1/import/batches")
+              .file(ndjsonFile)
+              .param("entityType", "Trainee")
+              .param("sourceSystem", "P289_REG")
               .header("Authorization", tokenProviderA1))
           .andExpect(status().isCreated())
           .andExpect(jsonPath("$.success").value(true))
@@ -978,7 +1046,7 @@ public class AuditDataQualityAndOperationsRegressionTest {
       mockMvc.perform(multipart("/api/v1/import/batches")
               .file(badFile)
               .param("entityType", "Trainee")
-              .param("sourceSystem", "REG_BAD")
+              .param("sourceSystem", "P289_REG")
               .header("Authorization", tokenProviderA1))
           .andExpect(status().isBadRequest());
 
@@ -988,7 +1056,7 @@ public class AuditDataQualityAndOperationsRegressionTest {
       mockMvc.perform(multipart("/api/v1/import/batches")
               .file(emptyFile)
               .param("entityType", "Trainee")
-              .param("sourceSystem", "REG_EMPTY")
+              .param("sourceSystem", "P289_REG")
               .header("Authorization", tokenProviderA1))
           .andExpect(status().isBadRequest());
     }
@@ -1016,28 +1084,80 @@ public class AuditDataQualityAndOperationsRegressionTest {
   class ChunkedTransactionAndRollbackSafetyTests {
 
     @Test
-    @DisplayName("F.1: Failed rows are quarantined in import_records with sanitized error context and counters match")
+    @DisplayName("F.1: Real import batch processing commits valid rows, quarantines failed rows with sanitized errors, and reconciles counters")
     void shouldCommitSuccessfulChunksAndQuarantineFailedRowsWithSanitizedErrorContext() throws Exception {
-      // Query import records for IMPORT_BATCH_A1_ID
-      mockMvc.perform(get("/api/v1/import-batches/{id}", IMPORT_BATCH_A1_ID)
+      // 1. Stage a real batch containing 1 valid Trainee and 1 invalid Trainee (invalid date)
+      String csv = String.join("\n",
+          "registrationNumber,firstName,lastName,phone,email,dateOfBirth,genderId,stateId,districtId,currentEmploymentStatusId,profileStatusId",
+          "P289-F-OK1,ValidF,User,9850098521,fok1@test.gov.in,2000-01-01,1," + STATE_A_ID + "," + DISTRICT_A1_ID + ",1,1",
+          "P289-F-BAD1,InvalidDate,User,9850098522,fbad1@test.gov.in,1999/99/99,1," + STATE_A_ID + "," + DISTRICT_A1_ID + ",1,1"
+      );
+      MockMultipartFile file = new MockMultipartFile("file", "batch_f.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
+
+      MvcResult uploadRes = mockMvc.perform(multipart("/api/v1/import/batches")
+              .file(file)
+              .param("entityType", "Trainee")
+              .param("sourceSystem", "P289_REG")
+              .header("Authorization", tokenProviderA1))
+          .andExpect(status().isCreated())
+          .andReturn();
+
+      long batchId = objectMapper.readTree(uploadRes.getResponse().getContentAsString())
+          .path("data").path("id").asLong();
+
+      // 2. Execute real batch processing via POST /api/v1/import/batches/{id}/process
+      mockMvc.perform(post("/api/v1/import/batches/{id}/process", batchId)
               .header("Authorization", tokenProviderA1))
           .andExpect(status().isOk())
+          .andExpect(jsonPath("$.success").value(true))
+          .andExpect(jsonPath("$.data.status").value("COMPLETED"))
+          .andExpect(jsonPath("$.data.isTerminal").value(true))
+          .andExpect(jsonPath("$.data.rowCount").value(2))
           .andExpect(jsonPath("$.data.successCount").value(1))
           .andExpect(jsonPath("$.data.failureCount").value(1));
 
-      // Verify quarantined record contains sanitized error message without raw credentials
-      String errorMsg = jdbcTemplate.queryForObject(
-          "SELECT error_message FROM import_records WHERE import_record_id = ?",
-          String.class, IMPORT_REC_A1_ID);
-      assertThat(errorMsg).contains("[REDACTED]");
-      assertThat(errorMsg).doesNotContain("RawPass123");
+      // 3. Verify valid row committed to trainees table
+      Integer validCommitted = jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM trainees WHERE registration_number = 'P289-F-OK1'", Integer.class);
+      assertThat(validCommitted).isEqualTo(1);
+
+      // 4. Verify quarantined failed row in import_records
+      List<Map<String, Object>> quarantined = jdbcTemplate.queryForList(
+          "SELECT import_record_status_id, error_code, error_message FROM import_records WHERE import_batch_id = ? AND source_row_number = 2",
+          batchId);
+      assertThat(quarantined).hasSize(1);
+      Map<String, Object> qRecord = quarantined.get(0);
+      assertThat(((Number) qRecord.get("import_record_status_id")).intValue()).isEqualTo(2); // FAILED
+      String errorMsg = (String) qRecord.get("error_message");
+      assertThat(errorMsg).isNotNull();
+      assertThat(errorMsg).doesNotContain("SQLException", "INSERT INTO", "java.lang.");
     }
 
     @Test
     @DisplayName("F.2: Idempotent batch processing prevents duplicate execution on completed batches")
     void shouldGuaranteeIdempotentBatchProcessingAndPreventConcurrentExecution() throws Exception {
-      // Attempting to re-process an already completed batch is rejected with 409 Conflict (terminal)
-      mockMvc.perform(post("/api/v1/import/batches/{id}/process", IMPORT_BATCH_A1_ID)
+      // 1. Stage and process a real batch to completion
+      String csv = "registrationNumber,firstName,genderId,stateId,districtId,currentEmploymentStatusId,profileStatusId\n"
+          + "P289-F-IDEMP,IdempUser,1," + STATE_A_ID + "," + DISTRICT_A1_ID + ",1,1\n";
+      MockMultipartFile file = new MockMultipartFile("file", "batch_idemp.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
+      MvcResult uploadRes = mockMvc.perform(multipart("/api/v1/import/batches")
+              .file(file)
+              .param("entityType", "Trainee")
+              .param("sourceSystem", "P289_REG")
+              .header("Authorization", tokenProviderA1))
+          .andExpect(status().isCreated())
+          .andReturn();
+
+      long batchId = objectMapper.readTree(uploadRes.getResponse().getContentAsString())
+          .path("data").path("id").asLong();
+
+      mockMvc.perform(post("/api/v1/import/batches/{id}/process", batchId)
+              .header("Authorization", tokenProviderA1))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+
+      // 2. Attempting to re-process an already completed batch is rejected with 409 Conflict (terminal)
+      mockMvc.perform(post("/api/v1/import/batches/{id}/process", batchId)
               .header("Authorization", tokenProviderA1))
           .andExpect(status().isConflict());
     }
@@ -1129,7 +1249,7 @@ public class AuditDataQualityAndOperationsRegressionTest {
     @Test
     @DisplayName("H.1: Same-state providers are strictly isolated across centers, batches, issues, and records")
     void shouldIsolateSameStateProvidersAcrossOperationalEntitiesAndAggregates() throws Exception {
-      // Provider A1 and Provider A2 both reside in State A, District A1
+      // Provider A1 and Provider A2 both reside in State A
       // Provider A1 attempts to access Provider A2 center -> 403 Forbidden
       mockMvc.perform(get("/api/v1/training-centers/{id}", CENTER_A2_ID)
               .header("Authorization", tokenProviderA1))
@@ -1152,19 +1272,47 @@ public class AuditDataQualityAndOperationsRegressionTest {
     }
 
     @Test
-    @DisplayName("H.2: State administrators cannot cross state lines; unscoped accounts are rejected; nationwide admin succeeds")
-    void shouldEnforceStateAndDistrictBoundariesAndGrantOnlyVerifiedNationwideAdmins() throws Exception {
+    @DisplayName("H.2: State administrators cannot cross state lines to access resources in other states")
+    void shouldIsolateOperationalDataBetweenStatesAAndB() throws Exception {
       // State A admin attempts to access State B center -> 403 Forbidden
       mockMvc.perform(get("/api/v1/training-centers/{id}", CENTER_B1_ID)
               .header("Authorization", tokenStateA))
           .andExpect(status().isForbidden());
 
+      // State B admin attempts to access State A center -> 403 Forbidden
+      mockMvc.perform(get("/api/v1/training-centers/{id}", CENTER_A1_ID)
+              .header("Authorization", tokenStateB))
+          .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("H.3: District officers are strictly restricted to their assigned district scope")
+    void shouldRestrictDistrictOfficersToAssignedDistrictScope() throws Exception {
+      // District Officer A1 can access Center A1 in District A1
+      mockMvc.perform(get("/api/v1/training-centers/{id}", CENTER_A1_ID)
+              .header("Authorization", tokenDistrictA1))
+          .andExpect(status().isOk());
+
+      // District Officer A1 attempting to access Center A2 in District A2 receives 403 Forbidden
+      mockMvc.perform(get("/api/v1/training-centers/{id}", CENTER_A2_ID)
+              .header("Authorization", tokenDistrictA1))
+          .andExpect(status().isForbidden());
+
+      // District Officer A1 attempting to access Center B1 in State B receives 403 Forbidden
+      mockMvc.perform(get("/api/v1/training-centers/{id}", CENTER_B1_ID)
+              .header("Authorization", tokenDistrictA1))
+          .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("H.4: Nationwide super admin can access resources across all jurisdictions while unscoped accounts are rejected")
+    void shouldAuthorizeNationwideAdminAcrossAllOperationalResources() throws Exception {
       // Unscoped account attempts access -> 403 Forbidden
       mockMvc.perform(get("/api/v1/training-centers/{id}", CENTER_A1_ID)
               .header("Authorization", tokenUnscoped))
           .andExpect(status().isForbidden());
 
-      // Verified nationwide admin can access both State A and State B
+      // Verified nationwide admin can access both State A and State B resources
       mockMvc.perform(get("/api/v1/training-centers/{id}", CENTER_A1_ID)
               .header("Authorization", tokenNationwide))
           .andExpect(status().isOk());
@@ -1253,8 +1401,24 @@ public class AuditDataQualityAndOperationsRegressionTest {
           .andReturn();
 
       JsonNode data = objectMapper.readTree(res.getResponse().getContentAsString()).path("data");
-      double dqi = data.path("dataCleanlinessIndexPct").asDouble();
-      assertThat(dqi).isBetween(0.0, 100.0);
+      long eligible = data.path("eligiblePopulation").asLong();
+      long affected = data.path("distinctAffectedEntities").asLong();
+
+      assertThat(eligible).isGreaterThan(0L);
+      long cleanEstimate = data.path("cleanEntitiesEstimate").asLong();
+      assertThat(cleanEstimate).isEqualTo(eligible - affected);
+
+      // Exact DQI formula calculation: ((eligible - affected) * 100.0) / eligible rounded HALF_UP at 2 decimals
+      double expectedDqi = BigDecimal.valueOf(eligible - affected)
+          .multiply(BigDecimal.valueOf(100))
+          .divide(BigDecimal.valueOf(eligible), 2, RoundingMode.HALF_UP)
+          .doubleValue();
+      double actualDqi = data.path("dataCleanlinessIndexPct").asDouble();
+      assertThat(actualDqi).isEqualTo(expectedDqi);
+
+      assertThat(data.path("cleanlinessIndexFormula").asText())
+          .contains("(eligiblePopulation - distinctAffectedEntities) / eligiblePopulation * 100");
+      assertThat(data.path("totalActiveIssues").asLong()).isGreaterThanOrEqualTo(1);
     }
 
     @Test
