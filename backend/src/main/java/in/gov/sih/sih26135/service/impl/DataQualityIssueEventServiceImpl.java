@@ -12,11 +12,15 @@ import in.gov.sih.sih26135.repository.DataQualityIssueEventRepository;
 import in.gov.sih.sih26135.repository.DataQualityIssueRepository;
 import in.gov.sih.sih26135.repository.RefDataQualityIssueStatusRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
+import in.gov.sih.sih26135.security.AuditPayloadMasker;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.DataQualityIssueEventService;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +35,8 @@ public class DataQualityIssueEventServiceImpl implements DataQualityIssueEventSe
   private final RefDataQualityIssueStatusRepository refDataQualityIssueStatusRepository;
   private final UserRepository userRepository;
   private final DataQualityIssueEventMapper mapper;
+  private final WorkflowSecurityScopeValidator scopeValidator;
+  private final JdbcTemplate jdbcTemplate;
 
   public DataQualityIssueEventServiceImpl(
       DataQualityIssueEventRepository dataQualityIssueEventRepository,
@@ -38,16 +44,40 @@ public class DataQualityIssueEventServiceImpl implements DataQualityIssueEventSe
       RefDataQualityIssueStatusRepository refDataQualityIssueStatusRepository,
       UserRepository userRepository,
       DataQualityIssueEventMapper mapper) {
+    this(
+        dataQualityIssueEventRepository,
+        dataQualityIssueRepository,
+        refDataQualityIssueStatusRepository,
+        userRepository,
+        mapper,
+        null,
+        null);
+  }
+
+  @Autowired
+  public DataQualityIssueEventServiceImpl(
+      DataQualityIssueEventRepository dataQualityIssueEventRepository,
+      DataQualityIssueRepository dataQualityIssueRepository,
+      RefDataQualityIssueStatusRepository refDataQualityIssueStatusRepository,
+      UserRepository userRepository,
+      DataQualityIssueEventMapper mapper,
+      WorkflowSecurityScopeValidator scopeValidator,
+      JdbcTemplate jdbcTemplate) {
     this.dataQualityIssueEventRepository = dataQualityIssueEventRepository;
     this.dataQualityIssueRepository = dataQualityIssueRepository;
     this.refDataQualityIssueStatusRepository = refDataQualityIssueStatusRepository;
     this.userRepository = userRepository;
     this.mapper = mapper;
+    this.scopeValidator = scopeValidator;
+    this.jdbcTemplate = jdbcTemplate;
   }
 
   @Override
   @Transactional
   public DataQualityIssueEventResponse recordIssueEvent(CreateDataQualityIssueEventRequest request) {
+    DataQualityIssueScopeSupport.CallerScope callerScope =
+        DataQualityIssueScopeSupport.resolveAndValidateCaller(scopeValidator, jdbcTemplate, true);
+
     if (request == null) {
       throw new BadRequestException("Request body cannot be null", "REQUEST_BODY_NULL");
     }
@@ -60,6 +90,7 @@ public class DataQualityIssueEventServiceImpl implements DataQualityIssueEventSe
 
     DataQualityIssue issue = dataQualityIssueRepository.findById(request.getDataQualityIssueId())
         .orElseThrow(() -> new ResourceNotFoundException("DataQualityIssue", "id"));
+    DataQualityIssueScopeSupport.validateCallerScopeForIssue(callerScope, issue, jdbcTemplate);
 
     RefDataQualityIssueStatus status = refDataQualityIssueStatusRepository.findById(request.getDataQualityIssueStatusId())
         .orElseThrow(() -> new ResourceNotFoundException("RefDataQualityIssueStatus", "id"));
@@ -75,8 +106,9 @@ public class DataQualityIssueEventServiceImpl implements DataQualityIssueEventSe
     LocalDateTime changedAt = request.getChangedAt() != null ? request.getChangedAt() : LocalDateTime.now();
 
     DataQualityIssueEvent event = new DataQualityIssueEvent(issue, status, changedAt);
-    event.setChangedByUserId(request.getChangedByUserId());
-    event.setRemarks(request.getRemarks());
+    event.setChangedByUserId(callerScope.caller() != null ? callerScope.caller().getId() : request.getChangedByUserId());
+    event.setRemarks(AuditPayloadMasker.maskBounded(request.getRemarks(), 500));
+    event.setCreatedAt(LocalDateTime.now());
 
     DataQualityIssueEvent saved = dataQualityIssueEventRepository.save(event);
     log.info("Recorded data quality issue event id={} for issue id={}, status id={}",
@@ -86,19 +118,27 @@ public class DataQualityIssueEventServiceImpl implements DataQualityIssueEventSe
 
   @Override
   public DataQualityIssueEventResponse getIssueEventById(Long id) {
+    DataQualityIssueScopeSupport.CallerScope callerScope =
+        DataQualityIssueScopeSupport.resolveAndValidateCaller(scopeValidator, jdbcTemplate, false);
     if (id == null) {
       throw new BadRequestException("Event ID is required");
     }
     DataQualityIssueEvent event = dataQualityIssueEventRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("DataQualityIssueEvent", "id"));
+    DataQualityIssueScopeSupport.validateCallerScopeForIssue(callerScope, event.getDataQualityIssue(), jdbcTemplate);
     return mapper.toResponse(event);
   }
 
   @Override
   public List<DataQualityIssueEventResponse> getIssueEventsByIssueId(Long issueId) {
+    DataQualityIssueScopeSupport.CallerScope callerScope =
+        DataQualityIssueScopeSupport.resolveAndValidateCaller(scopeValidator, jdbcTemplate, false);
     if (issueId == null) {
       throw new BadRequestException("Issue ID is required");
     }
+    DataQualityIssue issue = dataQualityIssueRepository.findById(issueId)
+        .orElseThrow(() -> new ResourceNotFoundException("DataQualityIssue", "id"));
+    DataQualityIssueScopeSupport.validateCallerScopeForIssue(callerScope, issue, jdbcTemplate);
     return dataQualityIssueEventRepository.findByDataQualityIssueId(issueId).stream()
         .map(mapper::toResponse)
         .toList();
@@ -106,20 +146,26 @@ public class DataQualityIssueEventServiceImpl implements DataQualityIssueEventSe
 
   @Override
   public List<DataQualityIssueEventResponse> getIssueEventsByStatusId(Long statusId) {
+    DataQualityIssueScopeSupport.CallerScope callerScope =
+        DataQualityIssueScopeSupport.resolveAndValidateCaller(scopeValidator, jdbcTemplate, false);
     if (statusId == null) {
       throw new BadRequestException("Status ID is required");
     }
-    return dataQualityIssueEventRepository.findByDataQualityIssueStatusId(statusId).stream()
+    List<DataQualityIssueEvent> events = dataQualityIssueEventRepository.findByDataQualityIssueStatusId(statusId);
+    return DataQualityIssueScopeSupport.filterIssueEventsInScope(callerScope, events, jdbcTemplate).stream()
         .map(mapper::toResponse)
         .toList();
   }
 
   @Override
   public List<DataQualityIssueEventResponse> getIssueEventsByChangedByUserId(Long changedByUserId) {
+    DataQualityIssueScopeSupport.CallerScope callerScope =
+        DataQualityIssueScopeSupport.resolveAndValidateCaller(scopeValidator, jdbcTemplate, false);
     if (changedByUserId == null) {
       throw new BadRequestException("Changed-by user ID is required");
     }
-    return dataQualityIssueEventRepository.findByChangedByUserId(changedByUserId).stream()
+    List<DataQualityIssueEvent> events = dataQualityIssueEventRepository.findByChangedByUserId(changedByUserId);
+    return DataQualityIssueScopeSupport.filterIssueEventsInScope(callerScope, events, jdbcTemplate).stream()
         .map(mapper::toResponse)
         .toList();
   }

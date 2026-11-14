@@ -24,6 +24,7 @@ import in.gov.sih.sih26135.repository.ImportBatchRepository;
 import in.gov.sih.sih26135.repository.ImportRecordRepository;
 import in.gov.sih.sih26135.repository.RefImportBatchStatusRepository;
 import in.gov.sih.sih26135.repository.RefImportRecordStatusRepository;
+import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.service.ImportBatchProcessingWorkflow;
 import in.gov.sih.sih26135.service.SystemEventLoggingService;
 import in.gov.sih.sih26135.service.SystemEventLoggingService.EventCategory;
@@ -504,11 +505,14 @@ public class ImportBatchProcessingWorkflowImpl implements ImportBatchProcessingW
       if (!VALID_RECORD_STATUSES.contains(normalizedStatus)) {
         throw new BadRequestException("Unsupported import record status filter: " + normalizedStatus, "INVALID_STATUS");
       }
-      return importRecordRepository.findByImportBatchIdAndImportRecordStatusStatusCodeIn(
-              batchId, List.of(normalizedStatus), pageable)
+      return PaginationUtils.executeSafeJpaPage(
+              pageable,
+              p -> importRecordRepository.findByImportBatchIdAndImportRecordStatusStatusCodeIn(
+                  batchId, List.of(normalizedStatus), p))
           .map(recordMapper::toResponse);
     }
-    return importRecordRepository.findByImportBatchId(batchId, pageable)
+    return PaginationUtils.executeSafeJpaPage(
+            pageable, p -> importRecordRepository.findByImportBatchId(batchId, p))
         .map(recordMapper::toResponse);
   }
 
@@ -526,8 +530,10 @@ public class ImportBatchProcessingWorkflowImpl implements ImportBatchProcessingW
     List<String> targetStatuses = includeDuplicates
         ? List.of("FAILED", "DUPLICATE")
         : List.of("FAILED");
-    return importRecordRepository.findByImportBatchIdAndImportRecordStatusStatusCodeIn(
-            batchId, targetStatuses, pageable)
+    return PaginationUtils.executeSafeJpaPage(
+            pageable,
+            p -> importRecordRepository.findByImportBatchIdAndImportRecordStatusStatusCodeIn(
+                batchId, targetStatuses, p))
         .map(recordMapper::toResponse);
   }
 

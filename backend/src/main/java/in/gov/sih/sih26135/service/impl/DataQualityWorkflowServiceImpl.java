@@ -21,6 +21,7 @@ import in.gov.sih.sih26135.repository.DataQualityIssueRepository;
 import in.gov.sih.sih26135.repository.RefDataQualityIssueStatusRepository;
 import in.gov.sih.sih26135.repository.TraineeRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
+import in.gov.sih.sih26135.security.AuditPayloadMasker;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.DataQualityWorkflowService;
 import java.time.LocalDateTime;
@@ -231,17 +232,18 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
       throw new BadRequestException("Resolved timestamp cannot be before detected timestamp", "RESOLVED_DATE_BEFORE_DETECTED");
     }
 
+    String safeResolutionNotes = AuditPayloadMasker.maskBounded(request.getResolutionNotes().trim(), 500);
     RefDataQualityIssueStatus resolvedStatus = getRefStatus(STATUS_RESOLVED);
     issue.setDataQualityIssueStatus(resolvedStatus);
     issue.setResolvedAt(resolvedAt);
     issue.setResolvedByUserId(resolvedByUserId);
-    issue.setResolutionNotes(request.getResolutionNotes().trim());
+    issue.setResolutionNotes(safeResolutionNotes);
     issue.setUpdatedAt(resolvedAt);
 
     DataQualityIssue saved = dataQualityIssueRepository.save(issue);
 
     // Append event atomically
-    createAndAppendEvent(saved, resolvedStatus, resolvedByUserId, resolvedAt, request.getResolutionNotes().trim());
+    createAndAppendEvent(saved, resolvedStatus, resolvedByUserId, resolvedAt, safeResolutionNotes);
 
     log.info("Data quality issue {} resolved successfully by user {}", issueId, resolvedByUserId);
     return issueMapper.toResponse(saved);
@@ -281,18 +283,19 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
       }
     }
 
+    String safeDismissRemarks = AuditPayloadMasker.maskBounded(request.getRemarks().trim(), 500);
     LocalDateTime now = LocalDateTime.now();
     RefDataQualityIssueStatus dismissedStatus = getRefStatus(STATUS_DISMISSED);
     issue.setDataQualityIssueStatus(dismissedStatus);
     issue.setResolvedAt(now);
     issue.setResolvedByUserId(caller.getId());
-    issue.setResolutionNotes(request.getRemarks().trim());
+    issue.setResolutionNotes(safeDismissRemarks);
     issue.setUpdatedAt(now);
 
     DataQualityIssue saved = dataQualityIssueRepository.save(issue);
 
     // Append event atomically
-    createAndAppendEvent(saved, dismissedStatus, caller.getId(), now, request.getRemarks().trim());
+    createAndAppendEvent(saved, dismissedStatus, caller.getId(), now, safeDismissRemarks);
 
     log.info("Data quality issue {} dismissed by user {}", issueId, caller.getId());
     return issueMapper.toResponse(saved);
@@ -682,7 +685,7 @@ public class DataQualityWorkflowServiceImpl implements DataQualityWorkflowServic
     event.setDataQualityIssueStatus(status);
     event.setChangedByUserId(changedByUserId);
     event.setChangedAt(changedAt);
-    event.setRemarks(remarks);
+    event.setRemarks(AuditPayloadMasker.maskBounded(remarks, 500));
     event.setCreatedAt(changedAt);
     dataQualityIssueEventRepository.save(event);
   }

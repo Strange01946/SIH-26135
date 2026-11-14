@@ -13,6 +13,7 @@ import in.gov.sih.sih26135.mapper.ImportRecordMapper;
 import in.gov.sih.sih26135.repository.ImportBatchRepository;
 import in.gov.sih.sih26135.repository.ImportRecordRepository;
 import in.gov.sih.sih26135.repository.RefImportRecordStatusRepository;
+import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.service.ImportRecordService;
 import in.gov.sih.sih26135.service.ingestion.ImportContractSchema;
 import in.gov.sih.sih26135.service.ingestion.ImportFileStagingService;
@@ -330,7 +331,8 @@ public class ImportRecordServiceImpl implements ImportRecordService {
         .orElseThrow(() -> new ResourceNotFoundException("ImportBatch", "id"));
     validator.validateCallerCanAccessBatch(callerScope, batch);
 
-    return importRecordRepository.findByImportBatchId(batchId, pageable)
+    return PaginationUtils.executeSafeJpaPage(
+            pageable, p -> importRecordRepository.findByImportBatchId(batchId, p))
         .map(mapper::toResponse);
   }
 
@@ -360,7 +362,8 @@ public class ImportRecordServiceImpl implements ImportRecordService {
     ImportSecurityScopeValidator validator = requireScopeValidator();
     CallerScope callerScope = validator.resolveAndValidateReadCaller(null);
     if (callerScope.nationwideAdmin()) {
-      return importRecordRepository.findByImportRecordStatusId(statusId, pageable)
+      return PaginationUtils.executeSafeJpaPage(
+              pageable, p -> importRecordRepository.findByImportRecordStatusId(statusId, p))
           .map(mapper::toResponse);
     }
     List<Object> params = new ArrayList<>();
@@ -408,7 +411,8 @@ public class ImportRecordServiceImpl implements ImportRecordService {
       throw new AccessDeniedException("Employers are not authorized to access trainee import records");
     }
     if (callerScope.nationwideAdmin()) {
-      return importRecordRepository.findByEntityTypeAndEntityId(entityType.trim(), entityId, pageable)
+      return PaginationUtils.executeSafeJpaPage(
+              pageable, p -> importRecordRepository.findByEntityTypeAndEntityId(entityType.trim(), entityId, p))
           .map(mapper::toResponse);
     }
     List<Object> params = new ArrayList<>();

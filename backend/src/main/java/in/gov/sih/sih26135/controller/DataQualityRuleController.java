@@ -163,6 +163,7 @@ public class DataQualityRuleController {
    * @return 201 Created with created DataQualityRuleResponse enveloped in ApiResponse
    */
   @PostMapping
+  @PreAuthorize("hasAuthority('system.manage')")
   public ResponseEntity<ApiResponse<DataQualityRuleResponse>> createRule(
       @Valid @RequestBody CreateDataQualityRuleRequest request,
       HttpServletRequest httpRequest) {
@@ -182,6 +183,7 @@ public class DataQualityRuleController {
    * @return 200 OK with updated DataQualityRuleResponse enveloped in ApiResponse
    */
   @PutMapping("/{id}")
+  @PreAuthorize("hasAuthority('system.manage')")
   public ResponseEntity<ApiResponse<DataQualityRuleResponse>> updateRule(
       @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateDataQualityRuleRequest request) {
@@ -198,6 +200,7 @@ public class DataQualityRuleController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
+  @PreAuthorize("hasAuthority('system.manage')")
   public ResponseEntity<ApiResponse<Void>> deleteRule(@PathVariable @Positive Long id) {
     dataQualityRuleService.deleteRule(id);
     return ResponseEntity.ok(ApiResponse.success("Data quality rule deleted successfully"));

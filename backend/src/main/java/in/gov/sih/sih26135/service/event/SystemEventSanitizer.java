@@ -1,6 +1,7 @@
 package in.gov.sih.sih26135.service.event;
 
 import in.gov.sih.sih26135.correlation.CorrelationIdFilter;
+import in.gov.sih.sih26135.security.AuditPayloadMasker;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
@@ -73,18 +74,17 @@ public final class SystemEventSanitizer {
     String sanitized = CONTROL_AND_WHITESPACE.matcher(base.trim()).replaceAll(" ");
     sanitized = CORRELATION_BRACKET_TAG_PATTERN.matcher(sanitized).replaceAll(" ");
     sanitized = CORRELATION_KV_FRAGMENT_PATTERN.matcher(sanitized).replaceAll("$1$2:");
-    sanitized = JDBC_URL_PATTERN.matcher(sanitized).replaceAll("[REDACTED_URL]");
-    sanitized = JWT_PATTERN.matcher(sanitized).replaceAll("[REDACTED_JWT]");
-    sanitized = BEARER_PATTERN.matcher(sanitized).replaceAll("Bearer ***REDACTED***");
-    sanitized = SECRET_KV_PATTERN.matcher(sanitized).replaceAll("$1=***REDACTED***");
-    sanitized = AADHAAR_PATTERN.matcher(sanitized).replaceAll("XXXX-XXXX-$3");
-    sanitized = PAN_PATTERN.matcher(sanitized).replaceAll("XXXXX$2$3");
     int stackIdx = findStackTraceIndex(sanitized);
     if (stackIdx > 0) {
       sanitized = sanitized.substring(0, stackIdx).trim();
     } else if (stackIdx == 0) {
       sanitized = fallback != null && !fallback.isBlank() ? sanitizeFallback(fallback) : "Operational event recorded";
     }
+    sanitized = JDBC_URL_PATTERN.matcher(sanitized).replaceAll("***REDACTED***");
+    sanitized = JWT_PATTERN.matcher(sanitized).replaceAll("***REDACTED***");
+    sanitized = BEARER_PATTERN.matcher(sanitized).replaceAll("Bearer ***REDACTED***");
+    sanitized = SECRET_KV_PATTERN.matcher(sanitized).replaceAll("$1=***REDACTED***");
+    sanitized = AuditPayloadMasker.maskBounded(sanitized, MAX_EVENT_SUMMARY_LENGTH);
     sanitized = sanitized.replaceAll("\\s{2,}", " ").trim();
     if (sanitized.isEmpty()) {
       return fallback != null && !fallback.isBlank() ? sanitizeFallback(fallback) : "Operational event recorded";

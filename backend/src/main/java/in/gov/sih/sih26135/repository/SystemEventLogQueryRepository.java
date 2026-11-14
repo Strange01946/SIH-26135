@@ -3,6 +3,7 @@ package in.gov.sih.sih26135.repository;
 import in.gov.sih.sih26135.dto.request.OperationalEventFilterCriteria;
 import in.gov.sih.sih26135.dto.response.SystemEventLogResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
+import in.gov.sih.sih26135.security.AuditPayloadMasker;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -62,9 +63,10 @@ public class SystemEventLogQueryRepository {
           "JOIN ref_system_event_severity s ON sel.system_event_severity_id = s.system_event_severity_id " +
           "LEFT JOIN users au ON sel.actor_user_id = au.user_id " +
           "LEFT JOIN users eu ON UPPER(sel.entity_type) = 'USER' AND sel.entity_id = eu.user_id " +
-          "LEFT JOIN import_batches ib ON UPPER(sel.entity_type) = 'IMPORTBATCH' AND sel.entity_id = ib.import_batch_id " +
+          "LEFT JOIN import_batches ib ON UPPER(sel.entity_type) IN ('IMPORTBATCH', 'IMPORT_BATCH') AND sel.entity_id = ib.import_batch_id " +
           "LEFT JOIN users ibu ON ib.initiated_by_user_id = ibu.user_id " +
           "LEFT JOIN training_providers tp ON UPPER(sel.entity_type) IN ('TRAININGPROVIDER', 'TRAINING_PROVIDER') AND sel.entity_id = tp.provider_id " +
+          "LEFT JOIN training_centers tc ON UPPER(sel.entity_type) IN ('TRAININGCENTER', 'TRAINING_CENTER') AND sel.entity_id = tc.center_id " +
           "LEFT JOIN employers emp ON UPPER(sel.entity_type) = 'EMPLOYER' AND sel.entity_id = emp.employer_id " +
           "LEFT JOIN training_providers autp ON au.training_provider_id = autp.provider_id " +
           "LEFT JOIN employers auemp ON au.employer_id = auemp.employer_id " +
@@ -94,6 +96,9 @@ public class SystemEventLogQueryRepository {
     String countSql = "SELECT COUNT(*) " + BASE_FROM + where;
     Long totalCount = jdbcTemplate.queryForObject(countSql, Long.class, params.toArray());
     long total = totalCount != null ? totalCount : 0L;
+    if (total == 0L || pageable.getOffset() >= total) {
+      return new PageImpl<>(java.util.Collections.emptyList(), pageable, total);
+    }
 
     String orderBy = buildOrderByClause(pageable);
     String dataSql = BASE_SELECT + BASE_FROM + where + orderBy + " LIMIT ? OFFSET ?";
@@ -190,6 +195,7 @@ public class SystemEventLogQueryRepository {
       where.append(
           " AND COALESCE(" +
               "ibu.training_provider_id, " +
+              "tc.provider_id, " +
               "CASE WHEN UPPER(sel.entity_type) IN ('TRAININGPROVIDER', 'TRAINING_PROVIDER') THEN sel.entity_id ELSE NULL END, " +
               "eu.training_provider_id, " +
               "au.training_provider_id" +
@@ -211,7 +217,7 @@ public class SystemEventLogQueryRepository {
     if (scope.stateId() != null) {
       where.append(
           " AND COALESCE(" +
-              "tp.state_id, emp.state_id, " +
+              "tp.state_id, tc.state_id, emp.state_id, " +
               "CASE WHEN UPPER(sel.entity_type) = 'STATE' THEN sel.entity_id ELSE NULL END, " +
               "ibu.state_id, ibutp.state_id, ibuemp.state_id, " +
               "eu.state_id, eutp.state_id, euemp.state_id, " +
@@ -221,7 +227,7 @@ public class SystemEventLogQueryRepository {
       if (scope.districtId() != null) {
         where.append(
             " AND COALESCE(" +
-                "tp.district_id, emp.district_id, " +
+                "tp.district_id, tc.district_id, emp.district_id, " +
                 "CASE WHEN UPPER(sel.entity_type) = 'DISTRICT' THEN sel.entity_id ELSE NULL END, " +
                 "ibu.district_id, ibutp.district_id, ibuemp.district_id, " +
                 "eu.district_id, eutp.district_id, euemp.district_id, " +
@@ -278,7 +284,7 @@ public class SystemEventLogQueryRepository {
       Long entityId = rs.getObject("entity_id") != null
           ? rs.getLong("entity_id") : null;
       String sourceComponent = rs.getString("source_component");
-      String eventSummary = rs.getString("event_summary");
+      String eventSummary = AuditPayloadMasker.maskPreservingCorrelationBounded(rs.getString("event_summary"), 500);
       Timestamp occurredTs = rs.getTimestamp("occurred_at");
       Timestamp createdTs = rs.getTimestamp("created_at");
       LocalDateTime occurredAt = occurredTs != null ? occurredTs.toLocalDateTime() : null;

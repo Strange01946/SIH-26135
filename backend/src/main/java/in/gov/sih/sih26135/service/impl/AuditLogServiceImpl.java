@@ -7,7 +7,7 @@ import in.gov.sih.sih26135.dto.response.AuditLogResponse;
 import in.gov.sih.sih26135.dto.response.AuditTrailTimelineResponse;
 import in.gov.sih.sih26135.entity.AuditLog;
 import in.gov.sih.sih26135.entity.RefAuditAction;
-import in.gov.sih.sih26135.event.listener.AuditTrailEventListener;
+import in.gov.sih.sih26135.entity.User;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.mapper.AuditLogMapper;
@@ -15,6 +15,7 @@ import in.gov.sih.sih26135.repository.AuditLogQueryRepository;
 import in.gov.sih.sih26135.repository.AuditLogRepository;
 import in.gov.sih.sih26135.repository.RefAuditActionRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
+import in.gov.sih.sih26135.security.AuditPayloadMasker;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.AuditLogService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,6 +44,7 @@ public class AuditLogServiceImpl implements AuditLogService {
       "FOLLOWUP", "FOLLOWUPTASK", "SURVEYRESPONSE",
       "SKILLGAP", "SKILLGAPRECOMMENDATION",
       "EMPLOYMENT", "EMPLOYMENTRECORD",
+      "TRAININGCENTER", "TRAININGBATCH", "IMPORTBATCH",
       "USER"
   );
 
@@ -139,8 +141,8 @@ public class AuditLogServiceImpl implements AuditLogService {
     // Derive correlation ID strictly from server context (ignore client-supplied correlationId)
     String correlationId = CorrelationContextHolder.getCorrelationId();
 
-    // Sanitize change summary
-    String sanitizedSummary = AuditTrailEventListener.sanitizeChangeSummary(request.getChangeSummary());
+    // Sanitize change summary with AuditPayloadMasker (1000 char VARCHAR limit)
+    String sanitizedSummary = AuditPayloadMasker.maskBounded(request.getChangeSummary(), 1000);
 
     AuditLog auditLog = new AuditLog(auditAction, request.getEntityType().trim(), occurredAt);
     auditLog.setActorUserId(actorUserId);
@@ -173,7 +175,7 @@ public class AuditLogServiceImpl implements AuditLogService {
 
     LocalDateTime occurredAt = LocalDateTime.now();
     String correlationId = CorrelationContextHolder.getCorrelationId();
-    String sanitizedSummary = AuditTrailEventListener.sanitizeChangeSummary(summary);
+    String sanitizedSummary = AuditPayloadMasker.maskBounded(summary, 1000);
 
     AuditLog auditLog = new AuditLog(auditAction, entityType.trim(), occurredAt);
     auditLog.setActorUserId(verifiedActorUserId);
@@ -263,9 +265,25 @@ public class AuditLogServiceImpl implements AuditLogService {
       case "SURVEYRESPONSE" -> "SurveyResponse";
       case "SKILLGAP", "SKILLGAPRECOMMENDATION" -> "SkillGapRecommendation";
       case "EMPLOYMENT", "EMPLOYMENTRECORD" -> "EmploymentRecord";
+      case "TRAININGCENTER" -> "TrainingCenter";
+      case "TRAININGBATCH" -> "TrainingBatch";
+      case "IMPORTBATCH" -> "ImportBatch";
       case "USER" -> "User";
       default -> entityType.trim();
     };
+  }
+
+  private void validateStateOrDistrictAdminAccess(Long stateId, Long districtId) {
+    User caller = scopeValidator.resolveAuthenticatedUser()
+        .orElseThrow(() -> new AccessDeniedException("Authoritative user record not found"));
+    if (caller.getDistrictId() != null) {
+      if (stateId == null || caller.getStateId() == null || !caller.getStateId().equals(stateId)
+          || districtId == null || !caller.getDistrictId().equals(districtId)) {
+        throw new AccessDeniedException("Entity is outside caller assigned district scope");
+      }
+      return;
+    }
+    scopeValidator.validateStateScope(stateId);
   }
 
   private void validateEntityAccess(String entityType, Long entityId) {
@@ -277,96 +295,170 @@ public class AuditLogServiceImpl implements AuditLogService {
       switch (upper) {
         case "PLACEMENT", "PLACEMENTRECORD" -> {
           List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-              "SELECT p.employer_id, p.trainee_id, t.state_id FROM placement_records p LEFT JOIN trainees t ON p.trainee_id = t.trainee_id WHERE p.placement_id = ?", entityId);
+              "SELECT p.employer_id, p.provider_id, p.trainee_id, COALESCE(p.work_state_id, t.state_id) AS state_id, COALESCE(p.work_district_id, t.district_id) AS district_id "
+                  + "FROM placement_records p LEFT JOIN trainees t ON p.trainee_id = t.trainee_id WHERE p.placement_id = ?", entityId);
           if (rows.isEmpty()) throw new ResourceNotFoundException("PlacementRecord", "id");
-          Long empId = rows.get(0).get("employer_id") != null ? ((Number) rows.get(0).get("employer_id")).longValue() : null;
-          Long trId = rows.get(0).get("trainee_id") != null ? ((Number) rows.get(0).get("trainee_id")).longValue() : null;
-          Long stateId = rows.get(0).get("state_id") != null ? ((Number) rows.get(0).get("state_id")).longValue() : null;
+          Long empId = toLong(rows.get(0).get("employer_id"));
+          Long provId = toLong(rows.get(0).get("provider_id"));
+          Long trId = toLong(rows.get(0).get("trainee_id"));
+          Long stateId = toLong(rows.get(0).get("state_id"));
+          Long districtId = toLong(rows.get(0).get("district_id"));
           if (scopeValidator.isEmployerCaller() && empId != null) {
-            scopeValidator.validateEmployerScope(empId);
+            scopeValidator.validateDashboardEmployerScope(empId);
+          } else if (scopeValidator.isTrainingProviderCaller() && provId != null) {
+            scopeValidator.validateDashboardProviderScope(provId);
           } else if (scopeValidator.isTraineeCaller() && trId != null) {
-            scopeValidator.validateTraineeScope(trId);
+            scopeValidator.validateDashboardTraineeScope(trId);
           } else if (scopeValidator.isStateAdmin() && stateId != null) {
-            scopeValidator.validateStateScope(stateId);
+            validateStateOrDistrictAdminAccess(stateId, districtId);
           } else {
             scopeValidator.validateNationwideScope();
           }
         }
         case "TRAINING", "TRAININGENROLLMENT" -> {
           List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-              "SELECT te.provider_id, te.trainee_id, tc.state_id FROM training_enrollments te LEFT JOIN training_batches tb ON te.batch_id = tb.batch_id LEFT JOIN training_centers tc ON tb.center_id = tc.center_id WHERE te.enrollment_id = ?", entityId);
+              "SELECT te.provider_id, te.trainee_id, tc.state_id, tc.district_id "
+                  + "FROM training_enrollments te LEFT JOIN training_batches tb ON te.batch_id = tb.batch_id "
+                  + "LEFT JOIN training_centers tc ON tb.center_id = tc.center_id WHERE te.enrollment_id = ?", entityId);
           if (rows.isEmpty()) throw new ResourceNotFoundException("TrainingEnrollment", "id");
-          Long provId = rows.get(0).get("provider_id") != null ? ((Number) rows.get(0).get("provider_id")).longValue() : null;
-          Long trId = rows.get(0).get("trainee_id") != null ? ((Number) rows.get(0).get("trainee_id")).longValue() : null;
-          Long stateId = rows.get(0).get("state_id") != null ? ((Number) rows.get(0).get("state_id")).longValue() : null;
+          Long provId = toLong(rows.get(0).get("provider_id"));
+          Long trId = toLong(rows.get(0).get("trainee_id"));
+          Long stateId = toLong(rows.get(0).get("state_id"));
+          Long districtId = toLong(rows.get(0).get("district_id"));
           if (scopeValidator.isTrainingProviderCaller() && provId != null) {
-            scopeValidator.validateProviderScope(provId);
+            scopeValidator.validateDashboardProviderScope(provId);
           } else if (scopeValidator.isTraineeCaller() && trId != null) {
-            scopeValidator.validateTraineeScope(trId);
+            scopeValidator.validateDashboardTraineeScope(trId);
           } else if (scopeValidator.isStateAdmin() && stateId != null) {
-            scopeValidator.validateStateScope(stateId);
+            validateStateOrDistrictAdminAccess(stateId, districtId);
           } else {
             scopeValidator.validateNationwideScope();
           }
         }
         case "VERIFICATION", "EMPLOYMENTVERIFICATION" -> {
           List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-              "SELECT e.employer_id, ev.verifier_user_id, e.trainee_id, e.work_state_id FROM employment_verifications ev JOIN employment_records e ON ev.employment_record_id = e.employment_record_id WHERE ev.employment_verification_id = ?", entityId);
+              "SELECT e.employer_id, te.provider_id, ev.verifier_user_id, e.trainee_id, e.work_state_id, e.work_district_id "
+                  + "FROM employment_verifications ev JOIN employment_records e ON ev.employment_record_id = e.employment_id "
+                  + "LEFT JOIN training_enrollments te ON e.enrollment_id = te.enrollment_id WHERE ev.employment_verification_id = ?", entityId);
           if (rows.isEmpty()) throw new ResourceNotFoundException("EmploymentVerification", "id");
-          Long empId = rows.get(0).get("employer_id") != null ? ((Number) rows.get(0).get("employer_id")).longValue() : null;
-          Long trId = rows.get(0).get("trainee_id") != null ? ((Number) rows.get(0).get("trainee_id")).longValue() : null;
-          Long stateId = rows.get(0).get("work_state_id") != null ? ((Number) rows.get(0).get("work_state_id")).longValue() : null;
+          Long empId = toLong(rows.get(0).get("employer_id"));
+          Long provId = toLong(rows.get(0).get("provider_id"));
+          Long trId = toLong(rows.get(0).get("trainee_id"));
+          Long stateId = toLong(rows.get(0).get("work_state_id"));
+          Long districtId = toLong(rows.get(0).get("work_district_id"));
           if (scopeValidator.isEmployerCaller() && empId != null) {
-            scopeValidator.validateEmployerScope(empId);
+            scopeValidator.validateDashboardEmployerScope(empId);
+          } else if (scopeValidator.isTrainingProviderCaller() && provId != null) {
+            scopeValidator.validateDashboardProviderScope(provId);
           } else if (scopeValidator.isTraineeCaller() && trId != null) {
-            scopeValidator.validateTraineeScope(trId);
+            scopeValidator.validateDashboardTraineeScope(trId);
           } else if (scopeValidator.isStateAdmin() && stateId != null) {
-            scopeValidator.validateStateScope(stateId);
+            validateStateOrDistrictAdminAccess(stateId, districtId);
           } else {
             scopeValidator.validateNationwideScope();
           }
         }
         case "FOLLOWUP", "FOLLOWUPTASK" -> {
           List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-              "SELECT ft.trainee_id, t.state_id FROM followup_tasks ft LEFT JOIN trainees t ON ft.trainee_id = t.trainee_id WHERE ft.followup_task_id = ?", entityId);
+              "SELECT ft.trainee_id, t.state_id, t.district_id FROM followup_tasks ft LEFT JOIN trainees t ON ft.trainee_id = t.trainee_id WHERE ft.followup_task_id = ?", entityId);
           if (rows.isEmpty()) throw new ResourceNotFoundException("FollowupTask", "id");
-          Long trId = rows.get(0).get("trainee_id") != null ? ((Number) rows.get(0).get("trainee_id")).longValue() : null;
-          Long stateId = rows.get(0).get("state_id") != null ? ((Number) rows.get(0).get("state_id")).longValue() : null;
+          Long trId = toLong(rows.get(0).get("trainee_id"));
+          Long stateId = toLong(rows.get(0).get("state_id"));
+          Long districtId = toLong(rows.get(0).get("district_id"));
           if (scopeValidator.isTraineeCaller() && trId != null) {
-            scopeValidator.validateTraineeScope(trId);
+            scopeValidator.validateDashboardTraineeScope(trId);
           } else if (scopeValidator.isStateAdmin() && stateId != null) {
-            scopeValidator.validateStateScope(stateId);
+            validateStateOrDistrictAdminAccess(stateId, districtId);
           } else {
             scopeValidator.validateNationwideScope();
           }
         }
         case "SKILLGAP", "SKILLGAPRECOMMENDATION" -> {
           List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-              "SELECT sgr.trainee_id, t.state_id FROM skill_gap_recommendations sgr LEFT JOIN trainees t ON sgr.trainee_id = t.trainee_id WHERE sgr.skill_gap_recommendation_id = ?", entityId);
+              "SELECT sgr.trainee_id, t.state_id, t.district_id FROM skill_gap_recommendations sgr LEFT JOIN trainees t ON sgr.trainee_id = t.trainee_id WHERE sgr.skill_gap_recommendation_id = ?", entityId);
           if (rows.isEmpty()) throw new ResourceNotFoundException("SkillGapRecommendation", "id");
-          Long trId = rows.get(0).get("trainee_id") != null ? ((Number) rows.get(0).get("trainee_id")).longValue() : null;
-          Long stateId = rows.get(0).get("state_id") != null ? ((Number) rows.get(0).get("state_id")).longValue() : null;
+          Long trId = toLong(rows.get(0).get("trainee_id"));
+          Long stateId = toLong(rows.get(0).get("state_id"));
+          Long districtId = toLong(rows.get(0).get("district_id"));
           if (scopeValidator.isTraineeCaller() && trId != null) {
-            scopeValidator.validateTraineeScope(trId);
+            scopeValidator.validateDashboardTraineeScope(trId);
           } else if (scopeValidator.isStateAdmin() && stateId != null) {
-            scopeValidator.validateStateScope(stateId);
+            validateStateOrDistrictAdminAccess(stateId, districtId);
           } else {
             scopeValidator.validateNationwideScope();
           }
         }
         case "EMPLOYMENT", "EMPLOYMENTRECORD" -> {
           List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-              "SELECT employer_id, trainee_id, work_state_id FROM employment_records WHERE employment_record_id = ?", entityId);
+              "SELECT e.employer_id, te.provider_id, e.trainee_id, e.work_state_id, e.work_district_id "
+                  + "FROM employment_records e LEFT JOIN training_enrollments te ON e.enrollment_id = te.enrollment_id WHERE e.employment_id = ?", entityId);
           if (rows.isEmpty()) throw new ResourceNotFoundException("EmploymentRecord", "id");
-          Long empId = rows.get(0).get("employer_id") != null ? ((Number) rows.get(0).get("employer_id")).longValue() : null;
-          Long trId = rows.get(0).get("trainee_id") != null ? ((Number) rows.get(0).get("trainee_id")).longValue() : null;
-          Long stateId = rows.get(0).get("work_state_id") != null ? ((Number) rows.get(0).get("work_state_id")).longValue() : null;
+          Long empId = toLong(rows.get(0).get("employer_id"));
+          Long provId = toLong(rows.get(0).get("provider_id"));
+          Long trId = toLong(rows.get(0).get("trainee_id"));
+          Long stateId = toLong(rows.get(0).get("work_state_id"));
+          Long districtId = toLong(rows.get(0).get("work_district_id"));
           if (scopeValidator.isEmployerCaller() && empId != null) {
-            scopeValidator.validateEmployerScope(empId);
+            scopeValidator.validateDashboardEmployerScope(empId);
+          } else if (scopeValidator.isTrainingProviderCaller() && provId != null) {
+            scopeValidator.validateDashboardProviderScope(provId);
           } else if (scopeValidator.isTraineeCaller() && trId != null) {
-            scopeValidator.validateTraineeScope(trId);
+            scopeValidator.validateDashboardTraineeScope(trId);
           } else if (scopeValidator.isStateAdmin() && stateId != null) {
-            scopeValidator.validateStateScope(stateId);
+            validateStateOrDistrictAdminAccess(stateId, districtId);
+          } else {
+            scopeValidator.validateNationwideScope();
+          }
+        }
+        case "TRAININGCENTER" -> {
+          List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+              "SELECT provider_id, state_id, district_id FROM training_centers WHERE center_id = ? AND deleted_at IS NULL", entityId);
+          if (rows.isEmpty()) throw new ResourceNotFoundException("TrainingCenter", "id");
+          Long provId = toLong(rows.get(0).get("provider_id"));
+          Long stateId = toLong(rows.get(0).get("state_id"));
+          Long districtId = toLong(rows.get(0).get("district_id"));
+          if (scopeValidator.isTrainingProviderCaller() && provId != null) {
+            scopeValidator.validateDashboardProviderScope(provId);
+          } else if (scopeValidator.isStateAdmin() && stateId != null) {
+            validateStateOrDistrictAdminAccess(stateId, districtId);
+          } else {
+            scopeValidator.validateNationwideScope();
+          }
+        }
+        case "TRAININGBATCH" -> {
+          List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+              "SELECT tb.provider_id, tc.state_id, tc.district_id FROM training_batches tb "
+                  + "LEFT JOIN training_centers tc ON tb.center_id = tc.center_id WHERE tb.batch_id = ? AND tb.deleted_at IS NULL", entityId);
+          if (rows.isEmpty()) throw new ResourceNotFoundException("TrainingBatch", "id");
+          Long provId = toLong(rows.get(0).get("provider_id"));
+          Long stateId = toLong(rows.get(0).get("state_id"));
+          Long districtId = toLong(rows.get(0).get("district_id"));
+          if (scopeValidator.isTrainingProviderCaller() && provId != null) {
+            scopeValidator.validateDashboardProviderScope(provId);
+          } else if (scopeValidator.isStateAdmin() && stateId != null) {
+            validateStateOrDistrictAdminAccess(stateId, districtId);
+          } else {
+            scopeValidator.validateNationwideScope();
+          }
+        }
+        case "IMPORTBATCH" -> {
+          List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+              "SELECT u.training_provider_id, u.employer_id, COALESCE(u.state_id, tp.state_id, emp.state_id) AS state_id, "
+                  + "COALESCE(u.district_id, tp.district_id, emp.district_id) AS district_id "
+                  + "FROM import_batches ib LEFT JOIN users u ON ib.initiated_by_user_id = u.user_id "
+                  + "LEFT JOIN training_providers tp ON u.training_provider_id = tp.provider_id "
+                  + "LEFT JOIN employers emp ON u.employer_id = emp.employer_id WHERE ib.import_batch_id = ?", entityId);
+          if (rows.isEmpty()) throw new ResourceNotFoundException("ImportBatch", "id");
+          Long provId = toLong(rows.get(0).get("training_provider_id"));
+          Long empId = toLong(rows.get(0).get("employer_id"));
+          Long stateId = toLong(rows.get(0).get("state_id"));
+          Long districtId = toLong(rows.get(0).get("district_id"));
+          if (scopeValidator.isEmployerCaller() && empId != null) {
+            scopeValidator.validateDashboardEmployerScope(empId);
+          } else if (scopeValidator.isTrainingProviderCaller() && provId != null) {
+            scopeValidator.validateDashboardProviderScope(provId);
+          } else if (scopeValidator.isStateAdmin() && stateId != null) {
+            validateStateOrDistrictAdminAccess(stateId, districtId);
           } else {
             scopeValidator.validateNationwideScope();
           }
@@ -386,6 +478,10 @@ public class AuditLogServiceImpl implements AuditLogService {
     } catch (Exception e) {
       throw new AccessDeniedException("Access validation failed for entity " + entityType + ":" + entityId, e);
     }
+  }
+
+  private static Long toLong(Object val) {
+    return val instanceof Number n ? n.longValue() : null;
   }
 
   @Override

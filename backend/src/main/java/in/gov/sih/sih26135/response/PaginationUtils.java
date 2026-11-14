@@ -4,9 +4,13 @@ import static java.util.Map.entry;
 
 import in.gov.sih.sih26135.exception.BadRequestException;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Pattern;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -1033,5 +1037,19 @@ public final class PaginationUtils {
 
   private static Set<String> getCleanAllowedFields(Map<String, String> allowedSortFields) {
     return Collections.unmodifiableSet(allowedSortFields.keySet());
+  }
+
+  /**
+   * Executes a Spring Data JPA paginated query safely when large page indices cause
+   * {@code pageable.getOffset()} to exceed {@link Integer#MAX_VALUE}, avoiding Hibernate
+   * {@code Query.setFirstResult(int)} overflow failures.
+   */
+  public static <T> Page<T> executeSafeJpaPage(
+      Pageable pageable, Function<Pageable, Page<T>> queryExecutor) {
+    if (pageable != null && pageable.isPaged() && pageable.getOffset() > Integer.MAX_VALUE) {
+      long total = queryExecutor.apply(PageRequest.of(0, 1, pageable.getSort())).getTotalElements();
+      return new PageImpl<>(List.of(), pageable, total);
+    }
+    return queryExecutor.apply(pageable);
   }
 }

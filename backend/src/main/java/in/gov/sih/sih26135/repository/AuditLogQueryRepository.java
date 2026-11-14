@@ -3,8 +3,8 @@ package in.gov.sih.sih26135.repository;
 import in.gov.sih.sih26135.dto.request.AuditLogFilterCriteria;
 import in.gov.sih.sih26135.dto.response.AuditLogResponse;
 import in.gov.sih.sih26135.dto.response.AuditTrailTimelineResponse;
-import in.gov.sih.sih26135.event.listener.AuditTrailEventListener;
 import in.gov.sih.sih26135.exception.BadRequestException;
+import in.gov.sih.sih26135.security.AuditPayloadMasker;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -100,8 +100,8 @@ public class AuditLogQueryRepository {
     Long total = jdbcTemplate.queryForObject(countSql, Long.class, params.toArray());
     long totalCount = total != null ? total : 0L;
 
-    if (totalCount == 0) {
-      return new PageImpl<>(Collections.emptyList(), pageable, 0L);
+    if (totalCount == 0 || pageable.getOffset() >= totalCount) {
+      return new PageImpl<>(Collections.emptyList(), pageable, totalCount);
     }
 
     // Determine sort column and direction
@@ -140,7 +140,7 @@ public class AuditLogQueryRepository {
           Timestamp occurredTs = rs.getTimestamp("occurred_at");
           LocalDateTime occurredAt = occurredTs != null ? occurredTs.toLocalDateTime() : null;
           Long actorUserId = rs.getObject("actor_user_id") != null ? rs.getLong("actor_user_id") : null;
-          String sanitizedSummary = AuditTrailEventListener.sanitizeChangeSummary(rs.getString("change_summary"));
+          String sanitizedSummary = AuditPayloadMasker.mask(rs.getString("change_summary"));
 
           return new AuditTrailTimelineResponse.AuditTrailEntry(
               rs.getLong("audit_log_id"),
@@ -191,7 +191,7 @@ public class AuditLogQueryRepository {
 
       Long actorUserId = rs.getObject("actor_user_id") != null ? rs.getLong("actor_user_id") : null;
       Long entityId = rs.getObject("entity_id") != null ? rs.getLong("entity_id") : null;
-      String sanitizedSummary = AuditTrailEventListener.sanitizeChangeSummary(rs.getString("change_summary"));
+      String sanitizedSummary = AuditPayloadMasker.mask(rs.getString("change_summary"));
 
       return new AuditLogResponse(
           rs.getLong("audit_log_id"),

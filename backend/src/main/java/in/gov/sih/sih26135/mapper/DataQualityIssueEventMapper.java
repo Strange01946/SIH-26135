@@ -2,6 +2,7 @@ package in.gov.sih.sih26135.mapper;
 
 import in.gov.sih.sih26135.dto.response.DataQualityIssueEventResponse;
 import in.gov.sih.sih26135.entity.DataQualityIssueEvent;
+import in.gov.sih.sih26135.security.AuditPayloadMasker;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -34,7 +35,7 @@ public class DataQualityIssueEventMapper {
         statusName,
         entity.getChangedByUserId(),
         entity.getChangedAt(),
-        entity.getRemarks(),
+        AuditPayloadMasker.mask(entity.getRemarks()),
         entity.getCreatedAt()
     );
   }

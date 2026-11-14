@@ -2,6 +2,7 @@ package in.gov.sih.sih26135.mapper;
 
 import in.gov.sih.sih26135.dto.response.AuditLogResponse;
 import in.gov.sih.sih26135.entity.AuditLog;
+import in.gov.sih.sih26135.security.AuditPayloadMasker;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -31,7 +32,7 @@ public class AuditLogMapper {
         entity.getEntityId(),
         entity.getOccurredAt(),
         entity.getCorrelationId(),
-        entity.getChangeSummary(),
+        AuditPayloadMasker.mask(entity.getChangeSummary()),
         entity.getCreatedAt()
     );
   }

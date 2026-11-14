@@ -2,6 +2,7 @@ package in.gov.sih.sih26135.mapper;
 
 import in.gov.sih.sih26135.dto.response.ImportRecordResponse;
 import in.gov.sih.sih26135.entity.ImportRecord;
+import in.gov.sih.sih26135.security.AuditPayloadMasker;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -39,7 +40,7 @@ public class ImportRecordMapper {
         statusCode,
         statusName,
         entity.getErrorCode(),
-        entity.getErrorMessage(),
+        AuditPayloadMasker.mask(entity.getErrorMessage()),
         entity.getCreatedAt(),
         entity.getUpdatedAt()
     );

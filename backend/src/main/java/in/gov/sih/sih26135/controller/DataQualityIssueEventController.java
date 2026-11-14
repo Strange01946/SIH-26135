@@ -116,6 +116,7 @@ public class DataQualityIssueEventController {
    * @return 201 Created with created DataQualityIssueEventResponse enveloped in ApiResponse
    */
   @PostMapping
+  @PreAuthorize("hasAuthority('system.manage')")
   public ResponseEntity<ApiResponse<DataQualityIssueEventResponse>> recordIssueEvent(
       @Valid @RequestBody CreateDataQualityIssueEventRequest request,
       HttpServletRequest httpRequest) {

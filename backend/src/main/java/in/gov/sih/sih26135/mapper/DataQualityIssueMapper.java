@@ -2,6 +2,7 @@ package in.gov.sih.sih26135.mapper;
 
 import in.gov.sih.sih26135.dto.response.DataQualityIssueResponse;
 import in.gov.sih.sih26135.entity.DataQualityIssue;
+import in.gov.sih.sih26135.security.AuditPayloadMasker;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -82,12 +83,12 @@ public class DataQualityIssueMapper {
         sourceName,
         entity.getEntityType(),
         entity.getEntityId(),
-        entity.getIssueSummary(),
+        AuditPayloadMasker.mask(entity.getIssueSummary()),
         entity.getDetectedAt(),
         entity.getAssignedUserId(),
         entity.getResolvedAt(),
         entity.getResolvedByUserId(),
-        entity.getResolutionNotes(),
+        AuditPayloadMasker.mask(entity.getResolutionNotes()),
         entity.getCreatedAt(),
         entity.getUpdatedAt()
     );

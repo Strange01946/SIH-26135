@@ -22,6 +22,7 @@ import in.gov.sih.sih26135.repository.RefDataQualityCategoryRepository;
 import in.gov.sih.sih26135.repository.RefDataQualityDetectionSourceRepository;
 import in.gov.sih.sih26135.repository.RefDataQualityIssueStatusRepository;
 import in.gov.sih.sih26135.repository.RefDataQualitySeverityRepository;
+import in.gov.sih.sih26135.security.AuditPayloadMasker;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.DataQualityIssueService;
 import in.gov.sih.sih26135.service.DataQualityWorkflowService;
@@ -150,7 +151,7 @@ public class DataQualityIssueServiceImpl implements DataQualityIssueService {
         openStatus,
         source,
         entityType,
-        request.getIssueSummary().trim(),
+        AuditPayloadMasker.maskBounded(request.getIssueSummary().trim(), 500),
         detectedAt
     );
     issue.setDataQualityRule(rule);
@@ -208,7 +209,7 @@ public class DataQualityIssueServiceImpl implements DataQualityIssueService {
     }
 
     if (request.getIssueSummary() != null && !request.getIssueSummary().isBlank()) {
-      issue.setIssueSummary(request.getIssueSummary().trim());
+      issue.setIssueSummary(AuditPayloadMasker.maskBounded(request.getIssueSummary().trim(), 500));
     }
 
     if (request.getDataQualityCategoryId() != null) {

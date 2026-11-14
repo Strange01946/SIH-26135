@@ -22,7 +22,10 @@ import in.gov.sih.sih26135.service.ingestion.ImportSecurityScopeValidator.Caller
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -297,6 +300,38 @@ public class ImportBatchServiceImpl implements ImportBatchService {
     return mapper.toResponse(batch);
   }
 
+  private List<ImportBatch> findScopedBatches(
+      CallerScope callerScope, String wherePredicate, Object... whereParams) {
+    StringBuilder sql = new StringBuilder(
+        "SELECT ib.import_batch_id FROM import_batches ib "
+            + "LEFT JOIN users u ON ib.initiated_by_user_id = u.user_id "
+            + "LEFT JOIN training_providers tp ON u.training_provider_id = tp.provider_id AND tp.deleted_at IS NULL "
+            + "LEFT JOIN employers emp ON u.employer_id = emp.employer_id AND emp.deleted_at IS NULL "
+            + "WHERE ").append(wherePredicate);
+    List<Object> params = new ArrayList<>();
+    for (Object p : whereParams) {
+      params.add(p);
+    }
+    requireScopeValidator().appendBatchTenantWhereClause(callerScope, sql, params);
+    sql.append(" ORDER BY ib.import_batch_id DESC LIMIT 100");
+    List<Long> ids = jdbcTemplate.queryForList(sql.toString(), Long.class, params.toArray());
+    if (ids.isEmpty()) {
+      return List.of();
+    }
+    Map<Long, ImportBatch> byId = new LinkedHashMap<>();
+    for (ImportBatch batch : importBatchRepository.findAllById(ids)) {
+      byId.put(batch.getId(), batch);
+    }
+    List<ImportBatch> ordered = new ArrayList<>(ids.size());
+    for (Long id : ids) {
+      ImportBatch batch = byId.get(id);
+      if (batch != null) {
+        ordered.add(batch);
+      }
+    }
+    return ordered;
+  }
+
   @Override
   public List<ImportBatchResponse> getBatchesByStatusId(Long statusId) {
     if (statusId == null) {
@@ -304,10 +339,13 @@ public class ImportBatchServiceImpl implements ImportBatchService {
     }
     ImportSecurityScopeValidator validator = requireScopeValidator();
     CallerScope callerScope = validator.resolveAndValidateReadCaller(null);
-    return importBatchRepository.findByImportBatchStatusId(statusId).stream()
-        .filter(batch -> validator.canCallerViewBatchSilently(callerScope, batch))
-        .map(mapper::toResponse)
-        .toList();
+    List<ImportBatch> batches = jdbcTemplate != null
+        ? findScopedBatches(callerScope, "ib.import_batch_status_id = ?", statusId)
+        : importBatchRepository.findByImportBatchStatusId(statusId).stream()
+            .filter(batch -> validator.canCallerViewBatchSilently(callerScope, batch))
+            .limit(100)
+            .toList();
+    return batches.stream().map(mapper::toResponse).toList();
   }
 
   @Override
@@ -321,10 +359,14 @@ public class ImportBatchServiceImpl implements ImportBatchService {
         && ImportContractSchema.ENTITY_TRAINEE.equals(validator.normalizeEntityTypeLenient(entityType))) {
       throw new AccessDeniedException("Employers are not authorized to access trainee import batches");
     }
-    return importBatchRepository.findByEntityType(entityType.trim()).stream()
-        .filter(batch -> validator.canCallerViewBatchSilently(callerScope, batch))
-        .map(mapper::toResponse)
-        .toList();
+    String trimmedType = entityType.trim();
+    List<ImportBatch> batches = jdbcTemplate != null
+        ? findScopedBatches(callerScope, "ib.entity_type = ?", trimmedType)
+        : importBatchRepository.findByEntityType(trimmedType).stream()
+            .filter(batch -> validator.canCallerViewBatchSilently(callerScope, batch))
+            .limit(100)
+            .toList();
+    return batches.stream().map(mapper::toResponse).toList();
   }
 
   @Override
@@ -334,10 +376,14 @@ public class ImportBatchServiceImpl implements ImportBatchService {
     }
     ImportSecurityScopeValidator validator = requireScopeValidator();
     CallerScope callerScope = validator.resolveAndValidateReadCaller(null);
-    return importBatchRepository.findBySourceSystem(sourceSystem.trim()).stream()
-        .filter(batch -> validator.canCallerViewBatchSilently(callerScope, batch))
-        .map(mapper::toResponse)
-        .toList();
+    String trimmedSource = sourceSystem.trim();
+    List<ImportBatch> batches = jdbcTemplate != null
+        ? findScopedBatches(callerScope, "ib.source_system = ?", trimmedSource)
+        : importBatchRepository.findBySourceSystem(trimmedSource).stream()
+            .filter(batch -> validator.canCallerViewBatchSilently(callerScope, batch))
+            .limit(100)
+            .toList();
+    return batches.stream().map(mapper::toResponse).toList();
   }
 
   @Override
@@ -347,10 +393,13 @@ public class ImportBatchServiceImpl implements ImportBatchService {
     }
     ImportSecurityScopeValidator validator = requireScopeValidator();
     CallerScope callerScope = validator.resolveAndValidateReadCaller(null);
-    return importBatchRepository.findByInitiatedByUserId(initiatedByUserId).stream()
-        .filter(batch -> validator.canCallerViewBatchSilently(callerScope, batch))
-        .map(mapper::toResponse)
-        .toList();
+    List<ImportBatch> batches = jdbcTemplate != null
+        ? findScopedBatches(callerScope, "ib.initiated_by_user_id = ?", initiatedByUserId)
+        : importBatchRepository.findByInitiatedByUserId(initiatedByUserId).stream()
+            .filter(batch -> validator.canCallerViewBatchSilently(callerScope, batch))
+            .limit(100)
+            .toList();
+    return batches.stream().map(mapper::toResponse).toList();
   }
 
   @Override

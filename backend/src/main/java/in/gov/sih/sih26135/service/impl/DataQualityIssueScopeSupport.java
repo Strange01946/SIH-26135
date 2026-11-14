@@ -1,6 +1,7 @@
 package in.gov.sih.sih26135.service.impl;
 
 import in.gov.sih.sih26135.entity.DataQualityIssue;
+import in.gov.sih.sih26135.entity.DataQualityIssueEvent;
 import in.gov.sih.sih26135.entity.User;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import java.util.ArrayList;
@@ -495,6 +496,31 @@ final class DataQualityIssueScopeSupport {
       }
     }
     return filtered;
+  }
+
+  static List<DataQualityIssueEvent> filterIssueEventsInScope(
+      CallerScope scope,
+      List<DataQualityIssueEvent> events,
+      JdbcTemplate jdbcTemplate) {
+    if (events == null || events.isEmpty()) {
+      return List.of();
+    }
+    if (scope.nationwideAdmin()) {
+      return events;
+    }
+    List<DataQualityIssue> parentIssues = events.stream()
+        .map(DataQualityIssueEvent::getDataQualityIssue)
+        .filter(java.util.Objects::nonNull)
+        .toList();
+    Set<Long> allowedIssueIds = filterIssuesInScope(scope, parentIssues, jdbcTemplate).stream()
+        .map(DataQualityIssue::getId)
+        .filter(java.util.Objects::nonNull)
+        .collect(Collectors.toSet());
+    return events.stream()
+        .filter(ev -> ev != null && ev.getDataQualityIssue() != null
+            && ev.getDataQualityIssue().getId() != null
+            && allowedIssueIds.contains(ev.getDataQualityIssue().getId()))
+        .toList();
   }
 
   private static Set<Long> findAuthorizedEntityIds(
