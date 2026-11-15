@@ -1,6 +1,7 @@
 package in.gov.sih.sih26135.event;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 /**
  * Strongly typed internal domain event representing a completed workflow transition
@@ -25,7 +26,7 @@ public record AuditTrailEvent(
     String changeSummary,
     LocalDateTime occurredAt,
     String correlationId
-) {
+) implements DomainEvent {
 
   public AuditTrailEvent {
     if (actionCode == null || actionCode.isBlank()) {
@@ -34,5 +35,42 @@ public record AuditTrailEvent(
     if (occurredAt == null) {
       occurredAt = LocalDateTime.now();
     }
+  }
+
+  @Override
+  public String getEventId() {
+    return correlationId != null && !correlationId.isBlank()
+        ? correlationId
+        : UUID.randomUUID().toString();
+  }
+
+  @Override
+  public String getEventType() {
+    return actionCode();
+  }
+
+  @Override
+  public String getEntityType() {
+    return entityType();
+  }
+
+  @Override
+  public Long getEntityId() {
+    return entityId();
+  }
+
+  @Override
+  public Long getActorUserId() {
+    return actorUserId();
+  }
+
+  @Override
+  public String getCorrelationId() {
+    return correlationId();
+  }
+
+  @Override
+  public LocalDateTime getOccurredAt() {
+    return occurredAt();
   }
 }
