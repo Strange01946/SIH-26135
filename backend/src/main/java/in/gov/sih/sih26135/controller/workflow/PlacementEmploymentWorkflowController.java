@@ -35,10 +35,20 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class PlacementEmploymentWorkflowController {
 
   private final PlacementEmploymentWorkflowService placementEmploymentWorkflowService;
+  private final in.gov.sih.sih26135.service.CandidateLifecycleOrchestratorService candidateLifecycleOrchestratorService;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  public PlacementEmploymentWorkflowController(
+      PlacementEmploymentWorkflowService placementEmploymentWorkflowService,
+      @org.springframework.beans.factory.annotation.Autowired(required = false)
+      in.gov.sih.sih26135.service.CandidateLifecycleOrchestratorService candidateLifecycleOrchestratorService) {
+    this.placementEmploymentWorkflowService = placementEmploymentWorkflowService;
+    this.candidateLifecycleOrchestratorService = candidateLifecycleOrchestratorService;
+  }
 
   public PlacementEmploymentWorkflowController(
       PlacementEmploymentWorkflowService placementEmploymentWorkflowService) {
-    this.placementEmploymentWorkflowService = placementEmploymentWorkflowService;
+    this(placementEmploymentWorkflowService, null);
   }
 
   /**
@@ -59,7 +69,9 @@ public class PlacementEmploymentWorkflowController {
       );
     }
     PlacementToEmploymentTransitionResponse response =
-        placementEmploymentWorkflowService.transitionPlacementToEmployment(request);
+        candidateLifecycleOrchestratorService != null
+            ? candidateLifecycleOrchestratorService.orchestratePlacementToEmployment(request)
+            : placementEmploymentWorkflowService.transitionPlacementToEmployment(request);
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(ApiResponse.success(
             "Placement transitioned to employment successfully",

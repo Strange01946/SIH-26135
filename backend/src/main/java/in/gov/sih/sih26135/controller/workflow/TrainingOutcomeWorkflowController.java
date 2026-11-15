@@ -36,10 +36,20 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class TrainingOutcomeWorkflowController {
 
   private final TrainingOutcomeWorkflowService trainingOutcomeWorkflowService;
+  private final in.gov.sih.sih26135.service.CandidateLifecycleOrchestratorService candidateLifecycleOrchestratorService;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  public TrainingOutcomeWorkflowController(
+      TrainingOutcomeWorkflowService trainingOutcomeWorkflowService,
+      @org.springframework.beans.factory.annotation.Autowired(required = false)
+      in.gov.sih.sih26135.service.CandidateLifecycleOrchestratorService candidateLifecycleOrchestratorService) {
+    this.trainingOutcomeWorkflowService = trainingOutcomeWorkflowService;
+    this.candidateLifecycleOrchestratorService = candidateLifecycleOrchestratorService;
+  }
 
   public TrainingOutcomeWorkflowController(
       TrainingOutcomeWorkflowService trainingOutcomeWorkflowService) {
-    this.trainingOutcomeWorkflowService = trainingOutcomeWorkflowService;
+    this(trainingOutcomeWorkflowService, null);
   }
 
   /**
@@ -60,7 +70,9 @@ public class TrainingOutcomeWorkflowController {
       );
     }
     RecordAssessmentAndIssueCertificateResponse response =
-        trainingOutcomeWorkflowService.recordAssessmentResultAndIssueCertificate(request);
+        candidateLifecycleOrchestratorService != null
+            ? candidateLifecycleOrchestratorService.recordAssessmentAndCertification(request)
+            : trainingOutcomeWorkflowService.recordAssessmentResultAndIssueCertificate(request);
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(ApiResponse.success(
             "Assessment result recorded and certificate issued successfully",

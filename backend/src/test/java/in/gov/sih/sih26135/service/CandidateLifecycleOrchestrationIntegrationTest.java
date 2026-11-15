@@ -11,6 +11,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import in.gov.sih.sih26135.config.cache.AnalyticsCacheEvictionService;
 import in.gov.sih.sih26135.correlation.CorrelationContextHolder;
 import in.gov.sih.sih26135.dto.request.CreateSkillGapAssessmentRequest;
 import in.gov.sih.sih26135.dto.request.CreateTrainingEnrollmentRequest;
@@ -98,6 +99,7 @@ class CandidateLifecycleOrchestrationIntegrationTest {
   @Mock private RefEnrollmentStatusRepository refEnrollmentStatusRepository;
   @Mock private ApplicationEventPublisher eventPublisher;
   @Mock private WorkflowSecurityScopeValidator scopeValidator;
+  @Mock private AnalyticsCacheEvictionService evictionService;
 
   private CandidateLifecycleOrchestratorServiceImpl orchestratorService;
   private CandidateLifecycleEventListener eventListener;
@@ -142,8 +144,9 @@ class CandidateLifecycleOrchestrationIntegrationTest {
         eventPublisher,
         scopeValidator
     );
+    orchestratorService.setEvictionService(evictionService);
 
-    eventListener = new CandidateLifecycleEventListener();
+    eventListener = new CandidateLifecycleEventListener(orchestratorService);
 
     testTrainee = new Trainee();
     testTrainee.setId(TRAINEE_ID);
@@ -222,6 +225,7 @@ class CandidateLifecycleOrchestrationIntegrationTest {
       verify(scopeValidator).validateTraineeScope(TRAINEE_ID);
       verify(traineeConsentService).validateConsent(TRAINEE_ID, "DATA_PROCESSING");
       verify(trainingEnrollmentService).createEnrollment(any(CreateTrainingEnrollmentRequest.class));
+      verify(evictionService).evictOnEnrollment(orchestratorService);
 
       ArgumentCaptor<TraineeLifecycleEvent> eventCaptor = ArgumentCaptor.forClass(TraineeLifecycleEvent.class);
       verify(eventPublisher).publishEvent(eventCaptor.capture());
@@ -254,6 +258,74 @@ class CandidateLifecycleOrchestrationIntegrationTest {
 
       verify(trainingEnrollmentService, never()).createEnrollment(any());
       verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    @DisplayName("Throws BadRequestException when another consent is provided but mandatory DATA_PROCESSING is missing")
+    void testEnrollCandidateThrowsWhenDataProcessingMissingEvenIfOtherConsentProvided() {
+      TraineeEnrollmentOrchestrationRequest request = new TraineeEnrollmentOrchestrationRequest(
+          TRAINEE_ID, BATCH_ID, LocalDate.of(2026, 1, 10)
+      );
+      request.setConsentTypeId(3L); // e.g. EMPLOYMENT_FOLLOW_UP consent
+
+      when(traineeRepository.findById(TRAINEE_ID)).thenReturn(Optional.of(testTrainee));
+      when(trainingBatchRepository.findById(BATCH_ID)).thenReturn(Optional.of(testBatch));
+      doThrow(new BadRequestException("Trainee has not granted consent for DATA_PROCESSING", "CONSENT_REQUIRED"))
+          .when(traineeConsentService).validateConsent(TRAINEE_ID, "DATA_PROCESSING");
+
+      assertThatThrownBy(() -> orchestratorService.enrollCandidateWithConsentValidation(request))
+          .isInstanceOf(BadRequestException.class)
+          .hasMessageContaining("Trainee has not granted consent for DATA_PROCESSING");
+
+      verify(trainingEnrollmentService, never()).createEnrollment(any());
+      verify(traineeConsentService, never()).validateConsent(TRAINEE_ID, 3L);
+      verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    @DisplayName("Throws BadRequestException when mandatory DATA_PROCESSING consent is revoked")
+    void testEnrollCandidateThrowsWhenDataProcessingRevoked() {
+      TraineeEnrollmentOrchestrationRequest request = new TraineeEnrollmentOrchestrationRequest(
+          TRAINEE_ID, BATCH_ID, LocalDate.of(2026, 1, 10)
+      );
+
+      when(traineeRepository.findById(TRAINEE_ID)).thenReturn(Optional.of(testTrainee));
+      when(trainingBatchRepository.findById(BATCH_ID)).thenReturn(Optional.of(testBatch));
+      doThrow(new BadRequestException("Consent has been revoked", "CONSENT_REVOKED"))
+          .when(traineeConsentService).validateConsent(TRAINEE_ID, "DATA_PROCESSING");
+
+      assertThatThrownBy(() -> orchestratorService.enrollCandidateWithConsentValidation(request))
+          .isInstanceOf(BadRequestException.class)
+          .hasMessageContaining("Consent has been revoked");
+
+      verify(trainingEnrollmentService, never()).createEnrollment(any());
+      verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    @DisplayName("Validates both mandatory DATA_PROCESSING and optional caller-specified consent type")
+    void testEnrollCandidateValidatesBothMandatoryAndOptionalConsent() {
+      TraineeEnrollmentOrchestrationRequest request = new TraineeEnrollmentOrchestrationRequest(
+          TRAINEE_ID, BATCH_ID, LocalDate.of(2026, 1, 10)
+      );
+      request.setConsentTypeId(2L);
+
+      when(traineeRepository.findById(TRAINEE_ID)).thenReturn(Optional.of(testTrainee));
+      when(trainingBatchRepository.findById(BATCH_ID)).thenReturn(Optional.of(testBatch));
+      when(refEnrollmentStatusRepository.findByStatusCode("ENROLLED")).thenReturn(Optional.of(enrolledStatus));
+
+      TrainingEnrollmentResponse mockResponse = new TrainingEnrollmentResponse();
+      mockResponse.setId(ENROLLMENT_ID);
+      mockResponse.setEnrollmentNumber("ENR-202-101-001");
+      when(trainingEnrollmentService.createEnrollment(any(CreateTrainingEnrollmentRequest.class))).thenReturn(mockResponse);
+
+      TraineeEnrollmentOrchestrationResponse response = orchestratorService.enrollCandidateWithConsentValidation(request);
+
+      assertThat(response).isNotNull();
+      verify(traineeConsentService).validateConsent(TRAINEE_ID, "DATA_PROCESSING");
+      verify(traineeConsentService).validateConsent(TRAINEE_ID, 2L);
+      verify(trainingEnrollmentService).createEnrollment(any(CreateTrainingEnrollmentRequest.class));
+      verify(evictionService).evictOnEnrollment(orchestratorService);
     }
 
     @Test
@@ -736,7 +808,7 @@ class CandidateLifecycleOrchestrationIntegrationTest {
     }
 
     @Test
-    @DisplayName("Performs safe pending handoff and publishes CommunicationTriggerEvent when assessment data is absent")
+    @DisplayName("Performs safe pending advisory handoff and publishes TraineeLifecycleEvent without synthetic communications when assessment data is absent")
     void testTriggerSkillGapRemediationWithoutAssessmentDataPendingHandoff() {
       RemediationTriggerRequest request = new RemediationTriggerRequest(
           TRAINEE_ID, "VERIFICATION_FAILURE"
@@ -751,14 +823,15 @@ class CandidateLifecycleOrchestrationIntegrationTest {
       assertThat(response.assessmentResponse()).isNull();
       assertThat(response.remarks()).contains("VERIFICATION_FAILURE");
 
-      ArgumentCaptor<CommunicationTriggerEvent> eventCaptor = ArgumentCaptor.forClass(CommunicationTriggerEvent.class);
+      ArgumentCaptor<TraineeLifecycleEvent> eventCaptor = ArgumentCaptor.forClass(TraineeLifecycleEvent.class);
       verify(eventPublisher).publishEvent(eventCaptor.capture());
-      CommunicationTriggerEvent published = eventCaptor.getValue();
+      TraineeLifecycleEvent published = eventCaptor.getValue();
 
-      assertThat(published.getEventType()).isEqualTo("REMEDIATION_ACTION_REQUIRED");
-      assertThat(published.templateCode()).isEqualTo("SKILL_GAP_ASSESSMENT_PENDING");
+      assertThat(published.getEventType()).isEqualTo("REMEDIATION_TRIGGERED");
+      assertThat(published.newStatus()).isEqualTo("PENDING_ASSESSMENT_DATA");
+      assertThat(published.metadataJson()).contains("VERIFICATION_FAILURE");
 
-      eventListener.onCommunicationTriggerEvent(published);
+      eventListener.onTraineeLifecycleEvent(published);
     }
 
     @Test
@@ -835,7 +908,7 @@ class CandidateLifecycleOrchestrationIntegrationTest {
   // =========================================================================
 
   @Nested
-  @DisplayName("CandidateLifecycleEventListener Safety Tests")
+  @DisplayName("CandidateLifecycleEventListener Safety & Connection Tests")
   class EventListenerSafetyTests {
 
     @Test
@@ -846,6 +919,91 @@ class CandidateLifecycleOrchestrationIntegrationTest {
       eventListener.onEmploymentVerificationEvent(null);
       eventListener.onDataQualityAlertEvent(null);
       eventListener.onCommunicationTriggerEvent(null);
+    }
+
+    @Test
+    @DisplayName("Automatically connects committed employment exit to remediation evaluation advisory")
+    void testEventListenerAutomaticallyTriggersRemediationOnEmploymentExit() {
+      when(traineeRepository.existsById(TRAINEE_ID)).thenReturn(true);
+
+      TraineeLifecycleEvent exitEvent = new TraineeLifecycleEvent(
+          "exit-evt-001",
+          "EMPLOYMENT_EXIT",
+          TRAINEE_ID,
+          1L,
+          "corr-exit-1",
+          LocalDateTime.now(),
+          null, null, null, null, null, null,
+          "EMPLOYED",
+          "UNEMPLOYED",
+          "{\"employmentExitEventId\":" + EXIT_EVENT_ID + "}"
+      );
+
+      eventListener.onTraineeLifecycleEvent(exitEvent);
+
+      ArgumentCaptor<TraineeLifecycleEvent> eventCaptor = ArgumentCaptor.forClass(TraineeLifecycleEvent.class);
+      verify(eventPublisher).publishEvent(eventCaptor.capture());
+      TraineeLifecycleEvent published = eventCaptor.getValue();
+      assertThat(published.getEventType()).isEqualTo("REMEDIATION_TRIGGERED");
+      assertThat(published.metadataJson()).contains("EMPLOYMENT_EXIT");
+    }
+
+    @Test
+    @DisplayName("Automatically connects committed verification rejection to remediation evaluation advisory")
+    void testEventListenerAutomaticallyTriggersRemediationOnVerificationRejection() {
+      when(traineeRepository.existsById(TRAINEE_ID)).thenReturn(true);
+
+      EmploymentVerificationEvent rejectEvent = new EmploymentVerificationEvent(
+          "verif-evt-002",
+          "VERIFICATION_VERDICT",
+          VERIFICATION_ID,
+          EMPLOYMENT_ID,
+          TRAINEE_ID,
+          1L,
+          "corr-verif-1",
+          LocalDateTime.now(),
+          EMPLOYER_ID,
+          null,
+          "EMPLOYER_DIRECT",
+          "REJECTED",
+          null,
+          null,
+          "{\"remarks\":\"unverified\"}"
+      );
+
+      eventListener.onEmploymentVerificationEvent(rejectEvent);
+
+      ArgumentCaptor<TraineeLifecycleEvent> eventCaptor = ArgumentCaptor.forClass(TraineeLifecycleEvent.class);
+      verify(eventPublisher).publishEvent(eventCaptor.capture());
+      TraineeLifecycleEvent published = eventCaptor.getValue();
+      assertThat(published.getEventType()).isEqualTo("REMEDIATION_TRIGGERED");
+      assertThat(published.metadataJson()).contains("VERIFICATION_FAILURE");
+    }
+
+    @Test
+    @DisplayName("Prevents duplicate remediation execution on replayed event with same event ID")
+    void testEventListenerPreventsDuplicateRemediationOnReplayedEvent() {
+      when(traineeRepository.existsById(TRAINEE_ID)).thenReturn(true);
+
+      TraineeLifecycleEvent exitEvent = new TraineeLifecycleEvent(
+          "exit-evt-duplicate-003",
+          "EMPLOYMENT_EXIT",
+          TRAINEE_ID,
+          1L,
+          "corr-exit-dup",
+          LocalDateTime.now(),
+          null, null, null, null, null, null,
+          "EMPLOYED",
+          "UNEMPLOYED",
+          "{\"employmentExitEventId\":" + EXIT_EVENT_ID + "}"
+      );
+
+      eventListener.onTraineeLifecycleEvent(exitEvent);
+      // Replay identical event ID
+      eventListener.onTraineeLifecycleEvent(exitEvent);
+
+      // Verify published only once
+      verify(eventPublisher, times(1)).publishEvent(any(TraineeLifecycleEvent.class));
     }
   }
 }

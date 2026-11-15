@@ -37,10 +37,20 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class EmploymentLifecycleWorkflowController {
 
   private final EmploymentLifecycleWorkflowService employmentLifecycleWorkflowService;
+  private final in.gov.sih.sih26135.service.CandidateLifecycleOrchestratorService candidateLifecycleOrchestratorService;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  public EmploymentLifecycleWorkflowController(
+      EmploymentLifecycleWorkflowService employmentLifecycleWorkflowService,
+      @org.springframework.beans.factory.annotation.Autowired(required = false)
+      in.gov.sih.sih26135.service.CandidateLifecycleOrchestratorService candidateLifecycleOrchestratorService) {
+    this.employmentLifecycleWorkflowService = employmentLifecycleWorkflowService;
+    this.candidateLifecycleOrchestratorService = candidateLifecycleOrchestratorService;
+  }
 
   public EmploymentLifecycleWorkflowController(
       EmploymentLifecycleWorkflowService employmentLifecycleWorkflowService) {
-    this.employmentLifecycleWorkflowService = employmentLifecycleWorkflowService;
+    this(employmentLifecycleWorkflowService, null);
   }
 
   /**
@@ -61,7 +71,9 @@ public class EmploymentLifecycleWorkflowController {
       );
     }
     EmploymentExitAndUnemploymentResponse response =
-        employmentLifecycleWorkflowService.recordExitAndInitiateUnemployment(request);
+        candidateLifecycleOrchestratorService != null
+            ? candidateLifecycleOrchestratorService.orchestrateEmploymentExitAndUnemployment(request)
+            : employmentLifecycleWorkflowService.recordExitAndInitiateUnemployment(request);
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(ApiResponse.success(
             "Employment exit recorded and unemployment initiated successfully",

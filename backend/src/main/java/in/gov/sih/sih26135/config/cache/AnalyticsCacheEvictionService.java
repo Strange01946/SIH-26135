@@ -19,6 +19,24 @@ public class AnalyticsCacheEvictionService {
   }
 
   /**
+   * Evicts caches affected by candidate training enrollment creation or status change.
+   * Affects overview, regional aggregates, provider metrics, and summary views.
+   */
+  public void evictOnEnrollment(Object source) {
+    eventPublisher.publishEvent(new AnalyticsWorkflowInvalidationEvent(
+        source,
+        "TRAINING_ENROLLMENT",
+        Set.of(
+            AnalyticsCacheConfig.CACHE_NATIONAL_OVERVIEW,
+            AnalyticsCacheConfig.CACHE_STATE_AGGREGATES,
+            AnalyticsCacheConfig.CACHE_DISTRICT_AGGREGATES,
+            AnalyticsCacheConfig.CACHE_INSTITUTIONAL,
+            AnalyticsCacheConfig.CACHE_SUMMARIES
+        )
+    ));
+  }
+
+  /**
    * Evicts caches affected by placement verification or employment transition.
    * Affects pipeline conversions, employment counts, and economic summaries.
    */

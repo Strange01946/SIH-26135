@@ -37,9 +37,20 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class VerificationWorkflowController {
 
   private final VerificationWorkflowService verificationWorkflowService;
+  private final in.gov.sih.sih26135.service.CandidateLifecycleOrchestratorService candidateLifecycleOrchestratorService;
 
-  public VerificationWorkflowController(VerificationWorkflowService verificationWorkflowService) {
+  @org.springframework.beans.factory.annotation.Autowired
+  public VerificationWorkflowController(
+      VerificationWorkflowService verificationWorkflowService,
+      @org.springframework.beans.factory.annotation.Autowired(required = false)
+      in.gov.sih.sih26135.service.CandidateLifecycleOrchestratorService candidateLifecycleOrchestratorService) {
     this.verificationWorkflowService = verificationWorkflowService;
+    this.candidateLifecycleOrchestratorService = candidateLifecycleOrchestratorService;
+  }
+
+  public VerificationWorkflowController(
+      VerificationWorkflowService verificationWorkflowService) {
+    this(verificationWorkflowService, null);
   }
 
   /**
@@ -86,7 +97,9 @@ public class VerificationWorkflowController {
       );
     }
     RecordVerificationVerdictResponse response =
-        verificationWorkflowService.recordVerificationVerdictAndSynchronize(request);
+        candidateLifecycleOrchestratorService != null
+            ? candidateLifecycleOrchestratorService.orchestrateEmploymentVerificationVerdict(request)
+            : verificationWorkflowService.recordVerificationVerdictAndSynchronize(request);
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(ApiResponse.success(
             "Verification verdict recorded and synchronized successfully",

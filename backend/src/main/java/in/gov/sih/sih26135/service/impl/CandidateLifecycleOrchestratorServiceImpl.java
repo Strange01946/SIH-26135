@@ -186,13 +186,15 @@ public class CandidateLifecycleOrchestratorServiceImpl implements CandidateLifec
     }
     scopeValidator.validateTraineeScope(request.getTraineeId());
 
+    // Mandatory consent enforcement: DATA_PROCESSING is non-negotiable for enrollment
+    traineeConsentService.validateConsent(request.getTraineeId(), "DATA_PROCESSING");
+
+    // Optional additional consent validation if requested by caller
     if (request.getConsentTypeId() != null) {
       traineeConsentService.validateConsent(request.getTraineeId(), request.getConsentTypeId());
-    } else {
-      String consentCode = (request.getConsentCode() != null && !request.getConsentCode().isBlank())
-          ? request.getConsentCode().trim()
-          : "DATA_PROCESSING";
-      traineeConsentService.validateConsent(request.getTraineeId(), consentCode);
+    } else if (request.getConsentCode() != null && !request.getConsentCode().isBlank()
+        && !"DATA_PROCESSING".equalsIgnoreCase(request.getConsentCode().trim())) {
+      traineeConsentService.validateConsent(request.getTraineeId(), request.getConsentCode().trim());
     }
 
     Long enrollmentStatusId = request.getEnrollmentStatusId();
@@ -227,6 +229,10 @@ public class CandidateLifecycleOrchestratorServiceImpl implements CandidateLifec
     createReq.setExpectedCompletionDate(request.getExpectedCompletionDate() != null ? request.getExpectedCompletionDate() : batch.getEndDate());
 
     TrainingEnrollmentResponse enrollment = trainingEnrollmentService.createEnrollment(createReq);
+
+    if (evictionService != null) {
+      evictionService.evictOnEnrollment(this);
+    }
 
     Long actorUserId = resolveCurrentActorUserId();
     String correlationId = CorrelationContextHolder.getCorrelationId();
@@ -475,25 +481,30 @@ public class CandidateLifecycleOrchestratorServiceImpl implements CandidateLifec
           correlationId
       );
     } else {
-      eventPublisher.publishEvent(new CommunicationTriggerEvent(
+      String remarks = (request.getRemarks() != null && !request.getRemarks().isBlank())
+          ? request.getRemarks().trim()
+          : "Trainee flagged for skill-gap evaluation following " + request.getTriggerSource() + "; awaiting assessment data";
+
+      // Non-recursive, durable advisory domain signal on domain bus without synthetic recipients
+      eventPublisher.publishEvent(new TraineeLifecycleEvent(
           UUID.randomUUID().toString(),
-          "REMEDIATION_ACTION_REQUIRED",
+          "REMEDIATION_TRIGGERED",
           request.getTraineeId(),
           actorUserId,
           correlationId,
           LocalDateTime.now(),
-          "EMAIL",
-          "trainee" + request.getTraineeId() + "@masked.domain",
-          "SKILL_GAP_ASSESSMENT_PENDING",
           null,
           null,
-          "MEDIUM",
-          "Skill gap remediation pending assessment data for trainee id=" + request.getTraineeId()
+          null,
+          null,
+          null,
+          null,
+          "UNEMPLOYED",
+          "PENDING_ASSESSMENT_DATA",
+          "{\"triggerSource\":\"" + request.getTriggerSource() + "\",\"referenceEntityId\":"
+              + (request.getReferenceEntityId() != null ? request.getReferenceEntityId() : "null")
+              + ",\"status\":\"PENDING_ASSESSMENT_DATA\"}"
       ));
-
-      String remarks = (request.getRemarks() != null && !request.getRemarks().isBlank())
-          ? request.getRemarks().trim()
-          : "Trainee flagged for skill-gap evaluation following " + request.getTriggerSource() + "; awaiting assessment data";
 
       return new RemediationTriggerResponse(
           request.getTraineeId(),
