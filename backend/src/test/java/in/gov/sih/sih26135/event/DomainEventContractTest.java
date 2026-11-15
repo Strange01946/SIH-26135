@@ -436,6 +436,16 @@ class DomainEventContractTest {
       // 8. Adjacent phone recipient formats are sanitized
       assertThat(CommunicationTriggerEvent.maskRecipient("9876543210/9123456780")).isEqualTo("XXXXXX3210/XXXXXX6780");
       assertThat(CommunicationTriggerEvent.maskRecipient("9876543210 - 9123456780")).isEqualTo("XXXXXX3210 - XXXXXX6780");
+
+      // 9. Spaced and 13-digit recipient phone formats are sanitized
+      assertThat(CommunicationTriggerEvent.maskRecipient("98765 43210")).isEqualTo("XXXXX X3210");
+      assertThat(CommunicationTriggerEvent.maskRecipient("9876 543210")).isEqualTo("XXXX XX3210");
+      assertThat(CommunicationTriggerEvent.maskRecipient("987 654 3210")).isEqualTo("XXX XXX 3210");
+      assertThat(CommunicationTriggerEvent.maskRecipient("1234567890123")).isEqualTo("XXXXXXXXX0123");
+      assertThat(CommunicationTriggerEvent.maskRecipient("XXXXX X3210")).isEqualTo("XXXXX X3210");
+      assertThat(CommunicationTriggerEvent.maskRecipient("XXXX XX3210")).isEqualTo("XXXX XX3210");
+      assertThat(CommunicationTriggerEvent.maskRecipient("XXX XXX 3210")).isEqualTo("XXX XXX 3210");
+      assertThat(CommunicationTriggerEvent.maskRecipient("XXXXXXXXX0123")).isEqualTo("XXXXXXXXX0123");
     }
 
     @Test
@@ -539,6 +549,52 @@ class DomainEventContractTest {
       assertThat(dateAdjacentEvent.toString()).doesNotContain("9876543210");
       assertThat(dateAdjacentEvent.toString()).contains("2026-11-15 XXXXXX3210");
       assertThat(dateAdjacentEvent.toString()).contains("2026-11-15");
+
+      // 9. Spaced Indian mobile numbers: 5+5, 4+6, and 3+3+4
+      String spacedSummary = "Contacts: 5+5 Phone 98765 43210, 4+6 Phone 9876 543210, and 3+3+4 Phone 987 654 3210";
+      CommunicationTriggerEvent spacedEvent = CommunicationTriggerEvent.of(
+          "DISPATCH", 409L, 88L, "SMS", "98765 43210", "TPL-09", 20L, "NORMAL", spacedSummary
+      );
+      assertThat(spacedEvent.payloadSummary()).doesNotContain("98765 43210");
+      assertThat(spacedEvent.payloadSummary()).doesNotContain("9876 543210");
+      assertThat(spacedEvent.payloadSummary()).doesNotContain("987 654 3210");
+      assertThat(spacedEvent.payloadSummary()).contains("Phone XXXXX X3210");
+      assertThat(spacedEvent.payloadSummary()).contains("Phone XXXX XX3210");
+      assertThat(spacedEvent.payloadSummary()).contains("Phone XXX XXX 3210");
+      assertThat(spacedEvent.toString()).doesNotContain("98765 43210");
+      assertThat(spacedEvent.toString()).doesNotContain("9876 543210");
+      assertThat(spacedEvent.toString()).doesNotContain("987 654 3210");
+      assertThat(spacedEvent.toString()).contains("Phone XXXXX X3210");
+      assertThat(spacedEvent.toString()).contains("Phone XXXX XX3210");
+      assertThat(spacedEvent.toString()).contains("Phone XXX XXX 3210");
+
+      // 10. Context-aware 13-15 digit phone candidates vs. unrelated identifiers
+      String longPhoneSummary = "Dispatched verification via Phone 1234567890123 for Txn 1234567890123 and Entity 123456789012345";
+      CommunicationTriggerEvent longPhoneEvent = CommunicationTriggerEvent.of(
+          "DISPATCH", 410L, 88L, "SMS", "1234567890123", "TPL-10", 20L, "NORMAL", longPhoneSummary
+      );
+      assertThat(longPhoneEvent.payloadSummary()).doesNotContain("Phone 1234567890123");
+      assertThat(longPhoneEvent.payloadSummary()).contains("Phone XXXXXXXXX0123");
+      assertThat(longPhoneEvent.payloadSummary()).contains("Txn 1234567890123");
+      assertThat(longPhoneEvent.payloadSummary()).contains("Entity 123456789012345");
+      assertThat(longPhoneEvent.toString()).doesNotContain("Phone 1234567890123");
+      assertThat(longPhoneEvent.toString()).contains("Phone XXXXXXXXX0123");
+      assertThat(longPhoneEvent.toString()).contains("Txn 1234567890123");
+      assertThat(longPhoneEvent.toString()).contains("Entity 123456789012345");
+
+      // 11. Boundary and false-positive cases: date or decimal near spaced phone, idempotence
+      String boundarySummary = "Fee 12345.67 on 2026-11-15 for Phone 98765 43210 (already masked: Phone XXXXX X3210)";
+      CommunicationTriggerEvent boundaryEvent = CommunicationTriggerEvent.of(
+          "DISPATCH", 411L, 88L, "SMS", "98765 43210", "TPL-11", 20L, "NORMAL", boundarySummary
+      );
+      assertThat(boundaryEvent.payloadSummary()).contains("12345.67");
+      assertThat(boundaryEvent.payloadSummary()).contains("2026-11-15");
+      assertThat(boundaryEvent.payloadSummary()).contains("Phone XXXXX X3210");
+      assertThat(boundaryEvent.payloadSummary()).doesNotContain("Phone 98765 43210");
+      assertThat(boundaryEvent.toString()).contains("12345.67");
+      assertThat(boundaryEvent.toString()).contains("2026-11-15");
+      assertThat(boundaryEvent.toString()).contains("Phone XXXXX X3210");
+      assertThat(boundaryEvent.toString()).doesNotContain("Phone 98765 43210");
     }
   }
 
