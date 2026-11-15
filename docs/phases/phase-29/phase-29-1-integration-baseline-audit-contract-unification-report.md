@@ -1,9 +1,9 @@
 # Phase 29.1 — Integration Baseline Audit, Cross-Subsystem Inventory & Contract Unification Report
 
-**Milestone:** Phase 29.1 (Final Targeted PII Masking Corrections Completed) \
+**Milestone:** Phase 29.1 (Final Targeted Phone Masking Corrections Completed) \
 **Project Root:** `E:\project` \
 **Backend Directory:** `E:\project\backend` \
-**Execution Timestamp:** 2026-11-15T14:22:00+05:30 \
+**Execution Timestamp:** 2026-11-15T14:38:00+05:30 \
 **Target Test Database:** `SIH26135_TEST` (`spring.jpa.hibernate.ddl-auto=validate`) \
 **Final Verdict:** **READY FOR INDEPENDENT REVIEW**
 
@@ -18,7 +18,9 @@ Establish the foundational integration baseline across the five major subsystems
 3. Define strongly typed, immutable domain event contracts supporting Trainee Lifecycle, Placement Lifecycle, Employment Verification, Data Quality Alerts, and Communication Triggers under a common `DomainEvent` abstraction.
 4. Audit and document transaction and asynchronous execution boundaries (`auditTaskExecutor`, task decorators, rejection handlers, and `@TransactionalEventListener`).
 5. Ensure 100% preservation of all architectural invariants (137 JPA repositories, 2 active `@Query` annotations in `src/main`, 64 REST controllers, 668 contract-audited endpoints, frozen database schema, and test database isolation).
-6. Implement and verify targeted corrections identified during independent review of Phase 29.1 regarding event identity stability in `AuditTrailEvent` and comprehensive PII sanitization in `CommunicationTriggerEvent` (recipient masking bypass fix and payload summary contact protection).
+6. Implement and verify targeted independent review corrections:
+   - Event identity stability and uniqueness in `AuditTrailEvent`.
+   - Comprehensive PII protection in `CommunicationTriggerEvent` (recipient masking bypass fix, payload summary contact protection, formatted phone number sanitization, and partially masked phone protection).
 
 ### Final Verdict
 **READY FOR INDEPENDENT REVIEW**  
@@ -46,7 +48,7 @@ Following independent source review of Phase 29.1, targeted corrections were imp
   - Replaced broad substring checks with reliable format-specific inspection:
   - `maskEmailAddress` isolates `localPart` and `domainPart` at `@`, verifies genuine prior masking (presence of `***` in `localPart` or `[REDACTED]`), and reliably masks any unmasked email address regardless of letter casing or character content (e.g., `Xavier@example.com` $\rightarrow$ `X***r@example.com`, `alex.maxwell@example.com` $\rightarrow$ `a***l@example.com`, `maxxxx@example.com` $\rightarrow$ `m***x@example.com`).
   - `isPhoneCandidate` inspects the character profile, requiring non-formatting characters to be exclusively digits or mask characters (`'X'`, `'*'`), with count $\ge 7$.
-  - `maskPhoneNumber` checks for genuine prior masking ($\ge 3$ mask characters), preserving already-masked formats (`XXXXXX3210`, `+XX-XXXXXX3210`, `+91-XXXXX-XX123`, `[REDACTED]`) idempotently while masking raw numbers via `maskPhoneDigits`.
+  - Preserves genuinely masked formats (`XXXXXX3210`, `+XX-XXXXXX3210`, `+91-XXXXX-XX123`, `[REDACTED]`) idempotently while masking raw numbers via `maskPhoneDigits`.
 - **Verification:** `DomainEventContractTest.testCommunicationTriggerEventRecipientMaskingBypassRegressions` exercises names containing `X`, `x`, `xxxx`, single-letter `X` addresses, and confirms strict idempotence on all supported masked phone and email formats.
 
 ### 2.3 Protect payloadSummary Contact Information
@@ -55,10 +57,38 @@ Following independent source review of Phase 29.1, targeted corrections were imp
   - Implemented `sanitizePayloadSummary(String summary)` in `CommunicationTriggerEvent`:
     1. First invokes the global `AuditPayloadMasker.mask(summary)` for secrets, tokens, passwords, Aadhaar, and PAN.
     2. Masks embedded email addresses using regex pattern `(?i)(?<![A-Za-z0-9._%*+-])([A-Za-z0-9._%*+-]+)@([A-Za-z0-9.-]+\\.[A-Za-z]{2,})\\b`. Unmasked emails are masked to `firstChar***lastChar@domain`, while genuinely pre-masked addresses (`h***r@employer.com`) are preserved without double-masking.
-    3. Masks embedded phone numbers using regex pattern `(?<![A-Za-z0-9])(\\+?\\d[\\d\\s-]{8,14}\\d)(?![A-Za-z0-9])` with 10–15 digits via `maskPhoneDigits`.
   - The global `AuditPayloadMasker.java` file is preserved without modification, avoiding any risk to existing Phase 28 functionality.
   - Both field accessors and auto-generated `toString()` are guaranteed never to expose raw recipient contact details.
 - **Verification:** `DomainEventContractTest.testCommunicationTriggerEventPayloadSummaryContactProtection` verifies embedded raw emails, embedded raw phone numbers, and mixed payloads containing pre-masked tokens.
+
+### 2.4 Formatted Phone Numbers in payloadSummary
+- **Identified Defect:** `EMBEDDED_PHONE_PATTERN` previously did not recognize formatted phone numbers containing parentheses, periods, or slashes (e.g., `(987) 654-3210`, `987.654.3210`, `+91 (98765) 43210`).
+- **Implemented Solution:**
+  - Updated `EMBEDDED_PHONE_PATTERN` to `(?<![A-Za-z0-9])(?:\\+?[0-9(X*][0-9\\s./()X*+-]{7,25}[0-9])(?![A-Za-z0-9])`.
+  - Implemented `processPhoneCandidate(candidate)` to sanitize candidate phone strings while guarding against unrelated numeric patterns:
+    - Validates digit count is between 10 and 15 digits.
+    - Excludes IPv4 addresses (`^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$`).
+    - Excludes single-dot decimal currency or quantity values (`12345678.90`).
+    - Excludes dates (`2026-11-15`) and entity IDs.
+    - Preserves non-digit formatting in place:
+      - `(987) 654-3210` $\rightarrow$ `(XXX) XXX-3210`
+      - `987.654.3210` $\rightarrow$ `XXX.XXX.3210`
+      - `+91 (98765) 43210` $\rightarrow$ `+XX (XXXXX) X3210`
+- **Verification:** `DomainEventContractTest.testCommunicationTriggerEventPayloadSummaryContactProtection` verifies all three formatted phone types in `payloadSummary` and proves unrelated numerics (dates, IP addresses, stipends) remain uncorrupted.
+
+### 2.5 Partially Masked Phone Numbers
+- **Identified Defect:** `maskPhoneNumber()` previously treated any string with $\ge 3$ mask characters as safely masked. As a result, partially masked inputs like `XXX9876543210` were returned unchanged despite containing a complete 10-digit unmasked phone number.
+- **Implemented Solution:**
+  - Implemented `isGenuinelyMaskedPhone(String s)`:
+    - Requires $\ge 3$ mask characters (`X` or `*`).
+    - Enforces that no more than 4 trailing digits remain after the last mask character (`trailingDigits <= 4`).
+    - Enforces that no more than 3 leading digits exist before the first mask character (`leadingDigits <= 3` for country codes).
+    - Enforces that no contiguous unmasked digit run exceeds 4 digits.
+  - If a phone number is partially masked (e.g., `XXX9876543210` or `9876543210XXX`), `isGenuinelyMaskedPhone` returns `false`, causing `maskPhoneDigits()` to mask all digits preceding the last 4 digits:
+    - `XXX9876543210` $\rightarrow$ `XXXXXXXXX3210`
+    - `9876543210XXX` $\rightarrow$ `XXXXXX3210XXX`
+  - Genuinely masked phone numbers (`XXXXXX3210`, `+XX-XXXXXX3210`, `+91-XXXXX-XX123`, `(XXX) XXX-3210`, `XXX.XXX.3210`) remain 100% idempotent.
+- **Verification:** `DomainEventContractTest.testCommunicationTriggerEventRecipientMaskingBypassRegressions` tests partially masked phone inputs, verifying that sensitive subscriber digits are protected across both `recipientMasked()` and `event.toString()`.
 
 ---
 
@@ -222,7 +252,7 @@ public interface DomainEvent {
 | **`PlacementLifecycleEvent`** | Placement offers & transitions | `Placement` | `eventId`, `eventType`, `placementRecordId`, `traineeId`, `actorUserId`, `stateId`, `trainingProviderId`, `employerId`, `jobPostingId`, `placementStatusCode`, `joiningStatusCode`, `offeredSalary`, `metadataJson`. |
 | **`EmploymentVerificationEvent`** | Verification & retention tracking | `EmploymentVerification` | `eventId`, `eventType`, `verificationId`, `employmentRecordId`, `traineeId`, `employerId`, `verificationMethod`, `verificationStatus`, `verifiedSalary`, `retentionMonthPeriod`, `metadataJson`. |
 | **`DataQualityAlertEvent`** | Anomaly detection & remediation | `DataQualityIssue` | `eventId`, `eventType`, `issueId`, `ruleCode`, `severity`, `targetEntityType`, `targetEntityId`, `trainingProviderId`, `issueStatus`, `summary`. |
-| **`CommunicationTriggerEvent`** | Notification & messaging triggers | `CommunicationTrigger` | `eventId`, `eventType`, `recipientEntityId`, `channel`, `recipientMasked`, `templateCode`, `trainingProviderId`, `priority`, `payloadSummary`. Enforces PII masking on recipient tokens and payload summaries without bypasses. |
+| **`CommunicationTriggerEvent`** | Notification & messaging triggers | `CommunicationTrigger` | `eventId`, `eventType`, `recipientEntityId`, `channel`, `recipientMasked`, `templateCode`, `trainingProviderId`, `priority`, `payloadSummary`. Enforces PII masking on recipient tokens, formatted phones, and payload summaries without bypasses. |
 
 ### 9.3 Design & Safety Characteristics
 1. **Thread-Safe & Immutable Records:** All events are defined as canonical Java `record` types, eliminating mutable internal state.
@@ -266,8 +296,8 @@ In accordance with the principle *"Implement only what is genuinely required"*, 
 4. **`in.gov.sih.sih26135.event.PlacementLifecycleEvent` (Created):** Domain event for placement transitions.
 5. **`in.gov.sih.sih26135.event.EmploymentVerificationEvent` (Created):** Domain event for employment verification attestations.
 6. **`in.gov.sih.sih26135.event.DataQualityAlertEvent` (Created):** Domain event for data quality anomalies and issue assignments.
-7. **`in.gov.sih.sih26135.event.CommunicationTriggerEvent` (Created & Hardened):** Domain event for external messaging triggers with robust recipient masking bypass prevention and payload summary contact protection.
-8. **`in.gov.sih.sih26135.event.DomainEventContractTest` (Created & Expanded):** Comprehensive 13-test verification suite covering contract conformance, event identity stability/uniqueness, recipient bypass prevention, payload contact protection, async propagation, and rejection behavior.
+7. **`in.gov.sih.sih26135.event.CommunicationTriggerEvent` (Created & Hardened):** Domain event for external messaging triggers with robust recipient masking bypass prevention, payload summary contact protection, formatted phone number sanitization, and partially masked phone protection.
+8. **`in.gov.sih.sih26135.event.DomainEventContractTest` (Created & Expanded):** Comprehensive 13-test verification suite covering contract conformance, event identity stability/uniqueness, recipient bypass prevention, formatted phone protection, partial-mask protection, async propagation, and rejection behavior.
 
 No existing business services or controllers were refactored, preserving working implementations without scope creep.
 
@@ -283,8 +313,8 @@ No existing business services or controllers were refactored, preserving working
 | `backend/src/main/java/in/gov/sih/sih26135/event/PlacementLifecycleEvent.java` | Added | Strongly typed Placement transition event record. |
 | `backend/src/main/java/in/gov/sih/sih26135/event/EmploymentVerificationEvent.java` | Added | Strongly typed Employment verification event record. |
 | `backend/src/main/java/in/gov/sih/sih26135/event/DataQualityAlertEvent.java` | Added | Strongly typed Data Quality alert event record. |
-| `backend/src/main/java/in/gov/sih/sih26135/event/CommunicationTriggerEvent.java` | Added | Strongly typed Communication notification trigger event record with bypass-free PII masking and payload summary protection. |
-| `backend/src/test/java/in/gov/sih/sih26135/event/DomainEventContractTest.java` | Added | Focused test suite verifying contract conformance, event identity, recipient bypass regressions, payload summary protection, async propagation, and rejection. |
+| `backend/src/main/java/in/gov/sih/sih26135/event/CommunicationTriggerEvent.java` | Added | Strongly typed Communication notification trigger event record with bypass-free PII masking, formatted phone support, and payload summary protection. |
+| `backend/src/test/java/in/gov/sih/sih26135/event/DomainEventContractTest.java` | Added | Focused test suite verifying contract conformance, event identity, recipient bypass regressions, formatted phones, partial-mask protection, async propagation, and rejection. |
 | `phase-29-1-integration-baseline-audit-contract-unification-report.md` | Added | Phase 29.1 capstone review and architectural audit report. |
 | `docs/phases/phase-29/phase-29-1-integration-baseline-audit-contract-unification-report.md` | Added | Formal docs mirror copy of the Phase 29.1 report. |
 
@@ -307,8 +337,8 @@ The expanded `DomainEventContractTest` suite was executed:
    - `testDataQualityAlertEventContract`: Verifies anomaly detection details, severity, and rule tracking.
    - `testCommunicationTriggerEventContract`: Verifies pre-masked recipient contact information in audit payloads.
    - `testCommunicationTriggerEventPIIProtectionWithUnmaskedInputs`: Verifies constructor masking of raw email addresses, 10-digit mobile phones, formatted international phone numbers, idempotence on pre-masked values, and non-exposure in `toString()`.
-   - `testCommunicationTriggerEventRecipientMaskingBypassRegressions`: Proves emails containing uppercase `X`, lowercase `x`, `xxxx`, and single-letter `X` addresses cannot bypass masking, and verifies strict idempotence for supported masked formats.
-   - `testCommunicationTriggerEventPayloadSummaryContactProtection`: Proves embedded emails and phone numbers in `payloadSummary` are sanitized and never exposed via accessors or generated `toString()`.
+   - `testCommunicationTriggerEventRecipientMaskingBypassRegressions`: Proves emails containing uppercase `X`, lowercase `x`, `xxxx`, single-letter `X` addresses, formatted phones, and partially masked numbers cannot bypass masking, and verifies strict idempotence for supported masked formats.
+   - `testCommunicationTriggerEventPayloadSummaryContactProtection`: Proves embedded emails, formatted phones (`(987) 654-3210`, `987.654.3210`, `+91 (98765) 43210`), and partially masked phones in `payloadSummary` are sanitized and never exposed via accessors or generated `toString()`, while preserving unrelated numbers (IPs, dates, decimals).
 2. **Section 2: Asynchronous Context Propagation & Boundary Isolation (2 tests):**
    - `testCorrelationTaskDecoratorPropagation`: Verifies `TaskDecorator` propagates correlation ID to worker thread, assigns distinct async request ID, and restores parent context without leakage.
    - `testObservableAuditTaskRejectionHandlerUnderSaturation`: Verifies saturation rejection handler increments dropped task counters without blocking caller threads.
@@ -335,7 +365,7 @@ The expanded `DomainEventContractTest` suite was executed:
 
 ### 14.2 Full Backend Regression Suite Execution
 - **Command:** `mvn test -f backend/pom.xml`
-- **Elapsed Duration:** 06:31 min
+- **Elapsed Duration:** 06:39 min
 - **Tests Executed:** **2,025**
 - **Failures:** **0**
 - **Errors:** **0**
@@ -366,7 +396,7 @@ The test count advanced from 2,012 (Phase 28 baseline) to **2,025 tests**, refle
 
 1. **Multi-Tenant Safety:** All new domain events transport tenant scope identifiers (`stateId`, `districtId`, `trainingProviderId`, `employerId`) alongside the entity ID, enabling downstream listeners in future subphases to perform tenant-isolated processing without querying ambiguous global entities.
 2. **Context-Detached Event State:** Events do not carry live JPA entities or Hibernate proxies. This prevents accidental lazy-loading exceptions (`LazyInitializationException`) or session leaks when events cross into asynchronous worker threads.
-3. **Comprehensive PII Masking:** In `CommunicationTriggerEvent`, recipient contact details and payload summaries are sanitized at construction time, preventing email and phone exposures in record accessors or generated `toString()`.
+3. **Comprehensive PII Masking:** In `CommunicationTriggerEvent`, recipient contact details and payload summaries are sanitized at construction time, preventing email and phone exposures (including formatted and partially masked variants) in record accessors or generated `toString()`.
 4. **Zero Production Regressions:** 100% of existing authentication, authorization, validation, analytical, and operational test cases passed without deviation.
 
 ---
@@ -398,6 +428,6 @@ In strict accordance with project governance:
 
 ## Conclusion & Readiness Declaration
 
-Phase 29.1 successfully delivers the cross-subsystem dependency inventory, establishes the strongly typed domain event contract foundation, resolves all targeted independent review defects (`AuditTrailEvent` event identity stability, bypass-free recipient masking, and payload summary contact protection), validates transaction and asynchronous execution boundaries, and confirms total system stability with **2,025 tests passing (0 failures, 0 errors, 0 skipped, BUILD SUCCESS)**.
+Phase 29.1 successfully delivers the cross-subsystem dependency inventory, establishes the strongly typed domain event contract foundation, resolves all targeted independent review defects (`AuditTrailEvent` event identity stability, bypass-free recipient masking, formatted phone support, partial-mask protection, and payload summary contact protection), validates transaction and asynchronous execution boundaries, and confirms total system stability with **2,025 tests passing (0 failures, 0 errors, 0 skipped, BUILD SUCCESS)**.
 
 **Phase Status:** **READY FOR INDEPENDENT REVIEW**

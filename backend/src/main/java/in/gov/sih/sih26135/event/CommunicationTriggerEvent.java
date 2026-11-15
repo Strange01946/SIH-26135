@@ -35,7 +35,7 @@ public record CommunicationTriggerEvent(
       Pattern.compile("(?i)(?<![A-Za-z0-9._%*+-])([A-Za-z0-9._%*+-]+)@([A-Za-z0-9.-]+\\.[A-Za-z]{2,})\\b");
 
   private static final Pattern EMBEDDED_PHONE_PATTERN =
-      Pattern.compile("(?<![A-Za-z0-9])(\\+?\\d[\\d\\s-]{8,14}\\d)(?![A-Za-z0-9])");
+      Pattern.compile("(?<![A-Za-z0-9])(?:\\+?[0-9(X*][0-9\\s./()X*+-]{7,25}[0-9])(?![A-Za-z0-9])");
 
   public CommunicationTriggerEvent {
     if (eventId == null || eventId.isBlank()) {
@@ -137,7 +137,7 @@ public record CommunicationTriggerEvent(
   }
 
   /**
-   * Checks whether the string has the character profile of a phone number (masked or unmasked).
+   * Checks whether the string has the character profile of a phone number (masked, unmasked, or partially masked).
    * Valid phone candidates consist solely of digits, mask characters ('X', '*'), and formatting ("+- ()./").
    */
   private static boolean isPhoneCandidate(String s) {
@@ -154,21 +154,85 @@ public record CommunicationTriggerEvent(
   }
 
   /**
-   * Masks unmasked phone numbers, while preserving already-masked phone formats idempotently.
+   * Checks whether a phone number is genuinely and safely masked.
+   * Requires at least 3 mask characters, no more than 4 unmasked trailing digits after the last mask char,
+   * no more than 3 unmasked leading digits before the first mask char (country code),
+   * and no unmasked run longer than 4 digits anywhere.
    */
-  private static String maskPhoneNumber(String s) {
+  public static boolean isGenuinelyMaskedPhone(String s) {
+    if (s == null) {
+      return false;
+    }
+    int firstMaskIdx = -1;
+    int lastMaskIdx = -1;
     int maskCharCount = 0;
-    int digitCount = 0;
+
     for (int i = 0; i < s.length(); i++) {
       char c = s.charAt(i);
       if (c == 'X' || c == '*') {
         maskCharCount++;
-      } else if (Character.isDigit(c)) {
-        digitCount++;
+        if (firstMaskIdx == -1) {
+          firstMaskIdx = i;
+        }
+        lastMaskIdx = i;
       }
     }
-    if (maskCharCount >= 3) {
+
+    if (maskCharCount < 3) {
+      return false; // Not masked enough
+    }
+
+    // Count unmasked digits before the first mask character (allowed: country code <= 3 digits)
+    int leadingDigits = 0;
+    for (int i = 0; i < firstMaskIdx; i++) {
+      if (Character.isDigit(s.charAt(i))) {
+        leadingDigits++;
+      }
+    }
+    if (leadingDigits > 3) {
+      return false; // Sensitive subscriber digits exposed before mask (e.g. 9876543210XXX)
+    }
+
+    // Count unmasked digits after the last mask character (allowed: subscriber suffix <= 4 digits)
+    int trailingDigits = 0;
+    for (int i = lastMaskIdx + 1; i < s.length(); i++) {
+      if (Character.isDigit(s.charAt(i))) {
+        trailingDigits++;
+      }
+    }
+    if (trailingDigits > 4) {
+      return false; // Sensitive subscriber digits exposed after mask (e.g. XXX9876543210)
+    }
+
+    // Check maximum contiguous unmasked digit run anywhere in the string
+    int currentRun = 0;
+    for (int i = 0; i < s.length(); i++) {
+      char c = s.charAt(i);
+      if (Character.isDigit(c)) {
+        currentRun++;
+        if (currentRun > 4) {
+          return false;
+        }
+      } else if (c == 'X' || c == '*') {
+        currentRun = 0;
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Masks unmasked or partially masked phone numbers, while preserving genuinely masked phone formats idempotently.
+   */
+  private static String maskPhoneNumber(String s) {
+    if (isGenuinelyMaskedPhone(s)) {
       return s; // Genuinely already masked, preserve idempotently
+    }
+    int digitCount = 0;
+    for (int i = 0; i < s.length(); i++) {
+      if (Character.isDigit(s.charAt(i))) {
+        digitCount++;
+      }
     }
     return maskPhoneDigits(s, digitCount);
   }
@@ -231,24 +295,13 @@ public record CommunicationTriggerEvent(
       result = sb.toString();
     }
 
-    // 3. Mask embedded phone numbers (10 to 15 digits)
+    // 3. Mask embedded phone numbers (common domestic, formatted, and international phone formats)
     Matcher phoneMatcher = EMBEDDED_PHONE_PATTERN.matcher(result);
     if (phoneMatcher.find()) {
       StringBuilder sb = new StringBuilder();
       do {
-        String candidate = phoneMatcher.group(1);
-        int digitCount = 0;
-        for (int i = 0; i < candidate.length(); i++) {
-          if (Character.isDigit(candidate.charAt(i))) {
-            digitCount++;
-          }
-        }
-        String replacement;
-        if (digitCount >= 10 && digitCount <= 15) {
-          replacement = maskPhoneDigits(candidate, digitCount);
-        } else {
-          replacement = candidate;
-        }
+        String candidate = phoneMatcher.group(0);
+        String replacement = processPhoneCandidate(candidate);
         phoneMatcher.appendReplacement(sb, Matcher.quoteReplacement(replacement));
       } while (phoneMatcher.find());
       phoneMatcher.appendTail(sb);
@@ -256,6 +309,44 @@ public record CommunicationTriggerEvent(
     }
 
     return result;
+  }
+
+  /**
+   * Processes a candidate phone string embedded in payload summaries, sanitizing unmasked phone numbers
+   * while preserving IP addresses, decimal numbers, and genuinely masked contacts.
+   */
+  private static String processPhoneCandidate(String candidate) {
+    if (isGenuinelyMaskedPhone(candidate)) {
+      return candidate; // Genuinely already masked, preserve idempotently
+    }
+
+    int digitCount = 0;
+    for (int i = 0; i < candidate.length(); i++) {
+      if (Character.isDigit(candidate.charAt(i))) {
+        digitCount++;
+      }
+    }
+
+    // Phone numbers contain between 10 and 15 digits
+    if (digitCount < 10 || digitCount > 15) {
+      return candidate;
+    }
+
+    // Guard against IPv4 addresses (e.g. 192.168.1.100)
+    if (candidate.matches("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$")) {
+      return candidate;
+    }
+
+    // Guard against single-period decimal numbers (e.g. 12345678.90)
+    if (candidate.indexOf('.') != -1
+        && candidate.indexOf('.') == candidate.lastIndexOf('.')
+        && !candidate.contains("+") && !candidate.contains("-")
+        && !candidate.contains("(") && !candidate.contains(")")
+        && !candidate.contains("/") && !candidate.contains(" ")) {
+      return candidate;
+    }
+
+    return maskPhoneDigits(candidate, digitCount);
   }
 
   @Override

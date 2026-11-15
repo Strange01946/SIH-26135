@@ -418,13 +418,24 @@ class DomainEventContractTest {
       assertThat(CommunicationTriggerEvent.maskRecipient("XXXXXX3210")).isEqualTo("XXXXXX3210");
       assertThat(CommunicationTriggerEvent.maskRecipient("+XX-XXXXXX3210")).isEqualTo("+XX-XXXXXX3210");
       assertThat(CommunicationTriggerEvent.maskRecipient("+91-XXXXX-XX123")).isEqualTo("+91-XXXXX-XX123");
+      assertThat(CommunicationTriggerEvent.maskRecipient("(XXX) XXX-3210")).isEqualTo("(XXX) XXX-3210");
+      assertThat(CommunicationTriggerEvent.maskRecipient("XXX.XXX.3210")).isEqualTo("XXX.XXX.3210");
       assertThat(CommunicationTriggerEvent.maskRecipient("h***r@employer.com")).isEqualTo("h***r@employer.com");
       assertThat(CommunicationTriggerEvent.maskRecipient("a***@example.com")).isEqualTo("a***@example.com");
       assertThat(CommunicationTriggerEvent.maskRecipient("[REDACTED]")).isEqualTo("[REDACTED]");
+
+      // 6. Partially masked phone numbers are sanitized to protect sensitive digits
+      assertThat(CommunicationTriggerEvent.maskRecipient("XXX9876543210")).isEqualTo("XXXXXXXXX3210");
+      assertThat(CommunicationTriggerEvent.maskRecipient("9876543210XXX")).isEqualTo("XXXXXX3210XXX");
+
+      // 7. Formatted recipient phone numbers are masked properly
+      assertThat(CommunicationTriggerEvent.maskRecipient("(987) 654-3210")).isEqualTo("(XXX) XXX-3210");
+      assertThat(CommunicationTriggerEvent.maskRecipient("987.654.3210")).isEqualTo("XXX.XXX.3210");
+      assertThat(CommunicationTriggerEvent.maskRecipient("+91 (98765) 43210")).isEqualTo("+XX (XXXXX) X3210");
     }
 
     @Test
-    @DisplayName("CommunicationTriggerEvent sanitizes embedded emails and phone numbers in payloadSummary")
+    @DisplayName("CommunicationTriggerEvent sanitizes embedded emails, formatted and partially masked phones in payloadSummary")
     void testCommunicationTriggerEventPayloadSummaryContactProtection() {
       // 1. Raw emails embedded in payloadSummary
       String emailSummary = "Verification reminder dispatched to Xavier@example.com and candidate.alert@domain.gov.in regarding cohort";
@@ -438,20 +449,36 @@ class DomainEventContractTest {
       assertThat(emailEvent.toString()).doesNotContain("Xavier@example.com");
       assertThat(emailEvent.toString()).doesNotContain("candidate.alert@domain.gov.in");
 
-      // 2. Raw phone numbers embedded in payloadSummary
-      String phoneSummary = "SMS alert dispatched to candidate mobile 9876543210 and international line +91-9876543210 for identity check";
-      CommunicationTriggerEvent phoneEvent = CommunicationTriggerEvent.of(
-          "TRAINEE_ALERT", 402L, 88L, "SMS", "9876543210", "TPL-02", 20L, "HIGH", phoneSummary
+      // 2. Formatted phone numbers embedded in payloadSummary: (987) 654-3210, 987.654.3210, +91 (98765) 43210
+      String formattedPhoneSummary = "Dispatched notifications to (987) 654-3210, dot-formatted 987.654.3210, and international +91 (98765) 43210 successfully";
+      CommunicationTriggerEvent formattedPhoneEvent = CommunicationTriggerEvent.of(
+          "TRAINEE_ALERT", 402L, 88L, "SMS", "9876543210", "TPL-02", 20L, "HIGH", formattedPhoneSummary
       );
-      assertThat(phoneEvent.payloadSummary()).doesNotContain("9876543210");
-      assertThat(phoneEvent.payloadSummary()).contains("XXXXXX3210");
-      assertThat(phoneEvent.payloadSummary()).contains("+XX-XXXXXX3210");
-      assertThat(phoneEvent.toString()).doesNotContain("9876543210");
+      assertThat(formattedPhoneEvent.payloadSummary()).doesNotContain("(987) 654-3210");
+      assertThat(formattedPhoneEvent.payloadSummary()).doesNotContain("987.654.3210");
+      assertThat(formattedPhoneEvent.payloadSummary()).doesNotContain("+91 (98765) 43210");
+      assertThat(formattedPhoneEvent.payloadSummary()).contains("(XXX) XXX-3210");
+      assertThat(formattedPhoneEvent.payloadSummary()).contains("XXX.XXX.3210");
+      assertThat(formattedPhoneEvent.payloadSummary()).contains("+XX (XXXXX) X3210");
+      assertThat(formattedPhoneEvent.toString()).doesNotContain("(987) 654-3210");
+      assertThat(formattedPhoneEvent.toString()).doesNotContain("987.654.3210");
+      assertThat(formattedPhoneEvent.toString()).doesNotContain("+91 (98765) 43210");
 
-      // 3. Mixed emails, phone numbers, and pre-masked tokens in payloadSummary
+      // 3. Partially masked phone numbers embedded in payloadSummary (e.g. XXX9876543210)
+      String partiallyMaskedSummary = "Alert queued for partially masked contact XXX9876543210 regarding status check";
+      CommunicationTriggerEvent partialMaskEvent = CommunicationTriggerEvent.of(
+          "TRAINEE_ALERT", 403L, 88L, "SMS", "XXX9876543210", "TPL-03", 20L, "HIGH", partiallyMaskedSummary
+      );
+      assertThat(partialMaskEvent.recipientMasked()).isEqualTo("XXXXXXXXX3210");
+      assertThat(partialMaskEvent.recipientMasked()).doesNotContain("987654");
+      assertThat(partialMaskEvent.payloadSummary()).doesNotContain("9876543210");
+      assertThat(partialMaskEvent.payloadSummary()).contains("XXXXXXXXX3210");
+      assertThat(partialMaskEvent.toString()).doesNotContain("9876543210");
+
+      // 4. Mixed emails, phone numbers, and pre-masked tokens in payloadSummary
       String mixedSummary = "Sent email to john.doe@example.com (pre-masked: h***r@employer.com) and phone 9876543210 (pre-masked: +91-XXXXX-XX123)";
       CommunicationTriggerEvent mixedEvent = CommunicationTriggerEvent.of(
-          "DISPATCH", 403L, 88L, "EMAIL", "j***e@example.com", "TPL-03", 20L, "NORMAL", mixedSummary
+          "DISPATCH", 404L, 88L, "EMAIL", "j***e@example.com", "TPL-04", 20L, "NORMAL", mixedSummary
       );
       assertThat(mixedEvent.payloadSummary()).doesNotContain("john.doe@example.com");
       assertThat(mixedEvent.payloadSummary()).doesNotContain("9876543210");
@@ -461,6 +488,17 @@ class DomainEventContractTest {
       assertThat(mixedEvent.payloadSummary()).contains("+91-XXXXX-XX123");
       assertThat(mixedEvent.toString()).doesNotContain("john.doe@example.com");
       assertThat(mixedEvent.toString()).doesNotContain("9876543210");
+
+      // 5. Unrelated numeric values are preserved without corruption
+      String nonContactSummary = "Batch 1001 scheduled on 2026-11-15 at server 192.168.1.100 with total stipend 12345.67 for entity 501";
+      CommunicationTriggerEvent nonContactEvent = CommunicationTriggerEvent.of(
+          "DISPATCH", 405L, 88L, "EMAIL", "officer@example.com", "TPL-05", 20L, "NORMAL", nonContactSummary
+      );
+      assertThat(nonContactEvent.payloadSummary()).contains("1001");
+      assertThat(nonContactEvent.payloadSummary()).contains("2026-11-15");
+      assertThat(nonContactEvent.payloadSummary()).contains("192.168.1.100");
+      assertThat(nonContactEvent.payloadSummary()).contains("12345.67");
+      assertThat(nonContactEvent.payloadSummary()).contains("501");
     }
   }
 
