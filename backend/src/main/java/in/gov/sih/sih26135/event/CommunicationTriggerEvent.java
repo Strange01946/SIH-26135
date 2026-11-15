@@ -34,8 +34,22 @@ public record CommunicationTriggerEvent(
   private static final Pattern EMBEDDED_EMAIL_PATTERN =
       Pattern.compile("(?i)(?<![A-Za-z0-9._%*+-])([A-Za-z0-9._%*+-]+)@([A-Za-z0-9.-]+\\.[A-Za-z]{2,})\\b");
 
-  private static final Pattern EMBEDDED_PHONE_PATTERN =
-      Pattern.compile("(?<![A-Za-z0-9])(?:\\+?[0-9(X*][0-9\\s./()X*+-]{7,25}[0-9])(?![A-Za-z0-9])");
+  private static final Pattern EMBEDDED_PHONE_PATTERN = Pattern.compile(
+      "(?<![A-Za-z0-9.-])(?!\\d{4}-\\d{2}-\\d{2})(?!\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})(?:"
+          + "\\+?\\d{1,3}[-. ]\\([0-9X*]{2,5}\\)[-. ]?[0-9X*]{1,5}[-. ]?[0-9X*]{4}|"
+          + "\\([0-9X*]{2,5}\\)[-. ]?[0-9X*]{1,5}[-. ]?[0-9X*]{4}|"
+          + "\\+?\\d{1,3}[-. ]\\d{2,5}[-. ]\\d{1,5}[-. ]?\\d{4}|"
+          + "\\d{2,5}[.-]\\d{2,5}[.-]\\d{4}|"
+          + "[X*]{2,5}\\.[X*]{2,5}\\.[X*0-9]{4}|"
+          + "\\d{5}[-]\\d{5}|"
+          + "\\+?\\d{1,3}[-. ]\\d{7,10}|"
+          + "\\+[X*]{1,3}[-. ][X*0-9]{6,12}|"
+          + "[X*]{3,}\\d{4,10}|"
+          + "\\d{4,10}[X*]{3,}|"
+          + "\\+?\\d{1,3}[-. ][X*]{3,}[-. ][X*0-9]{2,10}|"
+          + "\\d{10,12}"
+          + ")(?![A-Za-z0-9.])"
+  );
 
   public CommunicationTriggerEvent {
     if (eventId == null || eventId.isBlank()) {
@@ -228,13 +242,21 @@ public record CommunicationTriggerEvent(
     if (isGenuinelyMaskedPhone(s)) {
       return s; // Genuinely already masked, preserve idempotently
     }
-    int digitCount = 0;
-    for (int i = 0; i < s.length(); i++) {
-      if (Character.isDigit(s.charAt(i))) {
-        digitCount++;
-      }
+    int digitCount = countDigits(s);
+    if (digitCount > 15) {
+      return sanitizeOversizedCandidate(s);
     }
     return maskPhoneDigits(s, digitCount);
+  }
+
+  private static int countDigits(String s) {
+    int count = 0;
+    for (int i = 0; i < s.length(); i++) {
+      if (Character.isDigit(s.charAt(i))) {
+        count++;
+      }
+    }
+    return count;
   }
 
   /**
@@ -320,15 +342,14 @@ public record CommunicationTriggerEvent(
       return candidate; // Genuinely already masked, preserve idempotently
     }
 
-    int digitCount = 0;
-    for (int i = 0; i < candidate.length(); i++) {
-      if (Character.isDigit(candidate.charAt(i))) {
-        digitCount++;
-      }
+    int digitCount = countDigits(candidate);
+
+    if (digitCount > 15) {
+      return sanitizeOversizedCandidate(candidate);
     }
 
     // Phone numbers contain between 10 and 15 digits
-    if (digitCount < 10 || digitCount > 15) {
+    if (digitCount < 10) {
       return candidate;
     }
 
@@ -347,6 +368,39 @@ public record CommunicationTriggerEvent(
     }
 
     return maskPhoneDigits(candidate, digitCount);
+  }
+
+  /**
+   * Sanitizes oversized candidate strings (> 15 digits) by decomposing them into discrete valid phone
+   * numbers, dates, and identifiers, ensuring phone numbers are safely masked without corrupting
+   * adjacent dates, IPs, or delimiters.
+   */
+  public static String sanitizeOversizedCandidate(String candidate) {
+    if (candidate == null || candidate.isBlank()) {
+      return candidate;
+    }
+    Matcher m = EMBEDDED_PHONE_PATTERN.matcher(candidate);
+    if (!m.find()) {
+      return candidate;
+    }
+    StringBuilder sb = new StringBuilder();
+    do {
+      String sub = m.group(0);
+      String replacement;
+      if (isGenuinelyMaskedPhone(sub)) {
+        replacement = sub;
+      } else {
+        int subDigits = countDigits(sub);
+        if (subDigits >= 10 && subDigits <= 15) {
+          replacement = maskPhoneDigits(sub, subDigits);
+        } else {
+          replacement = sub;
+        }
+      }
+      m.appendReplacement(sb, Matcher.quoteReplacement(replacement));
+    } while (m.find());
+    m.appendTail(sb);
+    return sb.toString();
   }
 
   @Override

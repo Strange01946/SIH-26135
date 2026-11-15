@@ -432,6 +432,10 @@ class DomainEventContractTest {
       assertThat(CommunicationTriggerEvent.maskRecipient("(987) 654-3210")).isEqualTo("(XXX) XXX-3210");
       assertThat(CommunicationTriggerEvent.maskRecipient("987.654.3210")).isEqualTo("XXX.XXX.3210");
       assertThat(CommunicationTriggerEvent.maskRecipient("+91 (98765) 43210")).isEqualTo("+XX (XXXXX) X3210");
+
+      // 8. Adjacent phone recipient formats are sanitized
+      assertThat(CommunicationTriggerEvent.maskRecipient("9876543210/9123456780")).isEqualTo("XXXXXX3210/XXXXXX6780");
+      assertThat(CommunicationTriggerEvent.maskRecipient("9876543210 - 9123456780")).isEqualTo("XXXXXX3210 - XXXXXX6780");
     }
 
     @Test
@@ -499,6 +503,42 @@ class DomainEventContractTest {
       assertThat(nonContactEvent.payloadSummary()).contains("192.168.1.100");
       assertThat(nonContactEvent.payloadSummary()).contains("12345.67");
       assertThat(nonContactEvent.payloadSummary()).contains("501");
+
+      // 6. Adjacent phone numbers separated by slash (e.g. Contact 9876543210/9123456780)
+      String adjacentSlashSummary = "Contact 9876543210/9123456780 for verification support";
+      CommunicationTriggerEvent adjacentSlashEvent = CommunicationTriggerEvent.of(
+          "DISPATCH", 406L, 88L, "EMAIL", "officer@example.com", "TPL-06", 20L, "NORMAL", adjacentSlashSummary
+      );
+      assertThat(adjacentSlashEvent.payloadSummary()).doesNotContain("9876543210");
+      assertThat(adjacentSlashEvent.payloadSummary()).doesNotContain("9123456780");
+      assertThat(adjacentSlashEvent.payloadSummary()).contains("XXXXXX3210/XXXXXX6780");
+      assertThat(adjacentSlashEvent.toString()).doesNotContain("9876543210");
+      assertThat(adjacentSlashEvent.toString()).doesNotContain("9123456780");
+      assertThat(adjacentSlashEvent.toString()).contains("XXXXXX3210/XXXXXX6780");
+
+      // 7. Adjacent phone numbers separated by hyphen-space (e.g. Phone 9876543210 - 9123456780)
+      String adjacentHyphenSummary = "Phone 9876543210 - 9123456780 alternate lines";
+      CommunicationTriggerEvent adjacentHyphenEvent = CommunicationTriggerEvent.of(
+          "DISPATCH", 407L, 88L, "SMS", "9876543210", "TPL-07", 20L, "NORMAL", adjacentHyphenSummary
+      );
+      assertThat(adjacentHyphenEvent.payloadSummary()).doesNotContain("9876543210");
+      assertThat(adjacentHyphenEvent.payloadSummary()).doesNotContain("9123456780");
+      assertThat(adjacentHyphenEvent.payloadSummary()).contains("XXXXXX3210 - XXXXXX6780");
+      assertThat(adjacentHyphenEvent.toString()).doesNotContain("9876543210");
+      assertThat(adjacentHyphenEvent.toString()).doesNotContain("9123456780");
+      assertThat(adjacentHyphenEvent.toString()).contains("XXXXXX3210 - XXXXXX6780");
+
+      // 8. Date adjacent to phone number (e.g. 2026-11-15 9876543210)
+      String dateAdjacentSummary = "Batch scheduled on 2026-11-15 9876543210 for trainee alert";
+      CommunicationTriggerEvent dateAdjacentEvent = CommunicationTriggerEvent.of(
+          "DISPATCH", 408L, 88L, "SMS", "9876543210", "TPL-08", 20L, "NORMAL", dateAdjacentSummary
+      );
+      assertThat(dateAdjacentEvent.payloadSummary()).doesNotContain("9876543210");
+      assertThat(dateAdjacentEvent.payloadSummary()).contains("2026-11-15 XXXXXX3210");
+      assertThat(dateAdjacentEvent.payloadSummary()).contains("2026-11-15");
+      assertThat(dateAdjacentEvent.toString()).doesNotContain("9876543210");
+      assertThat(dateAdjacentEvent.toString()).contains("2026-11-15 XXXXXX3210");
+      assertThat(dateAdjacentEvent.toString()).contains("2026-11-15");
     }
   }
 
