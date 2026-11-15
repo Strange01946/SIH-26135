@@ -1,9 +1,9 @@
 # Phase 29.1 — Integration Baseline Audit, Cross-Subsystem Inventory & Contract Unification Report
 
-**Milestone:** Phase 29.1 (Targeted Independent Review Corrections Completed) \
+**Milestone:** Phase 29.1 (Final Targeted PII Masking Corrections Completed) \
 **Project Root:** `E:\project` \
 **Backend Directory:** `E:\project\backend` \
-**Execution Timestamp:** 2026-11-15T14:06:00+05:30 \
+**Execution Timestamp:** 2026-11-15T14:22:00+05:30 \
 **Target Test Database:** `SIH26135_TEST` (`spring.jpa.hibernate.ddl-auto=validate`) \
 **Final Verdict:** **READY FOR INDEPENDENT REVIEW**
 
@@ -18,44 +18,47 @@ Establish the foundational integration baseline across the five major subsystems
 3. Define strongly typed, immutable domain event contracts supporting Trainee Lifecycle, Placement Lifecycle, Employment Verification, Data Quality Alerts, and Communication Triggers under a common `DomainEvent` abstraction.
 4. Audit and document transaction and asynchronous execution boundaries (`auditTaskExecutor`, task decorators, rejection handlers, and `@TransactionalEventListener`).
 5. Ensure 100% preservation of all architectural invariants (137 JPA repositories, 2 active `@Query` annotations in `src/main`, 64 REST controllers, 668 contract-audited endpoints, frozen database schema, and test database isolation).
-6. Implement targeted corrections identified during independent review of Phase 29.1 regarding event identity stability in `AuditTrailEvent` and PII sanitization in `CommunicationTriggerEvent`.
+6. Implement and verify targeted corrections identified during independent review of Phase 29.1 regarding event identity stability in `AuditTrailEvent` and comprehensive PII sanitization in `CommunicationTriggerEvent` (recipient masking bypass fix and payload summary contact protection).
 
 ### Final Verdict
 **READY FOR INDEPENDENT REVIEW**  
-All mandatory baseline verification, cross-subsystem dependency mapping, domain event contracts, asynchronous boundary audits, targeted review corrections, focused test suites (11 tests in `DomainEventContractTest`), and full backend regression runs (**2,023 tests passing, 0 failures, 0 errors, 0 skipped, BUILD SUCCESS**) have been completed with zero regressions and zero architectural violations.
+All mandatory baseline verification, cross-subsystem dependency mapping, domain event contracts, asynchronous boundary audits, targeted review corrections, focused test suites (13 tests in `DomainEventContractTest`), and full backend regression runs (**2,025 tests passing, 0 failures, 0 errors, 0 skipped, BUILD SUCCESS**) have been completed with zero regressions and zero architectural violations.
 
 ---
 
 ## 2. Independent Review Corrections Summary
 
-Following independent source review of Phase 29.1, two specific defects were addressed and verified:
+Following independent source review of Phase 29.1, targeted corrections were implemented and verified across domain event classes:
 
-### 2.1 Defect 1: `AuditTrailEvent` Event Identity Contract Alignment
+### 2.1 AuditTrailEvent Event Identity Contract Alignment
 - **Identified Defect:** `AuditTrailEvent.getEventId()` previously returned `correlationId` if present or a newly generated random UUID on each invocation if null. This violated the `DomainEvent` contract: repeated calls on the same event without a correlation ID returned differing UUIDs, while distinct audit events sharing a correlation ID received identical event IDs.
-- **Root Cause & Technical Constraint:** Java records cannot declare mutable or private instance fields. Relying on `WeakHashMap` with default record equality conflates distinct event instances having identical component values because record `equals()` compares all component values.
 - **Implemented Solution:**
   - Implemented an identity-based weak reference cache (`ConcurrentHashMap<IdentityKey, String>`) within `AuditTrailEvent`.
   - Defined `IdentityKey` extending `WeakReference<AuditTrailEvent>` registered with a `ReferenceQueue<AuditTrailEvent>`.
   - Equality in `IdentityKey` strictly enforces reference equality (`myRef != null && myRef == otherRef`) and caches `System.identityHashCode(referent)`.
   - Automatic `cleanQueue()` on `getEventId()` purges collected references to prevent memory leaks.
   - Preserves all 7 original record components (`actionCode`, `entityType`, `entityId`, `actorUserId`, `changeSummary`, `occurredAt`, `correlationId`), existing constructor signatures, and 100% backward compatibility.
-- **Verification:**
-  - `DomainEventContractTest.testAuditTrailEventEventIdentityStabilityAndUniqueness` proves:
-    1. Repeated calls on the same instance return the exact same event ID.
-    2. Different events sharing the same correlation ID receive distinct, unique event IDs.
-    3. Events without correlation IDs maintain stable, distinct event IDs.
+- **Verification:** `DomainEventContractTest.testAuditTrailEventEventIdentityStabilityAndUniqueness` proves instance-level stability, cross-instance uniqueness for shared correlation IDs, and stable uniqueness without correlation IDs.
 
-### 2.2 Defect 2: `CommunicationTriggerEvent` PII Protection
-- **Identified Defect:** The `recipientMasked` field accepted unmasked recipient input without enforcement, allowing raw email addresses and phone numbers to be exposed in record fields and auto-generated `toString()`.
-- **Root Cause:** The compact constructor lacked sanitization logic, relying entirely on the caller to pre-mask contact tokens.
+### 2.2 Fix Recipient Masking Bypass
+- **Identified Defect:** Previous `maskRecipient()` checks could return unmasked input if the local part contained uppercase `X`, lowercase `x`, or substrings like `XXXX` (e.g., `Xavier@example.com` bypassed email masking due to `localPart.contains("X")`).
 - **Implemented Solution:**
-  - Implemented `maskRecipient(String recipient)` and enforced it directly inside the compact constructor of `CommunicationTriggerEvent` along with `AuditPayloadMasker.mask(payloadSummary)`.
-  - Email Masking: Unmasked emails (`localPart@domain`) are masked to `firstChar***lastChar@domain` (e.g., `aditya.sharma@example.com` $\rightarrow$ `a***a@example.com`, `candidate@domain.gov.in` $\rightarrow$ `c***n@domain.gov.in`).
-  - Phone Number Masking: Unmasked phone numbers (with $\ge 7$ digits) have all digits preceding the final 4 digits masked with `X` while preserving formatting (e.g., `9876543210` $\rightarrow$ `XXXXXX3210`, `+91-9876543210` $\rightarrow$ `+XX-XXXXXX3210`).
-  - Idempotence: Already-masked values (`h***r@employer.com`, `+91-XXXXX-XX123`, `[REDACTED]`) are preserved without double-masking.
-  - Exposure Prevention: Because `recipientMasked` is assigned the sanitized string during record construction, both the accessor `event.recipientMasked()` and the record's auto-generated `event.toString()` never expose raw recipient phone numbers or email addresses.
-- **Verification:**
-  - `DomainEventContractTest.testCommunicationTriggerEventPIIProtectionWithUnmaskedInputs` tests actual unmasked email addresses, 10-digit mobile numbers, formatted international phone numbers, pre-masked values, and direct constructor invocations.
+  - Replaced broad substring checks with reliable format-specific inspection:
+  - `maskEmailAddress` isolates `localPart` and `domainPart` at `@`, verifies genuine prior masking (presence of `***` in `localPart` or `[REDACTED]`), and reliably masks any unmasked email address regardless of letter casing or character content (e.g., `Xavier@example.com` $\rightarrow$ `X***r@example.com`, `alex.maxwell@example.com` $\rightarrow$ `a***l@example.com`, `maxxxx@example.com` $\rightarrow$ `m***x@example.com`).
+  - `isPhoneCandidate` inspects the character profile, requiring non-formatting characters to be exclusively digits or mask characters (`'X'`, `'*'`), with count $\ge 7$.
+  - `maskPhoneNumber` checks for genuine prior masking ($\ge 3$ mask characters), preserving already-masked formats (`XXXXXX3210`, `+XX-XXXXXX3210`, `+91-XXXXX-XX123`, `[REDACTED]`) idempotently while masking raw numbers via `maskPhoneDigits`.
+- **Verification:** `DomainEventContractTest.testCommunicationTriggerEventRecipientMaskingBypassRegressions` exercises names containing `X`, `x`, `xxxx`, single-letter `X` addresses, and confirms strict idempotence on all supported masked phone and email formats.
+
+### 2.3 Protect payloadSummary Contact Information
+- **Identified Defect:** `AuditPayloadMasker.mask(payloadSummary)` does not generally mask ordinary email addresses or phone numbers in free text, creating a potential exposure vector through `event.payloadSummary()` or `event.toString()`.
+- **Implemented Solution:**
+  - Implemented `sanitizePayloadSummary(String summary)` in `CommunicationTriggerEvent`:
+    1. First invokes the global `AuditPayloadMasker.mask(summary)` for secrets, tokens, passwords, Aadhaar, and PAN.
+    2. Masks embedded email addresses using regex pattern `(?i)(?<![A-Za-z0-9._%*+-])([A-Za-z0-9._%*+-]+)@([A-Za-z0-9.-]+\\.[A-Za-z]{2,})\\b`. Unmasked emails are masked to `firstChar***lastChar@domain`, while genuinely pre-masked addresses (`h***r@employer.com`) are preserved without double-masking.
+    3. Masks embedded phone numbers using regex pattern `(?<![A-Za-z0-9])(\\+?\\d[\\d\\s-]{8,14}\\d)(?![A-Za-z0-9])` with 10–15 digits via `maskPhoneDigits`.
+  - The global `AuditPayloadMasker.java` file is preserved without modification, avoiding any risk to existing Phase 28 functionality.
+  - Both field accessors and auto-generated `toString()` are guaranteed never to expose raw recipient contact details.
+- **Verification:** `DomainEventContractTest.testCommunicationTriggerEventPayloadSummaryContactProtection` verifies embedded raw emails, embedded raw phone numbers, and mixed payloads containing pre-masked tokens.
 
 ---
 
@@ -219,13 +222,13 @@ public interface DomainEvent {
 | **`PlacementLifecycleEvent`** | Placement offers & transitions | `Placement` | `eventId`, `eventType`, `placementRecordId`, `traineeId`, `actorUserId`, `stateId`, `trainingProviderId`, `employerId`, `jobPostingId`, `placementStatusCode`, `joiningStatusCode`, `offeredSalary`, `metadataJson`. |
 | **`EmploymentVerificationEvent`** | Verification & retention tracking | `EmploymentVerification` | `eventId`, `eventType`, `verificationId`, `employmentRecordId`, `traineeId`, `employerId`, `verificationMethod`, `verificationStatus`, `verifiedSalary`, `retentionMonthPeriod`, `metadataJson`. |
 | **`DataQualityAlertEvent`** | Anomaly detection & remediation | `DataQualityIssue` | `eventId`, `eventType`, `issueId`, `ruleCode`, `severity`, `targetEntityType`, `targetEntityId`, `trainingProviderId`, `issueStatus`, `summary`. |
-| **`CommunicationTriggerEvent`** | Notification & messaging triggers | `CommunicationTrigger` | `eventId`, `eventType`, `recipientEntityId`, `channel`, `recipientMasked`, `templateCode`, `trainingProviderId`, `priority`, `payloadSummary`. Automatically sanitizes unmasked emails and phone numbers. |
+| **`CommunicationTriggerEvent`** | Notification & messaging triggers | `CommunicationTrigger` | `eventId`, `eventType`, `recipientEntityId`, `channel`, `recipientMasked`, `templateCode`, `trainingProviderId`, `priority`, `payloadSummary`. Enforces PII masking on recipient tokens and payload summaries without bypasses. |
 
 ### 9.3 Design & Safety Characteristics
 1. **Thread-Safe & Immutable Records:** All events are defined as canonical Java `record` types, eliminating mutable internal state.
 2. **Context-Detached:** Events carry strictly detached primitive and scalar identifiers (`Long`, `String`, `BigDecimal`). Zero references to mutable or session-bound JPA entities are permitted, ensuring complete safety during asynchronous execution.
 3. **Built-In Automatic Defaults:** Constructors automatically generate UUID `eventId` values, default `occurredAt` to `LocalDateTime.now()`, and capture ambient `correlationId` from `CorrelationContextHolder` when omitted.
-4. **PII Masking by Design:** In `CommunicationTriggerEvent`, recipient contact details are explicitly sanitized in the compact constructor (`maskRecipient`), ensuring neither field accessors nor `toString()` expose raw email addresses or phone numbers.
+4. **PII Masking by Design:** In `CommunicationTriggerEvent`, recipient contact details and payload summaries are sanitized during construction, ensuring neither field accessors nor generated `toString()` expose raw recipient emails or phone numbers.
 
 ---
 
@@ -263,8 +266,8 @@ In accordance with the principle *"Implement only what is genuinely required"*, 
 4. **`in.gov.sih.sih26135.event.PlacementLifecycleEvent` (Created):** Domain event for placement transitions.
 5. **`in.gov.sih.sih26135.event.EmploymentVerificationEvent` (Created):** Domain event for employment verification attestations.
 6. **`in.gov.sih.sih26135.event.DataQualityAlertEvent` (Created):** Domain event for data quality anomalies and issue assignments.
-7. **`in.gov.sih.sih26135.event.CommunicationTriggerEvent` (Created & Hardened):** Domain event for external messaging triggers with constructor-enforced PII masking for emails and phone numbers.
-8. **`in.gov.sih.sih26135.event.DomainEventContractTest` (Created & Expanded):** Comprehensive 11-test verification suite covering contract conformance, event identity stability/uniqueness, unmasked recipient protection, async propagation, and rejection behavior.
+7. **`in.gov.sih.sih26135.event.CommunicationTriggerEvent` (Created & Hardened):** Domain event for external messaging triggers with robust recipient masking bypass prevention and payload summary contact protection.
+8. **`in.gov.sih.sih26135.event.DomainEventContractTest` (Created & Expanded):** Comprehensive 13-test verification suite covering contract conformance, event identity stability/uniqueness, recipient bypass prevention, payload contact protection, async propagation, and rejection behavior.
 
 No existing business services or controllers were refactored, preserving working implementations without scope creep.
 
@@ -280,8 +283,8 @@ No existing business services or controllers were refactored, preserving working
 | `backend/src/main/java/in/gov/sih/sih26135/event/PlacementLifecycleEvent.java` | Added | Strongly typed Placement transition event record. |
 | `backend/src/main/java/in/gov/sih/sih26135/event/EmploymentVerificationEvent.java` | Added | Strongly typed Employment verification event record. |
 | `backend/src/main/java/in/gov/sih/sih26135/event/DataQualityAlertEvent.java` | Added | Strongly typed Data Quality alert event record. |
-| `backend/src/main/java/in/gov/sih/sih26135/event/CommunicationTriggerEvent.java` | Added | Strongly typed Communication notification trigger event record with PII masking. |
-| `backend/src/test/java/in/gov/sih/sih26135/event/DomainEventContractTest.java` | Added | Focused test suite verifying contract conformance, event identity, PII masking, async propagation, and rejection. |
+| `backend/src/main/java/in/gov/sih/sih26135/event/CommunicationTriggerEvent.java` | Added | Strongly typed Communication notification trigger event record with bypass-free PII masking and payload summary protection. |
+| `backend/src/test/java/in/gov/sih/sih26135/event/DomainEventContractTest.java` | Added | Focused test suite verifying contract conformance, event identity, recipient bypass regressions, payload summary protection, async propagation, and rejection. |
 | `phase-29-1-integration-baseline-audit-contract-unification-report.md` | Added | Phase 29.1 capstone review and architectural audit report. |
 | `docs/phases/phase-29/phase-29-1-integration-baseline-audit-contract-unification-report.md` | Added | Formal docs mirror copy of the Phase 29.1 report. |
 
@@ -292,10 +295,10 @@ No existing business services or controllers were refactored, preserving working
 The expanded `DomainEventContractTest` suite was executed:
 - **Test Class:** `in.gov.sih.sih26135.event.DomainEventContractTest`
 - **Execution Command:** `mvn test -f backend/pom.xml -Dtest=DomainEventContractTest`
-- **Results:** **11 Tests Run, 0 Failures, 0 Errors, 0 Skipped (`BUILD SUCCESS`)**
+- **Results:** **13 Tests Run, 0 Failures, 0 Errors, 0 Skipped (`BUILD SUCCESS`)**
 
 ### Test Breakdown by Nested Section:
-1. **Section 1: Strongly Typed Domain Event Contract Conformance (8 tests):**
+1. **Section 1: Strongly Typed Domain Event Contract Conformance (10 tests):**
    - `testAuditTrailEventConformsToDomainEvent`: Verifies backward-compatible record getters and `DomainEvent` conformance.
    - `testAuditTrailEventEventIdentityStabilityAndUniqueness`: Verifies event ID stability per instance, uniqueness across instances sharing correlation ID, and stable unique IDs without correlation ID.
    - `testTraineeLifecycleEventContract`: Verifies scalar detachment, auto-generated UUID, and trajectory tracking.
@@ -304,6 +307,8 @@ The expanded `DomainEventContractTest` suite was executed:
    - `testDataQualityAlertEventContract`: Verifies anomaly detection details, severity, and rule tracking.
    - `testCommunicationTriggerEventContract`: Verifies pre-masked recipient contact information in audit payloads.
    - `testCommunicationTriggerEventPIIProtectionWithUnmaskedInputs`: Verifies constructor masking of raw email addresses, 10-digit mobile phones, formatted international phone numbers, idempotence on pre-masked values, and non-exposure in `toString()`.
+   - `testCommunicationTriggerEventRecipientMaskingBypassRegressions`: Proves emails containing uppercase `X`, lowercase `x`, `xxxx`, and single-letter `X` addresses cannot bypass masking, and verifies strict idempotence for supported masked formats.
+   - `testCommunicationTriggerEventPayloadSummaryContactProtection`: Proves embedded emails and phone numbers in `payloadSummary` are sanitized and never exposed via accessors or generated `toString()`.
 2. **Section 2: Asynchronous Context Propagation & Boundary Isolation (2 tests):**
    - `testCorrelationTaskDecoratorPropagation`: Verifies `TaskDecorator` propagates correlation ID to worker thread, assigns distinct async request ID, and restores parent context without leakage.
    - `testObservableAuditTaskRejectionHandlerUnderSaturation`: Verifies saturation rejection handler increments dropped task counters without blocking caller threads.
@@ -330,14 +335,14 @@ The expanded `DomainEventContractTest` suite was executed:
 
 ### 14.2 Full Backend Regression Suite Execution
 - **Command:** `mvn test -f backend/pom.xml`
-- **Elapsed Duration:** 06:37 min
-- **Tests Executed:** **2,023**
+- **Elapsed Duration:** 06:31 min
+- **Tests Executed:** **2,025**
 - **Failures:** **0**
 - **Errors:** **0**
 - **Skipped:** **0**
 - **Build Status:** **BUILD SUCCESS**
 
-The test count advanced from 2,012 (Phase 28 baseline) to **2,023 tests**, reflecting the 11 focused tests with zero regressions across the codebase.
+The test count advanced from 2,012 (Phase 28 baseline) to **2,025 tests**, reflecting the 13 focused tests with zero regressions across the codebase.
 
 ---
 
@@ -361,7 +366,7 @@ The test count advanced from 2,012 (Phase 28 baseline) to **2,023 tests**, refle
 
 1. **Multi-Tenant Safety:** All new domain events transport tenant scope identifiers (`stateId`, `districtId`, `trainingProviderId`, `employerId`) alongside the entity ID, enabling downstream listeners in future subphases to perform tenant-isolated processing without querying ambiguous global entities.
 2. **Context-Detached Event State:** Events do not carry live JPA entities or Hibernate proxies. This prevents accidental lazy-loading exceptions (`LazyInitializationException`) or session leaks when events cross into asynchronous worker threads.
-3. **Anti-Leakage Contact Masking:** In `CommunicationTriggerEvent`, recipient phone numbers and emails are masked at construction time (`recipientMasked`), preventing credential or contact exposure in log aggregators or generated `toString()`.
+3. **Comprehensive PII Masking:** In `CommunicationTriggerEvent`, recipient contact details and payload summaries are sanitized at construction time, preventing email and phone exposures in record accessors or generated `toString()`.
 4. **Zero Production Regressions:** 100% of existing authentication, authorization, validation, analytical, and operational test cases passed without deviation.
 
 ---
@@ -393,6 +398,6 @@ In strict accordance with project governance:
 
 ## Conclusion & Readiness Declaration
 
-Phase 29.1 successfully delivers the cross-subsystem dependency inventory, establishes the strongly typed domain event contract foundation, resolves both targeted independent review defects (`AuditTrailEvent` event identity stability and `CommunicationTriggerEvent` constructor-enforced PII masking), validates transaction and asynchronous execution boundaries, and confirms total system stability with **2,023 tests passing (0 failures, 0 errors, 0 skipped, BUILD SUCCESS)**.
+Phase 29.1 successfully delivers the cross-subsystem dependency inventory, establishes the strongly typed domain event contract foundation, resolves all targeted independent review defects (`AuditTrailEvent` event identity stability, bypass-free recipient masking, and payload summary contact protection), validates transaction and asynchronous execution boundaries, and confirms total system stability with **2,025 tests passing (0 failures, 0 errors, 0 skipped, BUILD SUCCESS)**.
 
 **Phase Status:** **READY FOR INDEPENDENT REVIEW**

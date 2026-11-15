@@ -382,6 +382,86 @@ class DomainEventContractTest {
       assertThat(directEvent.toString()).doesNotContain("officer.contact@domain.gov.in");
       assertThat(directEvent.toString()).contains("o***t@domain.gov.in");
     }
+
+    @Test
+    @DisplayName("CommunicationTriggerEvent prevents recipient masking bypass with X, x, or special characters")
+    void testCommunicationTriggerEventRecipientMaskingBypassRegressions() {
+      // 1. Local part starting with uppercase X (e.g. Xavier)
+      CommunicationTriggerEvent xavierEvent = CommunicationTriggerEvent.of(
+          "NOTIFY", 310L, 88L, "EMAIL", "Xavier@example.com", "TPL-07", 20L, "NORMAL", "Notice"
+      );
+      assertThat(xavierEvent.recipientMasked()).isEqualTo("X***r@example.com");
+      assertThat(xavierEvent.recipientMasked()).doesNotContain("Xavier");
+      assertThat(xavierEvent.toString()).doesNotContain("Xavier@example.com");
+
+      // 2. Local part with lowercase x and internal x (e.g. xavier.kumar, alex.maxwell)
+      CommunicationTriggerEvent alexEvent = CommunicationTriggerEvent.of(
+          "NOTIFY", 311L, 88L, "EMAIL", "alex.maxwell@example.com", "TPL-08", 20L, "NORMAL", "Notice"
+      );
+      assertThat(alexEvent.recipientMasked()).isEqualTo("a***l@example.com");
+      assertThat(alexEvent.recipientMasked()).doesNotContain("alex.maxwell");
+
+      // 3. Local part with multiple x's (e.g. maxxxx)
+      CommunicationTriggerEvent maxxxEvent = CommunicationTriggerEvent.of(
+          "NOTIFY", 312L, 88L, "EMAIL", "maxxxx@example.com", "TPL-09", 20L, "NORMAL", "Notice"
+      );
+      assertThat(maxxxEvent.recipientMasked()).isEqualTo("m***x@example.com");
+      assertThat(maxxxEvent.recipientMasked()).doesNotContain("maxxxx");
+
+      // 4. Single-letter X email
+      CommunicationTriggerEvent singleXEvent = CommunicationTriggerEvent.of(
+          "NOTIFY", 313L, 88L, "EMAIL", "X@example.com", "TPL-10", 20L, "NORMAL", "Notice"
+      );
+      assertThat(singleXEvent.recipientMasked()).isEqualTo("X***@example.com");
+
+      // 5. Already masked phone and email formats remain strictly idempotent
+      assertThat(CommunicationTriggerEvent.maskRecipient("XXXXXX3210")).isEqualTo("XXXXXX3210");
+      assertThat(CommunicationTriggerEvent.maskRecipient("+XX-XXXXXX3210")).isEqualTo("+XX-XXXXXX3210");
+      assertThat(CommunicationTriggerEvent.maskRecipient("+91-XXXXX-XX123")).isEqualTo("+91-XXXXX-XX123");
+      assertThat(CommunicationTriggerEvent.maskRecipient("h***r@employer.com")).isEqualTo("h***r@employer.com");
+      assertThat(CommunicationTriggerEvent.maskRecipient("a***@example.com")).isEqualTo("a***@example.com");
+      assertThat(CommunicationTriggerEvent.maskRecipient("[REDACTED]")).isEqualTo("[REDACTED]");
+    }
+
+    @Test
+    @DisplayName("CommunicationTriggerEvent sanitizes embedded emails and phone numbers in payloadSummary")
+    void testCommunicationTriggerEventPayloadSummaryContactProtection() {
+      // 1. Raw emails embedded in payloadSummary
+      String emailSummary = "Verification reminder dispatched to Xavier@example.com and candidate.alert@domain.gov.in regarding cohort";
+      CommunicationTriggerEvent emailEvent = CommunicationTriggerEvent.of(
+          "VERIFICATION_REQUEST", 401L, 88L, "EMAIL", "officer@example.com", "TPL-01", 20L, "NORMAL", emailSummary
+      );
+      assertThat(emailEvent.payloadSummary()).doesNotContain("Xavier@example.com");
+      assertThat(emailEvent.payloadSummary()).doesNotContain("candidate.alert@domain.gov.in");
+      assertThat(emailEvent.payloadSummary()).contains("X***r@example.com");
+      assertThat(emailEvent.payloadSummary()).contains("c***t@domain.gov.in");
+      assertThat(emailEvent.toString()).doesNotContain("Xavier@example.com");
+      assertThat(emailEvent.toString()).doesNotContain("candidate.alert@domain.gov.in");
+
+      // 2. Raw phone numbers embedded in payloadSummary
+      String phoneSummary = "SMS alert dispatched to candidate mobile 9876543210 and international line +91-9876543210 for identity check";
+      CommunicationTriggerEvent phoneEvent = CommunicationTriggerEvent.of(
+          "TRAINEE_ALERT", 402L, 88L, "SMS", "9876543210", "TPL-02", 20L, "HIGH", phoneSummary
+      );
+      assertThat(phoneEvent.payloadSummary()).doesNotContain("9876543210");
+      assertThat(phoneEvent.payloadSummary()).contains("XXXXXX3210");
+      assertThat(phoneEvent.payloadSummary()).contains("+XX-XXXXXX3210");
+      assertThat(phoneEvent.toString()).doesNotContain("9876543210");
+
+      // 3. Mixed emails, phone numbers, and pre-masked tokens in payloadSummary
+      String mixedSummary = "Sent email to john.doe@example.com (pre-masked: h***r@employer.com) and phone 9876543210 (pre-masked: +91-XXXXX-XX123)";
+      CommunicationTriggerEvent mixedEvent = CommunicationTriggerEvent.of(
+          "DISPATCH", 403L, 88L, "EMAIL", "j***e@example.com", "TPL-03", 20L, "NORMAL", mixedSummary
+      );
+      assertThat(mixedEvent.payloadSummary()).doesNotContain("john.doe@example.com");
+      assertThat(mixedEvent.payloadSummary()).doesNotContain("9876543210");
+      assertThat(mixedEvent.payloadSummary()).contains("j***e@example.com");
+      assertThat(mixedEvent.payloadSummary()).contains("h***r@employer.com");
+      assertThat(mixedEvent.payloadSummary()).contains("XXXXXX3210");
+      assertThat(mixedEvent.payloadSummary()).contains("+91-XXXXX-XX123");
+      assertThat(mixedEvent.toString()).doesNotContain("john.doe@example.com");
+      assertThat(mixedEvent.toString()).doesNotContain("9876543210");
+    }
   }
 
   @Nested
