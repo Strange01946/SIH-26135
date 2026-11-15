@@ -78,6 +78,67 @@ class DomainEventContractTest {
     }
 
     @Test
+    @DisplayName("AuditTrailEvent eventId is stable per instance and unique across events sharing correlationId")
+    void testAuditTrailEventEventIdentityStabilityAndUniqueness() {
+      // 1. Repeated calls on the same event return the same ID
+      AuditTrailEvent event1 = new AuditTrailEvent(
+          "STATUS_CHANGE",
+          "Placement",
+          501L,
+          99L,
+          "Placement transitioned to employment",
+          LocalDateTime.now(),
+          SAMPLE_CORRELATION_ID
+      );
+      String id1a = event1.getEventId();
+      String id1b = event1.getEventId();
+      assertThat(id1a).isNotBlank();
+      assertThat(id1a).isEqualTo(id1b);
+
+      // 2. Different events with the same correlation ID receive distinct event IDs
+      AuditTrailEvent event2 = new AuditTrailEvent(
+          "STATUS_CHANGE",
+          "Placement",
+          502L,
+          99L,
+          "Second placement updated in same request",
+          LocalDateTime.now(),
+          SAMPLE_CORRELATION_ID
+      );
+      String id2 = event2.getEventId();
+      assertThat(id2).isNotBlank();
+      assertThat(id2).isNotEqualTo(id1a);
+
+      // 3. Events without correlation IDs still have stable, unique IDs
+      AuditTrailEvent eventNoCorr1 = new AuditTrailEvent(
+          "CREATE",
+          "Trainee",
+          601L,
+          99L,
+          "Trainee created without correlation",
+          LocalDateTime.now(),
+          null
+      );
+      String noCorrId1a = eventNoCorr1.getEventId();
+      String noCorrId1b = eventNoCorr1.getEventId();
+      assertThat(noCorrId1a).isNotBlank();
+      assertThat(noCorrId1a).isEqualTo(noCorrId1b);
+
+      AuditTrailEvent eventNoCorr2 = new AuditTrailEvent(
+          "CREATE",
+          "Trainee",
+          602L,
+          99L,
+          "Second trainee created without correlation",
+          LocalDateTime.now(),
+          null
+      );
+      String noCorrId2 = eventNoCorr2.getEventId();
+      assertThat(noCorrId2).isNotBlank();
+      assertThat(noCorrId2).isNotEqualTo(noCorrId1a);
+    }
+
+    @Test
     @DisplayName("TraineeLifecycleEvent captures immutable trajectory and auto-generates event context")
     void testTraineeLifecycleEventContract() {
       TraineeLifecycleEvent event = TraineeLifecycleEvent.of(
@@ -218,6 +279,108 @@ class DomainEventContractTest {
       assertThat(event.templateCode()).isEqualTo("TPL-VERIF-003");
       assertThat(event.priority()).isEqualTo("HIGH");
       assertThat(event.recipientMasked()).doesNotContain("plaintext_secret");
+    }
+
+    @Test
+    @DisplayName("CommunicationTriggerEvent enforces PII masking on raw email and phone inputs and in toString()")
+    void testCommunicationTriggerEventPIIProtectionWithUnmaskedInputs() {
+      // 1. Unmasked email address
+      CommunicationTriggerEvent emailEvent = CommunicationTriggerEvent.of(
+          "VERIFICATION_REQUEST",
+          301L,
+          88L,
+          "EMAIL",
+          "aditya.sharma@example.com",
+          "TPL-01",
+          20L,
+          "NORMAL",
+          "Verification dispatched"
+      );
+      assertThat(emailEvent.recipientMasked()).isEqualTo("a***a@example.com");
+      assertThat(emailEvent.recipientMasked()).doesNotContain("aditya.sharma");
+      assertThat(emailEvent.toString()).doesNotContain("aditya.sharma@example.com");
+      assertThat(emailEvent.toString()).contains("a***a@example.com");
+
+      // 2. Unmasked 10-digit mobile phone
+      CommunicationTriggerEvent phoneEvent = CommunicationTriggerEvent.of(
+          "TRAINEE_ALERT",
+          302L,
+          88L,
+          "SMS",
+          "9876543210",
+          "TPL-02",
+          20L,
+          "HIGH",
+          "SMS reminder"
+      );
+      assertThat(phoneEvent.recipientMasked()).isEqualTo("XXXXXX3210");
+      assertThat(phoneEvent.recipientMasked()).doesNotContain("987654");
+      assertThat(phoneEvent.toString()).doesNotContain("9876543210");
+      assertThat(phoneEvent.toString()).contains("XXXXXX3210");
+
+      // 3. Unmasked international phone with country code and formatting
+      CommunicationTriggerEvent intlPhoneEvent = CommunicationTriggerEvent.of(
+          "TRAINEE_ALERT",
+          303L,
+          88L,
+          "SMS",
+          "+91-9876543210",
+          "TPL-03",
+          20L,
+          "NORMAL",
+          "SMS reminder"
+      );
+      assertThat(intlPhoneEvent.recipientMasked()).isEqualTo("+XX-XXXXXX3210");
+      assertThat(intlPhoneEvent.recipientMasked()).doesNotContain("987654");
+      assertThat(intlPhoneEvent.toString()).doesNotContain("9876543210");
+      assertThat(intlPhoneEvent.toString()).contains("+XX-XXXXXX3210");
+
+      // 4. Pre-masked inputs remain idempotent
+      CommunicationTriggerEvent preMaskedEmail = CommunicationTriggerEvent.of(
+          "VERIFICATION_REQUEST",
+          304L,
+          88L,
+          "EMAIL",
+          "h***r@employer.com",
+          "TPL-04",
+          20L,
+          "NORMAL",
+          "Pre-masked email"
+      );
+      assertThat(preMaskedEmail.recipientMasked()).isEqualTo("h***r@employer.com");
+
+      CommunicationTriggerEvent preMaskedPhone = CommunicationTriggerEvent.of(
+          "TRAINEE_ALERT",
+          305L,
+          88L,
+          "SMS",
+          "+91-XXXXX-XX123",
+          "TPL-05",
+          20L,
+          "NORMAL",
+          "Pre-masked phone"
+      );
+      assertThat(preMaskedPhone.recipientMasked()).isEqualTo("+91-XXXXX-XX123");
+
+      // 5. Direct constructor invocation enforces masking
+      CommunicationTriggerEvent directEvent = new CommunicationTriggerEvent(
+          null,
+          null,
+          306L,
+          88L,
+          null,
+          null,
+          "EMAIL",
+          "officer.contact@domain.gov.in",
+          "TPL-06",
+          null,
+          null,
+          null,
+          "Direct instantiation payload"
+      );
+      assertThat(directEvent.recipientMasked()).isEqualTo("o***t@domain.gov.in");
+      assertThat(directEvent.toString()).doesNotContain("officer.contact@domain.gov.in");
+      assertThat(directEvent.toString()).contains("o***t@domain.gov.in");
     }
   }
 

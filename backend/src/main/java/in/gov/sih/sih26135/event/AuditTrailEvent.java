@@ -1,7 +1,12 @@
 package in.gov.sih.sih26135.event;
 
+import java.lang.ref.Reference;
+import java.lang.ref.ReferenceQueue;
+import java.lang.ref.WeakReference;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Strongly typed internal domain event representing a completed workflow transition
@@ -28,6 +33,9 @@ public record AuditTrailEvent(
     String correlationId
 ) implements DomainEvent {
 
+  private static final Map<IdentityKey, String> EVENT_IDS = new ConcurrentHashMap<>();
+  private static final ReferenceQueue<AuditTrailEvent> REF_QUEUE = new ReferenceQueue<>();
+
   public AuditTrailEvent {
     if (actionCode == null || actionCode.isBlank()) {
       actionCode = "STATUS_CHANGE";
@@ -39,9 +47,15 @@ public record AuditTrailEvent(
 
   @Override
   public String getEventId() {
-    return correlationId != null && !correlationId.isBlank()
-        ? correlationId
-        : UUID.randomUUID().toString();
+    cleanQueue();
+    return EVENT_IDS.computeIfAbsent(new IdentityKey(this), k -> UUID.randomUUID().toString());
+  }
+
+  private static void cleanQueue() {
+    Reference<? extends AuditTrailEvent> ref;
+    while ((ref = REF_QUEUE.poll()) != null) {
+      EVENT_IDS.remove(ref);
+    }
   }
 
   @Override
@@ -72,5 +86,33 @@ public record AuditTrailEvent(
   @Override
   public LocalDateTime getOccurredAt() {
     return occurredAt();
+  }
+
+  /**
+   * Reference-equality weak key ensuring stable, distinct event IDs per instance without memory leaks.
+   */
+  private static final class IdentityKey extends WeakReference<AuditTrailEvent> {
+    private final int hash;
+
+    IdentityKey(AuditTrailEvent referent) {
+      super(referent, REF_QUEUE);
+      this.hash = System.identityHashCode(referent);
+    }
+
+    @Override
+    public int hashCode() {
+      return hash;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (this == obj) return true;
+      if (obj instanceof IdentityKey other) {
+        AuditTrailEvent myRef = get();
+        AuditTrailEvent otherRef = other.get();
+        return myRef != null && myRef == otherRef;
+      }
+      return false;
+    }
   }
 }
