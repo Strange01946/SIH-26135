@@ -672,6 +672,8 @@ public class GlobalExceptionHandler {
       case "UNAUTHORIZED" -> "Full authentication is required to access this resource";
       case "ACCESS_DENIED" -> "Access is denied";
       case "CONSENT_REQUIRED" -> "Trainee consent is required to perform this action";
+      case "CONSENT_WITHDRAWN" -> "Trainee communication consent has been withdrawn or revoked";
+      case "CONSENT_NOT_GRANTED" -> "Trainee has not granted communication consent for this channel";
       case "RESOURCE_NOT_FOUND" -> "The requested resource was not found";
       case "VALIDATION_ERROR" -> "Request validation failed";
       case "BAD_REQUEST" -> "The request is invalid";

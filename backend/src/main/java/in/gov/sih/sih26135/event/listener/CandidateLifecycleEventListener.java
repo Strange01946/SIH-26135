@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.event.listener;
 
+import in.gov.sih.sih26135.communication.service.NotificationDispatcherService;
 import in.gov.sih.sih26135.dto.request.RemediationTriggerRequest;
 import in.gov.sih.sih26135.event.CommunicationTriggerEvent;
 import in.gov.sih.sih26135.event.DataQualityAlertEvent;
@@ -38,16 +39,23 @@ public class CandidateLifecycleEventListener {
   private static final Logger log = LoggerFactory.getLogger(CandidateLifecycleEventListener.class);
 
   private final CandidateLifecycleOrchestratorService orchestratorService;
+  private final NotificationDispatcherService notificationDispatcherService;
   private final Set<String> processedRemediationEvents = ConcurrentHashMap.newKeySet();
 
   public CandidateLifecycleEventListener() {
-    this(null);
+    this(null, null);
+  }
+
+  public CandidateLifecycleEventListener(CandidateLifecycleOrchestratorService orchestratorService) {
+    this(orchestratorService, null);
   }
 
   @Autowired
   public CandidateLifecycleEventListener(
-      @Autowired(required = false) @Lazy CandidateLifecycleOrchestratorService orchestratorService) {
+      @Autowired(required = false) @Lazy CandidateLifecycleOrchestratorService orchestratorService,
+      @Autowired(required = false) @Lazy NotificationDispatcherService notificationDispatcherService) {
     this.orchestratorService = orchestratorService;
+    this.notificationDispatcherService = notificationDispatcherService;
   }
 
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
@@ -142,6 +150,14 @@ public class CandidateLifecycleEventListener {
     }
     log.info("Committed CommunicationTriggerEvent: eventId={}, eventType={}, templateCode={}, recipientMasked={}, correlationId={}",
         event.getEventId(), event.getEventType(), event.templateCode(), event.recipientMasked(), event.getCorrelationId());
+
+    if (notificationDispatcherService != null && event.entityId() != null) {
+      try {
+        notificationDispatcherService.dispatchFromTriggerEvent(event);
+      } catch (Exception ex) {
+        log.error("Post-commit notification dispatch failed for eventId={}: {}", event.getEventId(), ex.getMessage(), ex);
+      }
+    }
   }
 
   private boolean isEmploymentExit(TraineeLifecycleEvent event) {
