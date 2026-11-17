@@ -21,10 +21,12 @@ import in.gov.sih.sih26135.repository.RefTrainingDropoutReasonRepository;
 import in.gov.sih.sih26135.repository.TraineeRepository;
 import in.gov.sih.sih26135.repository.TrainingBatchRepository;
 import in.gov.sih.sih26135.repository.TrainingEnrollmentRepository;
+import in.gov.sih.sih26135.service.TraineeConsentService;
 import in.gov.sih.sih26135.service.TrainingEnrollmentService;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -40,6 +42,25 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
   private final RefEnrollmentStatusRepository refEnrollmentStatusRepository;
   private final RefTrainingDropoutReasonRepository refTrainingDropoutReasonRepository;
   private final TrainingEnrollmentMapper trainingEnrollmentMapper;
+  private final TraineeConsentService traineeConsentService;
+
+  @Autowired
+  public TrainingEnrollmentServiceImpl(
+      TrainingEnrollmentRepository trainingEnrollmentRepository,
+      TraineeRepository traineeRepository,
+      TrainingBatchRepository trainingBatchRepository,
+      RefEnrollmentStatusRepository refEnrollmentStatusRepository,
+      RefTrainingDropoutReasonRepository refTrainingDropoutReasonRepository,
+      TrainingEnrollmentMapper trainingEnrollmentMapper,
+      TraineeConsentService traineeConsentService) {
+    this.trainingEnrollmentRepository = trainingEnrollmentRepository;
+    this.traineeRepository = traineeRepository;
+    this.trainingBatchRepository = trainingBatchRepository;
+    this.refEnrollmentStatusRepository = refEnrollmentStatusRepository;
+    this.refTrainingDropoutReasonRepository = refTrainingDropoutReasonRepository;
+    this.trainingEnrollmentMapper = trainingEnrollmentMapper;
+    this.traineeConsentService = traineeConsentService;
+  }
 
   public TrainingEnrollmentServiceImpl(
       TrainingEnrollmentRepository trainingEnrollmentRepository,
@@ -48,12 +69,9 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
       RefEnrollmentStatusRepository refEnrollmentStatusRepository,
       RefTrainingDropoutReasonRepository refTrainingDropoutReasonRepository,
       TrainingEnrollmentMapper trainingEnrollmentMapper) {
-    this.trainingEnrollmentRepository = trainingEnrollmentRepository;
-    this.traineeRepository = traineeRepository;
-    this.trainingBatchRepository = trainingBatchRepository;
-    this.refEnrollmentStatusRepository = refEnrollmentStatusRepository;
-    this.refTrainingDropoutReasonRepository = refTrainingDropoutReasonRepository;
-    this.trainingEnrollmentMapper = trainingEnrollmentMapper;
+    this(trainingEnrollmentRepository, traineeRepository, trainingBatchRepository,
+        refEnrollmentStatusRepository, refTrainingDropoutReasonRepository,
+        trainingEnrollmentMapper, null);
   }
 
   @Override
@@ -245,6 +263,12 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
     if (batch.getDeletedAt() != null) {
       throw new BadRequestException("Cannot create training enrollment for soft-deleted training batch", "BATCH_DELETED");
     }
+
+    // Mandatory statutory consent enforcement (DPDP Act): DATA_PROCESSING consent is non-negotiable for all enrollments
+    if (traineeConsentService == null) {
+      throw new IllegalStateException("TraineeConsentService is required for enrollment consent validation");
+    }
+    traineeConsentService.validateConsent(request.getTraineeId(), "DATA_PROCESSING");
 
     Program program = batch.getProgram();
     if (request.getProgramId() != null && !request.getProgramId().equals(program.getId())) {

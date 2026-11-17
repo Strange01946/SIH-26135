@@ -12,11 +12,14 @@ import in.gov.sih.sih26135.dto.response.TrainingEnrollmentResponse;
 import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.response.PagedResponse;
 import in.gov.sih.sih26135.response.PaginationUtils;
+import in.gov.sih.sih26135.service.CandidateLifecycleOrchestratorService;
 import in.gov.sih.sih26135.service.TrainingEnrollmentService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -44,9 +47,19 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class TrainingEnrollmentController {
 
   private final TrainingEnrollmentService trainingEnrollmentService;
+  private final CandidateLifecycleOrchestratorService candidateLifecycleOrchestratorService;
+
+  @Autowired
+  public TrainingEnrollmentController(
+      TrainingEnrollmentService trainingEnrollmentService,
+      CandidateLifecycleOrchestratorService candidateLifecycleOrchestratorService) {
+    this.trainingEnrollmentService = Objects.requireNonNull(trainingEnrollmentService, "trainingEnrollmentService must not be null");
+    this.candidateLifecycleOrchestratorService = Objects.requireNonNull(candidateLifecycleOrchestratorService, "candidateLifecycleOrchestratorService must not be null");
+  }
 
   public TrainingEnrollmentController(TrainingEnrollmentService trainingEnrollmentService) {
-    this.trainingEnrollmentService = trainingEnrollmentService;
+    this.trainingEnrollmentService = Objects.requireNonNull(trainingEnrollmentService, "trainingEnrollmentService must not be null");
+    this.candidateLifecycleOrchestratorService = null;
   }
 
   /**
@@ -271,9 +284,32 @@ public class TrainingEnrollmentController {
   public ResponseEntity<ApiResponse<TrainingEnrollmentResponse>> createEnrollment(
       @Valid @RequestBody CreateTrainingEnrollmentRequest request,
       HttpServletRequest httpRequest) {
-    TrainingEnrollmentResponse response = trainingEnrollmentService.createEnrollment(request);
+    if (candidateLifecycleOrchestratorService == null) {
+      throw new IllegalStateException("CandidateLifecycleOrchestratorService is required for enrollment orchestration");
+    }
+    in.gov.sih.sih26135.dto.request.TraineeEnrollmentOrchestrationRequest orchRequest =
+        new in.gov.sih.sih26135.dto.request.TraineeEnrollmentOrchestrationRequest();
+    orchRequest.setTraineeId(request.getTraineeId());
+    orchRequest.setBatchId(request.getBatchId());
+    orchRequest.setEnrollmentDate(request.getEnrollmentDate());
+    orchRequest.setEnrollmentNumber(request.getEnrollmentNumber());
+    orchRequest.setProgramId(request.getProgramId());
+    orchRequest.setCourseId(request.getCourseId());
+    orchRequest.setTrainingProviderId(request.getProviderId());
+    orchRequest.setCenterId(request.getCenterId());
+    orchRequest.setEnrollmentStatusId(request.getEnrollmentStatusId());
+    orchRequest.setStartDate(request.getStartDate());
+    orchRequest.setExpectedCompletionDate(request.getExpectedCompletionDate());
+    orchRequest.setConsentCode("DATA_PROCESSING");
+
+    in.gov.sih.sih26135.dto.response.TraineeEnrollmentOrchestrationResponse orchResponse =
+        candidateLifecycleOrchestratorService.enrollCandidateWithConsentValidation(orchRequest);
+
     return ResponseEntity.status(HttpStatus.CREATED)
-        .body(ApiResponse.success("Training enrollment created successfully", response, httpRequest.getRequestURI()));
+        .body(ApiResponse.success(
+            "Training enrollment created successfully",
+            orchResponse.enrollment(),
+            httpRequest.getRequestURI()));
   }
 
   /**

@@ -42,15 +42,15 @@ public class EmploymentLifecycleWorkflowController {
   @org.springframework.beans.factory.annotation.Autowired
   public EmploymentLifecycleWorkflowController(
       EmploymentLifecycleWorkflowService employmentLifecycleWorkflowService,
-      @org.springframework.beans.factory.annotation.Autowired(required = false)
       in.gov.sih.sih26135.service.CandidateLifecycleOrchestratorService candidateLifecycleOrchestratorService) {
-    this.employmentLifecycleWorkflowService = employmentLifecycleWorkflowService;
-    this.candidateLifecycleOrchestratorService = candidateLifecycleOrchestratorService;
+    this.employmentLifecycleWorkflowService = java.util.Objects.requireNonNull(employmentLifecycleWorkflowService, "employmentLifecycleWorkflowService must not be null");
+    this.candidateLifecycleOrchestratorService = java.util.Objects.requireNonNull(candidateLifecycleOrchestratorService, "candidateLifecycleOrchestratorService must not be null");
   }
 
   public EmploymentLifecycleWorkflowController(
       EmploymentLifecycleWorkflowService employmentLifecycleWorkflowService) {
-    this(employmentLifecycleWorkflowService, null);
+    this.employmentLifecycleWorkflowService = java.util.Objects.requireNonNull(employmentLifecycleWorkflowService, "employmentLifecycleWorkflowService must not be null");
+    this.candidateLifecycleOrchestratorService = null;
   }
 
   /**
@@ -70,10 +70,11 @@ public class EmploymentLifecycleWorkflowController {
           "UNSUPPORTED_PARAMETER"
       );
     }
+    if (candidateLifecycleOrchestratorService == null) {
+      throw new IllegalStateException("CandidateLifecycleOrchestratorService is required for employment lifecycle orchestration");
+    }
     EmploymentExitAndUnemploymentResponse response =
-        candidateLifecycleOrchestratorService != null
-            ? candidateLifecycleOrchestratorService.orchestrateEmploymentExitAndUnemployment(request)
-            : employmentLifecycleWorkflowService.recordExitAndInitiateUnemployment(request);
+        candidateLifecycleOrchestratorService.orchestrateEmploymentExitAndUnemployment(request);
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(ApiResponse.success(
             "Employment exit recorded and unemployment initiated successfully",

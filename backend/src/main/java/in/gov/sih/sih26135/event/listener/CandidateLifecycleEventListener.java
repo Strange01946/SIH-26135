@@ -61,8 +61,8 @@ public class CandidateLifecycleEventListener {
     // Connect committed employment exits to automated remediation evaluation advisory
     if (orchestratorService != null && isEmploymentExit(event)) {
       if (event.getEventId() == null || processedRemediationEvents.add(event.getEventId())) {
+        Long traineeId = event.getEntityId();
         try {
-          Long traineeId = event.getEntityId();
           if (traineeId != null) {
             Long exitEventId = extractIdFromMetadata(event.metadataJson(), "employmentExitEventId");
             orchestratorService.triggerSkillGapRemediation(new RemediationTriggerRequest(
@@ -74,7 +74,11 @@ public class CandidateLifecycleEventListener {
             ));
           }
         } catch (Exception ex) {
-          log.warn("Post-commit automated remediation advisory failed gracefully: {}", ex.getMessage());
+          if (event.getEventId() != null) {
+            processedRemediationEvents.remove(event.getEventId());
+          }
+          log.error("Post-commit automated remediation trigger failed for exit traineeId={}, eventId={}: {}",
+              traineeId, event.getEventId(), ex.getMessage(), ex);
         }
       }
     }
@@ -100,8 +104,8 @@ public class CandidateLifecycleEventListener {
     // Connect committed verification rejection/failure to automated remediation evaluation advisory
     if (orchestratorService != null && isVerificationFailure(event)) {
       if (event.getEventId() == null || processedRemediationEvents.add(event.getEventId())) {
+        Long traineeId = event.traineeId();
         try {
-          Long traineeId = event.traineeId();
           if (traineeId != null) {
             orchestratorService.triggerSkillGapRemediation(new RemediationTriggerRequest(
                 traineeId,
@@ -112,7 +116,11 @@ public class CandidateLifecycleEventListener {
             ));
           }
         } catch (Exception ex) {
-          log.warn("Post-commit automated remediation advisory failed gracefully: {}", ex.getMessage());
+          if (event.getEventId() != null) {
+            processedRemediationEvents.remove(event.getEventId());
+          }
+          log.error("Post-commit automated remediation trigger failed for verification failure traineeId={}, eventId={}: {}",
+              traineeId, event.getEventId(), ex.getMessage(), ex);
         }
       }
     }
@@ -161,5 +169,13 @@ public class CandidateLifecycleEventListener {
     } catch (Exception ignored) {
     }
     return null;
+  }
+
+  public boolean isRemediationEventProcessed(String eventId) {
+    return eventId != null && processedRemediationEvents.contains(eventId);
+  }
+
+  public void clearProcessedRemediationEvents() {
+    processedRemediationEvents.clear();
   }
 }

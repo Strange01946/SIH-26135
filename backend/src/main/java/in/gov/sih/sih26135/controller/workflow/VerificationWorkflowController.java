@@ -42,15 +42,15 @@ public class VerificationWorkflowController {
   @org.springframework.beans.factory.annotation.Autowired
   public VerificationWorkflowController(
       VerificationWorkflowService verificationWorkflowService,
-      @org.springframework.beans.factory.annotation.Autowired(required = false)
       in.gov.sih.sih26135.service.CandidateLifecycleOrchestratorService candidateLifecycleOrchestratorService) {
-    this.verificationWorkflowService = verificationWorkflowService;
-    this.candidateLifecycleOrchestratorService = candidateLifecycleOrchestratorService;
+    this.verificationWorkflowService = java.util.Objects.requireNonNull(verificationWorkflowService, "verificationWorkflowService must not be null");
+    this.candidateLifecycleOrchestratorService = java.util.Objects.requireNonNull(candidateLifecycleOrchestratorService, "candidateLifecycleOrchestratorService must not be null");
   }
 
   public VerificationWorkflowController(
       VerificationWorkflowService verificationWorkflowService) {
-    this(verificationWorkflowService, null);
+    this.verificationWorkflowService = java.util.Objects.requireNonNull(verificationWorkflowService, "verificationWorkflowService must not be null");
+    this.candidateLifecycleOrchestratorService = null;
   }
 
   /**
@@ -96,10 +96,11 @@ public class VerificationWorkflowController {
           "UNSUPPORTED_PARAMETER"
       );
     }
+    if (candidateLifecycleOrchestratorService == null) {
+      throw new IllegalStateException("CandidateLifecycleOrchestratorService is required for verification orchestration");
+    }
     RecordVerificationVerdictResponse response =
-        candidateLifecycleOrchestratorService != null
-            ? candidateLifecycleOrchestratorService.orchestrateEmploymentVerificationVerdict(request)
-            : verificationWorkflowService.recordVerificationVerdictAndSynchronize(request);
+        candidateLifecycleOrchestratorService.orchestrateEmploymentVerificationVerdict(request);
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(ApiResponse.success(
             "Verification verdict recorded and synchronized successfully",

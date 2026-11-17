@@ -40,15 +40,15 @@ public class PlacementEmploymentWorkflowController {
   @org.springframework.beans.factory.annotation.Autowired
   public PlacementEmploymentWorkflowController(
       PlacementEmploymentWorkflowService placementEmploymentWorkflowService,
-      @org.springframework.beans.factory.annotation.Autowired(required = false)
       in.gov.sih.sih26135.service.CandidateLifecycleOrchestratorService candidateLifecycleOrchestratorService) {
-    this.placementEmploymentWorkflowService = placementEmploymentWorkflowService;
-    this.candidateLifecycleOrchestratorService = candidateLifecycleOrchestratorService;
+    this.placementEmploymentWorkflowService = java.util.Objects.requireNonNull(placementEmploymentWorkflowService, "placementEmploymentWorkflowService must not be null");
+    this.candidateLifecycleOrchestratorService = java.util.Objects.requireNonNull(candidateLifecycleOrchestratorService, "candidateLifecycleOrchestratorService must not be null");
   }
 
   public PlacementEmploymentWorkflowController(
       PlacementEmploymentWorkflowService placementEmploymentWorkflowService) {
-    this(placementEmploymentWorkflowService, null);
+    this.placementEmploymentWorkflowService = java.util.Objects.requireNonNull(placementEmploymentWorkflowService, "placementEmploymentWorkflowService must not be null");
+    this.candidateLifecycleOrchestratorService = null;
   }
 
   /**
@@ -68,10 +68,11 @@ public class PlacementEmploymentWorkflowController {
           "UNSUPPORTED_PARAMETER"
       );
     }
+    if (candidateLifecycleOrchestratorService == null) {
+      throw new IllegalStateException("CandidateLifecycleOrchestratorService is required for placement orchestration");
+    }
     PlacementToEmploymentTransitionResponse response =
-        candidateLifecycleOrchestratorService != null
-            ? candidateLifecycleOrchestratorService.orchestratePlacementToEmployment(request)
-            : placementEmploymentWorkflowService.transitionPlacementToEmployment(request);
+        candidateLifecycleOrchestratorService.orchestratePlacementToEmployment(request);
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(ApiResponse.success(
             "Placement transitioned to employment successfully",

@@ -62,6 +62,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -409,7 +410,7 @@ public class CandidateLifecycleOrchestratorServiceImpl implements CandidateLifec
   }
 
   @Override
-  @Transactional
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
   public RemediationTriggerResponse triggerSkillGapRemediation(
       RemediationTriggerRequest request) {
     if (request == null) {
@@ -485,7 +486,9 @@ public class CandidateLifecycleOrchestratorServiceImpl implements CandidateLifec
           ? request.getRemarks().trim()
           : "Trainee flagged for skill-gap evaluation following " + request.getTriggerSource() + "; awaiting assessment data";
 
-      // Non-recursive, durable advisory domain signal on domain bus without synthetic recipients
+      // Non-recursive, in-memory advisory domain signal dispatched on Spring application event bus without synthetic recipients.
+      // Explicit architectural boundary: This is an in-memory notification signal for active listeners, NOT a persistent
+      // database queue or task (the frozen schema contains no pending evaluation task table and assessments are not fabricated).
       eventPublisher.publishEvent(new TraineeLifecycleEvent(
           UUID.randomUUID().toString(),
           "REMEDIATION_TRIGGERED",

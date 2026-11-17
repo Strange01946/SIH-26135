@@ -41,15 +41,15 @@ public class TrainingOutcomeWorkflowController {
   @org.springframework.beans.factory.annotation.Autowired
   public TrainingOutcomeWorkflowController(
       TrainingOutcomeWorkflowService trainingOutcomeWorkflowService,
-      @org.springframework.beans.factory.annotation.Autowired(required = false)
       in.gov.sih.sih26135.service.CandidateLifecycleOrchestratorService candidateLifecycleOrchestratorService) {
-    this.trainingOutcomeWorkflowService = trainingOutcomeWorkflowService;
-    this.candidateLifecycleOrchestratorService = candidateLifecycleOrchestratorService;
+    this.trainingOutcomeWorkflowService = java.util.Objects.requireNonNull(trainingOutcomeWorkflowService, "trainingOutcomeWorkflowService must not be null");
+    this.candidateLifecycleOrchestratorService = java.util.Objects.requireNonNull(candidateLifecycleOrchestratorService, "candidateLifecycleOrchestratorService must not be null");
   }
 
   public TrainingOutcomeWorkflowController(
       TrainingOutcomeWorkflowService trainingOutcomeWorkflowService) {
-    this(trainingOutcomeWorkflowService, null);
+    this.trainingOutcomeWorkflowService = java.util.Objects.requireNonNull(trainingOutcomeWorkflowService, "trainingOutcomeWorkflowService must not be null");
+    this.candidateLifecycleOrchestratorService = null;
   }
 
   /**
@@ -69,10 +69,11 @@ public class TrainingOutcomeWorkflowController {
           "UNSUPPORTED_PARAMETER"
       );
     }
+    if (candidateLifecycleOrchestratorService == null) {
+      throw new IllegalStateException("CandidateLifecycleOrchestratorService is required for training outcome orchestration");
+    }
     RecordAssessmentAndIssueCertificateResponse response =
-        candidateLifecycleOrchestratorService != null
-            ? candidateLifecycleOrchestratorService.recordAssessmentAndCertification(request)
-            : trainingOutcomeWorkflowService.recordAssessmentResultAndIssueCertificate(request);
+        candidateLifecycleOrchestratorService.recordAssessmentAndCertification(request);
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(ApiResponse.success(
             "Assessment result recorded and certificate issued successfully",
