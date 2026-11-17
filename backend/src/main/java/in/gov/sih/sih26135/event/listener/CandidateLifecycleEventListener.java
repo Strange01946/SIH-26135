@@ -7,6 +7,9 @@ import in.gov.sih.sih26135.event.DataQualityAlertEvent;
 import in.gov.sih.sih26135.event.EmploymentVerificationEvent;
 import in.gov.sih.sih26135.event.PlacementLifecycleEvent;
 import in.gov.sih.sih26135.event.TraineeLifecycleEvent;
+import in.gov.sih.sih26135.security.InternalSecurityExecutionSupport;
+import in.gov.sih.sih26135.security.InternalServicePrincipal;
+import in.gov.sih.sih26135.security.TenantScopeType;
 import in.gov.sih.sih26135.service.CandidateLifecycleOrchestratorService;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -40,22 +43,31 @@ public class CandidateLifecycleEventListener {
 
   private final CandidateLifecycleOrchestratorService orchestratorService;
   private final NotificationDispatcherService notificationDispatcherService;
+  private final InternalSecurityExecutionSupport internalSecurityExecutionSupport;
   private final Set<String> processedRemediationEvents = ConcurrentHashMap.newKeySet();
 
   public CandidateLifecycleEventListener() {
-    this(null, null);
+    this(null, null, null);
   }
 
   public CandidateLifecycleEventListener(CandidateLifecycleOrchestratorService orchestratorService) {
-    this(orchestratorService, null);
+    this(orchestratorService, null, null);
+  }
+
+  public CandidateLifecycleEventListener(
+      CandidateLifecycleOrchestratorService orchestratorService,
+      NotificationDispatcherService notificationDispatcherService) {
+    this(orchestratorService, notificationDispatcherService, null);
   }
 
   @Autowired
   public CandidateLifecycleEventListener(
       @Autowired(required = false) @Lazy CandidateLifecycleOrchestratorService orchestratorService,
-      @Autowired(required = false) @Lazy NotificationDispatcherService notificationDispatcherService) {
+      @Autowired(required = false) @Lazy NotificationDispatcherService notificationDispatcherService,
+      @Autowired(required = false) InternalSecurityExecutionSupport internalSecurityExecutionSupport) {
     this.orchestratorService = orchestratorService;
     this.notificationDispatcherService = notificationDispatcherService;
+    this.internalSecurityExecutionSupport = internalSecurityExecutionSupport;
   }
 
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
@@ -153,7 +165,19 @@ public class CandidateLifecycleEventListener {
 
     if (notificationDispatcherService != null && event.entityId() != null) {
       try {
-        notificationDispatcherService.dispatchFromTriggerEvent(event);
+        if (internalSecurityExecutionSupport != null) {
+          InternalServicePrincipal principal = new InternalServicePrincipal(
+              "CANDIDATE_LIFECYCLE_EVENT_LISTENER",
+              "Candidate Lifecycle Domain Event Listener",
+              null,
+              TenantScopeType.NATIONWIDE
+          );
+          internalSecurityExecutionSupport.runAsInternalService(principal, () -> {
+            notificationDispatcherService.dispatchFromTriggerEvent(event);
+          });
+        } else {
+          notificationDispatcherService.dispatchFromTriggerEvent(event);
+        }
       } catch (Exception ex) {
         log.error("Post-commit notification dispatch failed for eventId={}: {}", event.getEventId(), ex.getMessage(), ex);
       }

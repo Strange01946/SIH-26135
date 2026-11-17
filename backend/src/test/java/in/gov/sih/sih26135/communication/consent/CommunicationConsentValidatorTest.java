@@ -60,6 +60,7 @@ class CommunicationConsentValidatorTest {
   private CommunicationConsentValidatorImpl validator;
 
   private Trainee testTrainee;
+  private RefConsentType dataProcessingConsentType;
   private RefConsentType smsConsentType;
   private RefConsentType whatsappConsentType;
   private RefConsentType emailConsentType;
@@ -86,6 +87,9 @@ class CommunicationConsentValidatorTest {
     testTrainee.setLastName("Sharma");
     testTrainee.setPhone("+919876543210");
     testTrainee.setEmail("rahul.sharma@example.com");
+
+    dataProcessingConsentType = new RefConsentType("DATA_PROCESSING", "Data Processing", "Processing", false, true);
+    dataProcessingConsentType.setId(1L);
 
     smsConsentType = new RefConsentType("COMMUNICATION_SMS", "SMS Communication", "SMS", false, true);
     smsConsentType.setId(5L);
@@ -115,10 +119,82 @@ class CommunicationConsentValidatorTest {
     followupPurpose.setRequiredConsentType(followupConsentType);
   }
 
+  private void mockDataProcessingGranted(Long traineeId) {
+    when(refConsentTypeRepository.findByConsentCode("DATA_PROCESSING")).thenReturn(Optional.of(dataProcessingConsentType));
+    TraineeConsent consent = new TraineeConsent(testTrainee, dataProcessingConsentType, "Data Processing", grantedStatus, "v1.0");
+    consent.setGrantedAt(LocalDateTime.now().minusDays(10));
+    consent.setExpiresAt(LocalDateTime.now().plusYears(1));
+    when(traineeConsentRepository.findByTraineeIdAndConsentTypeId(traineeId, 1L))
+        .thenReturn(List.of(consent));
+  }
+
+  @Test
+  @DisplayName("Missing base DATA_PROCESSING consent throws CONSENT_NOT_GRANTED and HTTP 403")
+  void testMissingDataProcessingConsentThrowsConsentNotGranted() {
+    when(traineeRepository.existsById(101L)).thenReturn(true);
+    when(refConsentTypeRepository.findByConsentCode("DATA_PROCESSING")).thenReturn(Optional.of(dataProcessingConsentType));
+    when(traineeConsentRepository.findByTraineeIdAndConsentTypeId(101L, 1L)).thenReturn(Collections.emptyList());
+
+    assertThatThrownBy(() -> validator.validateCommunicationConsent(101L, "SMS", "OPERATIONAL"))
+        .isInstanceOf(CommunicationConsentException.class)
+        .satisfies(ex -> {
+          CommunicationConsentException cce = (CommunicationConsentException) ex;
+          assertThat(cce.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+          assertThat(cce.getErrorCode()).isEqualTo("CONSENT_NOT_GRANTED");
+          assertThat(cce.getMessage()).contains("Trainee has not granted communication consent for DATA_PROCESSING");
+        });
+
+    // Zero channel consent queries performed because base consent failed closed
+    verify(refConsentTypeRepository, never()).findByConsentCode("COMMUNICATION_SMS");
+  }
+
+  @Test
+  @DisplayName("Revoked base DATA_PROCESSING consent throws CONSENT_WITHDRAWN and HTTP 403")
+  void testRevokedDataProcessingConsentThrowsConsentWithdrawn() {
+    when(traineeRepository.existsById(101L)).thenReturn(true);
+    when(refConsentTypeRepository.findByConsentCode("DATA_PROCESSING")).thenReturn(Optional.of(dataProcessingConsentType));
+    TraineeConsent revokedConsent = new TraineeConsent(testTrainee, dataProcessingConsentType, "Data Processing", revokedStatus, "v1.0");
+    revokedConsent.setGrantedAt(LocalDateTime.now().minusDays(30));
+    revokedConsent.setRevokedAt(LocalDateTime.now().minusDays(2));
+    when(traineeConsentRepository.findByTraineeIdAndConsentTypeId(101L, 1L)).thenReturn(List.of(revokedConsent));
+
+    assertThatThrownBy(() -> validator.validateCommunicationConsent(101L, "SMS", "OPERATIONAL"))
+        .isInstanceOf(CommunicationConsentException.class)
+        .satisfies(ex -> {
+          CommunicationConsentException cce = (CommunicationConsentException) ex;
+          assertThat(cce.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+          assertThat(cce.getErrorCode()).isEqualTo("CONSENT_WITHDRAWN");
+          assertThat(cce.getMessage()).contains("DATA_PROCESSING");
+        });
+
+    verify(refConsentTypeRepository, never()).findByConsentCode("COMMUNICATION_SMS");
+  }
+
+  @Test
+  @DisplayName("Expired base DATA_PROCESSING consent throws CONSENT_NOT_GRANTED and HTTP 403")
+  void testExpiredDataProcessingConsentThrowsConsentNotGranted() {
+    when(traineeRepository.existsById(101L)).thenReturn(true);
+    when(refConsentTypeRepository.findByConsentCode("DATA_PROCESSING")).thenReturn(Optional.of(dataProcessingConsentType));
+    TraineeConsent expiredConsent = new TraineeConsent(testTrainee, dataProcessingConsentType, "Data Processing", grantedStatus, "v1.0");
+    expiredConsent.setGrantedAt(LocalDateTime.now().minusDays(365));
+    expiredConsent.setExpiresAt(LocalDateTime.now().minusDays(1)); // Expired
+    when(traineeConsentRepository.findByTraineeIdAndConsentTypeId(101L, 1L)).thenReturn(List.of(expiredConsent));
+
+    assertThatThrownBy(() -> validator.validateCommunicationConsent(101L, "SMS", "OPERATIONAL"))
+        .isInstanceOf(CommunicationConsentException.class)
+        .satisfies(ex -> {
+          CommunicationConsentException cce = (CommunicationConsentException) ex;
+          assertThat(cce.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+          assertThat(cce.getErrorCode()).isEqualTo("CONSENT_NOT_GRANTED");
+          assertThat(cce.getMessage()).contains("DATA_PROCESSING");
+        });
+  }
+
   @Test
   @DisplayName("Valid SMS consent permits outbound SMS dispatch")
   void testValidSmsConsentPermitsDispatch() {
     when(traineeRepository.existsById(101L)).thenReturn(true);
+    mockDataProcessingGranted(101L);
     when(refCommunicationChannelRepository.findByChannelCode("SMS")).thenReturn(Optional.of(smsChannel));
     when(refConsentTypeRepository.findByConsentCode("COMMUNICATION_SMS")).thenReturn(Optional.of(smsConsentType));
 
@@ -138,6 +214,7 @@ class CommunicationConsentValidatorTest {
   @DisplayName("Missing consent throws CommunicationConsentException with CONSENT_NOT_GRANTED and HTTP 403")
   void testMissingConsentThrowsConsentNotGranted() {
     when(traineeRepository.existsById(101L)).thenReturn(true);
+    mockDataProcessingGranted(101L);
     when(refCommunicationChannelRepository.findByChannelCode("SMS")).thenReturn(Optional.of(smsChannel));
     when(refConsentTypeRepository.findByConsentCode("COMMUNICATION_SMS")).thenReturn(Optional.of(smsConsentType));
     when(traineeConsentRepository.findByTraineeIdAndConsentTypeId(101L, 5L))
@@ -157,6 +234,7 @@ class CommunicationConsentValidatorTest {
   @DisplayName("Revoked consent throws CommunicationConsentException with CONSENT_WITHDRAWN and HTTP 403")
   void testRevokedConsentThrowsConsentWithdrawn() {
     when(traineeRepository.existsById(101L)).thenReturn(true);
+    mockDataProcessingGranted(101L);
     when(refCommunicationChannelRepository.findByChannelCode("SMS")).thenReturn(Optional.of(smsChannel));
     when(refConsentTypeRepository.findByConsentCode("COMMUNICATION_SMS")).thenReturn(Optional.of(smsConsentType));
 
@@ -180,6 +258,7 @@ class CommunicationConsentValidatorTest {
   @DisplayName("Expired consent throws CommunicationConsentException with CONSENT_NOT_GRANTED and HTTP 403")
   void testExpiredConsentThrowsConsentNotGranted() {
     when(traineeRepository.existsById(101L)).thenReturn(true);
+    mockDataProcessingGranted(101L);
     when(refCommunicationChannelRepository.findByChannelCode("SMS")).thenReturn(Optional.of(smsChannel));
     when(refConsentTypeRepository.findByConsentCode("COMMUNICATION_SMS")).thenReturn(Optional.of(smsConsentType));
 
@@ -203,6 +282,7 @@ class CommunicationConsentValidatorTest {
   @DisplayName("Future/not-yet-effective consent throws CONSENT_NOT_GRANTED")
   void testNotYetEffectiveConsentThrowsConsentNotGranted() {
     when(traineeRepository.existsById(101L)).thenReturn(true);
+    mockDataProcessingGranted(101L);
     when(refCommunicationChannelRepository.findByChannelCode("SMS")).thenReturn(Optional.of(smsChannel));
     when(refConsentTypeRepository.findByConsentCode("COMMUNICATION_SMS")).thenReturn(Optional.of(smsConsentType));
 
@@ -226,6 +306,7 @@ class CommunicationConsentValidatorTest {
   @DisplayName("Cross-channel consent substitution is strictly rejected: SMS consent cannot authorize WhatsApp")
   void testCrossChannelConsentSubstitutionRejected() {
     when(traineeRepository.existsById(101L)).thenReturn(true);
+    mockDataProcessingGranted(101L);
     RefCommunicationChannel waChannel = new RefCommunicationChannel("WHATSAPP", "WhatsApp", 2);
     waChannel.setRequiredConsentType(whatsappConsentType);
     when(refCommunicationChannelRepository.findByChannelCode("WHATSAPP")).thenReturn(Optional.of(waChannel));
@@ -251,6 +332,7 @@ class CommunicationConsentValidatorTest {
   @DisplayName("Purpose-specific consent is enforced: FOLLOWUP_REMINDER mandates EMPLOYMENT_FOLLOW_UP consent")
   void testPurposeSpecificConsentEnforced() {
     when(traineeRepository.existsById(101L)).thenReturn(true);
+    mockDataProcessingGranted(101L);
     when(refCommunicationChannelRepository.findByChannelCode("SMS")).thenReturn(Optional.of(smsChannel));
     when(refConsentTypeRepository.findByConsentCode("COMMUNICATION_SMS")).thenReturn(Optional.of(smsConsentType));
     when(refCommunicationPurposeRepository.findByPurposeCode("FOLLOWUP_REMINDER")).thenReturn(Optional.of(followupPurpose));

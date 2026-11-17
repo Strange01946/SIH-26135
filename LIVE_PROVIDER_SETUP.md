@@ -188,49 +188,56 @@ mvn spring-boot:run -f backend/pom.xml -Dspring-boot.run.arguments="--communicat
 
 ---
 
-## 6. Verification & Live Smoke-Testing
+## 6. Real Live Verification via Spring Boot CLI Runner
 
-Once the backend is started with live credentials:
+> [!IMPORTANT]
+> **Definitive Delivery Verification Mechanism**
+>
+> Ordinary Maven unit and integration tests run strictly in `MOCK` mode to ensure zero trial credit consumption and zero accidental network dispatches.
+> To prove genuine end-to-end outbound delivery to physical recipient devices, execute the opt-in **`LiveCommunicationSmokeTestCliRunner`** with `--communication.mode=LIVE`.
+>
+> Requirements:
+> 1. Set credentials in environment variables (never hardcoded or committed to git).
+> 2. Ensure target database catalog is strictly `SIH26135_TEST`.
+> 3. Ensure the target test trainee has legitimate, granted consents in `SIH26135_TEST` (`DATA_PROCESSING` + channel consent). Automatic consent granting has been eliminated.
+> 4. Specify the target trainee explicitly via `--communication.target-trainee-id=<id>`. Silent fallback to a default trainee is strictly disallowed.
+> 5. The runner strictly fails with an error if `--communication.mode=LIVE` is not supplied, preventing mock tests from masquerading as live delivery evidence.
 
-### A. Executing the Live Smoke-Test Programmatically or via REST
-You can invoke the smoke test via the `NotificationDispatcherService.executeLiveSmokeTest()` API:
+### 1. SMS Live Smoke Test (Windows PowerShell)
 
-```json
-POST /api/v1/communication/smoke-test
-Headers: Authorization: Bearer <ADMIN_JWT>
-{
-  "channel": "SMS",
-  "traineeId": 1,
-  "recipientOverride": "+919876543210",
-  "testPayload": "SIH-26135 Live Smoke Test Verification"
-}
+Ensure Twilio environment variables (`$env:TWILIO_ACCOUNT_SID`, `$env:TWILIO_AUTH_TOKEN`, `$env:TWILIO_SMS_FROM`) and safety override (`$env:SIH_LIVE_TEST_PHONE`) are set in your current PowerShell session, then run:
+
+```powershell
+mvn spring-boot:run -f backend/pom.xml `
+  "-Dspring-boot.run.arguments=--DB_NAME=SIH26135_TEST --DB_USERNAME=root --DB_PASSWORD=$env:SIH_TEST_DB_PASSWORD --communication.live-smoke-test.enabled=true --communication.mode=LIVE --communication.channel=SMS --communication.target-trainee-id=1005143 --communication.live-recipient-override-enabled=true"
 ```
 
-Or via WhatsApp:
-```json
-{
-  "channel": "WHATSAPP",
-  "traineeId": 1,
-  "recipientOverride": "+919876543210",
-  "testPayload": "SIH-26135 Live WhatsApp Smoke Test"
-}
+### 2. WhatsApp Live Smoke Test (Windows PowerShell)
+
+Ensure Twilio WhatsApp environment variables (`$env:TWILIO_ACCOUNT_SID`, `$env:TWILIO_AUTH_TOKEN`, `$env:TWILIO_WHATSAPP_FROM`) and recipient override (`$env:SIH_LIVE_TEST_WHATSAPP`) are set, your handset has joined the sandbox (`join <sandbox-code>` sent to `+1 415 523 8886`), then run:
+
+```powershell
+mvn spring-boot:run -f backend/pom.xml `
+  "-Dspring-boot.run.arguments=--DB_NAME=SIH26135_TEST --DB_USERNAME=root --DB_PASSWORD=$env:SIH_TEST_DB_PASSWORD --communication.live-smoke-test.enabled=true --communication.mode=LIVE --communication.channel=WHATSAPP --communication.target-trainee-id=1005143 --communication.live-recipient-override-enabled=true"
 ```
 
-Or via Email:
-```json
-{
-  "channel": "EMAIL",
-  "traineeId": 1,
-  "recipientOverride": "your-test-email@gmail.com",
-  "testPayload": "SIH-26135 Live Email Smoke Test"
-}
+### 3. Email Live Smoke Test (Windows PowerShell)
+
+Ensure SendGrid (`$env:SENDGRID_API_KEY`, `$env:SENDGRID_FROM_EMAIL`) OR Gmail SMTP (`$env:SMTP_HOST=smtp.gmail.com`, `$env:SMTP_PORT=587`, `$env:SMTP_USERNAME`, `$env:SMTP_APP_PASSWORD`, `$env:SMTP_FROM_EMAIL`) and recipient override (`$env:SIH_LIVE_TEST_EMAIL`) are set, then run:
+
+```powershell
+mvn spring-boot:run -f backend/pom.xml `
+  "-Dspring-boot.run.arguments=--DB_NAME=SIH26135_TEST --DB_USERNAME=root --DB_PASSWORD=$env:SIH_TEST_DB_PASSWORD --communication.live-smoke-test.enabled=true --communication.mode=LIVE --communication.channel=EMAIL --communication.target-trainee-id=1005143 --communication.live-recipient-override-enabled=true"
 ```
 
-### B. Inspecting MySQL Communication Logs
-Execute the following query to inspect the persisted delivery evidence:
+---
+
+## 7. Inspecting MySQL Delivery Evidence in SIH26135_TEST
+
+Execute the following query against the dedicated test catalog `SIH26135_TEST` to inspect the persisted delivery evidence:
 
 ```sql
-USE SIH26135;
+USE SIH26135_TEST;
 
 SELECT 
     l.communication_log_id,
@@ -251,13 +258,13 @@ LIMIT 5;
 ```
 
 ### Expected Output:
-- `channel_name`: `SMS` / `WhatsApp` / `Email`
-- `status_code`: `SENT`
-- `provider_name`: `TwilioSmsProvider` / `TwilioWhatsAppProvider` / `SmtpEmailProvider`
-- `provider_message_id`: Starts with `SM...` (Twilio SMS), `WA...` (Twilio WhatsApp), or `SMTP_...`
+- `channel_name`: `SMS` / `WHATSAPP` / `EMAIL`
+- `status_code`: `SENT` (or `QUEUED` / `ATTEMPTED` / `DELIVERED` depending on carrier response; `FAILED` if rejected)
+- `provider_name`: `TwilioSmsProvider` / `TwilioWhatsAppProvider` / `SmtpEmailProvider` / `SendGridEmailProvider`
+- `provider_message_id`: Starts with `SM...` (Twilio SMS), `WA...` (Twilio WhatsApp), or `SMTP_...` / `SG_...`
 - `sent_at`: Timestamp matching the dispatch instant
 
-### C. Physical Handset Evidence
-- Check your physical mobile handset for the incoming SMS from the Twilio number.
-- Check WhatsApp for the message from `Twilio Sandbox`.
-- Check your email inbox for the dispatch confirmation.
+### Handset Verification Evidence
+- **SMS**: Physical mobile handset receives the SMS from the Twilio number.
+- **WhatsApp**: Handset receives the WhatsApp message from `Twilio Sandbox`.
+- **Email**: Destination inbox receives the dispatch confirmation email.

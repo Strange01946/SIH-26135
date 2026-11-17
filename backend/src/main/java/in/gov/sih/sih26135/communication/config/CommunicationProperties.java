@@ -70,6 +70,10 @@ public class CommunicationProperties {
     return sendgrid;
   }
 
+  public SendGridConfig getSendGrid() {
+    return sendgrid;
+  }
+
   public void setSendgrid(SendGridConfig sendgrid) {
     this.sendgrid = sendgrid != null ? sendgrid : new SendGridConfig();
   }

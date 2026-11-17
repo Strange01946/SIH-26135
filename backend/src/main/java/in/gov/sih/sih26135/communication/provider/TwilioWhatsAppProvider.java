@@ -75,8 +75,13 @@ public class TwilioWhatsAppProvider implements WhatsAppCommunicationProvider {
     String formattedRecipient = formatWhatsAppAddress(recipientPhone);
     String targetAddress = formattedRecipient;
 
-    if (properties.isLiveRecipientOverrideEnabled() && config.getLiveTestWhatsapp() != null && !config.getLiveTestWhatsapp().isBlank()) {
-      targetAddress = formatWhatsAppAddress(config.getLiveTestWhatsapp());
+    if (properties.isLiveRecipientOverrideEnabled()) {
+      String overridePhone = config.getLiveTestWhatsapp();
+      if (overridePhone == null || overridePhone.isBlank()) {
+        log.error("[TwilioWhatsAppProvider] FATAL: Live recipient override is enabled, but required test WhatsApp number is missing (SIH_LIVE_TEST_WHATSAPP)");
+        throw new IllegalStateException("Live recipient override is enabled, but required override test WhatsApp number is missing or blank. Refusing to dispatch to real candidate contact.");
+      }
+      targetAddress = formatWhatsAppAddress(overridePhone);
       log.info("[TwilioWhatsAppProvider] Safe trial override: routing dispatch from {} to authorized test WhatsApp {}",
           CommunicationTriggerEvent.maskRecipient(formattedRecipient),
           CommunicationTriggerEvent.maskRecipient(targetAddress));
@@ -103,14 +108,15 @@ public class TwilioWhatsAppProvider implements WhatsAppCommunicationProvider {
 
       JsonNode jsonNode = OBJECT_MAPPER.readTree(responseBody);
       String sid = jsonNode.hasNonNull("sid") ? jsonNode.get("sid").asText() : null;
-      String status = jsonNode.hasNonNull("status") ? jsonNode.get("status").asText().toUpperCase() : "SENT";
+      String rawStatus = jsonNode.hasNonNull("status") ? jsonNode.get("status").asText() : "queued";
+      String mappedStatus = TwilioSmsProvider.mapTwilioStatus(rawStatus);
 
-      log.info("[TwilioWhatsAppProvider] Outbound WhatsApp message accepted by Twilio API: sid={}, status={}", sid, status);
+      log.info("[TwilioWhatsAppProvider] Outbound WhatsApp message accepted by Twilio API: sid={}, rawStatus={}, mappedStatus={}", sid, rawStatus, mappedStatus);
       return ProviderDeliveryResult.success(
           CommunicationChannel.WHATSAPP,
           getProviderName(),
           sid,
-          "SENT",
+          mappedStatus,
           sanitizeTwilioResponse(responseBody)
       );
 

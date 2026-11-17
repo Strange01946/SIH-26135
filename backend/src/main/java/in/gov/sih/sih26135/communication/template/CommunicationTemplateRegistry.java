@@ -111,32 +111,73 @@ public class CommunicationTemplateRegistry {
 
     Map<String, String> effectiveParams = new HashMap<>();
     if (parameters != null) {
+      // 1. Validate that provided parameters are strictly allowlisted for this template
+      for (String providedKey : parameters.keySet()) {
+        if (!def.allowedParameterKeys().contains(providedKey)) {
+          throw new BadRequestException(
+              "Unexpected parameter '" + providedKey + "' for template " + normalizedCode,
+              "UNEXPECTED_PARAMETER"
+          );
+        }
+      }
       effectiveParams.putAll(parameters);
     }
 
-    // Auto-populate traineeName if missing
-    if (!effectiveParams.containsKey("traineeName") && trainee != null) {
+    // 2. Auto-populate traineeName if supported and missing
+    if (def.allowedParameterKeys().contains("traineeName") && !effectiveParams.containsKey("traineeName") && trainee != null) {
       String fullName = (trainee.getFirstName() != null ? trainee.getFirstName() : "")
           + (trainee.getLastName() != null ? " " + trainee.getLastName() : "");
       effectiveParams.put("traineeName", fullName.isBlank() ? "Candidate" : fullName.trim());
     }
 
-    // Validate parameters against sensitive patterns
+    // 3. Enforce completion of all required template parameters
+    for (String requiredKey : def.allowedParameterKeys()) {
+      String val = effectiveParams.get(requiredKey);
+      if (val == null || val.isBlank()) {
+        throw new BadRequestException(
+            "Missing required parameter '" + requiredKey + "' for template " + normalizedCode,
+            "MISSING_TEMPLATE_PARAMETER"
+        );
+      }
+    }
+
+    // 4. Validate parameters against sensitive patterns (Aadhaar, PAN, Auth tokens)
     for (Map.Entry<String, String> entry : effectiveParams.entrySet()) {
       String val = entry.getValue();
       if (val != null && SENSITIVE_PARAM_PATTERN.matcher(val).find()) {
-        throw new BadRequestException("Template parameter '" + entry.getKey() + "' contains sensitive data (Aadhaar/PAN/Token)", "SENSITIVE_PARAMETER_REJECTED");
+        throw new BadRequestException(
+            "Template parameter '" + entry.getKey() + "' contains sensitive data (Aadhaar/PAN/Token)",
+            "SENSITIVE_PARAMETER_REJECTED"
+        );
       }
     }
 
     String bodyText = def.bodyTemplate();
     String subject = def.subject();
 
+    // 5. Replace placeholders
     for (Map.Entry<String, String> entry : effectiveParams.entrySet()) {
       String placeholder = "{" + entry.getKey() + "}";
       String val = entry.getValue() != null ? entry.getValue() : "";
       bodyText = bodyText.replace(placeholder, val);
       subject = subject.replace(placeholder, val);
+    }
+
+    // 6. Guarantee that no unresolved placeholders remain
+    Pattern unresolvedPattern = Pattern.compile("\\{[A-Za-z0-9_]+\\}");
+    Matcher bodyMatcher = unresolvedPattern.matcher(bodyText);
+    if (bodyMatcher.find()) {
+      throw new BadRequestException(
+          "Unresolved placeholder '" + bodyMatcher.group() + "' in rendered body for template " + normalizedCode,
+          "UNRESOLVED_PLACEHOLDER"
+      );
+    }
+    Matcher subjectMatcher = unresolvedPattern.matcher(subject);
+    if (subjectMatcher.find()) {
+      throw new BadRequestException(
+          "Unresolved placeholder '" + subjectMatcher.group() + "' in rendered subject for template " + normalizedCode,
+          "UNRESOLVED_PLACEHOLDER"
+      );
     }
 
     String bodyHtml = "<div style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333;\">"

@@ -2,7 +2,10 @@ package in.gov.sih.sih26135.communication.provider;
 
 import in.gov.sih.sih26135.communication.config.CommunicationProperties;
 import in.gov.sih.sih26135.communication.dto.ProviderDeliveryResult;
+import jakarta.annotation.PostConstruct;
 import java.util.Objects;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
@@ -14,6 +17,8 @@ import org.springframework.stereotype.Component;
 @Component
 @Primary
 public class DelegatingWhatsAppProvider implements WhatsAppCommunicationProvider {
+
+  private static final Logger log = LoggerFactory.getLogger(DelegatingWhatsAppProvider.class);
 
   private final CommunicationProperties properties;
   private final TwilioWhatsAppProvider twilioWhatsAppProvider;
@@ -27,6 +32,12 @@ public class DelegatingWhatsAppProvider implements WhatsAppCommunicationProvider
     this.properties = Objects.requireNonNull(properties, "CommunicationProperties is required");
     this.twilioWhatsAppProvider = Objects.requireNonNull(twilioWhatsAppProvider, "TwilioWhatsAppProvider is required");
     this.mockWhatsAppProvider = Objects.requireNonNull(mockWhatsAppProvider, "MockWhatsAppProvider is required");
+  }
+
+  @PostConstruct
+  public void init() {
+    log.info("[CommunicationEngine] Initialized WhatsAppProvider: mode={}, activeProvider={}, liveRecipientOverrideEnabled={}",
+        properties.getMode(), getProviderName(), properties.isLiveRecipientOverrideEnabled());
   }
 
   @Override

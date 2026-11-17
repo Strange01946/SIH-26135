@@ -19,6 +19,7 @@ import java.util.Comparator;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Authoritative implementation of {@link CommunicationConsentValidator}.
@@ -35,6 +36,7 @@ import org.springframework.stereotype.Component;
  * </ul>
  */
 @Component
+@Transactional(readOnly = true)
 public class CommunicationConsentValidatorImpl implements CommunicationConsentValidator {
 
   private final TraineeRepository traineeRepository;
@@ -77,11 +79,14 @@ public class CommunicationConsentValidatorImpl implements CommunicationConsentVa
       workflowSecurityScopeValidator.validateTraineeScope(traineeId);
     }
 
-    // 1. Resolve Channel Mandatory Consent Type
+    // 1. Mandatory Base Consent: DATA_PROCESSING (DPDP Act 2023 foundational requirement)
+    validateConsentRecord(traineeId, "DATA_PROCESSING");
+
+    // 2. Resolve Channel Mandatory Consent Type
     String requiredChannelConsentCode = resolveChannelConsentCode(channelCode.trim().toUpperCase());
     validateConsentRecord(traineeId, requiredChannelConsentCode);
 
-    // 2. Resolve Purpose Mandatory Consent Type (if purpose defines one)
+    // 3. Resolve Purpose Mandatory Consent Type (if purpose defines one)
     if (purposeCode != null && !purposeCode.isBlank()) {
       String requiredPurposeConsentCode = resolvePurposeConsentCode(purposeCode.trim().toUpperCase());
       if (requiredPurposeConsentCode != null) {

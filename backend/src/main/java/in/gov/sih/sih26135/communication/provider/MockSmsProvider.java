@@ -30,9 +30,27 @@ public class MockSmsProvider implements SmsCommunicationProvider {
   private boolean simulateFailure = false;
   private String failureErrorCode = "SIMULATED_SMS_ERROR";
   private String failureErrorMessage = "Simulated mock SMS delivery failure";
+  private String customStatusCode = null;
+  private Boolean customAccepted = null;
 
   @Override
   public ProviderDeliveryResult sendSms(String recipientPhone, String messageText, String templateCode) {
+    if (customStatusCode != null) {
+      boolean accepted = customAccepted != null ? customAccepted : true;
+      String sid = "SM_MOCK_" + UUID.randomUUID().toString().replace("-", "").substring(0, 24);
+      return new ProviderDeliveryResult(
+          CommunicationChannel.SMS,
+          getProviderName(),
+          sid,
+          customStatusCode,
+          accepted,
+          "{\"status\":\"" + customStatusCode + "\"}",
+          accepted ? null : failureErrorCode,
+          failureErrorMessage,
+          LocalDateTime.now()
+      );
+    }
+
     if (simulateFailure) {
       return ProviderDeliveryResult.failure(
           CommunicationChannel.SMS,
@@ -75,6 +93,8 @@ public class MockSmsProvider implements SmsCommunicationProvider {
   public void clear() {
     dispatchedMessages.clear();
     simulateFailure = false;
+    customStatusCode = null;
+    customAccepted = null;
   }
 
   public void setSimulateFailure(boolean simulateFailure) {
@@ -84,5 +104,11 @@ public class MockSmsProvider implements SmsCommunicationProvider {
   public void setFailureDetails(String errorCode, String errorMessage) {
     this.failureErrorCode = errorCode;
     this.failureErrorMessage = errorMessage;
+  }
+
+  public void setCustomResult(String customStatusCode, Boolean customAccepted, String failureErrorMessage) {
+    this.customStatusCode = customStatusCode;
+    this.customAccepted = customAccepted;
+    this.failureErrorMessage = failureErrorMessage;
   }
 }

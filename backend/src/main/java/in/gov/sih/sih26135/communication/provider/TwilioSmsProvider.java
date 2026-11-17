@@ -71,8 +71,13 @@ public class TwilioSmsProvider implements SmsCommunicationProvider {
     String formattedRecipient = formatE164(recipientPhone);
     String targetPhone = formattedRecipient;
 
-    if (properties.isLiveRecipientOverrideEnabled() && config.getLiveTestPhone() != null && !config.getLiveTestPhone().isBlank()) {
-      targetPhone = formatE164(config.getLiveTestPhone());
+    if (properties.isLiveRecipientOverrideEnabled()) {
+      String overridePhone = config.getLiveTestPhone();
+      if (overridePhone == null || overridePhone.isBlank()) {
+        log.error("[TwilioSmsProvider] FATAL: Live recipient override is enabled, but required test phone is missing (SIH_LIVE_TEST_PHONE)");
+        throw new IllegalStateException("Live recipient override is enabled, but required override test phone is missing or blank. Refusing to dispatch to real candidate contact.");
+      }
+      targetPhone = formatE164(overridePhone);
       log.info("[TwilioSmsProvider] Safe trial override: routing dispatch from {} to authorized test phone {}",
           CommunicationTriggerEvent.maskRecipient(formattedRecipient),
           CommunicationTriggerEvent.maskRecipient(targetPhone));
@@ -97,14 +102,15 @@ public class TwilioSmsProvider implements SmsCommunicationProvider {
 
       JsonNode jsonNode = OBJECT_MAPPER.readTree(responseBody);
       String sid = jsonNode.hasNonNull("sid") ? jsonNode.get("sid").asText() : null;
-      String status = jsonNode.hasNonNull("status") ? jsonNode.get("status").asText().toUpperCase() : "SENT";
+      String rawStatus = jsonNode.hasNonNull("status") ? jsonNode.get("status").asText() : "queued";
+      String mappedStatus = mapTwilioStatus(rawStatus);
 
-      log.info("[TwilioSmsProvider] Outbound SMS accepted by Twilio API: sid={}, status={}", sid, status);
+      log.info("[TwilioSmsProvider] Outbound SMS accepted by Twilio API: sid={}, rawStatus={}, mappedStatus={}", sid, rawStatus, mappedStatus);
       return ProviderDeliveryResult.success(
           CommunicationChannel.SMS,
           getProviderName(),
           sid,
-          "SENT",
+          mappedStatus,
           sanitizeTwilioResponse(responseBody)
       );
 
@@ -154,6 +160,20 @@ public class TwilioSmsProvider implements SmsCommunicationProvider {
   @Override
   public String getProviderName() {
     return "TwilioSmsProvider";
+  }
+
+  public static String mapTwilioStatus(String twilioStatus) {
+    if (twilioStatus == null) {
+      return "QUEUED";
+    }
+    return switch (twilioStatus.trim().toLowerCase()) {
+      case "queued", "accepted" -> "QUEUED";
+      case "sending" -> "ATTEMPTED";
+      case "sent" -> "SENT";
+      case "delivered" -> "DELIVERED";
+      case "failed", "undelivered" -> "FAILED";
+      default -> "QUEUED";
+    };
   }
 
   private String formatE164(String phone) {

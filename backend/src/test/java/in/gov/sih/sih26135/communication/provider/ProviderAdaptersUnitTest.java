@@ -248,4 +248,70 @@ class ProviderAdaptersUnitTest {
     )).isInstanceOf(BadRequestException.class)
       .hasMessageContaining("contains sensitive data (Aadhaar/PAN/Token)");
   }
+
+  @Test
+  @DisplayName("Template registry rejects unexpected parameters not in allowlisted template definition")
+  void testTemplateRegistryRejectsUnexpectedParameter() {
+    Trainee trainee = new Trainee();
+    trainee.setFirstName("Priya");
+
+    assertThatThrownBy(() -> templateRegistry.render(
+        "OPERATIONAL_ALERT",
+        Map.of("referenceId", "REF-1001", "unexpectedParam", "malicious_injection"),
+        trainee
+    )).isInstanceOf(BadRequestException.class)
+      .satisfies(ex -> {
+        BadRequestException bre = (BadRequestException) ex;
+        assertThat(bre.getErrorCode()).isEqualTo("UNEXPECTED_PARAMETER");
+        assertThat(bre.getMessage()).contains("Unexpected parameter 'unexpectedParam'");
+      });
+  }
+
+  @Test
+  @DisplayName("Template registry rejects missing required parameters")
+  void testTemplateRegistryRejectsMissingRequiredParameter() {
+    Trainee trainee = new Trainee();
+    trainee.setFirstName("Priya");
+
+    // TRAINEE_ENROLLMENT_CONFIRMATION requires batchCode, courseName, startDate
+    assertThatThrownBy(() -> templateRegistry.render(
+        "TRAINEE_ENROLLMENT_CONFIRMATION",
+        Map.of("batchCode", "BAT-01"), // Missing courseName and startDate
+        trainee
+    )).isInstanceOf(BadRequestException.class)
+      .satisfies(ex -> {
+        BadRequestException bre = (BadRequestException) ex;
+        assertThat(bre.getErrorCode()).isEqualTo("MISSING_TEMPLATE_PARAMETER");
+      });
+  }
+
+  @Test
+  @DisplayName("Twilio status mapping correctly translates Twilio statuses without claiming DELIVERED prematurely")
+  void testTwilioStatusMapping() {
+    assertThat(TwilioSmsProvider.mapTwilioStatus("queued")).isEqualTo("QUEUED");
+    assertThat(TwilioSmsProvider.mapTwilioStatus("accepted")).isEqualTo("QUEUED");
+    assertThat(TwilioSmsProvider.mapTwilioStatus("sending")).isEqualTo("ATTEMPTED");
+    assertThat(TwilioSmsProvider.mapTwilioStatus("sent")).isEqualTo("SENT");
+    assertThat(TwilioSmsProvider.mapTwilioStatus("delivered")).isEqualTo("DELIVERED");
+    assertThat(TwilioSmsProvider.mapTwilioStatus("undelivered")).isEqualTo("FAILED");
+    assertThat(TwilioSmsProvider.mapTwilioStatus("failed")).isEqualTo("FAILED");
+    assertThat(TwilioSmsProvider.mapTwilioStatus(null)).isEqualTo("QUEUED");
+  }
+
+  @Test
+  @DisplayName("Provider delivery result with status FAILED is correctly reflected")
+  void testProviderDeliveryResultWithStatusFailed() {
+    ProviderDeliveryResult result = ProviderDeliveryResult.failure(
+        CommunicationChannel.SMS,
+        "TwilioSmsProvider",
+        "SM123456",
+        "30008",
+        "Unknown destination error",
+        "{\"status\":\"failed\"}"
+    );
+
+    assertThat(result.accepted()).isFalse();
+    assertThat(result.statusCode()).isEqualTo("FAILED");
+    assertThat(result.providerMessageId()).isEqualTo("SM123456");
+  }
 }

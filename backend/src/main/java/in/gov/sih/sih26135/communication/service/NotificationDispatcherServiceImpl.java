@@ -14,7 +14,9 @@ import in.gov.sih.sih26135.communication.provider.EmailCommunicationProvider;
 import in.gov.sih.sih26135.communication.provider.SmsCommunicationProvider;
 import in.gov.sih.sih26135.communication.provider.WhatsAppCommunicationProvider;
 import in.gov.sih.sih26135.communication.template.CommunicationTemplateRegistry;
+import in.gov.sih.sih26135.entity.Certification;
 import in.gov.sih.sih26135.entity.CommunicationLog;
+import in.gov.sih.sih26135.entity.EmploymentVerificationRequest;
 import in.gov.sih.sih26135.entity.RefCommunicationChannel;
 import in.gov.sih.sih26135.entity.RefCommunicationDirection;
 import in.gov.sih.sih26135.entity.RefCommunicationPurpose;
@@ -23,10 +25,14 @@ import in.gov.sih.sih26135.entity.RefConsentStatus;
 import in.gov.sih.sih26135.entity.RefConsentType;
 import in.gov.sih.sih26135.entity.Trainee;
 import in.gov.sih.sih26135.entity.TraineeConsent;
+import in.gov.sih.sih26135.entity.TrainingBatch;
+import in.gov.sih.sih26135.entity.TrainingEnrollment;
 import in.gov.sih.sih26135.event.CommunicationTriggerEvent;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
+import in.gov.sih.sih26135.repository.CertificationRepository;
 import in.gov.sih.sih26135.repository.CommunicationLogRepository;
+import in.gov.sih.sih26135.repository.EmploymentVerificationRequestRepository;
 import in.gov.sih.sih26135.repository.RefCommunicationChannelRepository;
 import in.gov.sih.sih26135.repository.RefCommunicationDirectionRepository;
 import in.gov.sih.sih26135.repository.RefCommunicationPurposeRepository;
@@ -35,6 +41,8 @@ import in.gov.sih.sih26135.repository.RefConsentStatusRepository;
 import in.gov.sih.sih26135.repository.RefConsentTypeRepository;
 import in.gov.sih.sih26135.repository.TraineeConsentRepository;
 import in.gov.sih.sih26135.repository.TraineeRepository;
+import in.gov.sih.sih26135.repository.TrainingEnrollmentRepository;
+import in.gov.sih.sih26135.security.InternalAuthenticationToken;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -43,16 +51,20 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.TransactionDefinition;
-import org.springframework.transaction.support.TransactionTemplate;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Authoritative production implementation of {@link NotificationDispatcherService}.
@@ -90,6 +102,9 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
   private final WorkflowSecurityScopeValidator workflowSecurityScopeValidator;
   private final CommunicationProperties properties;
   private final PlatformTransactionManager transactionManager;
+  private final TrainingEnrollmentRepository trainingEnrollmentRepository;
+  private final CertificationRepository certificationRepository;
+  private final EmploymentVerificationRequestRepository employmentVerificationRequestRepository;
 
   @Autowired
   public NotificationDispatcherServiceImpl(
@@ -109,7 +124,10 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
       RefCommunicationStatusRepository refCommunicationStatusRepository,
       WorkflowSecurityScopeValidator workflowSecurityScopeValidator,
       CommunicationProperties properties,
-      PlatformTransactionManager transactionManager) {
+      PlatformTransactionManager transactionManager,
+      @Autowired(required = false) TrainingEnrollmentRepository trainingEnrollmentRepository,
+      @Autowired(required = false) CertificationRepository certificationRepository,
+      @Autowired(required = false) EmploymentVerificationRequestRepository employmentVerificationRequestRepository) {
     this.consentValidator = Objects.requireNonNull(consentValidator, "CommunicationConsentValidator is required");
     this.templateRegistry = Objects.requireNonNull(templateRegistry, "CommunicationTemplateRegistry is required");
     this.smsProvider = Objects.requireNonNull(smsProvider, "SmsCommunicationProvider is required");
@@ -127,10 +145,12 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
     this.workflowSecurityScopeValidator = workflowSecurityScopeValidator;
     this.properties = Objects.requireNonNull(properties, "CommunicationProperties is required");
     this.transactionManager = Objects.requireNonNull(transactionManager, "PlatformTransactionManager is required");
+    this.trainingEnrollmentRepository = trainingEnrollmentRepository;
+    this.certificationRepository = certificationRepository;
+    this.employmentVerificationRequestRepository = employmentVerificationRequestRepository;
   }
 
   @Override
-  @Transactional(propagation = Propagation.REQUIRED, noRollbackFor = CommunicationConsentException.class)
   public NotificationDispatchResponse dispatchNotification(CommunicationDispatchCommand command) {
     if (command == null) {
       throw new BadRequestException("Communication dispatch command cannot be null", "COMMAND_REQUIRED");
@@ -150,11 +170,14 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
       workflowSecurityScopeValidator.validateTraineeScope(command.traineeId());
     }
 
-    // 2. Resolve Candidate Record
+    // 2. Validate and enforce effective actor user ID (never trust unauthenticated caller-supplied user IDs)
+    Long effectiveInitiatedByUserId = resolveEffectiveInitiatedByUserId(command.initiatedByUserId());
+
+    // 3. Resolve Candidate Record (Read-Only)
     Trainee trainee = traineeRepository.findById(command.traineeId())
         .orElseThrow(() -> new ResourceNotFoundException("Trainee", "id"));
 
-    // 3. Resolve Real Unmasked Recipient
+    // 4. Resolve Real Unmasked Recipient
     String rawRecipient;
     CommunicationChannel channel = command.channel();
     switch (channel) {
@@ -187,14 +210,14 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
     try {
       consentValidator.validateCommunicationConsent(trainee.getId(), channelCode, purposeCode);
     } catch (CommunicationConsentException ex) {
-      // Record BLOCKED_NO_CONSENT in communication_logs before failing closed
-      recordBlockedConsentLog(trainee, channelCode, purposeCode, command.templateCode(), command.initiatedByUserId(), ex.getErrorCode());
+      // Record BLOCKED_NO_CONSENT in communication_logs in an isolated transaction before failing closed
+      recordBlockedConsentLog(trainee, channelCode, purposeCode, command.templateCode(), effectiveInitiatedByUserId, ex.getErrorCode());
       log.warn("[NotificationDispatcher] Outbound dispatch blocked by consent validator: traineeId={}, channel={}, code={}",
           trainee.getId(), channelCode, ex.getErrorCode());
       throw ex; // Re-throw to caller (HTTP 403)
     }
 
-    // 6. Concrete Provider Delivery
+    // 6. Concrete Provider Delivery (Executed OUTSIDE any open database transaction)
     ProviderDeliveryResult deliveryResult;
     try {
       deliveryResult = switch (channel) {
@@ -215,17 +238,18 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
       );
     }
 
-    // 7. Persist Communication Log Record
+    // 7. Persist Communication Log Record in an isolated transaction
     CommunicationLog logEntity = persistCommunicationLog(
         trainee,
         channelCode,
         purposeCode,
         command.templateCode(),
-        command.initiatedByUserId(),
+        effectiveInitiatedByUserId,
         deliveryResult
     );
 
     // 8. Return Sanitized Dispatch Response
+    boolean effectiveAccepted = deliveryResult.accepted() && !"FAILED".equalsIgnoreCase(logEntity.getCommunicationStatus().getStatusCode());
     return new NotificationDispatchResponse(
         logEntity.getId(),
         channelCode,
@@ -233,15 +257,14 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
         CommunicationTriggerEvent.maskRecipient(rawRecipient),
         deliveryResult.providerName(),
         deliveryResult.providerMessageId(),
-        deliveryResult.statusCode(),
-        deliveryResult.accepted(),
-        deliveryResult.accepted() ? "Notification accepted by communication provider" : "Notification rejected by provider: " + deliveryResult.errorMessage(),
+        logEntity.getCommunicationStatus().getStatusCode(),
+        effectiveAccepted,
+        effectiveAccepted ? "Notification accepted by communication provider" : "Notification rejected or failed by provider: " + (logEntity.getFailureReason() != null ? logEntity.getFailureReason() : deliveryResult.errorMessage()),
         deliveryResult.dispatchedAt()
     );
   }
 
   @Override
-  @Transactional(propagation = Propagation.REQUIRES_NEW, noRollbackFor = CommunicationConsentException.class)
   public NotificationDispatchResponse dispatchFromTriggerEvent(CommunicationTriggerEvent event) {
     if (event == null) {
       throw new BadRequestException("CommunicationTriggerEvent cannot be null", "EVENT_REQUIRED");
@@ -257,13 +280,153 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
       channel = CommunicationChannel.SMS;
     }
 
+    String refId = event.getCorrelationId() != null && !event.getCorrelationId().isBlank()
+        ? event.getCorrelationId()
+        : (event.getEventId() != null && !event.getEventId().isBlank()
+            ? event.getEventId()
+            : "EVT-" + event.entityId());
+
+    String rawTplCode = event.templateCode() != null && !event.templateCode().isBlank()
+        ? event.templateCode().trim().toUpperCase()
+        : "OPERATIONAL_ALERT";
+
+    Map<String, String> payloadAttrs = extractPayloadAttributes(event.payloadSummary());
+    Map<String, String> params = new HashMap<>();
+    String effectiveTplCode = rawTplCode;
+
+    switch (rawTplCode) {
+      case "OPERATIONAL_ALERT" -> {
+        params.put("referenceId", refId);
+      }
+      case "TWILIO_TRIAL_GENERIC" -> {
+        String msg = event.payloadSummary() != null && !event.payloadSummary().isBlank()
+            ? event.payloadSummary().trim()
+            : "Lifecycle notice for event " + event.getEventType() + " (Ref: " + refId + ")";
+        params.put("message", msg);
+      }
+      case "LIVE_SMOKE_TEST" -> {
+        params.put("providerName", event.channel() != null ? event.channel() : "System");
+        params.put("channel", channel.name());
+        params.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+      }
+      case "TRAINEE_ENROLLMENT_CONFIRMATION" -> {
+        String batchCode = payloadAttrs.get("batchCode");
+        String courseName = payloadAttrs.get("courseName");
+        String startDate = payloadAttrs.get("startDate");
+
+        if ((batchCode == null || courseName == null || startDate == null) && trainingEnrollmentRepository != null) {
+          try {
+            List<TrainingEnrollment> enrollments = trainingEnrollmentRepository.findByTraineeId(traineeId);
+            if (enrollments != null && !enrollments.isEmpty()) {
+              TrainingEnrollment latest = enrollments.get(enrollments.size() - 1);
+              if (batchCode == null && latest.getTrainingBatch() != null) {
+                batchCode = latest.getTrainingBatch().getBatchCode();
+              }
+              if (courseName == null && latest.getCourse() != null) {
+                courseName = latest.getCourse().getCourseName();
+              }
+              if (startDate == null) {
+                if (latest.getStartDate() != null) {
+                  startDate = latest.getStartDate().toString();
+                } else if (latest.getTrainingBatch() != null && latest.getTrainingBatch().getStartDate() != null) {
+                  startDate = latest.getTrainingBatch().getStartDate().toString();
+                }
+              }
+            }
+          } catch (Exception ex) {
+            log.warn("[NotificationDispatcher] Error resolving enrollment for traineeId={}: {}", traineeId, ex.getMessage());
+          }
+        }
+
+        if (batchCode != null && !batchCode.isBlank()
+            && courseName != null && !courseName.isBlank()
+            && startDate != null && !startDate.isBlank()) {
+          params.put("batchCode", batchCode.trim());
+          params.put("courseName", courseName.trim());
+          params.put("startDate", startDate.trim());
+        } else {
+          effectiveTplCode = fallbackGenericTemplate(event, refId, params);
+        }
+      }
+      case "ASSESSMENT_CERTIFICATION_NOTICE" -> {
+        String certNum = payloadAttrs.get("certificateNumber");
+        if (certNum == null && certificationRepository != null) {
+          try {
+            List<Certification> certs = certificationRepository.findByTraineeId(traineeId);
+            if (certs != null && !certs.isEmpty()) {
+              certNum = certs.get(certs.size() - 1).getCertificateNumber();
+            }
+          } catch (Exception ex) {
+            log.warn("[NotificationDispatcher] Error resolving certification for traineeId={}: {}", traineeId, ex.getMessage());
+          }
+        }
+        if (certNum != null && !certNum.isBlank()) {
+          params.put("certificateNumber", certNum.trim());
+        } else {
+          effectiveTplCode = fallbackGenericTemplate(event, refId, params);
+        }
+      }
+      case "PLACEMENT_OFFER_ALERT" -> {
+        String companyName = payloadAttrs.get("companyName");
+        String jobTitle = payloadAttrs.get("jobTitle");
+        if (companyName != null && !companyName.isBlank() && jobTitle != null && !jobTitle.isBlank()) {
+          params.put("companyName", companyName.trim());
+          params.put("jobTitle", jobTitle.trim());
+        } else {
+          effectiveTplCode = fallbackGenericTemplate(event, refId, params);
+        }
+      }
+      case "VERIFICATION_STATUS_NOTICE" -> {
+        String status = payloadAttrs.get("status");
+        String verificationId = payloadAttrs.get("verificationId");
+        if ((status == null || verificationId == null) && employmentVerificationRequestRepository != null) {
+          try {
+            List<EmploymentVerificationRequest> requests = employmentVerificationRequestRepository.findByTraineeId(traineeId);
+            if (requests != null && !requests.isEmpty()) {
+              EmploymentVerificationRequest latest = requests.get(requests.size() - 1);
+              if (status == null && latest.getEmploymentVerificationRequestStatus() != null) {
+                status = latest.getEmploymentVerificationRequestStatus().getStatusCode();
+              }
+              if (verificationId == null) {
+                verificationId = latest.getRequestNumber();
+              }
+            }
+          } catch (Exception ex) {
+            log.warn("[NotificationDispatcher] Error resolving verification request for traineeId={}: {}", traineeId, ex.getMessage());
+          }
+        }
+        if (status != null && !status.isBlank() && verificationId != null && !verificationId.isBlank()) {
+          params.put("status", status.trim());
+          params.put("verificationId", verificationId.trim());
+        } else {
+          effectiveTplCode = fallbackGenericTemplate(event, refId, params);
+        }
+      }
+      case "FOLLOWUP_REMINDER" -> {
+        String milestone = payloadAttrs.get("milestoneMonth");
+        if (milestone != null && !milestone.isBlank()) {
+          params.put("milestoneMonth", milestone.trim());
+        } else {
+          effectiveTplCode = fallbackGenericTemplate(event, refId, params);
+        }
+      }
+      default -> {
+        for (Map.Entry<String, String> entry : payloadAttrs.entrySet()) {
+          params.put(entry.getKey(), entry.getValue());
+        }
+        if (params.isEmpty()) {
+          params.put("referenceId", refId);
+        }
+      }
+    }
+
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
         traineeId,
         channel,
         CommunicationPurpose.OPERATIONAL,
-        event.templateCode(),
-        Map.of(),
-        event.actorUserId(),
+        effectiveTplCode,
+        params,
+        event.actorUserId() != null ? event.actorUserId() : 1L,
         null,
         null
     );
@@ -271,8 +434,47 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
     return dispatchNotification(command);
   }
 
+  private String fallbackGenericTemplate(CommunicationTriggerEvent event, String refId, Map<String, String> params) {
+    if (event.payloadSummary() != null && !event.payloadSummary().isBlank()) {
+      params.put("message", event.payloadSummary().trim());
+      return "TWILIO_TRIAL_GENERIC";
+    } else {
+      params.put("referenceId", refId);
+      return "OPERATIONAL_ALERT";
+    }
+  }
+
+  private Map<String, String> extractPayloadAttributes(String payloadSummary) {
+    Map<String, String> attributes = new HashMap<>();
+    if (payloadSummary == null || payloadSummary.isBlank()) {
+      return attributes;
+    }
+    String trimmed = payloadSummary.trim();
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      Matcher m = Pattern.compile("\"([A-Za-z0-9_]+)\"\\s*:\\s*\"([^\"]*)\"").matcher(trimmed);
+      while (m.find()) {
+        attributes.put(m.group(1), m.group(2).trim());
+      }
+      return attributes;
+    }
+    String[] lines = trimmed.split("[,;\\n\\r]+");
+    for (String part : lines) {
+      int sep = part.indexOf('=');
+      if (sep == -1) {
+        sep = part.indexOf(':');
+      }
+      if (sep > 0 && sep < part.length() - 1) {
+        String key = part.substring(0, sep).trim();
+        String val = part.substring(sep + 1).trim();
+        if (key.matches("[A-Za-z0-9_]+") && !val.isBlank()) {
+          attributes.put(key, val);
+        }
+      }
+    }
+    return attributes;
+  }
+
   @Override
-  @Transactional(propagation = Propagation.REQUIRED)
   public LiveSmokeTestResult executeLiveSmokeTest(LiveSmokeTestRequest request) {
     if (request == null) {
       throw new BadRequestException("Live smoke test request cannot be null", "REQUEST_REQUIRED");
@@ -282,22 +484,39 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
     }
 
     CommunicationChannel channel = request.channel();
-    Long targetTraineeId = request.targetTraineeId();
+    Long targetTraineeId = request.targetTraineeId() != null ? request.targetTraineeId() : request.traineeId();
 
     if (targetTraineeId == null) {
-      targetTraineeId = resolveOrCreateTestTrainee(channel, request.recipientOverride());
+      throw new BadRequestException("Target trainee ID is required for live smoke test", "TRAINEE_ID_REQUIRED");
     }
 
-    // Ensure candidate has valid consent for requested channel in test database
-    ensureActiveConsentForChannel(targetTraineeId, channel);
+    // When live recipient override is enabled for smoke tests, require explicit test recipient configuration
+    if (properties.isLiveRecipientOverrideEnabled()) {
+      String resolvedTestRecipient = resolveChannelTestRecipient(channel, request.recipientOverride());
+      if (resolvedTestRecipient == null || resolvedTestRecipient.isBlank()) {
+        log.error("[LiveSmokeTest] FATAL: Live recipient override is enabled, but required test recipient for channel {} is missing", channel);
+        throw new BadRequestException(
+            "Live recipient override is enabled for live smoke test, but no valid test recipient is configured for channel " + channel
+                + " (e.g. SIH_LIVE_TEST_PHONE, SIH_LIVE_TEST_WHATSAPP, SIH_LIVE_TEST_EMAIL)",
+            "RECIPIENT_OVERRIDE_REQUIRED"
+        );
+      }
+    }
+
+    // Explicit DPDP Act Consent Enactment: Automatic grant/regrant has been completely eliminated.
+    // The test trainee must legitimately have valid consent in the active database catalog.
+    // If consent is missing, revoked, or expired, dispatchNotification() fails closed with HTTP 403.
 
     Map<String, String> params = new HashMap<>();
-    params.put("providerName", channel.name() + "-Live");
+    String providerName = switch (channel) {
+      case SMS -> smsProvider.getProviderName();
+      case WHATSAPP -> whatsAppProvider.getProviderName();
+      case EMAIL -> emailProvider.getProviderName();
+      default -> "System";
+    };
+    params.put("providerName", providerName);
     params.put("channel", channel.name());
     params.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-    if (request.customMessage() != null && !request.customMessage().isBlank()) {
-      params.put("message", request.customMessage().trim());
-    }
 
     String templateCode = "LIVE_SMOKE_TEST";
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
@@ -313,8 +532,10 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
 
     NotificationDispatchResponse dispatchResponse = dispatchNotification(command);
 
+    String mode = properties.getMode().name();
     String proofSummary = String.format(
-        "Channel=%s | Provider=%s | MessageSID=%s | Status=%s | LogId=%d | MaskedRecipient=%s",
+        "Mode=%s | Channel=%s | Provider=%s | MessageSID=%s | Status=%s | LogId=%d | MaskedRecipient=%s",
+        mode,
         dispatchResponse.channel(),
         dispatchResponse.providerName(),
         dispatchResponse.providerMessageId(),
@@ -326,6 +547,7 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
     return new LiveSmokeTestResult(
         dispatchResponse.channel(),
         dispatchResponse.providerName(),
+        mode,
         dispatchResponse.recipientMasked(),
         dispatchResponse.providerMessageId(),
         dispatchResponse.status(),
@@ -336,7 +558,7 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
     );
   }
 
-  private CommunicationLog persistCommunicationLog(
+  protected CommunicationLog persistCommunicationLog(
       Trainee trainee,
       String channelCode,
       String purposeCode,
@@ -344,36 +566,79 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
       Long initiatedByUserId,
       ProviderDeliveryResult result) {
 
-    RefCommunicationChannel channel = refCommunicationChannelRepository.findByChannelCode(channelCode)
-        .orElseGet(() -> refCommunicationChannelRepository.findById(1L).orElseThrow());
+    TransactionTemplate tt = new TransactionTemplate(transactionManager);
+    tt.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    return tt.execute(txStatus -> {
+      RefCommunicationChannel channel = refCommunicationChannelRepository.findByChannelCode(channelCode)
+          .orElseGet(() -> refCommunicationChannelRepository.findById(1L).orElseThrow());
 
-    RefCommunicationDirection direction = refCommunicationDirectionRepository.findByDirectionCode("OUTBOUND")
-        .orElseGet(() -> refCommunicationDirectionRepository.findById(1L).orElseThrow());
+      RefCommunicationDirection direction = refCommunicationDirectionRepository.findByDirectionCode("OUTBOUND")
+          .orElseGet(() -> refCommunicationDirectionRepository.findById(1L).orElseThrow());
 
-    RefCommunicationPurpose purpose = refCommunicationPurposeRepository.findByPurposeCode(purposeCode)
-        .orElseGet(() -> refCommunicationPurposeRepository.findById(6L).orElseThrow());
+      RefCommunicationPurpose purpose = refCommunicationPurposeRepository.findByPurposeCode(purposeCode)
+          .orElseGet(() -> refCommunicationPurposeRepository.findByPurposeCode("OPERATIONAL")
+              .orElseGet(() -> refCommunicationPurposeRepository.findById(6L).orElseThrow()));
 
-    String statusCode = result.accepted() ? "SENT" : "FAILED";
-    RefCommunicationStatus status = refCommunicationStatusRepository.findByStatusCode(statusCode)
-        .orElseGet(() -> refCommunicationStatusRepository.findById(result.accepted() ? 3L : 7L).orElseThrow());
+      String rawStatus = result.statusCode();
+      String normalized = rawStatus != null ? rawStatus.trim().toUpperCase() : "";
 
-    RefConsentType consentType = channel.getRequiredConsentType();
+      String mappedStatus;
+      if ("FAILED".equals(normalized) || "UNDELIVERED".equals(normalized) || !result.accepted()) {
+        mappedStatus = "FAILED";
+      } else if ("DELIVERED".equals(normalized)) {
+        mappedStatus = "DELIVERED";
+      } else if ("SENT".equals(normalized)) {
+        mappedStatus = "SENT";
+      } else if ("ATTEMPTED".equals(normalized) || "SENDING".equals(normalized)) {
+        mappedStatus = "ATTEMPTED";
+      } else if ("QUEUED".equals(normalized) || "ACCEPTED".equals(normalized)) {
+        mappedStatus = "QUEUED";
+      } else {
+        mappedStatus = result.accepted() ? "QUEUED" : "FAILED";
+      }
 
-    LocalDateTime now = LocalDateTime.now();
-    CommunicationLog logEntity = new CommunicationLog(trainee, channel, direction, purpose, status);
-    logEntity.setConsentType(consentType);
-    logEntity.setConsentCheckedAt(now);
-    logEntity.setInitiatedByUserId(initiatedByUserId);
-    logEntity.setProviderMessageId(result.providerMessageId());
-    logEntity.setMessageTemplateCode(templateCode);
-    logEntity.setFailureReason(result.accepted() ? null : result.errorMessage());
-    logEntity.setQueuedAt(now);
-    logEntity.setSentAt(result.accepted() ? now : null);
-    logEntity.setFailedAt(result.accepted() ? null : now);
-    logEntity.setCreatedAt(now);
-    logEntity.setUpdatedAt(now);
+      RefCommunicationStatus status = refCommunicationStatusRepository.findByStatusCode(mappedStatus)
+          .orElseGet(() -> refCommunicationStatusRepository.findById(
+              "DELIVERED".equals(mappedStatus) ? 4L :
+              "SENT".equals(mappedStatus) ? 3L :
+              "ATTEMPTED".equals(mappedStatus) ? 2L :
+              "QUEUED".equals(mappedStatus) ? 1L : 7L
+          ).orElseThrow());
 
-    return communicationLogRepository.save(logEntity);
+      RefConsentType consentType = channel.getRequiredConsentType();
+
+      LocalDateTime now = LocalDateTime.now();
+      CommunicationLog logEntity = new CommunicationLog(trainee, channel, direction, purpose, status);
+      logEntity.setConsentType(consentType);
+      logEntity.setConsentCheckedAt(now);
+      logEntity.setInitiatedByUserId(initiatedByUserId);
+      logEntity.setProviderMessageId(result.providerMessageId());
+      logEntity.setMessageTemplateCode(templateCode);
+
+      boolean isFailed = "FAILED".equals(mappedStatus) || !result.accepted();
+      if (isFailed) {
+        logEntity.setFailedAt(now);
+        String reason = result.errorMessage();
+        if (reason == null || reason.isBlank()) {
+          reason = "Provider returned delivery failure status: " + (rawStatus != null && !rawStatus.isBlank() ? rawStatus : "FAILED");
+        }
+        logEntity.setFailureReason(reason);
+      } else {
+        logEntity.setFailureReason(null);
+      }
+
+      logEntity.setQueuedAt(now);
+      if ("SENT".equals(mappedStatus) || "DELIVERED".equals(mappedStatus)) {
+        logEntity.setSentAt(now);
+      }
+      if ("DELIVERED".equals(mappedStatus)) {
+        logEntity.setDeliveredAt(now);
+      }
+      logEntity.setCreatedAt(now);
+      logEntity.setUpdatedAt(now);
+
+      return communicationLogRepository.save(logEntity);
+    });
   }
 
   private CommunicationLog recordBlockedConsentLog(
@@ -414,60 +679,37 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
     });
   }
 
-  private Long resolveOrCreateTestTrainee(CommunicationChannel channel, String recipientOverride) {
-    // Look for existing test trainee with ID 9991L or first available active trainee
-    Optional<Trainee> existing = traineeRepository.findById(9991L);
-    if (existing.isPresent()) {
-      Trainee t = existing.get();
-      if (recipientOverride != null && !recipientOverride.isBlank()) {
-        if (channel == CommunicationChannel.EMAIL) {
-          t.setEmail(recipientOverride.trim());
-        } else {
-          t.setPhone(recipientOverride.trim());
-        }
-        traineeRepository.save(t);
+  private Long resolveEffectiveInitiatedByUserId(Long commandUserId) {
+    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    if (auth instanceof InternalAuthenticationToken) {
+      return commandUserId != null ? commandUserId : 1L;
+    }
+    if (workflowSecurityScopeValidator != null) {
+      Long authUserId = workflowSecurityScopeValidator.resolveAuthenticatedUserId();
+      if (authUserId == null) {
+        throw new BadRequestException("Authenticated user identity cannot be resolved for dispatch", "AUTHENTICATED_USER_UNRESOLVED");
       }
-      return t.getId();
+      if (commandUserId != null && !commandUserId.equals(authUserId) && !workflowSecurityScopeValidator.isAdministrativeCaller()) {
+        log.warn("Security violation: authenticated user {} attempted to claim initiatedByUserId={}", authUserId, commandUserId);
+        throw new BadRequestException("Caller cannot claim a different initiatedByUserId than the authenticated user", "ACTOR_USER_MISMATCH");
+      }
+      return authUserId;
     }
-
-    // Fall back to first available trainee
-    return traineeRepository.findAll().stream()
-        .findFirst()
-        .map(Trainee::getId)
-        .orElseThrow(() -> new BadRequestException("No test trainee available in database catalog", "NO_TEST_TRAINEE"));
+    return commandUserId != null ? commandUserId : 1L;
   }
 
-  private void ensureActiveConsentForChannel(Long traineeId, CommunicationChannel channel) {
-    ensureConsentGranted(traineeId, "DATA_PROCESSING");
-    ensureConsentGranted(traineeId, channel.getRequiredConsentCode());
-  }
-
-  private void ensureConsentGranted(Long traineeId, String consentCode) {
-    RefConsentType consentType = refConsentTypeRepository.findByConsentCode(consentCode)
-        .orElseThrow(() -> new ResourceNotFoundException("ConsentType", "consentCode"));
-
-    List<TraineeConsent> existingConsents = traineeConsentRepository.findByTraineeIdAndConsentTypeId(traineeId, consentType.getId());
-    RefConsentStatus grantedStatus = refConsentStatusRepository.findByStatusCode("GRANTED")
-        .orElseGet(() -> refConsentStatusRepository.findById(1L).orElseThrow());
-
-    if (existingConsents != null && !existingConsents.isEmpty()) {
-      TraineeConsent c = existingConsents.get(0);
-      c.setConsentStatus(grantedStatus);
-      c.setGrantedAt(LocalDateTime.now().minusDays(1));
-      c.setRevokedAt(null);
-      c.setExpiresAt(LocalDateTime.now().plusYears(1));
-      c.setUpdatedAt(LocalDateTime.now());
-      traineeConsentRepository.save(c);
-      return;
+  private String resolveChannelTestRecipient(CommunicationChannel channel, String requestOverride) {
+    if (requestOverride != null && !requestOverride.isBlank()) {
+      return requestOverride.trim();
     }
-
-    // Create granted consent
-    Trainee trainee = traineeRepository.findById(traineeId).orElseThrow();
-    TraineeConsent newConsent = new TraineeConsent(trainee, consentType, "Automated Notification", grantedStatus, "v1.0");
-    newConsent.setGrantedAt(LocalDateTime.now().minusDays(1));
-    newConsent.setExpiresAt(LocalDateTime.now().plusYears(1));
-    newConsent.setCreatedAt(LocalDateTime.now());
-    newConsent.setUpdatedAt(LocalDateTime.now());
-    traineeConsentRepository.save(newConsent);
+    return switch (channel) {
+      case SMS -> properties.getTwilio().getLiveTestPhone();
+      case WHATSAPP -> properties.getTwilio().getLiveTestWhatsapp();
+      case EMAIL -> {
+        String sg = properties.getSendGrid().getLiveTestEmail();
+        yield (sg != null && !sg.isBlank()) ? sg : properties.getSmtp().getLiveTestEmail();
+      }
+      default -> null;
+    };
   }
 }

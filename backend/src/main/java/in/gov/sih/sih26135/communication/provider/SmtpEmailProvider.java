@@ -85,8 +85,13 @@ public class SmtpEmailProvider implements EmailCommunicationProvider {
     }
 
     String targetEmail = recipientEmail.trim();
-    if (properties.isLiveRecipientOverrideEnabled() && config.getLiveTestEmail() != null && !config.getLiveTestEmail().isBlank()) {
-      targetEmail = config.getLiveTestEmail().trim();
+    if (properties.isLiveRecipientOverrideEnabled()) {
+      String overrideEmail = config.getLiveTestEmail();
+      if (overrideEmail == null || overrideEmail.isBlank()) {
+        log.error("[SmtpEmailProvider] FATAL: Live recipient override is enabled, but required test email is missing (SIH_LIVE_TEST_EMAIL)");
+        throw new IllegalStateException("Live recipient override is enabled, but required override test email is missing or blank. Refusing to dispatch to real candidate contact.");
+      }
+      targetEmail = overrideEmail.trim();
       log.info("[SmtpEmailProvider] Safe trial override: routing dispatch from {} to authorized test email {}",
           CommunicationTriggerEvent.maskRecipient(recipientEmail),
           CommunicationTriggerEvent.maskRecipient(targetEmail));

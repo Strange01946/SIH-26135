@@ -386,8 +386,11 @@ class NotificationDispatcherIntegrationTest {
   }
 
   @Test
-  @DisplayName("9. Live smoke-test workflow execution verifies delivery acceptance and proof summary")
+  @DisplayName("9. Live smoke-test workflow execution verifies delivery acceptance and proof summary with explicit consent")
   void testLiveSmokeTestWorkflow() {
+    grantConsent(1L); // DATA_PROCESSING
+    grantConsent(5L); // COMMUNICATION_SMS
+
     LiveSmokeTestRequest request = new LiveSmokeTestRequest(
         CommunicationChannel.SMS,
         FIXTURE_TRAINEE_ID,
@@ -401,9 +404,11 @@ class NotificationDispatcherIntegrationTest {
     assertThat(result.deliveryAccepted()).isTrue();
     assertThat(result.channel()).isEqualTo("SMS");
     assertThat(result.providerName()).isEqualTo("MockSmsProvider");
+    assertThat(result.providerMode()).isEqualTo("MOCK");
     assertThat(result.providerMessageId()).startsWith("SM_MOCK_");
     assertThat(result.deliveryProofSummary()).contains("Channel=SMS");
     assertThat(result.deliveryProofSummary()).contains("Status=SENT");
+    assertThat(result.deliveryProofSummary()).contains("Mode=MOCK");
     assertThat(result.communicationLogId()).isNotNull();
 
     // Verify log entry exists
@@ -413,5 +418,130 @@ class NotificationDispatcherIntegrationTest {
         result.communicationLogId()
     );
     assertThat(count).isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("10. Smoke test strictly fails closed without automatic consent grant when consent is missing")
+  void testSmokeTestFailsClosedWhenConsentMissing() {
+    // Neither DATA_PROCESSING nor SMS consent granted
+    LiveSmokeTestRequest request = new LiveSmokeTestRequest(
+        CommunicationChannel.SMS,
+        FIXTURE_TRAINEE_ID,
+        null,
+        "Should fail closed"
+    );
+
+    assertThatThrownBy(() -> notificationDispatcherService.executeLiveSmokeTest(request))
+        .isInstanceOf(CommunicationConsentException.class)
+        .satisfies(ex -> {
+          CommunicationConsentException cce = (CommunicationConsentException) ex;
+          assertThat(cce.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+          assertThat(cce.getErrorCode()).isEqualTo("CONSENT_NOT_GRANTED");
+        });
+
+    // Zero messages dispatched to provider
+    assertThat(mockSmsProvider.getDispatchedMessages()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("11. Provider status FAILED with accepted=true persists as FAILED with failedAt and failureReason")
+  void testProviderStatusFailedPersistsAsFailedEvenIfAcceptedTrue() {
+    grantConsent(1L); // DATA_PROCESSING
+    grantConsent(5L); // COMMUNICATION_SMS
+
+    // Simulate mock SMS provider returning statusCode="FAILED", but accepted=true
+    mockSmsProvider.setCustomResult("FAILED", true, "Carrier rejected destination network");
+
+    CommunicationDispatchCommand command = new CommunicationDispatchCommand(
+        FIXTURE_TRAINEE_ID,
+        CommunicationChannel.SMS,
+        CommunicationPurpose.OPERATIONAL,
+        "OPERATIONAL_ALERT",
+        Map.of("referenceId", "REF-FAIL-TEST"),
+        1L,
+        null,
+        null
+    );
+
+    NotificationDispatchResponse response = notificationDispatcherService.dispatchNotification(command);
+
+    assertThat(response).isNotNull();
+    assertThat(response.status()).isEqualTo("FAILED");
+    assertThat(response.accepted()).isFalse(); // returned dispatch acceptance semantics consistent!
+
+    // Verify persisted row in communication_logs has communication_status_id = 7 (FAILED)
+    List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+        "SELECT communication_status_id, failure_reason, failed_at, sent_at FROM communication_logs WHERE communication_log_id = ?",
+        response.communicationLogId()
+    );
+    assertThat(rows).hasSize(1);
+    Map<String, Object> row = rows.get(0);
+    assertThat(((Number) row.get("communication_status_id")).longValue()).isEqualTo(7L);
+    assertThat((String) row.get("failure_reason")).contains("Carrier rejected destination network");
+    assertThat(row.get("failed_at")).isNotNull();
+    assertThat(row.get("sent_at")).isNull();
+  }
+
+  @Test
+  @DisplayName("12. Trigger event dispatch with verified payload data renders genuine template attributes")
+  void testDispatchFromTriggerEventWithVerifiedPayloadData() {
+    grantConsent(1L); // DATA_PROCESSING
+    grantConsent(5L); // COMMUNICATION_SMS
+
+    CommunicationTriggerEvent event = CommunicationTriggerEvent.of(
+        "TRAINING_ENROLLMENT",
+        FIXTURE_TRAINEE_ID,
+        1L,
+        "SMS",
+        "+919800009983",
+        "TRAINEE_ENROLLMENT_CONFIRMATION",
+        null,
+        "NORMAL",
+        "batchCode=BAT-CYBER-2026, courseName=Cybersecurity Analyst, startDate=2026-12-15"
+    );
+
+    NotificationDispatchResponse response = notificationDispatcherService.dispatchFromTriggerEvent(event);
+
+    assertThat(response).isNotNull();
+    assertThat(response.accepted()).isTrue();
+    assertThat(response.status()).isEqualTo("SENT");
+
+    MockSmsProvider.DispatchedSms msg = mockSmsProvider.getLastMessage();
+    assertThat(msg).isNotNull();
+    assertThat(msg.messageText()).contains("BAT-CYBER-2026");
+    assertThat(msg.messageText()).contains("Cybersecurity Analyst");
+    assertThat(msg.messageText()).contains("2026-12-15");
+    assertThat(msg.messageText()).doesNotContain("Skills Training");
+  }
+
+  @Test
+  @DisplayName("13. Trigger event with missing lifecycle data safely falls back to generic template without fabricating facts")
+  void testDispatchFromTriggerEventWithMissingDataFallsBackToGenericWithoutFabricatedData() {
+    grantConsent(1L); // DATA_PROCESSING
+    grantConsent(5L); // COMMUNICATION_SMS
+
+    CommunicationTriggerEvent event = CommunicationTriggerEvent.of(
+        "PLACEMENT_OFFER",
+        FIXTURE_TRAINEE_ID,
+        1L,
+        "SMS",
+        "+919800009983",
+        "PLACEMENT_OFFER_ALERT",
+        null,
+        "NORMAL",
+        "Candidate lifecycle update notice"
+    );
+
+    NotificationDispatchResponse response = notificationDispatcherService.dispatchFromTriggerEvent(event);
+
+    assertThat(response).isNotNull();
+    assertThat(response.accepted()).isTrue();
+
+    MockSmsProvider.DispatchedSms msg = mockSmsProvider.getLastMessage();
+    assertThat(msg).isNotNull();
+    // Must NOT contain fabricated business data
+    assertThat(msg.messageText()).doesNotContain("Industry Partner");
+    assertThat(msg.messageText()).doesNotContain("Technical Specialist");
+    assertThat(msg.messageText()).contains("Candidate lifecycle update notice");
   }
 }
