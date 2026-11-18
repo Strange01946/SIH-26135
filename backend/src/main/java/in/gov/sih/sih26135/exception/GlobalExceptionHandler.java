@@ -21,7 +21,11 @@ import org.springframework.validation.method.ParameterValidationResult;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.QueryTimeoutException;
+import org.springframework.jdbc.CannotGetJdbcConnectionException;
+import org.springframework.transaction.CannotCreateTransactionException;
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
@@ -659,7 +663,11 @@ public class GlobalExceptionHandler {
       "Data quality rule not found",
       "Invalid data quality issue state transition",
       "Import batch is in a terminal state and cannot be modified",
-      "Requested import exceeds maximum allowed row limit"
+      "Requested import exceeds maximum allowed row limit",
+
+      // 8. Chaos & Resilience Messages
+      "Database service is temporarily unavailable. Please retry shortly.",
+      "Malformed or unreadable input stream"
   )));
 
   private String getSafeMessageForErrorCode(String errorCode, HttpStatus status) {
@@ -717,6 +725,7 @@ public class GlobalExceptionHandler {
       case "UNSUPPORTED_MEDIA_TYPE" -> "Content type is not supported";
       case "NOT_ACCEPTABLE" -> "Requested media type is not acceptable";
       case "DATABASE_ERROR" -> "An unexpected database error occurred. Please try again later.";
+      case "DATABASE_UNAVAILABLE" -> "Database service is temporarily unavailable. Please retry shortly.";
       case "INTERNAL_SERVER_ERROR" -> "An unexpected error occurred. Please try again later.";
       case "EXPORT_RATE_LIMIT_EXCEEDED" -> "Export rate limit exceeded. Please retry later.";
       case "RATE_LIMIT_EXCEEDED" -> "Notification rate limit exceeded. Please retry later.";
@@ -735,6 +744,7 @@ public class GlobalExceptionHandler {
       case "UNSUPPORTED_IMPORT_ENTITY_TYPE" -> "Unsupported import entityType; allowed values: Trainee, PlacementRecord";
       case "FILE_SIZE_LIMIT_EXCEEDED" -> "Uploaded file exceeds maximum allowed size limit";
       case "MISSING_FILE_PART" -> "Required multipart file part is missing";
+      case "MALFORMED_INPUT" -> "Malformed or unreadable input stream";
       case "MALFORMED_MULTIPART_REQUEST" -> "Malformed or unreadable multipart upload request";
       case "IMPORT_BATCH_ALREADY_RUNNING" -> "Import batch is already running";
       case "IMPORT_BATCH_INVALID_STATE" -> "Import batch is not in an executable state";
@@ -1725,12 +1735,12 @@ public class GlobalExceptionHandler {
       HttpServletRequest request) {
     String uri = sanitizeUri(request);
     log.warn("Malformed multipart request on {}: status={}, code={}, exception={}",
-        uri, HttpStatus.BAD_REQUEST.value(), "MALFORMED_MULTIPART_REQUEST", ex.getClass().getSimpleName());
+        uri, HttpStatus.BAD_REQUEST.value(), "MALFORMED_INPUT", ex.getClass().getSimpleName());
     ErrorResponse errorResponse = new ErrorResponse(
         HttpStatus.BAD_REQUEST.value(),
         HttpStatus.BAD_REQUEST.getReasonPhrase(),
-        "MALFORMED_MULTIPART_REQUEST",
-        "Malformed or unreadable multipart upload request",
+        "MALFORMED_INPUT",
+        "Malformed or unreadable input stream",
         uri
     );
     return buildSanitizedResponse(errorResponse, HttpStatus.BAD_REQUEST);
@@ -2277,6 +2287,28 @@ public class GlobalExceptionHandler {
         uri
     );
     return buildSanitizedResponse(errorResponse, HttpStatus.CONFLICT);
+  }
+
+  @ExceptionHandler({
+      CannotGetJdbcConnectionException.class,
+      CannotCreateTransactionException.class,
+      DataAccessResourceFailureException.class,
+      QueryTimeoutException.class
+  })
+  public ResponseEntity<ErrorResponse> handleDatabaseUnavailable(
+      Exception ex,
+      HttpServletRequest request) {
+    String uri = sanitizeUri(request);
+    log.error("Database unavailable on {}: status={}, code={}, exception={}",
+        uri, HttpStatus.SERVICE_UNAVAILABLE.value(), "DATABASE_UNAVAILABLE", ex.getClass().getSimpleName());
+    ErrorResponse errorResponse = new ErrorResponse(
+        HttpStatus.SERVICE_UNAVAILABLE.value(),
+        HttpStatus.SERVICE_UNAVAILABLE.getReasonPhrase(),
+        "DATABASE_UNAVAILABLE",
+        "Database service is temporarily unavailable. Please retry shortly.",
+        uri
+    );
+    return buildSanitizedResponse(errorResponse, HttpStatus.SERVICE_UNAVAILABLE);
   }
 
   @ExceptionHandler(Exception.class)
