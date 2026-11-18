@@ -1,12 +1,16 @@
 package in.gov.sih.sih26135.communication.webhook;
 
+import in.gov.sih.sih26135.MysqlConnectionTest;
 import in.gov.sih.sih26135.communication.config.CommunicationProperties;
 import in.gov.sih.sih26135.communication.config.CommunicationProperties.ProviderMode;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.Signature;
+import java.sql.Connection;
 import java.util.Base64;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -40,11 +44,29 @@ class CommunicationWebhookTest {
   @Autowired
   private CommunicationProperties properties;
 
+  private final List<Long> trackedLogIds = new CopyOnWriteArrayList<>();
+
   @BeforeEach
+  void setUp() throws Exception {
+    try (Connection conn = jdbcTemplate.getDataSource().getConnection()) {
+      MysqlConnectionTest.assertDedicatedTestCatalog(conn.getCatalog());
+      assertThat(conn.getCatalog()).isEqualTo("SIH26135_TEST");
+    }
+    properties.setAllowTestWebhookSignatures(true);
+  }
+
   @AfterEach
   void cleanTestLogs() {
     properties.setAllowTestWebhookSignatures(true);
-    jdbcTemplate.update("DELETE FROM communication_logs WHERE provider_message_id LIKE '" + MSG_PREFIX + "%'");
+    try {
+      for (Long logId : trackedLogIds) {
+        if (logId != null) {
+          jdbcTemplate.update("DELETE FROM communication_logs WHERE communication_log_id = ?", logId);
+        }
+      }
+    } finally {
+      trackedLogIds.clear();
+    }
   }
 
   private Long insertTestCommLog(String providerMessageId, long statusId) {
@@ -63,11 +85,13 @@ class CommunicationWebhookTest {
         statusId,
         providerMessageId
     );
-    return jdbcTemplate.queryForObject(
+    Long logId = jdbcTemplate.queryForObject(
         "SELECT communication_log_id FROM communication_logs WHERE provider_message_id = ?",
         Long.class,
         providerMessageId
     );
+    trackedLogIds.add(logId);
+    return logId;
   }
 
   @Test
@@ -628,6 +652,63 @@ class CommunicationWebhookTest {
           .andExpect(status().isUnauthorized());
     } finally {
       properties.setMode(originalMode);
+    }
+  }
+
+  @Test
+  @DisplayName("23. Test Isolation: Unrelated pre-existing communication logs survive test setup and teardown")
+  void testUnrelatedRecordsSurviveSetupAndTeardown() throws Exception {
+    String unrelatedMsgId = "UNRELATED-PREEXISTING-WH-99999";
+    // Directly insert an unrelated record with fixed distinct message ID
+    jdbcTemplate.update(
+        "INSERT INTO communication_logs ("
+            + "trainee_id, communication_channel_id, communication_direction_id, "
+            + "communication_purpose_id, communication_status_id, provider_message_id, "
+            + "message_template_code, sent_at, created_at, updated_at) "
+            + "VALUES (?, 1, 1, 6, 3, ?, 'TPL-ENROLL-001', NOW(), NOW(), NOW())",
+        AUTHORITATIVE_TEST_TRAINEE_ID,
+        unrelatedMsgId
+    );
+    Long unrelatedLogId = jdbcTemplate.queryForObject(
+        "SELECT communication_log_id FROM communication_logs WHERE provider_message_id = ?",
+        Long.class,
+        unrelatedMsgId
+    );
+
+    try {
+      // Simulate normal test activity which records its own log
+      String testMsgId = MSG_PREFIX + "ISOLATION-TEST-23";
+      Long testLogId = insertTestCommLog(testMsgId, 3L);
+
+      // Perform a webhook call on the test log
+      mockMvc.perform(post("/api/v1/communication/webhooks/twilio")
+              .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+              .header(TwilioWebhookSignatureValidator.HEADER_TWILIO_SIGNATURE, TwilioWebhookSignatureValidator.TEST_TWILIO_SIGNATURE)
+              .param("MessageSid", testMsgId)
+              .param("MessageStatus", "delivered"))
+          .andExpect(status().isOk());
+
+      // Trigger cleanup logic
+      cleanTestLogs();
+
+      // Assert test log was deleted
+      Integer testLogCount = jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM communication_logs WHERE communication_log_id = ?",
+          Integer.class,
+          testLogId
+      );
+      assertThat(testLogCount).isEqualTo(0);
+
+      // Assert unrelated log survived untouched
+      Integer unrelatedCount = jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM communication_logs WHERE communication_log_id = ?",
+          Integer.class,
+          unrelatedLogId
+      );
+      assertThat(unrelatedCount).isEqualTo(1);
+    } finally {
+      // Clean up the explicitly inserted unrelated fixture by exact PK
+      jdbcTemplate.update("DELETE FROM communication_logs WHERE communication_log_id = ?", unrelatedLogId);
     }
   }
 }

@@ -32,9 +32,14 @@ public class MockSmsProvider implements SmsCommunicationProvider {
   private String failureErrorMessage = "Simulated mock SMS delivery failure";
   private String customStatusCode = null;
   private Boolean customAccepted = null;
+  private RuntimeException simulateException = null;
 
   @Override
   public ProviderDeliveryResult sendSms(String recipientPhone, String messageText, String templateCode) {
+    if (simulateException != null) {
+      throw simulateException;
+    }
+
     if (customStatusCode != null) {
       boolean accepted = customAccepted != null ? customAccepted : true;
       String sid = "SM_MOCK_" + UUID.randomUUID().toString().replace("-", "").substring(0, 24);
@@ -95,6 +100,11 @@ public class MockSmsProvider implements SmsCommunicationProvider {
     simulateFailure = false;
     customStatusCode = null;
     customAccepted = null;
+    simulateException = null;
+  }
+
+  public void setSimulateException(RuntimeException simulateException) {
+    this.simulateException = simulateException;
   }
 
   public void setSimulateFailure(boolean simulateFailure) {

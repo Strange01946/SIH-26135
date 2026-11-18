@@ -355,7 +355,7 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
         });
       } catch (CommunicationConsentException ex) {
         log.warn("[DispatchQueue] DPDP consent revoked or missing for queued job {}: {}", jobId, ex.getErrorCode());
-        boolean marked = markJobDeadLetter(jobId, currentAttemptNumber, "CONSENT_REVOKED", ex.getErrorCode(), ex.getMessage(), workerLeaseVersion);
+        boolean marked = markJobDeadLetter(jobId, currentAttemptNumber, null, "CONSENT_REVOKED", ex.getErrorCode(), ex.getMessage(), workerLeaseVersion);
         if (marked) {
           updateAttempt(attemptId, "FAILED", null, null, ex.getErrorCode(), ex.getMessage());
         } else {
@@ -394,7 +394,8 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
       // Provider rejected or failed dispatch
       String errCode = response != null && response.errorCode() != null ? response.errorCode() : "PROVIDER_DELIVERY_FAILED";
       String errMsg = response != null && response.errorExplanation() != null ? response.errorExplanation() : "Provider rejected message dispatch";
-      handleProviderFailure(jobId, currentAttemptNumber, job.maxAttempts(), attemptId, response != null ? response.providerName() : null, errCode, errMsg, workerLeaseVersion);
+      Long commLogId = response != null ? response.communicationLogId() : null;
+      handleProviderFailure(jobId, currentAttemptNumber, job.maxAttempts(), attemptId, response != null ? response.providerName() : null, commLogId, errCode, errMsg, workerLeaseVersion);
       return response;
     } finally {
       if (renewalTask != null) {
@@ -421,15 +422,16 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
     return true;
   }
 
-  private boolean markJobDeadLetter(Long jobId, int attemptCount, String reason, String errorCode, String errorMessage, int leaseVersion) {
+  private boolean markJobDeadLetter(Long jobId, int attemptCount, Long communicationLogId, String reason, String errorCode, String errorMessage, int leaseVersion) {
     String truncatedMessage = errorMessage != null && errorMessage.length() > 490 ? errorMessage.substring(0, 490) : errorMessage;
     int updated = jdbcTemplate.update(
         "UPDATE communication_dispatch_jobs SET "
-            + "job_status = ?, attempt_count = ?, dead_letter_reason = ?, dead_lettered_at = NOW(), "
+            + "job_status = ?, attempt_count = ?, communication_log_id = COALESCE(?, communication_log_id), dead_letter_reason = ?, dead_lettered_at = NOW(), "
             + "last_error_code = ?, last_error_message = ?, locked_by = NULL, locked_at = NULL, updated_at = NOW() "
             + "WHERE job_id = ? AND lease_version = ?",
         STATUS_DEAD_LETTER,
         attemptCount,
+        communicationLogId,
         reason,
         errorCode,
         truncatedMessage,
@@ -443,15 +445,16 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
     return true;
   }
 
-  private boolean scheduleJobRetry(Long jobId, int attemptCount, int delaySeconds, String errorCode, String errorMessage, int leaseVersion) {
+  private boolean scheduleJobRetry(Long jobId, int attemptCount, Long communicationLogId, int delaySeconds, String errorCode, String errorMessage, int leaseVersion) {
     String truncatedMessage = errorMessage != null && errorMessage.length() > 490 ? errorMessage.substring(0, 490) : errorMessage;
     int updated = jdbcTemplate.update(
         "UPDATE communication_dispatch_jobs SET "
-            + "job_status = ?, attempt_count = ?, scheduled_at = NOW() + INTERVAL ? SECOND, "
+            + "job_status = ?, attempt_count = ?, communication_log_id = COALESCE(?, communication_log_id), scheduled_at = NOW() + INTERVAL ? SECOND, "
             + "last_error_code = ?, last_error_message = ?, locked_by = NULL, locked_at = NULL, updated_at = NOW() "
             + "WHERE job_id = ? AND lease_version = ?",
         STATUS_PENDING,
         attemptCount,
+        communicationLogId,
         delaySeconds,
         errorCode,
         truncatedMessage,
@@ -468,7 +471,7 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
   private void handleRateLimitRetry(Long jobId, int currentAttempt, int maxAttempts, Long attemptId, CommunicationRateLimitException rateEx, int leaseVersion) {
     if (currentAttempt < maxAttempts) {
       long delay = rateEx.getRetryAfterSeconds() > 0 ? rateEx.getRetryAfterSeconds() : 30L;
-      boolean scheduled = scheduleJobRetry(jobId, currentAttempt, (int) delay, rateEx.getErrorCode(), rateEx.getMessage(), leaseVersion);
+      boolean scheduled = scheduleJobRetry(jobId, currentAttempt, null, (int) delay, rateEx.getErrorCode(), rateEx.getMessage(), leaseVersion);
       if (scheduled) {
         updateAttempt(attemptId, "RATE_LIMITED_RETRY_SCHEDULED", null, null, rateEx.getErrorCode(), rateEx.getMessage());
         log.info("[DispatchQueue] Scheduled retry for rate-limited job {} in {} seconds", jobId, delay);
@@ -476,7 +479,7 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
         updateAttempt(attemptId, "SUPERSEDED", null, null, "WORKER_LEASE_SUPERSEDED", "Worker lease was superseded during rate-limit retry scheduling.");
       }
     } else {
-      boolean marked = markJobDeadLetter(jobId, currentAttempt, "RATE_LIMIT_EXCEEDED_EXHAUSTED", rateEx.getErrorCode(), rateEx.getMessage(), leaseVersion);
+      boolean marked = markJobDeadLetter(jobId, currentAttempt, null, "RATE_LIMIT_EXCEEDED_EXHAUSTED", rateEx.getErrorCode(), rateEx.getMessage(), leaseVersion);
       if (marked) {
         updateAttempt(attemptId, STATUS_DEAD_LETTER, null, null, rateEx.getErrorCode(), rateEx.getMessage());
         log.warn("[DispatchQueue] Rate-limited job {} exhausted all {} attempts. Moved to DEAD_LETTER", jobId, maxAttempts);
@@ -491,12 +494,12 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
     String errorMsg = ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName();
 
     // Ambiguous timeout check: do NOT auto-retry to prevent blind duplicate sends
-    if (isAmbiguousTimeout(ex, errorCode)) {
+    if (isAmbiguousTimeout(ex, errorCode, errorMsg)) {
       log.warn("[DispatchQueue] Ambiguous provider timeout on job {}: {}. Moving to DEAD_LETTER to prevent blind duplicate dispatch", jobId, errorCode);
-      boolean marked = markJobDeadLetter(jobId, currentAttempt, "AMBIGUOUS_PROVIDER_TIMEOUT", "AMBIGUOUS_PROVIDER_TIMEOUT",
+      boolean marked = markJobDeadLetter(jobId, currentAttempt, null, "AMBIGUOUS_PROVIDER_TIMEOUT", "AMBIGUOUS_PROVIDER_TIMEOUT",
           "Provider request timed out; delivery status is ambiguous. Manual verification required before replay to prevent duplicate external dispatch", leaseVersion);
       if (marked) {
-        updateAttempt(attemptId, STATUS_DEAD_LETTER, null, null, "AMBIGUOUS_PROVIDER_TIMEOUT", errorMsg);
+        updateAttempt(attemptId, "AMBIGUOUS_TIMEOUT", null, null, "AMBIGUOUS_PROVIDER_TIMEOUT", errorMsg);
       } else {
         updateAttempt(attemptId, "SUPERSEDED", null, null, "WORKER_LEASE_SUPERSEDED", "Worker lease was superseded during ambiguous timeout handling.");
       }
@@ -505,7 +508,7 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
 
     if (isPermanentFailure(errorCode) || ex instanceof BadRequestException || ex instanceof IllegalArgumentException) {
       log.warn("[DispatchQueue] Permanent failure on job {}: {}. Transitioning to DEAD_LETTER", jobId, errorCode);
-      boolean marked = markJobDeadLetter(jobId, currentAttempt, errorCode, errorCode, errorMsg, leaseVersion);
+      boolean marked = markJobDeadLetter(jobId, currentAttempt, null, errorCode, errorCode, errorMsg, leaseVersion);
       if (marked) {
         updateAttempt(attemptId, STATUS_DEAD_LETTER, null, null, errorCode, errorMsg);
       } else {
@@ -516,7 +519,7 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
 
     if (currentAttempt < maxAttempts) {
       int backoff = calculateExponentialBackoffWithJitter(currentAttempt);
-      boolean scheduled = scheduleJobRetry(jobId, currentAttempt, backoff, errorCode, errorMsg, leaseVersion);
+      boolean scheduled = scheduleJobRetry(jobId, currentAttempt, null, backoff, errorCode, errorMsg, leaseVersion);
       if (scheduled) {
         updateAttempt(attemptId, "FAILED_RETRY_SCHEDULED", null, null, errorCode, errorMsg);
         log.info("[DispatchQueue] Transient exception on job {}: {}. Scheduled retry #{} in {}s",
@@ -525,7 +528,7 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
         updateAttempt(attemptId, "SUPERSEDED", null, null, "WORKER_LEASE_SUPERSEDED", "Worker lease was superseded during retry scheduling.");
       }
     } else {
-      boolean marked = markJobDeadLetter(jobId, currentAttempt, "MAX_RETRIES_EXCEEDED", errorCode, errorMsg, leaseVersion);
+      boolean marked = markJobDeadLetter(jobId, currentAttempt, null, "MAX_RETRIES_EXCEEDED", errorCode, errorMsg, leaseVersion);
       if (marked) {
         updateAttempt(attemptId, STATUS_DEAD_LETTER, null, null, errorCode, errorMsg);
         log.warn("[DispatchQueue] Job {} exhausted max retries ({}). Moved to DEAD_LETTER: {}", jobId, maxAttempts, errorCode);
@@ -535,12 +538,12 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
     }
   }
 
-  private void handleProviderFailure(Long jobId, int currentAttempt, int maxAttempts, Long attemptId, String providerName, String errorCode, String errorMessage, int leaseVersion) {
-    if (isAmbiguousTimeout(null, errorCode)) {
+  private void handleProviderFailure(Long jobId, int currentAttempt, int maxAttempts, Long attemptId, String providerName, Long communicationLogId, String errorCode, String errorMessage, int leaseVersion) {
+    if (isAmbiguousTimeout(null, errorCode, errorMessage)) {
       log.warn("[DispatchQueue] Ambiguous provider timeout reported for job {}: {}. Moving to DEAD_LETTER to prevent duplicate dispatch", jobId, errorCode);
-      boolean marked = markJobDeadLetter(jobId, currentAttempt, "AMBIGUOUS_PROVIDER_TIMEOUT", errorCode, errorMessage, leaseVersion);
+      boolean marked = markJobDeadLetter(jobId, currentAttempt, communicationLogId, "AMBIGUOUS_PROVIDER_TIMEOUT", errorCode, errorMessage, leaseVersion);
       if (marked) {
-        updateAttempt(attemptId, STATUS_DEAD_LETTER, providerName, null, errorCode, errorMessage);
+        updateAttempt(attemptId, "AMBIGUOUS_TIMEOUT", providerName, null, "AMBIGUOUS_PROVIDER_TIMEOUT", errorMessage);
       } else {
         updateAttempt(attemptId, "SUPERSEDED", providerName, null, "WORKER_LEASE_SUPERSEDED", "Worker lease was superseded during ambiguous timeout handling.");
       }
@@ -549,7 +552,7 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
 
     if (isPermanentFailure(errorCode)) {
       log.warn("[DispatchQueue] Permanent provider rejection on job {}: {}. Transitioning to DEAD_LETTER", jobId, errorCode);
-      boolean marked = markJobDeadLetter(jobId, currentAttempt, errorCode, errorCode, errorMessage, leaseVersion);
+      boolean marked = markJobDeadLetter(jobId, currentAttempt, communicationLogId, errorCode, errorCode, errorMessage, leaseVersion);
       if (marked) {
         updateAttempt(attemptId, STATUS_DEAD_LETTER, providerName, null, errorCode, errorMessage);
       } else {
@@ -560,7 +563,7 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
 
     if (currentAttempt < maxAttempts) {
       int backoff = calculateExponentialBackoffWithJitter(currentAttempt);
-      boolean scheduled = scheduleJobRetry(jobId, currentAttempt, backoff, errorCode, errorMessage, leaseVersion);
+      boolean scheduled = scheduleJobRetry(jobId, currentAttempt, communicationLogId, backoff, errorCode, errorMessage, leaseVersion);
       if (scheduled) {
         updateAttempt(attemptId, "FAILED_RETRY_SCHEDULED", providerName, null, errorCode, errorMessage);
         log.info("[DispatchQueue] Transient failure on job {}: {}. Scheduled retry #{} in {}s",
@@ -569,7 +572,7 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
         updateAttempt(attemptId, "SUPERSEDED", providerName, null, "WORKER_LEASE_SUPERSEDED", "Worker lease was superseded during retry scheduling.");
       }
     } else {
-      boolean marked = markJobDeadLetter(jobId, currentAttempt, "MAX_RETRIES_EXCEEDED", errorCode, errorMessage, leaseVersion);
+      boolean marked = markJobDeadLetter(jobId, currentAttempt, communicationLogId, "MAX_RETRIES_EXCEEDED", errorCode, errorMessage, leaseVersion);
       if (marked) {
         updateAttempt(attemptId, STATUS_DEAD_LETTER, providerName, null, errorCode, errorMessage);
         log.warn("[DispatchQueue] Job {} exhausted max retries ({}). Moved to DEAD_LETTER: {}", jobId, maxAttempts, errorCode);
@@ -579,17 +582,97 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
     }
   }
 
-  public static boolean isAmbiguousTimeout(Exception ex, String errorCode) {
-    if (ex instanceof java.net.SocketTimeoutException
-        || ex instanceof org.springframework.web.client.ResourceAccessException) {
-      return true;
-    }
-    if (ex != null && ex.getMessage() != null && ex.getMessage().toLowerCase().contains("timeout")) {
-      return true;
+  public static boolean isAmbiguousTimeout(Throwable ex, String errorCode, String errorMessage) {
+    if (ex != null) {
+      if (ex instanceof java.net.SocketTimeoutException) {
+        return true;
+      }
+      if (ex instanceof org.springframework.web.client.ResourceAccessException rae) {
+        if (rae.getCause() instanceof java.net.SocketTimeoutException) {
+          return true;
+        }
+        String msg = rae.getMessage() != null ? rae.getMessage().toLowerCase() : "";
+        if (msg.contains("read timed out") || msg.contains("read timeout") || msg.contains("socket timeout")) {
+          return true;
+        }
+      }
+      if (ex instanceof org.springframework.web.client.HttpServerErrorException.GatewayTimeout) {
+        return true;
+      }
+      Throwable cause = ex.getCause();
+      while (cause != null) {
+        if (cause instanceof java.net.SocketTimeoutException) {
+          return true;
+        }
+        cause = cause.getCause();
+      }
+      String msg = ex.getMessage() != null ? ex.getMessage().toLowerCase() : "";
+      if (msg.contains("read timed out") || msg.contains("socket timeout") || msg.contains("gateway timeout")
+          || (msg.contains("timed out") && !msg.contains("connect")) || (msg.contains("timeout") && !msg.contains("connect"))) {
+        return true;
+      }
     }
     if (errorCode != null) {
       String ec = errorCode.toUpperCase();
-      return ec.contains("TIMEOUT") || "GATEWAY_TIMEOUT".equals(ec) || "504".equals(ec);
+      if ("AMBIGUOUS_PROVIDER_TIMEOUT".equals(ec) || "PROVIDER_TIMEOUT".equals(ec)
+          || "SOCKET_TIMEOUT".equals(ec) || "GATEWAY_TIMEOUT".equals(ec) || "504".equals(ec)
+          || (ec.contains("TIMEOUT") && !ec.contains("CONNECT"))) {
+        return true;
+      }
+    }
+    if (errorMessage != null) {
+      String em = errorMessage.toLowerCase();
+      if (em.contains("read timed out") || em.contains("socket timeout") || em.contains("gateway timeout")
+          || em.contains("ambiguous provider timeout") || em.contains("response timed out")
+          || (em.contains("timeout") && !em.contains("connect"))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  public static boolean isAmbiguousTimeout(Exception ex, String errorCode) {
+    return isAmbiguousTimeout(ex, errorCode, ex != null ? ex.getMessage() : null);
+  }
+
+  public static boolean isDefiniteConnectionFailure(Throwable ex, String errorCode) {
+    if (ex != null) {
+      if (ex instanceof java.net.ConnectException
+          || ex instanceof java.net.UnknownHostException
+          || ex instanceof java.net.NoRouteToHostException) {
+        return true;
+      }
+      if (ex instanceof org.springframework.web.client.ResourceAccessException rae) {
+        Throwable cause = rae.getCause();
+        if (cause instanceof java.net.ConnectException
+            || cause instanceof java.net.UnknownHostException
+            || cause instanceof java.net.NoRouteToHostException) {
+          return true;
+        }
+        String msg = rae.getMessage() != null ? rae.getMessage().toLowerCase() : "";
+        if (msg.contains("connection refused") || msg.contains("connect timed out") || msg.contains("unknown host")) {
+          return true;
+        }
+      }
+      Throwable cause = ex.getCause();
+      while (cause != null) {
+        if (cause instanceof java.net.ConnectException
+            || cause instanceof java.net.UnknownHostException
+            || cause instanceof java.net.NoRouteToHostException) {
+          return true;
+        }
+        cause = cause.getCause();
+      }
+      String msg = ex.getMessage() != null ? ex.getMessage().toLowerCase() : "";
+      if (msg.contains("connection refused") || msg.contains("connect timed out") || msg.contains("unknown host")) {
+        return true;
+      }
+    }
+    if (errorCode != null) {
+      String ec = errorCode.toUpperCase();
+      return "PROVIDER_CONNECT_FAILURE".equals(ec) || "CONNECT_EXCEPTION".equals(ec)
+          || "CONNECTION_REFUSED".equals(ec) || "CONNECT_TIMED_OUT".equals(ec)
+          || "TWILIO_CONNECTION_ERROR".equals(ec) || "SENDGRID_CONNECTION_ERROR".equals(ec);
     }
     return false;
   }
@@ -598,15 +681,20 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
     if (errorCode == null) {
       return false;
     }
-    return switch (errorCode.toUpperCase()) {
+    String ec = errorCode.toUpperCase();
+    if (ec.startsWith("4") && ec.length() == 3) {
+      return true; // Any 4xx HTTP status code (400, 401, 403, 404, 422, etc.)
+    }
+    return switch (ec) {
       case "CONSENT_REVOKED", "NO_ACTIVE_CONSENT", "BLOCKED_NO_CONSENT",
            "INVALID_TEMPLATE", "TEMPLATE_CODE_REQUIRED", "UNKNOWN_TEMPLATE",
            "INVALID_PARAMETER", "PARAMETER_ALLOWLIST_VIOLATION", "UNSAFE_CONTENT",
            "UNTRUSTED_URL", "SURVEY_MILESTONE_INVALID",
            "MISSING_RECIPIENT_PHONE", "MISSING_RECIPIENT_EMAIL", "TRAINEE_NOT_FOUND",
            "NON_TRAINEE_RECIPIENT_NOT_SUPPORTED", "UNSUPPORTED_CHANNEL",
-           "BAD_REQUEST", "UNAUTHORIZED", "ACTOR_USER_MISMATCH", "AUTHENTICATED_USER_UNRESOLVED",
-           "RECIPIENT_UNREACHABLE", "INVALID_PHONE_NUMBER" -> true;
+           "BAD_REQUEST", "UNAUTHORIZED", "FORBIDDEN", "NOT_FOUND", "ACTOR_USER_MISMATCH", "AUTHENTICATED_USER_UNRESOLVED",
+           "RECIPIENT_UNREACHABLE", "INVALID_PHONE_NUMBER",
+           "21211", "21610", "21614", "21408" -> true;
       default -> false;
     };
   }

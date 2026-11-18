@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.communication.queue;
 
+import in.gov.sih.sih26135.MysqlConnectionTest;
 import in.gov.sih.sih26135.communication.dto.CommunicationDispatchCommand;
 import in.gov.sih.sih26135.communication.dto.DispatchAttemptDto;
 import in.gov.sih.sih26135.communication.dto.DispatchJobDto;
@@ -7,16 +8,22 @@ import in.gov.sih.sih26135.communication.dto.NotificationDispatchResponse;
 import in.gov.sih.sih26135.communication.exception.CommunicationRateLimitException;
 import in.gov.sih.sih26135.communication.model.CommunicationChannel;
 import in.gov.sih.sih26135.communication.model.CommunicationPurpose;
+import in.gov.sih.sih26135.communication.provider.MockSmsProvider;
 import in.gov.sih.sih26135.communication.service.NotificationDispatcherService;
 import in.gov.sih.sih26135.entity.Trainee;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.repository.TraineeRepository;
 import in.gov.sih.sih26135.security.UserPrincipal;
+import java.net.ConnectException;
+import java.net.SocketTimeoutException;
+import java.sql.Connection;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.junit.jupiter.api.AfterEach;
@@ -29,6 +36,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.client.ResourceAccessException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -52,15 +60,33 @@ class DurableDispatchQueueTest {
   @Autowired
   private NotificationDispatcherService notificationDispatcherService;
 
+  @Autowired
+  private MockSmsProvider mockSmsProvider;
+
+  private final List<Long> trackedJobIds = new CopyOnWriteArrayList<>();
+  private final List<Long> trackedRateLimitEventIds = new CopyOnWriteArrayList<>();
+  private final List<Long> trackedCommLogIds = new CopyOnWriteArrayList<>();
+  private Long testStartRateLimitEventId;
+
   @BeforeEach
-  void setUp() {
+  void setUp() throws Exception {
+    try (Connection conn = jdbcTemplate.getDataSource().getConnection()) {
+      MysqlConnectionTest.assertDedicatedTestCatalog(conn.getCatalog());
+      assertThat(conn.getCatalog()).isEqualTo("SIH26135_TEST");
+    }
     setAdminUser();
-    cleanTestJobs();
+    testStartRateLimitEventId = jdbcTemplate.queryForObject(
+        "SELECT COALESCE(MAX(event_id), 0) FROM communication_rate_limit_events",
+        Long.class
+    );
   }
 
   @AfterEach
   void tearDown() {
     try {
+      if (mockSmsProvider != null) {
+        mockSmsProvider.clear();
+      }
       cleanTestJobs();
     } finally {
       SecurityContextHolder.clearContext();
@@ -83,16 +109,52 @@ class DurableDispatchQueueTest {
   }
 
   private void cleanTestJobs() {
-    jdbcTemplate.update("DELETE FROM communication_rate_limit_events WHERE limiter_key LIKE ? OR limiter_key LIKE ?",
-        "%:" + AUTHORITATIVE_TEST_TRAINEE_ID, "%:" + AUTHORITATIVE_TEST_TRAINEE_ID + ":%");
-    List<Long> testJobIds = jdbcTemplate.query(
-        "SELECT job_id FROM communication_dispatch_jobs WHERE idempotency_key LIKE '" + IDEMPOTENCY_PREFIX + "%'",
-        (rs, rowNum) -> rs.getLong("job_id")
-    );
-    for (Long jobId : testJobIds) {
-      jdbcTemplate.update("DELETE FROM communication_dispatch_attempts WHERE job_id = ?", jobId);
+    if (testStartRateLimitEventId != null) {
+      List<Long> newEventIds = jdbcTemplate.queryForList(
+          "SELECT event_id FROM communication_rate_limit_events WHERE event_id > ?",
+          Long.class,
+          testStartRateLimitEventId
+      );
+      trackedRateLimitEventIds.addAll(newEventIds);
     }
-    jdbcTemplate.update("DELETE FROM communication_dispatch_jobs WHERE idempotency_key LIKE '" + IDEMPOTENCY_PREFIX + "%'");
+
+    for (Long eventId : trackedRateLimitEventIds) {
+      if (eventId != null && eventId > 0) {
+        jdbcTemplate.update("DELETE FROM communication_rate_limit_events WHERE event_id = ?", eventId);
+      }
+    }
+    trackedRateLimitEventIds.clear();
+
+    for (Long jobId : trackedJobIds) {
+      if (jobId != null) {
+        List<Long> logIds = jdbcTemplate.query(
+            "SELECT communication_log_id FROM communication_dispatch_jobs WHERE job_id = ? AND communication_log_id IS NOT NULL",
+            (rs, rn) -> rs.getLong("communication_log_id"),
+            jobId
+        );
+        for (Long logId : logIds) {
+          jdbcTemplate.update("DELETE FROM communication_logs WHERE communication_log_id = ?", logId);
+        }
+        jdbcTemplate.update("DELETE FROM communication_dispatch_attempts WHERE job_id = ?", jobId);
+        jdbcTemplate.update("DELETE FROM communication_dispatch_jobs WHERE job_id = ?", jobId);
+      }
+    }
+    trackedJobIds.clear();
+
+    for (Long logId : trackedCommLogIds) {
+      if (logId != null) {
+        jdbcTemplate.update("DELETE FROM communication_logs WHERE communication_log_id = ?", logId);
+      }
+    }
+    trackedCommLogIds.clear();
+  }
+
+  private DispatchJobDto enqueueAndTrackJob(CommunicationDispatchCommand command, String idempotencyKey) {
+    DispatchJobDto job = queueService.enqueueJob(command, idempotencyKey);
+    if (job != null && job.jobId() != null) {
+      trackedJobIds.add(job.jobId());
+    }
+    return job;
   }
 
   @Test
@@ -116,7 +178,7 @@ class DurableDispatchQueueTest {
         null
     );
 
-    DispatchJobDto job = queueService.enqueueJob(command, key);
+    DispatchJobDto job = enqueueAndTrackJob(command, key);
 
     assertThat(job).isNotNull();
     assertThat(job.jobId()).isPositive();
@@ -142,7 +204,7 @@ class DurableDispatchQueueTest {
         null
     );
 
-    DispatchJobDto job = queueService.enqueueJob(command, key);
+    DispatchJobDto job = enqueueAndTrackJob(command, key);
     Long jobId = job.jobId();
 
     // Reset status to PENDING manually to test claim
@@ -178,7 +240,7 @@ class DurableDispatchQueueTest {
         null
     );
 
-    DispatchJobDto job = queueService.enqueueJob(command, key);
+    DispatchJobDto job = enqueueAndTrackJob(command, key);
     Long jobId = job.jobId();
 
     // Process job
@@ -211,7 +273,7 @@ class DurableDispatchQueueTest {
         null
     );
 
-    DispatchJobDto job = queueService.enqueueJob(command, key);
+    DispatchJobDto job = enqueueAndTrackJob(command, key);
     Long jobId = job.jobId();
 
     // Temporarily revoke employment follow-up consent for testing
@@ -255,7 +317,7 @@ class DurableDispatchQueueTest {
         null
     );
 
-    DispatchJobDto job = queueService.enqueueJob(command, key);
+    DispatchJobDto job = enqueueAndTrackJob(command, key);
     Long jobId = job.jobId();
 
     // Mark job as DEAD_LETTER manually
@@ -287,7 +349,7 @@ class DurableDispatchQueueTest {
         null
     );
 
-    DispatchJobDto job = queueService.enqueueJob(command, key);
+    DispatchJobDto job = enqueueAndTrackJob(command, key);
     Long jobId = job.jobId();
 
     // Simulate crashed worker: job locked in PROCESSING 15 minutes ago
@@ -324,7 +386,7 @@ class DurableDispatchQueueTest {
         null
     );
 
-    DispatchJobDto job = queueService.enqueueJob(command, key);
+    DispatchJobDto job = enqueueAndTrackJob(command, key);
     Long jobId = job.jobId();
 
     // Worker 1 claims job (lease_version = 2), but then hangs for 10 minutes
@@ -387,7 +449,7 @@ class DurableDispatchQueueTest {
         null
     );
 
-    DispatchJobDto job = queueService.enqueueJob(command, key);
+    DispatchJobDto job = enqueueAndTrackJob(command, key);
     Long jobId = job.jobId();
 
     // Schedule job 5 minutes in the future
@@ -422,7 +484,7 @@ class DurableDispatchQueueTest {
         null
     );
 
-    DispatchJobDto job = queueService.enqueueJob(command, key);
+    DispatchJobDto job = enqueueAndTrackJob(command, key);
     Long jobId = job.jobId();
 
     // Set status to DEAD_LETTER
@@ -466,7 +528,7 @@ class DurableDispatchQueueTest {
         null
     );
 
-    DispatchJobDto job = queueService.enqueueJob(command, key);
+    DispatchJobDto job = enqueueAndTrackJob(command, key);
     Long jobId = job.jobId();
 
     ExecutorService executor = Executors.newFixedThreadPool(2);
@@ -530,7 +592,7 @@ class DurableDispatchQueueTest {
 
     // 2. Queue automatic retry (attempt_count > 0) executed by internal queue worker succeeds
     String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
-    DispatchJobDto job = queueService.enqueueJob(externalCommand, key);
+    DispatchJobDto job = enqueueAndTrackJob(externalCommand, key);
     Long jobId = job.jobId();
 
     // Set attempt_count = 1 so currentAttemptNumber becomes 2 (an automatic retry)
@@ -543,5 +605,238 @@ class DurableDispatchQueueTest {
     DispatchJobDto completedJob = queueService.getJobById(jobId);
     assertThat(completedJob.jobStatus()).isEqualTo("COMPLETED");
     assertThat(completedJob.attemptCount()).isEqualTo(2);
+  }
+
+  @Test
+  @DisplayName("12. Ambiguous Provider Timeout: Ambiguous read timeout dead-letters without auto-resend and logs ATTEMPTED status")
+  void testAmbiguousProviderTimeout_doesNotAutoRetry_transitionsToDeadLetter() {
+    String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
+    CommunicationDispatchCommand command = new CommunicationDispatchCommand(
+        AUTHORITATIVE_TEST_TRAINEE_ID,
+        CommunicationChannel.SMS,
+        CommunicationPurpose.OPERATIONAL,
+        "TPL-ENROLL-001",
+        Map.of("batchCode", "B-TIMEOUT-01", "courseName", "Solar", "startDate", "2026-12-01", "trainingCenterName", "NSTI"),
+        null,
+        null,
+        null
+    );
+
+    DispatchJobDto job = enqueueAndTrackJob(command, key);
+    Long jobId = job.jobId();
+
+    mockSmsProvider.setSimulateException(
+        new ResourceAccessException("Read timed out", new SocketTimeoutException("Read timed out"))
+    );
+
+    try {
+      queueService.claimAndProcessJob(jobId, "worker-timeout");
+    } finally {
+      mockSmsProvider.clear();
+    }
+
+    DispatchJobDto finalJob = queueService.getJobById(jobId);
+    assertThat(finalJob.jobStatus()).isEqualTo("DEAD_LETTER");
+    assertThat(finalJob.deadLetterReason()).isEqualTo("AMBIGUOUS_PROVIDER_TIMEOUT");
+    assertThat(finalJob.attemptCount()).isEqualTo(1);
+
+    // Verify attempt table
+    List<DispatchAttemptDto> attempts = queueService.getAttemptsByJobId(jobId);
+    assertThat(attempts).hasSize(1);
+    assertThat(attempts.get(0).attemptStatus()).isEqualTo("AMBIGUOUS_TIMEOUT");
+    assertThat(attempts.get(0).errorCode()).isEqualTo("AMBIGUOUS_PROVIDER_TIMEOUT");
+
+    // Verify communication log table: truthful status ATTEMPTED (2), failed_at is null
+    Long commLogId = finalJob.communicationLogId();
+    assertThat(commLogId).isNotNull();
+    trackedCommLogIds.add(commLogId);
+
+    Long statusId = jdbcTemplate.queryForObject(
+        "SELECT communication_status_id FROM communication_logs WHERE communication_log_id = ?",
+        Long.class,
+        commLogId
+    );
+    assertThat(statusId).isEqualTo(2L); // 2 = ATTEMPTED
+
+    String failureReason = jdbcTemplate.queryForObject(
+        "SELECT failure_reason FROM communication_logs WHERE communication_log_id = ?",
+        String.class,
+        commLogId
+    );
+    assertThat(failureReason).contains("timed out");
+
+    LocalDateTime failedAt = jdbcTemplate.queryForObject(
+        "SELECT failed_at FROM communication_logs WHERE communication_log_id = ?",
+        LocalDateTime.class,
+        commLogId
+    );
+    assertThat(failedAt).isNull();
+  }
+
+  @Test
+  @DisplayName("13. Safe Transient Connection Failure: Definite connection failure schedules bounded retry with exponential backoff")
+  void testSafeTransientConnectionFailure_schedulesBoundedRetry() {
+    String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
+    CommunicationDispatchCommand command = new CommunicationDispatchCommand(
+        AUTHORITATIVE_TEST_TRAINEE_ID,
+        CommunicationChannel.SMS,
+        CommunicationPurpose.OPERATIONAL,
+        "TPL-ENROLL-001",
+        Map.of("batchCode", "B-CONNECT-01", "courseName", "Solar", "startDate", "2026-12-01", "trainingCenterName", "NSTI"),
+        null,
+        null,
+        null
+    );
+
+    DispatchJobDto job = enqueueAndTrackJob(command, key);
+    Long jobId = job.jobId();
+
+    mockSmsProvider.setSimulateException(
+        new ResourceAccessException("Connection refused", new ConnectException("Connection refused"))
+    );
+
+    try {
+      queueService.claimAndProcessJob(jobId, "worker-transient");
+    } finally {
+      mockSmsProvider.clear();
+    }
+
+    DispatchJobDto finalJob = queueService.getJobById(jobId);
+    assertThat(finalJob.jobStatus()).isEqualTo("PENDING");
+    assertThat(finalJob.attemptCount()).isEqualTo(1);
+    assertThat(finalJob.scheduledAt()).isAfter(LocalDateTime.now().minusSeconds(5));
+
+    // Verify attempt record indicates retry scheduled
+    List<DispatchAttemptDto> attempts = queueService.getAttemptsByJobId(jobId);
+    assertThat(attempts).hasSize(1);
+    assertThat(attempts.get(0).attemptStatus()).isEqualTo("FAILED_RETRY_SCHEDULED");
+    assertThat(attempts.get(0).errorCode()).isEqualTo("PROVIDER_CONNECT_FAILURE");
+  }
+
+  @Test
+  @DisplayName("14. Permanent Provider 4xx Rejection: Permanent client error dead-letters without retry")
+  void testPermanentProvider4xxRejection_transitionsToDeadLetterWithoutRetry() {
+    String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
+    CommunicationDispatchCommand command = new CommunicationDispatchCommand(
+        AUTHORITATIVE_TEST_TRAINEE_ID,
+        CommunicationChannel.SMS,
+        CommunicationPurpose.OPERATIONAL,
+        "TPL-ENROLL-001",
+        Map.of("batchCode", "B-PERM-400", "courseName", "Solar", "startDate", "2026-12-01", "trainingCenterName", "NSTI"),
+        null,
+        null,
+        null
+    );
+
+    DispatchJobDto job = enqueueAndTrackJob(command, key);
+    Long jobId = job.jobId();
+
+    mockSmsProvider.setSimulateFailure(true);
+    mockSmsProvider.setFailureDetails("400", "Invalid mobile phone number");
+
+    try {
+      queueService.claimAndProcessJob(jobId, "worker-perm-400");
+    } finally {
+      mockSmsProvider.clear();
+    }
+
+    DispatchJobDto finalJob = queueService.getJobById(jobId);
+    assertThat(finalJob.jobStatus()).isEqualTo("DEAD_LETTER");
+    assertThat(finalJob.deadLetterReason()).isEqualTo("400");
+    assertThat(finalJob.attemptCount()).isEqualTo(1);
+
+    List<DispatchAttemptDto> attempts = queueService.getAttemptsByJobId(jobId);
+    assertThat(attempts).hasSize(1);
+    assertThat(attempts.get(0).attemptStatus()).isEqualTo("DEAD_LETTER");
+    assertThat(attempts.get(0).errorCode()).isEqualTo("400");
+  }
+
+  @Test
+  @DisplayName("15. Test Fixture Survival: Pre-existing and unrelated records survive setup and teardown")
+  void testUnrelatedRecordsSurviveSetupAndTeardown() {
+    // 1. Insert an unrelated rate-limit event for an unrelated entity
+    String unrelatedLimiterKey = "UNRELATED:SMS:999999";
+    jdbcTemplate.update(
+        "INSERT INTO communication_rate_limit_events (limiter_key, event_type, created_at) VALUES (?, 'UNRELATED_TEST', NOW())",
+        unrelatedLimiterKey
+    );
+    Long unrelatedEventId = jdbcTemplate.queryForObject(
+        "SELECT event_id FROM communication_rate_limit_events WHERE limiter_key = ? ORDER BY event_id DESC LIMIT 1",
+        Long.class,
+        unrelatedLimiterKey
+    );
+
+    // 2. Insert an unrelated dispatch job
+    String unrelatedIdempotencyKey = "UNRELATED-JOB-EXISTING-99999";
+    jdbcTemplate.update(
+        "INSERT INTO communication_dispatch_jobs ("
+            + "idempotency_key, trainee_id, channel_id, purpose_id, template_code, "
+            + "template_parameters_json, max_attempts, attempt_count, job_status, delivery_mode, scheduled_at, created_at, updated_at) "
+            + "VALUES (?, ?, 1, 6, 'TPL-ENROLL-001', '{}', 3, 0, 'PENDING', 'DEMO', NOW(), NOW(), NOW())",
+        unrelatedIdempotencyKey,
+        AUTHORITATIVE_TEST_TRAINEE_ID
+    );
+    Long unrelatedJobId = jdbcTemplate.queryForObject(
+        "SELECT job_id FROM communication_dispatch_jobs WHERE idempotency_key = ?",
+        Long.class,
+        unrelatedIdempotencyKey
+    );
+
+    try {
+      // Set testStartRateLimitEventId so cleanTestJobs treats unrelatedEventId as pre-existing
+      testStartRateLimitEventId = unrelatedEventId;
+      // 3. Enqueue and process a test job through the tracking helper
+      String testKey = IDEMPOTENCY_PREFIX + UUID.randomUUID();
+      CommunicationDispatchCommand command = new CommunicationDispatchCommand(
+          AUTHORITATIVE_TEST_TRAINEE_ID,
+          CommunicationChannel.SMS,
+          CommunicationPurpose.OPERATIONAL,
+          "TPL-ENROLL-001",
+          Map.of("batchCode", "B-SURVIVE-01", "courseName", "Solar", "startDate", "2026-12-01", "trainingCenterName", "NSTI"),
+          null,
+          null,
+          null
+      );
+      DispatchJobDto testJob = enqueueAndTrackJob(command, testKey);
+
+      // Execute teardown
+      cleanTestJobs();
+
+      // Assert test job was deleted
+      Integer testJobCount = jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM communication_dispatch_jobs WHERE job_id = ?",
+          Integer.class,
+          testJob.jobId()
+      );
+      assertThat(testJobCount).isEqualTo(0);
+
+      // Assert unrelated job survived untouched
+      Integer unrelatedJobCount = jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM communication_dispatch_jobs WHERE job_id = ?",
+          Integer.class,
+          unrelatedJobId
+      );
+      assertThat(unrelatedJobCount).isEqualTo(1);
+
+      // Assert unrelated rate limit event survived untouched
+      Integer unrelatedEventCount = jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM communication_rate_limit_events WHERE event_id = ?",
+          Integer.class,
+          unrelatedEventId
+      );
+      assertThat(unrelatedEventCount).isEqualTo(1);
+
+      // Assert authoritative trainee retains 5 active GRANTED consents
+      Integer activeConsents = jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM trainee_consents WHERE trainee_id = ? AND consent_status_id = 1",
+          Integer.class,
+          AUTHORITATIVE_TEST_TRAINEE_ID
+      );
+      assertThat(activeConsents).isEqualTo(5);
+    } finally {
+      // Clean up unrelated records by exact PK
+      jdbcTemplate.update("DELETE FROM communication_dispatch_jobs WHERE job_id = ?", unrelatedJobId);
+      jdbcTemplate.update("DELETE FROM communication_rate_limit_events WHERE event_id = ?", unrelatedEventId);
+    }
   }
 }

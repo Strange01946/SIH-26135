@@ -233,27 +233,43 @@ public class CommunicationProperties implements EnvironmentAware {
    * @return true if and only if synthetic test signatures are explicitly enabled in an authorized non-production test environment
    */
   public boolean isSyntheticTestSignatureAllowed() {
+    // 1. Explicit configuration requirement
     if (!allowTestWebhookSignatures) {
       return false;
     }
-    // 1. LIVE communication mode strictly forbids synthetic test signatures
+
+    // 2. LIVE communication mode strictly forbids synthetic test signatures
     if (isLiveMode()) {
       log.warn("[CommunicationProperties] Rejected synthetic webhook signature: communication mode is LIVE");
       return false;
     }
-    // 2. Authoritative JDBC connection metadata check
-    if (this.dataSource != null) {
-      try (Connection conn = this.dataSource.getConnection()) {
-        String activeCatalog = conn.getCatalog();
-        if (isProductionCatalog(activeCatalog)) {
-          log.warn("[CommunicationProperties] Rejected synthetic webhook signature: production catalog '{}' detected", activeCatalog);
-          return false;
-        }
-      } catch (SQLException e) {
-        log.warn("[CommunicationProperties] Could not inspect active catalog from DataSource: {}", e.getMessage());
-      }
+
+    // 3. Authoritative JDBC connection metadata check (fail-closed: MUST be verifiable as SIH26135_TEST)
+    if (this.dataSource == null) {
+      log.warn("[CommunicationProperties] Rejected synthetic webhook signature: DataSource is unavailable for verification");
+      return false;
     }
-    // 3. Environment, profile, and property guards
+
+    try (Connection conn = this.dataSource.getConnection()) {
+      if (conn == null) {
+        log.warn("[CommunicationProperties] Rejected synthetic webhook signature: Connection is null");
+        return false;
+      }
+      String activeCatalog = conn.getCatalog();
+      if (activeCatalog == null || activeCatalog.isBlank()) {
+        log.warn("[CommunicationProperties] Rejected synthetic webhook signature: Active catalog is missing or blank");
+        return false;
+      }
+      if (!"SIH26135_TEST".equalsIgnoreCase(activeCatalog.trim())) {
+        log.warn("[CommunicationProperties] Rejected synthetic webhook signature: Catalog '{}' is not the authorized test catalog 'SIH26135_TEST'", activeCatalog);
+        return false;
+      }
+    } catch (SQLException e) {
+      log.warn("[CommunicationProperties] Rejected synthetic webhook signature: DataSource inspection failed: {}", e.getMessage());
+      return false;
+    }
+
+    // 4. Environment, profile, and property guards
     if (this.environment != null) {
       boolean isProdProfile = this.environment.getActiveProfiles() != null && Arrays.stream(this.environment.getActiveProfiles())
           .anyMatch(p -> p.equalsIgnoreCase("prod") || p.equalsIgnoreCase("production"));
@@ -268,6 +284,7 @@ public class CommunicationProperties implements EnvironmentAware {
         return false;
       }
     }
+
     return true;
   }
 

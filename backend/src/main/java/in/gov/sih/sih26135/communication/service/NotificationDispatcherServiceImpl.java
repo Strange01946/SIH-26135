@@ -241,13 +241,19 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
       };
     } catch (Exception ex) {
       log.error("[NotificationDispatcher] Unhandled error during provider delivery invocation: {}", ex.getMessage(), ex);
-      deliveryResult = ProviderDeliveryResult.failure(
+      String classifiedCode = classifyProviderException(ex);
+      boolean isTimeout = "AMBIGUOUS_PROVIDER_TIMEOUT".equals(classifiedCode) || in.gov.sih.sih26135.communication.queue.DurableDispatchQueueServiceImpl.isAmbiguousTimeout(ex, classifiedCode, ex.getMessage());
+      String statusCode = isTimeout ? "ATTEMPTED" : "FAILED";
+      deliveryResult = new ProviderDeliveryResult(
           channel,
-          "UNKNOWN",
+          resolveProviderName(channel),
           null,
-          "DISPATCH_ERROR",
+          statusCode,
+          false,
+          null,
+          classifiedCode,
           ex.getMessage(),
-          null
+          LocalDateTime.now()
       );
     }
 
@@ -267,13 +273,18 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
     String statusCode = logEntity.getCommunicationStatus().getStatusCode();
     boolean isSimulated = isDemo;
     boolean isPhysicallyDelivered = "DELIVERED".equalsIgnoreCase(statusCode);
-    boolean effectiveAccepted = deliveryResult.accepted() && !"FAILED".equalsIgnoreCase(statusCode);
+    boolean isAmbiguous = in.gov.sih.sih26135.communication.queue.DurableDispatchQueueServiceImpl.isAmbiguousTimeout(null, deliveryResult.errorCode(), deliveryResult.errorMessage());
+    boolean effectiveAccepted = deliveryResult.accepted() && !"FAILED".equalsIgnoreCase(statusCode) && !isAmbiguous;
 
     String safeMessage;
     String errorCode = null;
     String errorExplanation = null;
 
-    if (!effectiveAccepted || "FAILED".equalsIgnoreCase(statusCode)) {
+    if (isAmbiguous) {
+      errorCode = "AMBIGUOUS_PROVIDER_TIMEOUT";
+      errorExplanation = deliveryResult.errorMessage() != null ? deliveryResult.errorMessage() : "Provider response timed out";
+      safeMessage = "Notification dispatch outcome ambiguous: provider response timed out (manual reconciliation required)";
+    } else if (!effectiveAccepted || "FAILED".equalsIgnoreCase(statusCode)) {
       errorCode = deliveryResult.errorCode() != null ? deliveryResult.errorCode() : "DELIVERY_FAILED";
       errorExplanation = logEntity.getFailureReason() != null ? logEntity.getFailureReason() : deliveryResult.errorMessage();
       if (errorExplanation == null || errorExplanation.isBlank()) {
@@ -288,6 +299,8 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
       safeMessage = "Notification confirmed delivered to recipient device";
     } else if ("SENT".equalsIgnoreCase(statusCode)) {
       safeMessage = "Notification dispatched to carrier network";
+    } else if ("ATTEMPTED".equalsIgnoreCase(statusCode)) {
+      safeMessage = "Notification dispatch attempted";
     } else {
       safeMessage = "Notification accepted by communication provider and queued for delivery";
     }
@@ -632,8 +645,12 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
       String rawStatus = result.statusCode();
       String normalized = rawStatus != null ? rawStatus.trim().toUpperCase() : "";
 
+      boolean isAmbiguous = in.gov.sih.sih26135.communication.queue.DurableDispatchQueueServiceImpl.isAmbiguousTimeout(null, result.errorCode(), result.errorMessage());
+
       String mappedStatus;
-      if ("FAILED".equals(normalized) || "UNDELIVERED".equals(normalized) || !result.accepted()) {
+      if (isAmbiguous) {
+        mappedStatus = "ATTEMPTED";
+      } else if ("FAILED".equals(normalized) || "UNDELIVERED".equals(normalized) || !result.accepted()) {
         mappedStatus = "FAILED";
       } else if (properties.isDemoMode() || "SIMULATED".equals(normalized)) {
         mappedStatus = "SIMULATED";
@@ -668,7 +685,7 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
       logEntity.setProviderMessageId(result.providerMessageId());
       logEntity.setMessageTemplateCode(templateCode);
 
-      boolean isFailed = "FAILED".equals(mappedStatus) || !result.accepted();
+      boolean isFailed = "FAILED".equals(mappedStatus);
       if (isFailed) {
         logEntity.setFailedAt(now);
         String reason = result.errorMessage();
@@ -676,6 +693,9 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
           reason = "Provider returned delivery failure status: " + (rawStatus != null && !rawStatus.isBlank() ? rawStatus : "FAILED");
         }
         logEntity.setFailureReason(reason);
+      } else if (isAmbiguous) {
+        String reason = result.errorMessage() != null ? result.errorMessage() : "Provider response timed out";
+        logEntity.setFailureReason("Provider response timed out; delivery status is ambiguous (manual reconciliation required): " + reason);
       } else {
         logEntity.setFailureReason(null);
       }
@@ -808,5 +828,28 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
       return principal != null && "COMMUNICATION_DISPATCH_QUEUE_WORKER".equalsIgnoreCase(principal.getServiceId());
     }
     return false;
+  }
+
+  private String classifyProviderException(Exception ex) {
+    if (in.gov.sih.sih26135.communication.queue.DurableDispatchQueueServiceImpl.isAmbiguousTimeout(ex, null, ex != null ? ex.getMessage() : null)) {
+      return "AMBIGUOUS_PROVIDER_TIMEOUT";
+    }
+    if (in.gov.sih.sih26135.communication.queue.DurableDispatchQueueServiceImpl.isDefiniteConnectionFailure(ex, null)) {
+      return "PROVIDER_CONNECT_FAILURE";
+    }
+    if (ex instanceof org.springframework.web.client.RestClientResponseException rre) {
+      return String.valueOf(rre.getStatusCode().value());
+    }
+    return "DISPATCH_ERROR";
+  }
+
+  private String resolveProviderName(CommunicationChannel channel) {
+    if (channel == null) return "System";
+    return switch (channel) {
+      case SMS -> smsProvider.getProviderName();
+      case WHATSAPP -> whatsAppProvider.getProviderName();
+      case EMAIL -> emailProvider.getProviderName();
+      default -> "System";
+    };
   }
 }
