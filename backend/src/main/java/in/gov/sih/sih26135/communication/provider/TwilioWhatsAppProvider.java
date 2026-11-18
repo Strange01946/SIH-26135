@@ -8,6 +8,7 @@ import in.gov.sih.sih26135.communication.model.CommunicationChannel;
 import in.gov.sih.sih26135.event.CommunicationTriggerEvent;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -95,7 +96,27 @@ public class TwilioWhatsAppProvider implements WhatsAppCommunicationProvider {
     MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
     formData.add("From", formattedSender);
     formData.add("To", targetAddress);
-    formData.add("Body", messageText);
+
+    String contentSid = config.getWhatsappContentSid();
+    if (contentSid != null && !contentSid.isBlank()) {
+      formData.add("ContentSid", contentSid);
+      String customVars = config.getWhatsappContentVariables();
+      if (customVars != null && !customVars.isBlank()) {
+        formData.add("ContentVariables", customVars.trim());
+      } else {
+        Map<String, String> defaultVariables = Map.of(
+            "1", "Tue Oct 29, 3:00 PM"
+        );
+        try {
+          formData.add("ContentVariables", OBJECT_MAPPER.writeValueAsString(defaultVariables));
+        } catch (Exception ex) {
+          log.warn("[TwilioWhatsAppProvider] Could not serialize ContentVariables: {}", ex.getMessage());
+        }
+      }
+      log.info("[TwilioWhatsAppProvider] Dispatching via Content API template: contentSid={}", contentSid);
+    } else {
+      formData.add("Body", messageText);
+    }
 
     try {
       String responseBody = restClient.post()

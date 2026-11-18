@@ -92,9 +92,11 @@ public class CommunicationProperties {
     private String accountSid = "";
     private String authToken = "";
     private String smsFrom = "";
-    private String whatsappFrom = "whatsapp:+14155238886";
+    private String whatsappFrom = "whatsapp:+17372508034";
     private String liveTestPhone = "";
     private String liveTestWhatsapp = "";
+    private String whatsappContentSid = "";
+    private String whatsappContentVariables = "";
     private int connectTimeoutMs = 5000;
     private int readTimeoutMs = 10000;
 
@@ -150,6 +152,22 @@ public class CommunicationProperties {
 
     public void setLiveTestWhatsapp(String liveTestWhatsapp) {
       this.liveTestWhatsapp = liveTestWhatsapp != null ? liveTestWhatsapp.trim() : "";
+    }
+
+    public String getWhatsappContentSid() {
+      return whatsappContentSid;
+    }
+
+    public void setWhatsappContentSid(String whatsappContentSid) {
+      this.whatsappContentSid = whatsappContentSid != null ? whatsappContentSid.trim() : "";
+    }
+
+    public String getWhatsappContentVariables() {
+      return whatsappContentVariables;
+    }
+
+    public void setWhatsappContentVariables(String whatsappContentVariables) {
+      this.whatsappContentVariables = whatsappContentVariables != null ? whatsappContentVariables.trim() : "";
     }
 
     public int getConnectTimeoutMs() {

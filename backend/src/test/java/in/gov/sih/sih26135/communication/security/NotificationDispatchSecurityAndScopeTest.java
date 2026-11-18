@@ -403,6 +403,45 @@ public class NotificationDispatchSecurityAndScopeTest {
 
   @Test
   @Order(8)
+  @DisplayName("7a. Unregistered internal service identity -> denied")
+  void test7a_unregisteredInternalServiceIdentity_denied() {
+    InternalServicePrincipal arbitraryPrincipal = new InternalServicePrincipal(
+        "ARBITRARY_UNKNOWN_SERVICE",
+        "Arbitrary Caller",
+        null,
+        TenantScopeType.NATIONWIDE
+    );
+
+    assertThatThrownBy(() -> internalSecurityExecutionSupport.runAsInternalService(
+        arbitraryPrincipal,
+        () -> "EXECUTED"
+    ))
+        .isInstanceOf(AccessDeniedException.class)
+        .hasMessageContaining("Unregistered or unauthorized internal service identity");
+  }
+
+  @Test
+  @Order(9)
+  @DisplayName("7b. Internal service not authorized for NATIONWIDE scope claiming NATIONWIDE -> denied")
+  void test7b_internalServiceUnauthorizedNationwideClaimingNationwide_denied() {
+    // PROVIDER_AUTOMATION is only authorized for PROVIDER scope, NOT NATIONWIDE
+    InternalServicePrincipal invalidNationwidePrincipal = new InternalServicePrincipal(
+        "PROVIDER_AUTOMATION",
+        "Provider Automation Job",
+        null,
+        TenantScopeType.NATIONWIDE
+    );
+
+    assertThatThrownBy(() -> internalSecurityExecutionSupport.runAsInternalService(
+        invalidNationwidePrincipal,
+        () -> "EXECUTED"
+    ))
+        .isInstanceOf(AccessDeniedException.class)
+        .hasMessageContaining("is not authorized for NATIONWIDE scope");
+  }
+
+  @Test
+  @Order(10)
   @DisplayName("8. Missing DATA_PROCESSING consent -> blocked")
   void test8_missingDataProcessingConsent_blocked() {
     setAdminUser();
