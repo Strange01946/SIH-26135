@@ -49,6 +49,21 @@ public class AsyncConfig implements AsyncConfigurer {
     return executor;
   }
 
+  @Bean(name = "communicationDispatchExecutor")
+  public ThreadPoolTaskExecutor communicationDispatchExecutor() {
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+    executor.setCorePoolSize(4);
+    executor.setMaxPoolSize(16);
+    executor.setQueueCapacity(200);
+    executor.setThreadNamePrefix("comm-dispatch-");
+    executor.setTaskDecorator(correlationTaskDecorator());
+    executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+    executor.setWaitForTasksToCompleteOnShutdown(true);
+    executor.setAwaitTerminationSeconds(30);
+    executor.initialize();
+    return executor;
+  }
+
   @Override
   public Executor getAsyncExecutor() {
     return auditTaskExecutor();

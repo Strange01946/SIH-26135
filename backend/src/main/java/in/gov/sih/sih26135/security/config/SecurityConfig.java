@@ -89,6 +89,7 @@ public class SecurityConfig {
         .authorizeHttpRequests(authorize -> authorize
             .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
             .requestMatchers(HttpMethod.POST, "/api/v1/auth/login", "/api/v1/auth/refresh").permitAll()
+            .requestMatchers(HttpMethod.POST, "/api/v1/communication/webhooks/**").permitAll()
             .requestMatchers("/api/v1/auth/me").authenticated()
             .requestMatchers("/actuator/health").permitAll()
             .requestMatchers("/error").permitAll()

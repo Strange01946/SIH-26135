@@ -155,6 +155,8 @@ public class NotificationDispatchSecurityAndScopeTest {
       return;
     }
     try {
+      jdbcTemplate.update("DELETE FROM communication_rate_limit_events WHERE limiter_key LIKE ? OR limiter_key LIKE ?",
+          "%:" + TEST_TRAINEE_ID, "%:" + TEST_TRAINEE_ID + ":%");
       jdbcTemplate.update("DELETE FROM communication_logs WHERE trainee_id = ?", TEST_TRAINEE_ID);
       jdbcTemplate.update("DELETE FROM trainee_consents WHERE trainee_id = ?", TEST_TRAINEE_ID);
       jdbcTemplate.update("DELETE FROM training_enrollments WHERE trainee_id = ?", TEST_TRAINEE_ID);

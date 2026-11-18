@@ -13,6 +13,7 @@ import in.gov.sih.sih26135.communication.model.CommunicationPurpose;
 import in.gov.sih.sih26135.communication.provider.EmailCommunicationProvider;
 import in.gov.sih.sih26135.communication.provider.SmsCommunicationProvider;
 import in.gov.sih.sih26135.communication.provider.WhatsAppCommunicationProvider;
+import in.gov.sih.sih26135.communication.ratelimit.CommunicationRateLimiter;
 import in.gov.sih.sih26135.communication.template.CommunicationTemplateRegistry;
 import in.gov.sih.sih26135.entity.Certification;
 import in.gov.sih.sih26135.entity.CommunicationLog;
@@ -103,6 +104,7 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
   private final WorkflowSecurityScopeValidator workflowSecurityScopeValidator;
   private final CommunicationProperties properties;
   private final PlatformTransactionManager transactionManager;
+  private final CommunicationRateLimiter rateLimiter;
   private final TrainingEnrollmentRepository trainingEnrollmentRepository;
   private final CertificationRepository certificationRepository;
   private final EmploymentVerificationRequestRepository employmentVerificationRequestRepository;
@@ -126,6 +128,7 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
       WorkflowSecurityScopeValidator workflowSecurityScopeValidator,
       CommunicationProperties properties,
       PlatformTransactionManager transactionManager,
+      @Autowired(required = false) CommunicationRateLimiter rateLimiter,
       @Autowired(required = false) TrainingEnrollmentRepository trainingEnrollmentRepository,
       @Autowired(required = false) CertificationRepository certificationRepository,
       @Autowired(required = false) EmploymentVerificationRequestRepository employmentVerificationRequestRepository) {
@@ -146,6 +149,7 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
     this.workflowSecurityScopeValidator = workflowSecurityScopeValidator;
     this.properties = Objects.requireNonNull(properties, "CommunicationProperties is required");
     this.transactionManager = Objects.requireNonNull(transactionManager, "PlatformTransactionManager is required");
+    this.rateLimiter = rateLimiter;
     this.trainingEnrollmentRepository = trainingEnrollmentRepository;
     this.certificationRepository = certificationRepository;
     this.employmentVerificationRequestRepository = employmentVerificationRequestRepository;
@@ -216,6 +220,13 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
       log.warn("[NotificationDispatcher] Outbound dispatch blocked by consent validator: traineeId={}, channel={}, code={}",
           trainee.getId(), channelCode, ex.getErrorCode());
       throw ex; // Re-throw to caller (HTTP 403)
+    }
+
+    // 5b. Authoritative Multi-Tenant Rate Limiting & Anti-Spam Check
+    if (rateLimiter != null) {
+      Long authoritativeProviderId = rateLimiter.resolveAuthoritativeProviderId(trainee.getId(), null);
+      String paramsHash = calculateParametersHash(command.templateParameters());
+      rateLimiter.checkAndReserveQuota(trainee.getId(), channel, authoritativeProviderId, command.templateCode(), paramsHash);
     }
 
     // 6. Concrete Provider Delivery (Executed OUTSIDE any open database transaction)
@@ -762,5 +773,30 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
       }
       default -> null;
     };
+  }
+
+  private String calculateParametersHash(Map<String, String> parameters) {
+    if (parameters == null || parameters.isEmpty()) {
+      return "EMPTY";
+    }
+    try {
+      java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+      parameters.entrySet().stream()
+          .sorted(Map.Entry.comparingByKey())
+          .forEach(e -> {
+            md.update(e.getKey().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            if (e.getValue() != null) {
+              md.update(e.getValue().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+          });
+      byte[] digest = md.digest();
+      StringBuilder sb = new StringBuilder();
+      for (byte b : digest) {
+        sb.append(String.format("%02x", b));
+      }
+      return sb.substring(0, 16);
+    } catch (Exception ex) {
+      return "HASH_FALLBACK";
+    }
   }
 }

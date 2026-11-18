@@ -107,6 +107,14 @@ public class InternalSecurityExecutionSupport {
         true
     ));
 
+    // 4b. Communication Dispatch Queue Worker (Durable asynchronous processor)
+    registerWorkflow(new InternalWorkflowRegistration(
+        "COMMUNICATION_DISPATCH_QUEUE_WORKER",
+        "Communication Dispatch Queue Worker",
+        Set.of(TenantScopeType.NATIONWIDE),
+        true
+    ));
+
     // 5. Tenant-Scoped Background Automations (Strictly forbidden from claiming NATIONWIDE scope)
     registerWorkflow(new InternalWorkflowRegistration(
         "PROVIDER_AUTOMATION",

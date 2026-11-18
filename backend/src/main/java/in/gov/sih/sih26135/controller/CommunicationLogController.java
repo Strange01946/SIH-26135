@@ -53,12 +53,15 @@ public class CommunicationLogController {
 
   private final CommunicationLogService communicationLogService;
   private final NotificationDispatcherService notificationDispatcherService;
+  private final in.gov.sih.sih26135.communication.queue.DurableDispatchQueueService durableDispatchQueueService;
 
   public CommunicationLogController(
       CommunicationLogService communicationLogService,
-      @Autowired(required = false) NotificationDispatcherService notificationDispatcherService) {
+      @Autowired(required = false) NotificationDispatcherService notificationDispatcherService,
+      @Autowired(required = false) in.gov.sih.sih26135.communication.queue.DurableDispatchQueueService durableDispatchQueueService) {
     this.communicationLogService = communicationLogService;
     this.notificationDispatcherService = notificationDispatcherService;
+    this.durableDispatchQueueService = durableDispatchQueueService;
   }
 
   /**
@@ -94,6 +97,29 @@ public class CommunicationLogController {
         null,
         null
     );
+
+    if (Boolean.TRUE.equals(request.async()) && durableDispatchQueueService != null) {
+      in.gov.sih.sih26135.communication.dto.DispatchJobDto job = durableDispatchQueueService.enqueueJob(command, request.idempotencyKey());
+      NotificationDispatchResponse asyncResponse = new NotificationDispatchResponse(
+          job.jobId(),
+          request.channel().name(),
+          command.purpose().name(),
+          job.deliveryMode(),
+          "QUEUED",
+          "DEMO".equalsIgnoreCase(job.deliveryMode()),
+          false,
+          "Trainee " + request.traineeId(),
+          "DispatchQueue",
+          job.idempotencyKey(),
+          true,
+          "Notification enqueued for asynchronous durable delivery (jobId=" + job.jobId() + ")",
+          null,
+          null,
+          job.createdAt(),
+          null
+      );
+      return ResponseEntity.status(org.springframework.http.HttpStatus.ACCEPTED).body(ApiResponse.ok(asyncResponse));
+    }
 
     NotificationDispatchResponse response = notificationDispatcherService.dispatchNotification(command);
     return ResponseEntity.ok(ApiResponse.ok(response));

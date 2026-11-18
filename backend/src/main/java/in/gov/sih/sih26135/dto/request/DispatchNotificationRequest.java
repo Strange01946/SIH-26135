@@ -28,7 +28,11 @@ public record DispatchNotificationRequest(
     @NotBlank(message = "Template code is required")
     String templateCode,
 
-    Map<String, String> templateParameters
+    Map<String, String> templateParameters,
+
+    Boolean async,
+
+    String idempotencyKey
 ) {
   public DispatchNotificationRequest {
     if (purpose == null) {
@@ -37,5 +41,17 @@ public record DispatchNotificationRequest(
     if (templateParameters == null) {
       templateParameters = Collections.emptyMap();
     }
+    if (async == null) {
+      async = false;
+    }
+  }
+
+  public DispatchNotificationRequest(
+      Long traineeId,
+      CommunicationChannel channel,
+      CommunicationPurpose purpose,
+      String templateCode,
+      Map<String, String> templateParameters) {
+    this(traineeId, channel, purpose, templateCode, templateParameters, false, null);
   }
 }

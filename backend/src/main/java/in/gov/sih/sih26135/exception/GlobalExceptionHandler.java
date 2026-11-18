@@ -26,6 +26,7 @@ import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
+import in.gov.sih.sih26135.communication.exception.CommunicationRateLimitException;
 import in.gov.sih.sih26135.correlation.CorrelationContextHolder;
 import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
@@ -715,6 +716,9 @@ public class GlobalExceptionHandler {
       case "DATABASE_ERROR" -> "An unexpected database error occurred. Please try again later.";
       case "INTERNAL_SERVER_ERROR" -> "An unexpected error occurred. Please try again later.";
       case "EXPORT_RATE_LIMIT_EXCEEDED" -> "Export rate limit exceeded. Please retry later.";
+      case "RATE_LIMIT_EXCEEDED" -> "Notification rate limit exceeded. Please retry later.";
+      case "PROVIDER_RATE_LIMIT_EXCEEDED" -> "Training provider rate limit exceeded. Please retry later.";
+      case "DUPLICATE_DISPATCH_REJECTED" -> "Duplicate notification dispatch rejected within deduplication window.";
       case "EXPORT_ROW_LIMIT_EXCEEDED" -> "Requested export exceeds maximum allowed row limit";
       case "EXPORT_CONCURRENCY_LIMIT_EXCEEDED" -> "Concurrent export limit exceeded. Please retry when active export completes.";
       case OperationalErrorCodes.AUDIT_LOG_IMMUTABLE -> "Audit log records are immutable and cannot be modified or deleted";
@@ -955,6 +959,27 @@ public class GlobalExceptionHandler {
     log.warn("Rate limit exception on {}: status={}, code={}, retryAfter={}",
         uri, ex.getStatus().value(), ex.getErrorCode(), ex.getRetryAfterSeconds());
     recordRateLimitEventSafely(ex, uri);
+    ErrorResponse errorResponse = new ErrorResponse(
+        ex.getStatus().value(),
+        ex.getStatus().getReasonPhrase(),
+        ex.getErrorCode(),
+        clientMessage,
+        uri
+    );
+    HttpHeaders headers = new HttpHeaders();
+    if (ex.getRetryAfterSeconds() > 0) {
+      headers.set(HttpHeaders.RETRY_AFTER, String.valueOf(ex.getRetryAfterSeconds()));
+    }
+    return buildSanitizedResponse(errorResponse, headers, ex.getStatus());
+  }
+
+  @ExceptionHandler(CommunicationRateLimitException.class)
+  public ResponseEntity<ErrorResponse> handleCommunicationRateLimitException(
+      CommunicationRateLimitException ex, HttpServletRequest request) {
+    String clientMessage = resolveSafeClientMessage(ex);
+    String uri = sanitizeUri(request);
+    log.warn("Communication rate limit exception on {}: status={}, code={}, retryAfter={}, scope={}",
+        uri, ex.getStatus().value(), ex.getErrorCode(), ex.getRetryAfterSeconds(), ex.getRateLimitScope());
     ErrorResponse errorResponse = new ErrorResponse(
         ex.getStatus().value(),
         ex.getStatus().getReasonPhrase(),
