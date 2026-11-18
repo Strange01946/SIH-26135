@@ -51,8 +51,8 @@ public class MockWhatsAppProvider implements WhatsAppCommunicationProvider {
         CommunicationChannel.WHATSAPP,
         getProviderName(),
         sid,
-        "SENT",
-        "{\"sid\":\"" + sid + "\",\"status\":\"sent\",\"channel\":\"WHATSAPP\"}"
+        "SIMULATED",
+        "{\"sid\":\"" + sid + "\",\"status\":\"simulated\",\"channel\":\"WHATSAPP\"}"
     );
   }
 

@@ -1,17 +1,25 @@
 package in.gov.sih.sih26135.communication.config;
 
+import jakarta.annotation.PostConstruct;
+import java.util.Arrays;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.EnvironmentAware;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 /**
  * Externalized configuration properties for Phase 29.3 Communication Infrastructure,
  * covering Twilio SMS, Twilio WhatsApp, SendGrid Email, and Gmail SMTP delivery.
+ *
+ * <p>Enforces trusted delivery mode routing (DEMO vs LIVE) and includes a fail-closed
+ * production guard that prohibits DEMO or MOCK execution in production environments.
  */
 @Component
 @ConfigurationProperties(prefix = "communication")
-public class CommunicationProperties {
+public class CommunicationProperties implements EnvironmentAware {
 
   public enum ProviderMode {
+    DEMO,
     MOCK,
     LIVE
   }
@@ -25,13 +33,66 @@ public class CommunicationProperties {
   private ProviderMode mode = ProviderMode.MOCK;
   private boolean liveRecipientOverrideEnabled = true;
   private EmailProviderPreference emailProviderType = EmailProviderPreference.AUTO;
+  private Environment environment;
 
   private TwilioConfig twilio = new TwilioConfig();
   private SendGridConfig sendgrid = new SendGridConfig();
   private SmtpConfig smtp = new SmtpConfig();
 
+  @Override
+  public void setEnvironment(Environment environment) {
+    this.environment = environment;
+  }
+
+  @PostConstruct
+  public void validateConfiguration() {
+    validateProductionSafety(this.environment);
+  }
+
+  /**
+   * Validates that DEMO or MOCK modes are never executed in production environments.
+   *
+   * @param env Spring environment abstraction
+   * @throws IllegalStateException if DEMO/MOCK mode is enabled against production
+   */
+  public void validateProductionSafety(Environment env) {
+    if (!isDemoMode()) {
+      return;
+    }
+    if (env == null) {
+      return;
+    }
+
+    boolean isProdProfile = env.getActiveProfiles() != null && Arrays.stream(env.getActiveProfiles())
+        .anyMatch(p -> p.equalsIgnoreCase("prod") || p.equalsIgnoreCase("production"));
+
+    String appEnv = env.getProperty("APP_ENVIRONMENT", env.getProperty("app.environment", ""));
+    boolean isProdEnv = "prod".equalsIgnoreCase(appEnv) || "production".equalsIgnoreCase(appEnv);
+
+    String dbUrl = env.getProperty("spring.datasource.url", "");
+    String dbName = env.getProperty("DB_NAME", "");
+    boolean isProdCatalog = (dbUrl.contains("/SIH26135") && !dbUrl.contains("/SIH26135_TEST"))
+        || ("SIH26135".equalsIgnoreCase(dbName) && !dbUrl.contains("SIH26135_TEST"));
+
+    if (isProdProfile || isProdEnv || isProdCatalog) {
+      throw new IllegalStateException(
+          "DEMO/MOCK communication mode is strictly prohibited in production environment "
+              + "(catalog: SIH26135, detected: prodProfile=" + isProdProfile + ", prodEnv=" + isProdEnv + ", prodCatalog=" + isProdCatalog + "). "
+              + "Set communication.mode=LIVE for production operations or target test catalog SIH26135_TEST."
+      );
+    }
+  }
+
   public boolean isLiveMode() {
     return mode == ProviderMode.LIVE;
+  }
+
+  public boolean isDemoMode() {
+    return mode == ProviderMode.DEMO || mode == ProviderMode.MOCK;
+  }
+
+  public String getEffectiveModeName() {
+    return isLiveMode() ? "LIVE" : "DEMO";
   }
 
   public ProviderMode getMode() {

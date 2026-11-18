@@ -198,14 +198,17 @@ class NotificationDispatcherIntegrationTest {
     assertThat(response).isNotNull();
     assertThat(response.accepted()).isTrue();
     assertThat(response.channel()).isEqualTo("SMS");
-    assertThat(response.status()).isEqualTo("SENT");
+    assertThat(response.status()).isEqualTo("SIMULATED");
+    assertThat(response.deliveryMode()).isEqualTo("DEMO");
+    assertThat(response.simulated()).isTrue();
+    assertThat(response.physicallyDelivered()).isFalse();
     assertThat(response.providerName()).isEqualTo("MockSmsProvider");
     assertThat(response.providerMessageId()).startsWith("SM_MOCK_");
     assertThat(response.recipientMasked()).contains("XXXX");
 
-    // Verify row persisted in MySQL communication_logs
+    // Verify row persisted in MySQL communication_logs with SIMULATED status (ID 9)
     Integer count = jdbcTemplate.queryForObject(
-        "SELECT COUNT(*) FROM communication_logs WHERE trainee_id = ? AND communication_channel_id = 1 AND communication_status_id = 3",
+        "SELECT COUNT(*) FROM communication_logs WHERE trainee_id = ? AND communication_channel_id = 1 AND communication_status_id = 9",
         Integer.class,
         FIXTURE_TRAINEE_ID
     );
@@ -238,12 +241,15 @@ class NotificationDispatcherIntegrationTest {
     assertThat(response).isNotNull();
     assertThat(response.accepted()).isTrue();
     assertThat(response.channel()).isEqualTo("WHATSAPP");
-    assertThat(response.status()).isEqualTo("SENT");
+    assertThat(response.status()).isEqualTo("SIMULATED");
+    assertThat(response.deliveryMode()).isEqualTo("DEMO");
+    assertThat(response.simulated()).isTrue();
+    assertThat(response.physicallyDelivered()).isFalse();
     assertThat(response.providerName()).isEqualTo("MockWhatsAppProvider");
     assertThat(response.providerMessageId()).startsWith("WA_MOCK_");
 
     Integer count = jdbcTemplate.queryForObject(
-        "SELECT COUNT(*) FROM communication_logs WHERE trainee_id = ? AND communication_channel_id = 2 AND communication_status_id = 3",
+        "SELECT COUNT(*) FROM communication_logs WHERE trainee_id = ? AND communication_channel_id = 2 AND communication_status_id = 9",
         Integer.class,
         FIXTURE_TRAINEE_ID
     );
@@ -273,12 +279,15 @@ class NotificationDispatcherIntegrationTest {
     assertThat(response).isNotNull();
     assertThat(response.accepted()).isTrue();
     assertThat(response.channel()).isEqualTo("EMAIL");
-    assertThat(response.status()).isEqualTo("SENT");
+    assertThat(response.status()).isEqualTo("SIMULATED");
+    assertThat(response.deliveryMode()).isEqualTo("DEMO");
+    assertThat(response.simulated()).isTrue();
+    assertThat(response.physicallyDelivered()).isFalse();
     assertThat(response.providerName()).isEqualTo("MockEmailProvider");
     assertThat(response.providerMessageId()).startsWith("EM_MOCK_");
 
     Integer count = jdbcTemplate.queryForObject(
-        "SELECT COUNT(*) FROM communication_logs WHERE trainee_id = ? AND communication_channel_id = 3 AND communication_status_id = 3",
+        "SELECT COUNT(*) FROM communication_logs WHERE trainee_id = ? AND communication_channel_id = 3 AND communication_status_id = 9",
         Integer.class,
         FIXTURE_TRAINEE_ID
     );
@@ -407,7 +416,7 @@ class NotificationDispatcherIntegrationTest {
     assertThat(result.providerMode()).isEqualTo("MOCK");
     assertThat(result.providerMessageId()).startsWith("SM_MOCK_");
     assertThat(result.deliveryProofSummary()).contains("Channel=SMS");
-    assertThat(result.deliveryProofSummary()).contains("Status=SENT");
+    assertThat(result.deliveryProofSummary()).contains("Status=SIMULATED");
     assertThat(result.deliveryProofSummary()).contains("Mode=MOCK");
     assertThat(result.communicationLogId()).isNotNull();
 
@@ -504,7 +513,10 @@ class NotificationDispatcherIntegrationTest {
 
     assertThat(response).isNotNull();
     assertThat(response.accepted()).isTrue();
-    assertThat(response.status()).isEqualTo("SENT");
+    assertThat(response.status()).isEqualTo("SIMULATED");
+    assertThat(response.deliveryMode()).isEqualTo("DEMO");
+    assertThat(response.simulated()).isTrue();
+    assertThat(response.physicallyDelivered()).isFalse();
 
     MockSmsProvider.DispatchedSms msg = mockSmsProvider.getLastMessage();
     assertThat(msg).isNotNull();

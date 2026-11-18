@@ -249,18 +249,55 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
     );
 
     // 8. Return Sanitized Dispatch Response
-    boolean effectiveAccepted = deliveryResult.accepted() && !"FAILED".equalsIgnoreCase(logEntity.getCommunicationStatus().getStatusCode());
+    boolean isDemo = properties.isDemoMode() || "SIMULATED".equalsIgnoreCase(logEntity.getCommunicationStatus().getStatusCode());
+    String effectiveDeliveryMode = isDemo ? "DEMO" : "LIVE";
+    String statusCode = logEntity.getCommunicationStatus().getStatusCode();
+    boolean isSimulated = isDemo;
+    boolean isPhysicallyDelivered = "DELIVERED".equalsIgnoreCase(statusCode);
+    boolean effectiveAccepted = deliveryResult.accepted() && !"FAILED".equalsIgnoreCase(statusCode);
+
+    String safeMessage;
+    String errorCode = null;
+    String errorExplanation = null;
+
+    if (!effectiveAccepted || "FAILED".equalsIgnoreCase(statusCode)) {
+      errorCode = deliveryResult.errorCode() != null ? deliveryResult.errorCode() : "DELIVERY_FAILED";
+      errorExplanation = logEntity.getFailureReason() != null ? logEntity.getFailureReason() : deliveryResult.errorMessage();
+      if (errorExplanation == null || errorExplanation.isBlank()) {
+        errorExplanation = "Provider rejected or failed notification dispatch";
+      }
+      safeMessage = isDemo
+          ? "Simulated notification failed: " + errorExplanation
+          : "Notification dispatch failed: " + errorExplanation;
+    } else if (isDemo) {
+      safeMessage = "Notification simulated successfully in DEMO mode (no external network transmission)";
+    } else if ("DELIVERED".equalsIgnoreCase(statusCode)) {
+      safeMessage = "Notification confirmed delivered to recipient device";
+    } else if ("SENT".equalsIgnoreCase(statusCode)) {
+      safeMessage = "Notification dispatched to carrier network";
+    } else {
+      safeMessage = "Notification accepted by communication provider and queued for delivery";
+    }
+
+    LocalDateTime deliveredAt = isPhysicallyDelivered ? logEntity.getDeliveredAt() : null;
+
     return new NotificationDispatchResponse(
         logEntity.getId(),
         channelCode,
         purposeCode,
+        effectiveDeliveryMode,
+        statusCode,
+        isSimulated,
+        isPhysicallyDelivered,
         CommunicationTriggerEvent.maskRecipient(rawRecipient),
         deliveryResult.providerName(),
         deliveryResult.providerMessageId(),
-        logEntity.getCommunicationStatus().getStatusCode(),
         effectiveAccepted,
-        effectiveAccepted ? "Notification accepted by communication provider" : "Notification rejected or failed by provider: " + (logEntity.getFailureReason() != null ? logEntity.getFailureReason() : deliveryResult.errorMessage()),
-        deliveryResult.dispatchedAt()
+        safeMessage,
+        errorCode,
+        errorExplanation,
+        deliveryResult.dispatchedAt(),
+        deliveredAt
     );
   }
 
@@ -558,7 +595,7 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
     );
   }
 
-  protected CommunicationLog persistCommunicationLog(
+  public CommunicationLog persistCommunicationLog(
       Trainee trainee,
       String channelCode,
       String purposeCode,
@@ -585,6 +622,8 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
       String mappedStatus;
       if ("FAILED".equals(normalized) || "UNDELIVERED".equals(normalized) || !result.accepted()) {
         mappedStatus = "FAILED";
+      } else if (properties.isDemoMode() || "SIMULATED".equals(normalized)) {
+        mappedStatus = "SIMULATED";
       } else if ("DELIVERED".equals(normalized)) {
         mappedStatus = "DELIVERED";
       } else if ("SENT".equals(normalized)) {
@@ -599,6 +638,7 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
 
       RefCommunicationStatus status = refCommunicationStatusRepository.findByStatusCode(mappedStatus)
           .orElseGet(() -> refCommunicationStatusRepository.findById(
+              "SIMULATED".equals(mappedStatus) ? 9L :
               "DELIVERED".equals(mappedStatus) ? 4L :
               "SENT".equals(mappedStatus) ? 3L :
               "ATTEMPTED".equals(mappedStatus) ? 2L :

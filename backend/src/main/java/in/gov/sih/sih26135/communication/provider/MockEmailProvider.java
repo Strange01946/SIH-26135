@@ -52,8 +52,8 @@ public class MockEmailProvider implements EmailCommunicationProvider {
         CommunicationChannel.EMAIL,
         getProviderName(),
         messageId,
-        "SENT",
-        "{\"messageId\":\"" + messageId + "\",\"status\":\"sent\",\"channel\":\"EMAIL\"}"
+        "SIMULATED",
+        "{\"messageId\":\"" + messageId + "\",\"status\":\"simulated\",\"channel\":\"EMAIL\"}"
     );
   }
 

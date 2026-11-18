@@ -53,7 +53,7 @@ class ProviderAdaptersUnitTest {
     assertThat(result.channel()).isEqualTo(CommunicationChannel.SMS);
     assertThat(result.providerName()).isEqualTo("MockSmsProvider");
     assertThat(result.providerMessageId()).startsWith("SM_MOCK_");
-    assertThat(result.statusCode()).isEqualTo("SENT");
+    assertThat(result.statusCode()).isEqualTo("SIMULATED");
 
     assertThat(mockSmsProvider.getDispatchedMessages()).hasSize(1);
     MockSmsProvider.DispatchedSms dispatched = mockSmsProvider.getLastMessage();
@@ -152,6 +152,7 @@ class ProviderAdaptersUnitTest {
     MimeMessage mimeMessage = mock(MimeMessage.class);
     when(mockMailSender.createMimeMessage()).thenReturn(mimeMessage);
 
+    properties.setLiveRecipientOverrideEnabled(false);
     SmtpEmailProvider smtpEmailProvider = new SmtpEmailProvider(properties);
     smtpEmailProvider.setMailSender(mockMailSender);
 

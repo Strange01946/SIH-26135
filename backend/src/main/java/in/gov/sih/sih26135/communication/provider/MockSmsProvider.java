@@ -69,8 +69,8 @@ public class MockSmsProvider implements SmsCommunicationProvider {
         CommunicationChannel.SMS,
         getProviderName(),
         sid,
-        "SENT",
-        "{\"sid\":\"" + sid + "\",\"status\":\"sent\",\"channel\":\"SMS\"}"
+        "SIMULATED",
+        "{\"sid\":\"" + sid + "\",\"status\":\"simulated\",\"channel\":\"SMS\"}"
     );
   }
 

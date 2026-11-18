@@ -212,7 +212,9 @@ public class NotificationDispatchSecurityAndScopeTest {
 
     assertThat(response).isNotNull();
     assertThat(response.accepted()).isTrue();
-    assertThat(response.status()).isEqualTo("SENT");
+    assertThat(response.status()).isEqualTo("SIMULATED");
+    assertThat(response.deliveryMode()).isEqualTo("DEMO");
+    assertThat(response.simulated()).isTrue();
     assertThat(mockSmsProvider.getDispatchedMessages()).hasSize(1);
   }
 
@@ -332,7 +334,9 @@ public class NotificationDispatchSecurityAndScopeTest {
 
     assertThat(response).isNotNull();
     assertThat(response.accepted()).isTrue();
-    assertThat(response.status()).isEqualTo("SENT");
+    assertThat(response.status()).isEqualTo("SIMULATED");
+    assertThat(response.deliveryMode()).isEqualTo("DEMO");
+    assertThat(response.simulated()).isTrue();
     assertThat(mockSmsProvider.getDispatchedMessages()).hasSize(1);
   }
 

@@ -6,7 +6,12 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.Valid;
+import in.gov.sih.sih26135.communication.dto.CommunicationDispatchCommand;
+import in.gov.sih.sih26135.communication.dto.NotificationDispatchResponse;
+import in.gov.sih.sih26135.communication.model.CommunicationPurpose;
+import in.gov.sih.sih26135.communication.service.NotificationDispatcherService;
 import in.gov.sih.sih26135.dto.request.CreateCommunicationLogRequest;
+import in.gov.sih.sih26135.dto.request.DispatchNotificationRequest;
 import in.gov.sih.sih26135.dto.request.UpdateCommunicationLogRequest;
 import in.gov.sih.sih26135.dto.response.CommunicationLogResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
@@ -16,6 +21,7 @@ import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.service.CommunicationLogService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Set;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -46,9 +52,51 @@ import org.springframework.web.bind.annotation.RestController;
 public class CommunicationLogController {
 
   private final CommunicationLogService communicationLogService;
+  private final NotificationDispatcherService notificationDispatcherService;
 
-  public CommunicationLogController(CommunicationLogService communicationLogService) {
+  public CommunicationLogController(
+      CommunicationLogService communicationLogService,
+      @Autowired(required = false) NotificationDispatcherService notificationDispatcherService) {
     this.communicationLogService = communicationLogService;
+    this.notificationDispatcherService = notificationDispatcherService;
+  }
+
+  /**
+   * Dispatches an outbound notification to a trainee through the configured communication infrastructure.
+   *
+   * <p>Enforces:
+   * <ul>
+   *   <li>Pre-dispatch multi-tenant boundary checks.</li>
+   *   <li>Mandatory statutory DPDP consent checks (fail-closed, logs BLOCKED_NO_CONSENT).</li>
+   *   <li>Approved template validation and variable interpolation.</li>
+   *   <li>Trusted delivery mode (DEMO vs LIVE) derived exclusively from server configuration.</li>
+   *   <li>Auditable persistence in MySQL communication_logs.</li>
+   * </ul>
+   *
+   * @param request dispatch notification request
+   * @return 200 OK with sanitized NotificationDispatchResponse enveloped in ApiResponse
+   */
+  @PostMapping("/dispatch")
+  @PreAuthorize("hasAnyAuthority('communication.manage', 'survey.manage', 'system.manage')")
+  public ResponseEntity<ApiResponse<NotificationDispatchResponse>> dispatchNotification(
+      @Valid @RequestBody DispatchNotificationRequest request) {
+    if (notificationDispatcherService == null) {
+      throw new IllegalStateException("NotificationDispatcherService is not available");
+    }
+
+    CommunicationDispatchCommand command = new CommunicationDispatchCommand(
+        request.traineeId(),
+        request.channel(),
+        request.purpose() != null ? request.purpose() : CommunicationPurpose.OPERATIONAL,
+        request.templateCode(),
+        request.templateParameters(),
+        null, // Resolved server-side from authenticated principal
+        null,
+        null
+    );
+
+    NotificationDispatchResponse response = notificationDispatcherService.dispatchNotification(command);
+    return ResponseEntity.ok(ApiResponse.ok(response));
   }
 
   /**
