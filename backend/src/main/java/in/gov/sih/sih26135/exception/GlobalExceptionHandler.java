@@ -671,6 +671,7 @@ public class GlobalExceptionHandler {
     return switch (errorCode) {
       case "INVALID_IDENTITY" -> "Identity verification failed. Please verify the provided identity details.";
       case "INVALID_CREDENTIALS" -> "Invalid credentials provided";
+      case "ACCOUNT_LOCKED" -> "User account is locked";
       case "UNAUTHORIZED" -> "Full authentication is required to access this resource";
       case "ACCESS_DENIED" -> "Access is denied";
       case "CONSENT_REQUIRED" -> "Trainee consent is required to perform this action";

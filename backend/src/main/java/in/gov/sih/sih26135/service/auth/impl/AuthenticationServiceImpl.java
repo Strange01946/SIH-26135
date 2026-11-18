@@ -12,6 +12,7 @@ import in.gov.sih.sih26135.entity.RefSystemEventCategory;
 import in.gov.sih.sih26135.entity.RefSystemEventSeverity;
 import in.gov.sih.sih26135.entity.RefUserStatus;
 import in.gov.sih.sih26135.entity.User;
+import in.gov.sih.sih26135.exception.AccountLockedException;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.InvalidCredentialsException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
@@ -113,7 +114,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
   }
 
   @Override
-  @Transactional(noRollbackFor = {InvalidCredentialsException.class})
+  @Transactional(noRollbackFor = {InvalidCredentialsException.class, AccountLockedException.class})
   public AuthResponse login(LoginRequest request) {
     if (request == null) {
       throw new BadRequestException("Login request cannot be null");
@@ -156,7 +157,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
       recordSecurityEvent("LOGIN_BLOCKED_LOCKED_ACCOUNT", user.getId(), user.getId(),
           "Login blocked: account is currently locked", SEVERITY_WARNING);
       log.warn("Authentication blocked: account id={} is currently locked", user.getId());
-      throw new InvalidCredentialsException();
+      throw new AccountLockedException();
     }
 
     // Check if timed lockout has expired
@@ -176,6 +177,12 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     }
 
     // Verify account status is strictly ACTIVE (reject PENDING, LOCKED, DISABLED, ARCHIVED)
+    if (STATUS_LOCKED.equalsIgnoreCase(currentStatusCode)) {
+      recordSecurityEvent("LOGIN_BLOCKED_LOCKED_ACCOUNT", user.getId(), user.getId(),
+          "Login blocked: account is currently locked", SEVERITY_WARNING);
+      log.warn("Authentication blocked: account id={} is currently locked", user.getId());
+      throw new AccountLockedException();
+    }
     if (!STATUS_ACTIVE.equalsIgnoreCase(currentStatusCode)) {
       recordSecurityEvent("LOGIN_FAILURE", user.getId(), user.getId(),
           "Authentication failed: invalid credentials", SEVERITY_WARNING);
@@ -204,14 +211,14 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             "Account locked after repeated authentication failures", SEVERITY_ERROR);
         recordAuditLog(user.getId(), "User", user.getId(),
             "Account locked after repeated authentication failures");
+        throw new AccountLockedException();
       } else {
         userRepository.save(user);
         log.warn("Authentication failed: invalid credentials for user id={}", user.getId());
         recordSecurityEvent("LOGIN_FAILURE", user.getId(), user.getId(),
             "Authentication failed: invalid credentials", SEVERITY_WARNING);
+        throw new InvalidCredentialsException();
       }
-
-      throw new InvalidCredentialsException();
     }
 
     // Successful authentication: reset failed count, clear lock, update last_login_at, ensure ACTIVE
