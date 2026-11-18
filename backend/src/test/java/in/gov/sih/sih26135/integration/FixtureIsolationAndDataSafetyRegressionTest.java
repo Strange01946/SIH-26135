@@ -28,31 +28,62 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class FixtureIsolationAndDataSafetyRegressionTest extends BaseJourneyIntegrationTest {
 
   @Test
-  @DisplayName("1. Pre-existing records with IDs formerly used by tests are not modified or deleted")
+  @DisplayName("1. Untracked pre-existing records and formerly used IDs are not modified or deleted")
   void testPreExistingRecordsWithFormerlyUsedIdsSurvive() {
-    Long formerlyUsedSectorId = 9101L;
+    String token = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
 
-    // Seed pre-existing record with formerly fixed ID
-    jdbcTemplate.update("""
-        INSERT INTO sectors (sector_id, sector_code, sector_name, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, 'SEC-PRE-EXISTING-9101', 'Pre-existing Sector', 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE sector_name = 'Pre-existing Sector'
-        """, formerlyUsedSectorId);
+    // If fixed sector 9101 genuinely pre-exists in the database, verify it purely read-only
+    Integer preExisting9101Count = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM sectors WHERE sector_id = 9101", Integer.class);
+    boolean sector9101PreExists = preExisting9101Count != null && preExisting9101Count > 0;
+
+    // Dynamically create an exclusive untracked sector fixture representing a pre-existing record
+    Long untrackedSectorId = insertAndGetId("""
+        INSERT INTO sectors (sector_code, sector_name, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, 1, NOW(), NOW())
+        """, "SEC-UNTRACKED-" + token, "Untracked PreExisting Sector " + token);
+
+    // Also dynamically create a tracked sector so teardown has an active fixture to clean up
+    Long trackedSectorId = insertAndGetId("""
+        INSERT INTO sectors (sector_code, sector_name, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, 1, NOW(), NOW())
+        """, "SEC-TRACKED-" + token, "Tracked Test Sector " + token);
+    trackedSectorIds.add(trackedSectorId);
 
     try {
-      // Simulate teardown of unrelated tracked fixtures
+      // Execute teardown of tracked fixtures
       teardownTrackedFixtures();
 
-      // Assert pre-existing record 9101 was NOT claimed or deleted by teardown
-      Integer count = jdbcTemplate.queryForObject(
+      // Assert untracked record survived teardown
+      Integer untrackedCount = jdbcTemplate.queryForObject(
           "SELECT COUNT(*) FROM sectors WHERE sector_id = ?",
-          Integer.class, formerlyUsedSectorId);
-      assertThat(count)
-          .as("Pre-existing record with formerly fixed ID 9101 must survive test teardown")
+          Integer.class, untrackedSectorId);
+      assertThat(untrackedCount)
+          .as("Untracked record must survive teardown intact")
           .isEqualTo(1);
+
+      // Assert tracked record was cleaned up
+      Integer trackedCount = jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM sectors WHERE sector_id = ?",
+          Integer.class, trackedSectorId);
+      assertThat(trackedCount)
+          .as("Tracked record must be cleaned up by teardown")
+          .isZero();
+
+      // If sector 9101 pre-existed, assert it survived in a purely read-only manner
+      if (sector9101PreExists) {
+        Integer count9101 = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM sectors WHERE sector_id = 9101", Integer.class);
+        assertThat(count9101)
+            .as("Pre-existing sector 9101 must remain completely untouched")
+            .isEqualTo(1);
+      }
     } finally {
-      // Clean up the pre-existing seed record
-      jdbcTemplate.update("DELETE FROM sectors WHERE sector_id = ?", formerlyUsedSectorId);
+      // Only delete the untracked sector demonstrably created and owned by this test
+      if (untrackedSectorId != null) {
+        jdbcTemplate.update("DELETE FROM sectors WHERE sector_id = ?", untrackedSectorId);
+      }
+      // Never delete or modify sector 9101
     }
   }
 
