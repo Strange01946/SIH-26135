@@ -46,6 +46,11 @@ public interface DurableDispatchQueueService {
   List<DispatchJobDto> getDeadLetterJobs(int offset, int limit);
 
   /**
+   * Retrieves paginated dead-letter jobs filtered by training provider tenant ID.
+   */
+  List<DispatchJobDto> getDeadLetterJobsByProvider(Long providerId, int offset, int limit);
+
+  /**
    * Replays an exhausted or dead-lettered dispatch job after revalidating consent and rate limits.
    *
    * @param jobId job ID

@@ -183,4 +183,98 @@ class CommunicationRateLimiterTest {
     assertThat(successfulReservations.get()).isEqualTo(3);
     assertThat(rejectedReservations.get()).isEqualTo(3);
   }
+
+  @Test
+  @DisplayName("8. Atomic Provider Burst Concurrency: Multiple distinct trainees under same provider respect 100 req/60s limit without over-allocation")
+  void testConcurrencySafety_multiTraineeProviderQuotaContention() throws InterruptedException {
+    String providerLimiterKey = "PROVIDER:" + TEST_PROVIDER_A;
+    // Seed exactly 98 requests in rolling window
+    for (int i = 0; i < 98; i++) {
+      jdbcTemplate.update(
+          "INSERT INTO communication_rate_limit_events (limiter_key, event_type, created_at) VALUES (?, 'PROVIDER_REQUEST', NOW())",
+          providerLimiterKey
+      );
+    }
+
+    // 6 distinct trainees under provider A attempt to dispatch concurrently
+    int threadCount = 6;
+    ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+    CountDownLatch startLatch = new CountDownLatch(1);
+    CountDownLatch doneLatch = new CountDownLatch(threadCount);
+
+    AtomicInteger successfulReservations = new AtomicInteger(0);
+    AtomicInteger throttledReservations = new AtomicInteger(0);
+
+    for (int i = 0; i < threadCount; i++) {
+      final long traineeId = 98990L + i;
+      final int idx = i;
+      executor.execute(() -> {
+        try {
+          startLatch.await();
+          rateLimiter.checkAndReserveQuota(traineeId, CommunicationChannel.SMS, TEST_PROVIDER_A, "TPL-ENROLL-001", "multi_tr_hash_" + idx);
+          successfulReservations.incrementAndGet();
+        } catch (CommunicationRateLimitException ex) {
+          if ("PROVIDER_RATE_LIMIT_EXCEEDED".equals(ex.getErrorCode())) {
+            throttledReservations.incrementAndGet();
+          }
+        } catch (Exception ex) {
+          // Unexpected error
+        } finally {
+          doneLatch.countDown();
+        }
+      });
+    }
+
+    startLatch.countDown();
+    doneLatch.await();
+    executor.shutdown();
+
+    // With 98 already present and cap=100, exactly 2 must succeed and 4 must be throttled
+    assertThat(successfulReservations.get()).isEqualTo(2);
+    assertThat(throttledReservations.get()).isEqualTo(4);
+
+    // Verify total provider count in MySQL is exactly 100 (zero over-allocation)
+    Integer finalProviderCount = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM communication_rate_limit_events WHERE limiter_key = ? AND created_at >= NOW() - INTERVAL 60 SECOND",
+        Integer.class,
+        providerLimiterKey
+    );
+    assertThat(finalProviderCount).isEqualTo(100);
+  }
+
+  @Test
+  @DisplayName("9. Retry Quota Policy: Automatic retries enforce provider burst capacity without penalizing trainee 24h quota")
+  void testRetryQuotaPolicy_retriesEnforceProviderCapacityWithoutTraineePenalty() {
+    String traineeKey = "TRAINEE:SMS:" + TEST_TRAINEE_A;
+    String providerKey = "PROVIDER:" + TEST_PROVIDER_A;
+
+    // Execute 3 normal dispatches (exhausting trainee's 3 SMS/24h quota)
+    for (int i = 1; i <= 3; i++) {
+      rateLimiter.checkAndReserveQuota(TEST_TRAINEE_A, CommunicationChannel.SMS, TEST_PROVIDER_A, "TPL-ENROLL-001", "param_" + i, false);
+    }
+
+    // Trainee normal dispatch is now blocked
+    assertThatThrownBy(() ->
+        rateLimiter.checkAndReserveQuota(TEST_TRAINEE_A, CommunicationChannel.SMS, TEST_PROVIDER_A, "TPL-ENROLL-001", "param_4", false)
+    ).isInstanceOf(CommunicationRateLimitException.class);
+
+    // Automatic technical retry (isRetry = true) succeeds because it does not re-penalize trainee 24h quota
+    rateLimiter.checkAndReserveQuota(TEST_TRAINEE_A, CommunicationChannel.SMS, TEST_PROVIDER_A, "TPL-ENROLL-001", "param_retry", true);
+
+    // Trainee events still equal exactly 3 in MySQL (no double-charging)
+    Integer traineeCount = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM communication_rate_limit_events WHERE limiter_key = ? AND event_type = 'DISPATCH_ATTEMPT'",
+        Integer.class,
+        traineeKey
+    );
+    assertThat(traineeCount).isEqualTo(3);
+
+    // Provider events equal 4 (each physical attempt reserves provider capacity)
+    Integer providerCount = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM communication_rate_limit_events WHERE limiter_key = ? AND event_type = 'PROVIDER_REQUEST'",
+        Integer.class,
+        providerKey
+    );
+    assertThat(providerCount).isEqualTo(4);
+  }
 }

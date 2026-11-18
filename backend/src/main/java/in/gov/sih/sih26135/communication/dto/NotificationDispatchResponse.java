@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
  *   <li>LIVE provider sent ({@code deliveryMode: LIVE}, {@code status: SENT}, {@code simulated: false}, {@code physicallyDelivered: false})</li>
  *   <li>LIVE confirmed handset delivery ({@code deliveryMode: LIVE}, {@code status: DELIVERED}, {@code simulated: false}, {@code physicallyDelivered: true})</li>
  *   <li>Provider failure ({@code status: FAILED}, with sanitized {@code errorCode} and {@code errorExplanation})</li>
+ *   <li>Asynchronous durable enqueue: {@code communicationLogId: null}, {@code providerMessageId: null}, {@code jobId: <id>}, {@code status: QUEUED}</li>
  * </ul>
  */
 public record NotificationDispatchResponse(
@@ -33,8 +34,51 @@ public record NotificationDispatchResponse(
     String errorCode,
     String errorExplanation,
     LocalDateTime dispatchedAt,
-    LocalDateTime deliveredAt
+    LocalDateTime deliveredAt,
+    Long jobId
 ) {
+
+  /**
+   * Backward-compatible 16-parameter constructor defaulting jobId to null.
+   */
+  public NotificationDispatchResponse(
+      Long communicationLogId,
+      String channel,
+      String purpose,
+      String deliveryMode,
+      String status,
+      boolean simulated,
+      boolean physicallyDelivered,
+      String recipientMasked,
+      String providerName,
+      String providerMessageId,
+      boolean accepted,
+      String message,
+      String errorCode,
+      String errorExplanation,
+      LocalDateTime dispatchedAt,
+      LocalDateTime deliveredAt
+  ) {
+    this(
+        communicationLogId,
+        channel,
+        purpose,
+        deliveryMode,
+        status,
+        simulated,
+        physicallyDelivered,
+        recipientMasked,
+        providerName,
+        providerMessageId,
+        accepted,
+        message,
+        errorCode,
+        errorExplanation,
+        dispatchedAt,
+        deliveredAt,
+        null
+    );
+  }
 
   /**
    * Backward-compatible 10-parameter constructor for existing callers and legacy test suites.
@@ -67,7 +111,8 @@ public record NotificationDispatchResponse(
         null,
         null,
         dispatchedAt,
-        "DELIVERED".equalsIgnoreCase(status) ? dispatchedAt : null
+        "DELIVERED".equalsIgnoreCase(status) ? dispatchedAt : null,
+        null
     );
   }
 }

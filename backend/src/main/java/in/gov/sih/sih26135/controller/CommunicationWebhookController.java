@@ -89,8 +89,11 @@ public class CommunicationWebhookController {
     // 3. Process delivery reconciliation
     WebhookProcessingResult result = webhookService.processWebhook(normProvider, request, bodyBytes, formParams);
 
-    if ("MESSAGE_NOT_FOUND".equalsIgnoreCase(result.resolutionCode())) {
-      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.ok(result));
+    if (!result.accepted()) {
+      if ("MESSAGE_NOT_FOUND".equalsIgnoreCase(result.resolutionCode())) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.ok(result));
+      }
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.ok(result));
     }
 
     return ResponseEntity.ok(ApiResponse.ok(result));

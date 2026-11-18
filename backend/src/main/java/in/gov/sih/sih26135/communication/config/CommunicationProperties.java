@@ -42,6 +42,7 @@ public class CommunicationProperties implements EnvironmentAware {
   private ProviderMode mode = ProviderMode.MOCK;
   private boolean liveRecipientOverrideEnabled = true;
   private EmailProviderPreference emailProviderType = EmailProviderPreference.AUTO;
+  private boolean allowTestWebhookSignatures = false;
   private Environment environment;
 
   @Autowired(required = false)
@@ -210,6 +211,14 @@ public class CommunicationProperties implements EnvironmentAware {
     this.liveRecipientOverrideEnabled = liveRecipientOverrideEnabled;
   }
 
+  public boolean isAllowTestWebhookSignatures() {
+    return allowTestWebhookSignatures;
+  }
+
+  public void setAllowTestWebhookSignatures(boolean allowTestWebhookSignatures) {
+    this.allowTestWebhookSignatures = allowTestWebhookSignatures;
+  }
+
   public EmailProviderPreference getEmailProviderType() {
     return emailProviderType;
   }
@@ -357,6 +366,7 @@ public class CommunicationProperties implements EnvironmentAware {
     private String apiKey = "";
     private String fromEmail = "";
     private String liveTestEmail = "";
+    private String webhookVerificationKey = "";
     private int connectTimeoutMs = 5000;
     private int readTimeoutMs = 10000;
 
@@ -387,6 +397,14 @@ public class CommunicationProperties implements EnvironmentAware {
 
     public void setLiveTestEmail(String liveTestEmail) {
       this.liveTestEmail = liveTestEmail != null ? liveTestEmail.trim() : "";
+    }
+
+    public String getWebhookVerificationKey() {
+      return webhookVerificationKey;
+    }
+
+    public void setWebhookVerificationKey(String webhookVerificationKey) {
+      this.webhookVerificationKey = webhookVerificationKey != null ? webhookVerificationKey.trim() : "";
     }
 
     public int getConnectTimeoutMs() {

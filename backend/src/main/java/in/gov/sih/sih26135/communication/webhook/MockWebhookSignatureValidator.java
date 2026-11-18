@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.communication.webhook;
 
+import in.gov.sih.sih26135.communication.config.CommunicationProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -7,11 +8,12 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
  * Deterministic test and demonstration webhook signature validator supporting HMAC-SHA256
- * and designated test signatures.
+ * and designated test signatures, strictly restricted to authorized non-production test environments.
  */
 @Component
 public class MockWebhookSignatureValidator implements WebhookSignatureValidator {
@@ -23,6 +25,13 @@ public class MockWebhookSignatureValidator implements WebhookSignatureValidator 
   public static final String TEST_MOCK_VALID_SIGNATURE = "mock-valid-signature";
   public static final String DEFAULT_MOCK_SECRET = "sih26135-mock-webhook-secret";
 
+  private final CommunicationProperties properties;
+
+  @Autowired
+  public MockWebhookSignatureValidator(CommunicationProperties properties) {
+    this.properties = properties;
+  }
+
   @Override
   public String getSupportedProvider() {
     return "mock";
@@ -31,6 +40,12 @@ public class MockWebhookSignatureValidator implements WebhookSignatureValidator 
   @Override
   public boolean validateSignature(HttpServletRequest request, byte[] bodyBytes) {
     if (request == null) {
+      return false;
+    }
+
+    // Fail closed: mock webhook authentication is strictly restricted to authorized non-production test environments
+    if (!properties.isAllowTestWebhookSignatures()) {
+      log.warn("[MockWebhook] Mock webhook authentication is disabled outside authorized test environments");
       return false;
     }
 

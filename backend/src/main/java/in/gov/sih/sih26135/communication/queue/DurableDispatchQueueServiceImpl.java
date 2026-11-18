@@ -226,10 +226,11 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
     }
     String effectiveWorkerId = (workerId != null && !workerId.isBlank()) ? workerId : "worker-" + Thread.currentThread().getName();
 
-    // 1. Concurrency-safe atomic claim
+    // 1. Concurrency-safe atomic claim with lease increment and scheduled_at check
     int rowsClaimed = jdbcTemplate.update(
-        "UPDATE communication_dispatch_jobs SET job_status = ?, locked_at = NOW(), locked_by = ?, updated_at = NOW() "
-            + "WHERE job_id = ? AND (job_status = ? OR (job_status = ? AND locked_at < NOW() - INTERVAL ? MINUTE))",
+        "UPDATE communication_dispatch_jobs SET job_status = ?, lease_version = lease_version + 1, locked_at = NOW(), locked_by = ?, updated_at = NOW() "
+            + "WHERE job_id = ? AND (scheduled_at IS NULL OR scheduled_at <= NOW()) "
+            + "AND (job_status = ? OR (job_status = ? AND locked_at < NOW() - INTERVAL ? MINUTE))",
         STATUS_PROCESSING,
         effectiveWorkerId,
         jobId,
@@ -247,10 +248,11 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
     if (job == null) {
       return null;
     }
+    final int workerLeaseVersion = job.leaseVersion();
 
     int currentAttemptNumber = job.attemptCount() + 1;
-    log.info("[DispatchQueue] Claimed job {}: attempt {}/{} by worker {}",
-        jobId, currentAttemptNumber, job.maxAttempts(), effectiveWorkerId);
+    log.info("[DispatchQueue] Claimed job {}: attempt {}/{} (lease={}) by worker {}",
+        jobId, currentAttemptNumber, job.maxAttempts(), workerLeaseVersion, effectiveWorkerId);
 
     // 2. Insert attempt audit row
     Long attemptId = recordDispatchAttempt(jobId, currentAttemptNumber, STATUS_PROCESSING, null, null, null, null);
@@ -281,23 +283,23 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
       });
     } catch (CommunicationConsentException ex) {
       log.warn("[DispatchQueue] DPDP consent revoked or missing for queued job {}: {}", jobId, ex.getErrorCode());
-      markJobDeadLetter(jobId, currentAttemptNumber, "CONSENT_REVOKED", ex.getErrorCode(), ex.getMessage());
+      markJobDeadLetter(jobId, currentAttemptNumber, "CONSENT_REVOKED", ex.getErrorCode(), ex.getMessage(), workerLeaseVersion);
       updateAttempt(attemptId, "FAILED", null, null, ex.getErrorCode(), ex.getMessage());
       return null;
     } catch (CommunicationRateLimitException rateEx) {
       log.warn("[DispatchQueue] Job {} hit rate limit during dispatch: {} (retryAfter={})",
           jobId, rateEx.getErrorCode(), rateEx.getRetryAfterSeconds());
-      handleRateLimitRetry(jobId, currentAttemptNumber, job.maxAttempts(), attemptId, rateEx);
+      handleRateLimitRetry(jobId, currentAttemptNumber, job.maxAttempts(), attemptId, rateEx, workerLeaseVersion);
       return null;
     } catch (Exception ex) {
-      handleDispatchException(jobId, currentAttemptNumber, job.maxAttempts(), attemptId, ex);
+      handleDispatchException(jobId, currentAttemptNumber, job.maxAttempts(), attemptId, ex, workerLeaseVersion);
       return null;
     }
 
     // 4. Evaluate outcome
     if (response != null && (response.accepted() || "SIMULATED".equalsIgnoreCase(response.status()))) {
       // Success / Simulation completed
-      markJobCompleted(jobId, currentAttemptNumber, response.communicationLogId());
+      markJobCompleted(jobId, currentAttemptNumber, response.communicationLogId(), workerLeaseVersion);
       updateAttempt(attemptId, STATUS_COMPLETED, response.providerName(), response.providerMessageId(), null, null);
       log.info("[DispatchQueue] Job {} completed successfully: commLogId={}, status={}",
           jobId, response.communicationLogId(), response.status());
@@ -307,110 +309,159 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
     // Provider rejected or failed dispatch
     String errCode = response != null && response.errorCode() != null ? response.errorCode() : "PROVIDER_DELIVERY_FAILED";
     String errMsg = response != null && response.errorExplanation() != null ? response.errorExplanation() : "Provider rejected message dispatch";
-    handleProviderFailure(jobId, currentAttemptNumber, job.maxAttempts(), attemptId, response != null ? response.providerName() : null, errCode, errMsg);
+    handleProviderFailure(jobId, currentAttemptNumber, job.maxAttempts(), attemptId, response != null ? response.providerName() : null, errCode, errMsg, workerLeaseVersion);
     return response;
   }
 
-  private void markJobCompleted(Long jobId, int attemptCount, Long communicationLogId) {
-    jdbcTemplate.update(
+  private boolean markJobCompleted(Long jobId, int attemptCount, Long communicationLogId, int leaseVersion) {
+    int updated = jdbcTemplate.update(
         "UPDATE communication_dispatch_jobs SET "
             + "job_status = ?, attempt_count = ?, communication_log_id = ?, locked_by = NULL, locked_at = NULL, updated_at = NOW() "
-            + "WHERE job_id = ?",
+            + "WHERE job_id = ? AND lease_version = ?",
         STATUS_COMPLETED,
         attemptCount,
         communicationLogId,
-        jobId
+        jobId,
+        leaseVersion
     );
+    if (updated == 0) {
+      log.warn("[DispatchQueue] Fencing conflict on completion for job {}: worker lease {} was superseded. Discarding update.", jobId, leaseVersion);
+      return false;
+    }
+    return true;
   }
 
-  private void markJobDeadLetter(Long jobId, int attemptCount, String reason, String errorCode, String errorMessage) {
+  private boolean markJobDeadLetter(Long jobId, int attemptCount, String reason, String errorCode, String errorMessage, int leaseVersion) {
     String truncatedMessage = errorMessage != null && errorMessage.length() > 490 ? errorMessage.substring(0, 490) : errorMessage;
-    jdbcTemplate.update(
+    int updated = jdbcTemplate.update(
         "UPDATE communication_dispatch_jobs SET "
             + "job_status = ?, attempt_count = ?, dead_letter_reason = ?, dead_lettered_at = NOW(), "
             + "last_error_code = ?, last_error_message = ?, locked_by = NULL, locked_at = NULL, updated_at = NOW() "
-            + "WHERE job_id = ?",
+            + "WHERE job_id = ? AND lease_version = ?",
         STATUS_DEAD_LETTER,
         attemptCount,
         reason,
         errorCode,
         truncatedMessage,
-        jobId
+        jobId,
+        leaseVersion
     );
+    if (updated == 0) {
+      log.warn("[DispatchQueue] Fencing conflict on dead-letter for job {}: worker lease {} was superseded. Discarding update.", jobId, leaseVersion);
+      return false;
+    }
+    return true;
   }
 
-  private void scheduleJobRetry(Long jobId, int attemptCount, int delaySeconds, String errorCode, String errorMessage) {
+  private boolean scheduleJobRetry(Long jobId, int attemptCount, int delaySeconds, String errorCode, String errorMessage, int leaseVersion) {
     String truncatedMessage = errorMessage != null && errorMessage.length() > 490 ? errorMessage.substring(0, 490) : errorMessage;
-    jdbcTemplate.update(
+    int updated = jdbcTemplate.update(
         "UPDATE communication_dispatch_jobs SET "
             + "job_status = ?, attempt_count = ?, scheduled_at = NOW() + INTERVAL ? SECOND, "
             + "last_error_code = ?, last_error_message = ?, locked_by = NULL, locked_at = NULL, updated_at = NOW() "
-            + "WHERE job_id = ?",
+            + "WHERE job_id = ? AND lease_version = ?",
         STATUS_PENDING,
         attemptCount,
         delaySeconds,
         errorCode,
         truncatedMessage,
-        jobId
+        jobId,
+        leaseVersion
     );
+    if (updated == 0) {
+      log.warn("[DispatchQueue] Fencing conflict on retry schedule for job {}: worker lease {} was superseded. Discarding update.", jobId, leaseVersion);
+      return false;
+    }
+    return true;
   }
 
-  private void handleRateLimitRetry(Long jobId, int currentAttempt, int maxAttempts, Long attemptId, CommunicationRateLimitException rateEx) {
+  private void handleRateLimitRetry(Long jobId, int currentAttempt, int maxAttempts, Long attemptId, CommunicationRateLimitException rateEx, int leaseVersion) {
     if (currentAttempt < maxAttempts) {
       long delay = rateEx.getRetryAfterSeconds() > 0 ? rateEx.getRetryAfterSeconds() : 30L;
-      scheduleJobRetry(jobId, currentAttempt, (int) delay, rateEx.getErrorCode(), rateEx.getMessage());
+      scheduleJobRetry(jobId, currentAttempt, (int) delay, rateEx.getErrorCode(), rateEx.getMessage(), leaseVersion);
       updateAttempt(attemptId, "RATE_LIMITED_RETRY_SCHEDULED", null, null, rateEx.getErrorCode(), rateEx.getMessage());
       log.info("[DispatchQueue] Scheduled retry for rate-limited job {} in {} seconds", jobId, delay);
     } else {
-      markJobDeadLetter(jobId, currentAttempt, "RATE_LIMIT_EXCEEDED_EXHAUSTED", rateEx.getErrorCode(), rateEx.getMessage());
+      markJobDeadLetter(jobId, currentAttempt, "RATE_LIMIT_EXCEEDED_EXHAUSTED", rateEx.getErrorCode(), rateEx.getMessage(), leaseVersion);
       updateAttempt(attemptId, STATUS_DEAD_LETTER, null, null, rateEx.getErrorCode(), rateEx.getMessage());
       log.warn("[DispatchQueue] Rate-limited job {} exhausted all {} attempts. Moved to DEAD_LETTER", jobId, maxAttempts);
     }
   }
 
-  private void handleDispatchException(Long jobId, int currentAttempt, int maxAttempts, Long attemptId, Exception ex) {
+  private void handleDispatchException(Long jobId, int currentAttempt, int maxAttempts, Long attemptId, Exception ex, int leaseVersion) {
     String errorCode = (ex instanceof in.gov.sih.sih26135.exception.BaseException be) ? be.getErrorCode() : "DISPATCH_EXCEPTION";
     String errorMsg = ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName();
 
+    // Ambiguous timeout check: do NOT auto-retry to prevent blind duplicate sends
+    if (isAmbiguousTimeout(ex, errorCode)) {
+      log.warn("[DispatchQueue] Ambiguous provider timeout on job {}: {}. Moving to DEAD_LETTER to prevent blind duplicate dispatch", jobId, errorCode);
+      markJobDeadLetter(jobId, currentAttempt, "AMBIGUOUS_PROVIDER_TIMEOUT", "AMBIGUOUS_PROVIDER_TIMEOUT",
+          "Provider request timed out; delivery status is ambiguous. Manual verification required before replay to prevent duplicate external dispatch", leaseVersion);
+      updateAttempt(attemptId, STATUS_DEAD_LETTER, null, null, "AMBIGUOUS_PROVIDER_TIMEOUT", errorMsg);
+      return;
+    }
+
     if (isPermanentFailure(errorCode) || ex instanceof BadRequestException || ex instanceof IllegalArgumentException) {
       log.warn("[DispatchQueue] Permanent failure on job {}: {}. Transitioning to DEAD_LETTER", jobId, errorCode);
-      markJobDeadLetter(jobId, currentAttempt, errorCode, errorCode, errorMsg);
+      markJobDeadLetter(jobId, currentAttempt, errorCode, errorCode, errorMsg, leaseVersion);
       updateAttempt(attemptId, STATUS_DEAD_LETTER, null, null, errorCode, errorMsg);
       return;
     }
 
     if (currentAttempt < maxAttempts) {
       int backoff = calculateExponentialBackoffWithJitter(currentAttempt);
-      scheduleJobRetry(jobId, currentAttempt, backoff, errorCode, errorMsg);
+      scheduleJobRetry(jobId, currentAttempt, backoff, errorCode, errorMsg, leaseVersion);
       updateAttempt(attemptId, "FAILED_RETRY_SCHEDULED", null, null, errorCode, errorMsg);
       log.info("[DispatchQueue] Transient exception on job {}: {}. Scheduled retry #{} in {}s",
           jobId, errorCode, currentAttempt + 1, backoff);
     } else {
-      markJobDeadLetter(jobId, currentAttempt, "MAX_RETRIES_EXCEEDED", errorCode, errorMsg);
+      markJobDeadLetter(jobId, currentAttempt, "MAX_RETRIES_EXCEEDED", errorCode, errorMsg, leaseVersion);
       updateAttempt(attemptId, STATUS_DEAD_LETTER, null, null, errorCode, errorMsg);
       log.warn("[DispatchQueue] Job {} exhausted max retries ({}). Moved to DEAD_LETTER: {}", jobId, maxAttempts, errorCode);
     }
   }
 
-  private void handleProviderFailure(Long jobId, int currentAttempt, int maxAttempts, Long attemptId, String providerName, String errorCode, String errorMessage) {
+  private void handleProviderFailure(Long jobId, int currentAttempt, int maxAttempts, Long attemptId, String providerName, String errorCode, String errorMessage, int leaseVersion) {
+    if (isAmbiguousTimeout(null, errorCode)) {
+      log.warn("[DispatchQueue] Ambiguous provider timeout reported for job {}: {}. Moving to DEAD_LETTER to prevent duplicate dispatch", jobId, errorCode);
+      markJobDeadLetter(jobId, currentAttempt, "AMBIGUOUS_PROVIDER_TIMEOUT", errorCode, errorMessage, leaseVersion);
+      updateAttempt(attemptId, STATUS_DEAD_LETTER, providerName, null, errorCode, errorMessage);
+      return;
+    }
+
     if (isPermanentFailure(errorCode)) {
       log.warn("[DispatchQueue] Permanent provider rejection on job {}: {}. Transitioning to DEAD_LETTER", jobId, errorCode);
-      markJobDeadLetter(jobId, currentAttempt, errorCode, errorCode, errorMessage);
+      markJobDeadLetter(jobId, currentAttempt, errorCode, errorCode, errorMessage, leaseVersion);
       updateAttempt(attemptId, STATUS_DEAD_LETTER, providerName, null, errorCode, errorMessage);
       return;
     }
 
     if (currentAttempt < maxAttempts) {
       int backoff = calculateExponentialBackoffWithJitter(currentAttempt);
-      scheduleJobRetry(jobId, currentAttempt, backoff, errorCode, errorMessage);
+      scheduleJobRetry(jobId, currentAttempt, backoff, errorCode, errorMessage, leaseVersion);
       updateAttempt(attemptId, "FAILED_RETRY_SCHEDULED", providerName, null, errorCode, errorMessage);
       log.info("[DispatchQueue] Transient failure on job {}: {}. Scheduled retry #{} in {}s",
           jobId, errorCode, currentAttempt + 1, backoff);
     } else {
-      markJobDeadLetter(jobId, currentAttempt, "MAX_RETRIES_EXCEEDED", errorCode, errorMessage);
+      markJobDeadLetter(jobId, currentAttempt, "MAX_RETRIES_EXCEEDED", errorCode, errorMessage, leaseVersion);
       updateAttempt(attemptId, STATUS_DEAD_LETTER, providerName, null, errorCode, errorMessage);
       log.warn("[DispatchQueue] Job {} exhausted max retries ({}). Moved to DEAD_LETTER: {}", jobId, maxAttempts, errorCode);
     }
+  }
+
+  public static boolean isAmbiguousTimeout(Exception ex, String errorCode) {
+    if (ex instanceof java.net.SocketTimeoutException
+        || ex instanceof org.springframework.web.client.ResourceAccessException) {
+      return true;
+    }
+    if (ex != null && ex.getMessage() != null && ex.getMessage().toLowerCase().contains("timeout")) {
+      return true;
+    }
+    if (errorCode != null) {
+      String ec = errorCode.toUpperCase();
+      return ec.contains("TIMEOUT") || "GATEWAY_TIMEOUT".equals(ec) || "504".equals(ec);
+    }
+    return false;
   }
 
   public static boolean isPermanentFailure(String errorCode) {
@@ -541,6 +592,23 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
   }
 
   @Override
+  public List<DispatchJobDto> getDeadLetterJobsByProvider(Long providerId, int offset, int limit) {
+    if (providerId == null) {
+      return Collections.emptyList();
+    }
+    int safeOffset = Math.max(0, offset);
+    int safeLimit = (limit > 0 && limit <= 100) ? limit : 20;
+    return jdbcTemplate.query(
+        "SELECT * FROM communication_dispatch_jobs WHERE job_status = ? AND training_provider_id = ? ORDER BY dead_lettered_at DESC LIMIT ? OFFSET ?",
+        jobRowMapper(),
+        STATUS_DEAD_LETTER,
+        providerId,
+        safeLimit,
+        safeOffset
+    );
+  }
+
+  @Override
   public DispatchJobDto replayDeadLetterJob(Long jobId, String operatorUsername) {
     if (jobId == null) {
       throw new BadRequestException("Job ID is required for dead-letter replay", "JOB_ID_REQUIRED");
@@ -560,16 +628,13 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
     String purposeCode = job.purpose() != null ? job.purpose().name() : CommunicationPurpose.OPERATIONAL.name();
     consentValidator.validateCommunicationConsent(job.traineeId(), channelCode, purposeCode);
 
-    // 2. Authoritative rate limiting quota reservation
-    if (rateLimiter != null) {
-      Long providerId = rateLimiter.resolveAuthoritativeProviderId(job.traineeId(), job.trainingProviderId());
-      rateLimiter.checkAndReserveQuota(job.traineeId(), job.channel(), providerId, job.templateCode(), null);
-    }
+    // Rate limit quota reservation will occur during actual dispatch execution in NotificationDispatcherServiceImpl.
+    // Intentionally skipped here to prevent double-counting quota reservations during dead-letter replay.
 
-    // 3. Reset job status to PENDING
+    // 2. Reset job status to PENDING with incremented lease version
     jdbcTemplate.update(
         "UPDATE communication_dispatch_jobs SET "
-            + "job_status = ?, attempt_count = 0, scheduled_at = NOW(), dead_letter_reason = NULL, "
+            + "job_status = ?, lease_version = lease_version + 1, attempt_count = 0, scheduled_at = NOW(), dead_letter_reason = NULL, "
             + "dead_lettered_at = NULL, last_error_code = NULL, last_error_message = NULL, "
             + "locked_by = NULL, locked_at = NULL, updated_at = NOW() "
             + "WHERE job_id = ?",
@@ -577,10 +642,10 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
         jobId
     );
 
-    log.info("[DispatchQueue] Operator '{}' replayed dead-letter job {}. Re-enqueued in PENDING status",
+    log.info("[DispatchQueue] Operator '{}' replayed dead-letter job {}. Re-enqueued in PENDING status with incremented lease version",
         operatorUsername, jobId);
 
-    // 4. Trigger asynchronous execution
+    // 3. Trigger asynchronous execution
     dispatchExecutor.execute(() -> {
       try {
         claimAndProcessJob(jobId, "replay-" + (operatorUsername != null ? operatorUsername : "operator"));
@@ -594,17 +659,17 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
 
   @Override
   public int recoverStaleJobs(int staleThresholdMinutes) {
-    int threshold = staleThresholdMinutes > 0 ? staleThresholdMinutes : DEFAULT_STALE_THRESHOLD_MINUTES;
+    int threshold = staleThresholdMinutes >= 0 ? staleThresholdMinutes : DEFAULT_STALE_THRESHOLD_MINUTES;
     int recovered = jdbcTemplate.update(
         "UPDATE communication_dispatch_jobs SET "
-            + "job_status = ?, locked_by = NULL, locked_at = NULL, updated_at = NOW() "
+            + "job_status = ?, lease_version = lease_version + 1, locked_by = NULL, locked_at = NULL, updated_at = NOW() "
             + "WHERE job_status = ? AND locked_at < NOW() - INTERVAL ? MINUTE",
         STATUS_PENDING,
         STATUS_PROCESSING,
         threshold
     );
     if (recovered > 0) {
-      log.warn("[DispatchQueue] Recovered {} stale dispatch jobs locked longer than {} minutes", recovered, threshold);
+      log.warn("[DispatchQueue] Recovered {} stale dispatch jobs locked longer than {} minutes (incremented lease version)", recovered, threshold);
     }
     return recovered;
   }
@@ -691,6 +756,15 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
       Timestamp updatedTs = rs.getTimestamp("updated_at");
       LocalDateTime updatedAt = updatedTs != null ? updatedTs.toLocalDateTime() : null;
 
+      int leaseVersion = 1;
+      try {
+        leaseVersion = rs.getInt("lease_version");
+        if (leaseVersion <= 0) {
+          leaseVersion = 1;
+        }
+      } catch (Exception ignored) {
+      }
+
       return new DispatchJobDto(
           jobId,
           key,
@@ -716,7 +790,8 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
           dlReason,
           deadLetteredAt,
           createdAt,
-          updatedAt
+          updatedAt,
+          leaseVersion
       );
     };
   }

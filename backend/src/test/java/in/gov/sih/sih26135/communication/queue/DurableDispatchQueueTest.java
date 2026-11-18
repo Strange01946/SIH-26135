@@ -295,5 +295,149 @@ class DurableDispatchQueueTest {
     assertThat(recoveredJob.jobStatus()).isEqualTo("PENDING");
     assertThat(recoveredJob.lockedBy()).isNull();
     assertThat(recoveredJob.lockedAt()).isNull();
+    // Lease version must be incremented by crash recovery
+    assertThat(recoveredJob.leaseVersion()).isGreaterThanOrEqualTo(2);
+  }
+
+  @Test
+  @DisplayName("7. Lease Fencing: Stale worker with superseded lease cannot overwrite newer worker's state")
+  void testLeaseFencing_staleWorkerCannotOverwriteNewerState() {
+    String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
+    CommunicationDispatchCommand command = new CommunicationDispatchCommand(
+        AUTHORITATIVE_TEST_TRAINEE_ID,
+        CommunicationChannel.SMS,
+        CommunicationPurpose.OPERATIONAL,
+        "TPL-ENROLL-001",
+        Map.of("batchCode", "B-FENCE-01", "courseName", "Solar", "startDate", "2026-12-01", "trainingCenterName", "NSTI"),
+        null,
+        null,
+        null
+    );
+
+    DispatchJobDto job = queueService.enqueueJob(command, key);
+    Long jobId = job.jobId();
+
+    // Worker 1 claims job (lease_version = 2), but then hangs for 10 minutes
+    int claimedW1 = jdbcTemplate.update(
+        "UPDATE communication_dispatch_jobs SET job_status = 'PROCESSING', lease_version = lease_version + 1, locked_at = NOW() - INTERVAL 10 MINUTE, locked_by = 'worker-1' WHERE job_id = ?",
+        jobId
+    );
+    assertThat(claimedW1).isEqualTo(1);
+    int worker1Lease = jdbcTemplate.queryForObject("SELECT lease_version FROM communication_dispatch_jobs WHERE job_id = ?", Integer.class, jobId);
+    assertThat(worker1Lease).isEqualTo(2);
+
+    // Job becomes stale and is recovered by crash recovery scheduler (increments lease_version to 3)
+    int recovered = queueService.recoverStaleJobs(5);
+    assertThat(recovered).isGreaterThanOrEqualTo(1);
+
+    // Worker 2 claims job (increments lease_version to 4) and successfully completes it
+    int claimedW2 = jdbcTemplate.update(
+        "UPDATE communication_dispatch_jobs SET job_status = 'PROCESSING', lease_version = lease_version + 1, locked_at = NOW(), locked_by = 'worker-2' WHERE job_id = ?",
+        jobId
+    );
+    assertThat(claimedW2).isEqualTo(1);
+    int worker2Lease = jdbcTemplate.queryForObject("SELECT lease_version FROM communication_dispatch_jobs WHERE job_id = ?", Integer.class, jobId);
+    assertThat(worker2Lease).isEqualTo(4);
+
+    // Worker 2 completes job with valid communicationLogId = 77777L
+    int completedW2 = jdbcTemplate.update(
+        "UPDATE communication_dispatch_jobs SET job_status = 'COMPLETED', communication_log_id = 77777, updated_at = NOW() WHERE job_id = ? AND lease_version = ?",
+        jobId,
+        worker2Lease
+    );
+    assertThat(completedW2).isEqualTo(1);
+
+    // Stale Worker 1 wakes up and attempts to update/overwrite with its stale lease (2)
+    int staleUpdateW1 = jdbcTemplate.update(
+        "UPDATE communication_dispatch_jobs SET job_status = 'COMPLETED', communication_log_id = 99999, updated_at = NOW() WHERE job_id = ? AND lease_version = ?",
+        jobId,
+        worker1Lease
+    );
+    // Stale worker is fenced out: 0 rows updated!
+    assertThat(staleUpdateW1).isEqualTo(0);
+
+    // Verify database record still has Worker 2's authoritative state
+    DispatchJobDto finalJob = queueService.getJobById(jobId);
+    assertThat(finalJob.jobStatus()).isEqualTo("COMPLETED");
+    assertThat(finalJob.communicationLogId()).isEqualTo(77777L);
+  }
+
+  @Test
+  @DisplayName("8. Scheduled Retries: Worker will not claim job before scheduled_at due time")
+  void testScheduledRetry_doesNotClaimBeforeScheduledAt() {
+    String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
+    CommunicationDispatchCommand command = new CommunicationDispatchCommand(
+        AUTHORITATIVE_TEST_TRAINEE_ID,
+        CommunicationChannel.SMS,
+        CommunicationPurpose.OPERATIONAL,
+        "TPL-ENROLL-001",
+        Map.of("batchCode", "B-SCHED-01", "courseName", "Solar", "startDate", "2026-12-01", "trainingCenterName", "NSTI"),
+        null,
+        null,
+        null
+    );
+
+    DispatchJobDto job = queueService.enqueueJob(command, key);
+    Long jobId = job.jobId();
+
+    // Schedule job 5 minutes in the future
+    jdbcTemplate.update(
+        "UPDATE communication_dispatch_jobs SET scheduled_at = NOW() + INTERVAL 5 MINUTE WHERE job_id = ?",
+        jobId
+    );
+
+    // Worker attempts to claim job immediately
+    var response = queueService.claimAndProcessJob(jobId, "eager-worker");
+    assertThat(response).isNull();
+
+    // Verify job remains PENDING with 0 attempts
+    DispatchJobDto unchangedJob = queueService.getJobById(jobId);
+    assertThat(unchangedJob.jobStatus()).isEqualTo("PENDING");
+    assertThat(unchangedJob.attemptCount()).isEqualTo(0);
+    assertThat(unchangedJob.lockedBy()).isNull();
+  }
+
+  @Test
+  @DisplayName("9. Dead-Letter Replay: Replaying dead-letter job does not double-count rate limit quota")
+  void testDeadLetterReplay_doesNotDoubleCountRateLimitQuota() {
+    String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
+    CommunicationDispatchCommand command = new CommunicationDispatchCommand(
+        AUTHORITATIVE_TEST_TRAINEE_ID,
+        CommunicationChannel.SMS,
+        CommunicationPurpose.OPERATIONAL,
+        "TPL-ENROLL-001",
+        Map.of("batchCode", "B-NO-DOUBLE-01", "courseName", "Solar", "startDate", "2026-12-01", "trainingCenterName", "NSTI"),
+        null,
+        null,
+        null
+    );
+
+    DispatchJobDto job = queueService.enqueueJob(command, key);
+    Long jobId = job.jobId();
+
+    // Set status to DEAD_LETTER
+    jdbcTemplate.update(
+        "UPDATE communication_dispatch_jobs SET job_status = 'DEAD_LETTER', attempt_count = 3, "
+            + "dead_letter_reason = 'TEST_FAILURE', dead_lettered_at = NOW() WHERE job_id = ?",
+        jobId
+    );
+
+    int countBeforeReplay = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM communication_rate_limit_events WHERE limiter_key LIKE ?",
+        Integer.class,
+        "%:" + AUTHORITATIVE_TEST_TRAINEE_ID + "%"
+    );
+
+    // Replay job
+    queueService.replayDeadLetterJob(jobId, "admin_user");
+
+    int countAfterReplay = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM communication_rate_limit_events WHERE limiter_key LIKE ?",
+        Integer.class,
+        "%:" + AUTHORITATIVE_TEST_TRAINEE_ID + "%"
+    );
+
+    // No extra rate limit events inserted during replay itself
+    assertThat(countAfterReplay).isEqualTo(countBeforeReplay);
   }
 }

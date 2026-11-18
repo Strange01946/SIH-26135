@@ -73,8 +73,13 @@ public class MysqlConnectionTest {
   void schemaObjectCountsRemainFinalized() throws Exception {
     try (Connection connection = dataSource.getConnection();
         Statement statement = connection.createStatement()) {
-      assertThat(count(statement, "BASE TABLE", EXPECTED_TEST_CATALOG)).isEqualTo(144);
+      // SIH26135_TEST has 147 tables (144 baseline tables + 3 Phase 29.4 communication queue & rate-limit tables)
+      assertThat(count(statement, "BASE TABLE", EXPECTED_TEST_CATALOG)).isEqualTo(147);
       assertThat(count(statement, "VIEW", EXPECTED_TEST_CATALOG)).isEqualTo(21);
+
+      // Verify production catalog SIH26135 remains 100% pristine with exactly 144 baseline tables and 0 queue tables
+      assertThat(count(statement, "BASE TABLE", FORBIDDEN_PRODUCTION_CATALOG)).isEqualTo(144);
+      assertThat(count(statement, "VIEW", FORBIDDEN_PRODUCTION_CATALOG)).isEqualTo(21);
     }
   }
 

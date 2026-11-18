@@ -101,7 +101,7 @@ public class CommunicationLogController {
     if (Boolean.TRUE.equals(request.async()) && durableDispatchQueueService != null) {
       in.gov.sih.sih26135.communication.dto.DispatchJobDto job = durableDispatchQueueService.enqueueJob(command, request.idempotencyKey());
       NotificationDispatchResponse asyncResponse = new NotificationDispatchResponse(
-          job.jobId(),
+          null, // communicationLogId is null until genuinely created
           request.channel().name(),
           command.purpose().name(),
           job.deliveryMode(),
@@ -110,13 +110,14 @@ public class CommunicationLogController {
           false,
           "Trainee " + request.traineeId(),
           "DispatchQueue",
-          job.idempotencyKey(),
+          null, // providerMessageId is null until genuinely created
           true,
           "Notification enqueued for asynchronous durable delivery (jobId=" + job.jobId() + ")",
           null,
           null,
           job.createdAt(),
-          null
+          null,
+          job.jobId() // actual queue job ID
       );
       return ResponseEntity.status(org.springframework.http.HttpStatus.ACCEPTED).body(ApiResponse.ok(asyncResponse));
     }

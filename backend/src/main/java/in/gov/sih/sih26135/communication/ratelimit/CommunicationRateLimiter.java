@@ -28,12 +28,38 @@ public interface CommunicationRateLimiter {
    * @param parametersHash hash of template parameters for deduplication
    * @throws CommunicationRateLimitException if trainee anti-spam, provider burst limit, or dedup check fails
    */
+  default void checkAndReserveQuota(
+      Long traineeId,
+      CommunicationChannel channel,
+      Long authorizedProviderId,
+      String templateCode,
+      String parametersHash) {
+    checkAndReserveQuota(traineeId, channel, authorizedProviderId, templateCode, parametersHash, false);
+  }
+
+  /**
+   * Atomically checks and reserves rate limit quotas with retry awareness.
+   *
+   * <p>Retry quota policy:
+   * <ul>
+   *   <li>When {@code isRetry == true}: Trainee deduplication and trainee 24h anti-spam quota are not re-penalized.</li>
+   *   <li>Provider 60s burst quota (100 req / 60s) is ALWAYS enforced and reserved to protect external provider capacity.</li>
+   * </ul>
+   *
+   * @param traineeId target trainee ID
+   * @param channel communication channel
+   * @param authorizedProviderId authoritative training provider ID
+   * @param templateCode template code
+   * @param parametersHash parameters hash
+   * @param isRetry true if this execution is an automatic retry attempt
+   */
   void checkAndReserveQuota(
       Long traineeId,
       CommunicationChannel channel,
       Long authorizedProviderId,
       String templateCode,
-      String parametersHash
+      String parametersHash,
+      boolean isRetry
   );
 
   /**

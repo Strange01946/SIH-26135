@@ -15,8 +15,15 @@ import org.springframework.stereotype.Component;
  * Durable Dispatch Queue, Retry Engine, and Rate Limiting.
  *
  * <p>Guarantees that supporting queue, attempt, and rate-limit tables exist exclusively
- * in test and demonstration databases (e.g. {@code SIH26135_TEST}) and strictly never mutates
+ * in test and demonstration databases (specifically {@code SIH26135_TEST}) and strictly never mutates
  * the production database {@code SIH26135}.
+ *
+ * <p>Enforces:
+ * <ul>
+ *   <li>Authoritative JDBC connection catalog validation: strictly requires catalog to be {@code SIH26135_TEST}.</li>
+ *   <li>Rejection of URL substring matching when connection metadata disagrees.</li>
+ *   <li>Fail-closed and fail-visible behavior on test migration failure.</li>
+ * </ul>
  */
 @Component
 public class CommunicationDispatchQueueMigration {
@@ -36,13 +43,10 @@ public class CommunicationDispatchQueueMigration {
   public void migrateQueueTablesIfTestDatabase() {
     try (Connection conn = dataSource.getConnection()) {
       String catalog = conn.getCatalog();
-      String url = conn.getMetaData().getURL();
 
-      boolean isTestCatalog = (catalog != null && catalog.equalsIgnoreCase("SIH26135_TEST"))
-          || (url != null && url.contains("SIH26135_TEST"));
-
-      if (!isTestCatalog) {
-        log.info("[CommunicationQueueMigration] Production or non-test catalog detected ({}). Skipping queue tables migration.", catalog);
+      // Strict fail-closed catalog check: strictly require connection metadata catalog to be SIH26135_TEST
+      if (catalog == null || !catalog.equalsIgnoreCase("SIH26135_TEST")) {
+        log.info("[CommunicationQueueMigration] Production or non-test catalog detected (catalog='{}'). Skipping queue tables migration.", catalog);
         return;
       }
 
@@ -65,6 +69,7 @@ public class CommunicationDispatchQueueMigration {
               + "initiated_by_service VARCHAR(64) NULL, "
               + "tenant_scope_type VARCHAR(32) NULL, "
               + "scheduled_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+              + "lease_version INT UNSIGNED NOT NULL DEFAULT 1, "
               + "locked_at DATETIME NULL, "
               + "locked_by VARCHAR(64) NULL, "
               + "communication_log_id BIGINT UNSIGNED NULL, "
@@ -79,6 +84,20 @@ public class CommunicationDispatchQueueMigration {
               + "INDEX idx_cdj_provider (training_provider_id)"
               + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
       );
+
+      // Ensure lease_version column exists for existing tables
+      try {
+        Integer colCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'communication_dispatch_jobs' AND COLUMN_NAME = 'lease_version'",
+            Integer.class,
+            catalog
+        );
+        if (colCount == null || colCount == 0) {
+          jdbcTemplate.execute("ALTER TABLE communication_dispatch_jobs ADD COLUMN lease_version INT UNSIGNED NOT NULL DEFAULT 1 AFTER scheduled_at");
+        }
+      } catch (Exception ex) {
+        log.debug("[CommunicationQueueMigration] Notice checking lease_version column: {}", ex.getMessage());
+      }
 
       // 2. communication_dispatch_attempts
       jdbcTemplate.execute(
@@ -109,10 +128,21 @@ public class CommunicationDispatchQueueMigration {
               + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
       );
 
-      log.info("[CommunicationQueueMigration] Idempotently verified Phase 29.4 queue and rate-limit tables in test catalog {}", catalog);
+      log.info("[CommunicationQueueMigration] Idempotently verified Phase 29.4 queue, attempt, and rate-limit tables in test catalog {}", catalog);
 
     } catch (Exception ex) {
-      log.warn("[CommunicationQueueMigration] Notice during queue tables migration: {}", ex.getMessage());
+      log.error("[CommunicationQueueMigration] Mandatory queue tables migration failed in test database: {}", ex.getMessage(), ex);
+      throw new IllegalStateException("Mandatory queue tables migration failed in test catalog: " + ex.getMessage(), ex);
     }
+  }
+
+  /**
+   * Helper method for verification testing of catalog validation safety.
+   */
+  public boolean shouldMigrateForCatalog(String catalog, String url) {
+    if (catalog == null || !catalog.equalsIgnoreCase("SIH26135_TEST")) {
+      return false;
+    }
+    return true;
   }
 }
