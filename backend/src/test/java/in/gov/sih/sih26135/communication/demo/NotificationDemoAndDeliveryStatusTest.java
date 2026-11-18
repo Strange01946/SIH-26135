@@ -22,9 +22,12 @@ import in.gov.sih.sih26135.security.TenantScopeType;
 import in.gov.sih.sih26135.security.UserPrincipal;
 import in.gov.sih.sih26135.security.jwt.JwtTokenProvider;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.Statement;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,6 +40,8 @@ import org.springframework.core.env.StandardEnvironment;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.mock.env.MockEnvironment;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -82,7 +87,8 @@ class NotificationDemoAndDeliveryStatusTest {
   private boolean stateCreatedByTest = false;
   private boolean districtCreatedByTest = false;
   private boolean traineeCreatedByTest = false;
-  private final java.util.Set<Long> createdConsentTypeIds = new java.util.HashSet<>();
+  private final List<Long> testOwnedLogIds = new CopyOnWriteArrayList<>();
+  private final List<Long> testOwnedConsentIds = new CopyOnWriteArrayList<>();
 
   @Autowired
   private MockMvc mockMvc;
@@ -212,22 +218,21 @@ class NotificationDemoAndDeliveryStatusTest {
       return;
     }
     try {
-      // 1. Delete consents explicitly created or modified by this test execution for the fixture trainee
-      if (!createdConsentTypeIds.isEmpty()) {
-        for (Long typeId : createdConsentTypeIds) {
-          jdbcTemplate.update(
-              "DELETE FROM trainee_consents WHERE trainee_id = ? AND consent_type_id = ?",
-              FIXTURE_TRAINEE_ID, typeId
-          );
+      // 1. Delete ONLY communication logs explicitly tracked and owned by this test execution
+      if (!testOwnedLogIds.isEmpty()) {
+        for (Long logId : testOwnedLogIds) {
+          jdbcTemplate.update("DELETE FROM communication_logs WHERE communication_log_id = ?", logId);
         }
-        createdConsentTypeIds.clear();
+        testOwnedLogIds.clear();
       }
 
-      // 2. Delete communication logs created for the test fixture trainee during execution
-      jdbcTemplate.update(
-          "DELETE FROM communication_logs WHERE trainee_id = ? AND trainee_id != ?",
-          FIXTURE_TRAINEE_ID, AUTHORITATIVE_TEST_TRAINEE_ID
-      );
+      // 2. Delete ONLY trainee consent records explicitly tracked and owned by this test execution
+      if (!testOwnedConsentIds.isEmpty()) {
+        for (Long consentId : testOwnedConsentIds) {
+          jdbcTemplate.update("DELETE FROM trainee_consents WHERE trainee_consent_id = ?", consentId);
+        }
+        testOwnedConsentIds.clear();
+      }
 
       // 3. Delete trainee only if this test execution created it, never deleting authoritative trainee 1005143
       if (traineeCreatedByTest) {
@@ -253,22 +258,70 @@ class NotificationDemoAndDeliveryStatusTest {
     }
   }
 
-  private void grantConsent(Long consentTypeId) {
-    jdbcTemplate.update(
-        "INSERT INTO trainee_consents (trainee_id, consent_type_id, purpose, consent_status_id, policy_version, granted_at, expires_at, created_at, updated_at) "
-            + "VALUES (?, ?, 'Test Consent', 1, 'v1.0', NOW() - INTERVAL 1 DAY, NOW() + INTERVAL 1 YEAR, NOW(), NOW()) "
-            + "ON DUPLICATE KEY UPDATE consent_status_id = 1, revoked_at = NULL, updated_at = NOW()",
-        FIXTURE_TRAINEE_ID, consentTypeId);
-    createdConsentTypeIds.add(consentTypeId);
+  private void trackLog(Long logId) {
+    if (logId != null && !testOwnedLogIds.contains(logId)) {
+      testOwnedLogIds.add(logId);
+    }
   }
 
-  private void revokeConsent(Long consentTypeId) {
-    jdbcTemplate.update(
-        "INSERT INTO trainee_consents (trainee_id, consent_type_id, purpose, consent_status_id, policy_version, granted_at, revoked_at, expires_at, created_at, updated_at) "
-            + "VALUES (?, ?, 'Test Consent', 2, 'v1.0', NOW() - INTERVAL 10 DAY, NOW() - INTERVAL 1 DAY, NOW() + INTERVAL 1 YEAR, NOW(), NOW()) "
-            + "ON DUPLICATE KEY UPDATE consent_status_id = 2, revoked_at = NOW() - INTERVAL 1 DAY, updated_at = NOW()",
-        FIXTURE_TRAINEE_ID, consentTypeId);
-    createdConsentTypeIds.add(consentTypeId);
+  private Long getMaxCommunicationLogId() {
+    return jdbcTemplate.queryForObject(
+        "SELECT COALESCE(MAX(communication_log_id), 0) FROM communication_logs", Long.class);
+  }
+
+  private void trackNewLogsSince(Long maxIdBefore) {
+    List<Long> newIds = jdbcTemplate.queryForList(
+        "SELECT communication_log_id FROM communication_logs WHERE communication_log_id > ?",
+        Long.class,
+        maxIdBefore != null ? maxIdBefore : 0L
+    );
+    for (Long id : newIds) {
+      trackLog(id);
+    }
+  }
+
+  private Long grantConsent(Long consentTypeId) {
+    KeyHolder keyHolder = new GeneratedKeyHolder();
+    jdbcTemplate.update(connection -> {
+      PreparedStatement ps = connection.prepareStatement(
+          "INSERT INTO trainee_consents (trainee_id, consent_type_id, purpose, consent_status_id, policy_version, granted_at, expires_at, created_at, updated_at) "
+              + "VALUES (?, ?, 'Test Consent', 1, 'v1.0', NOW() - INTERVAL 1 DAY, NOW() + INTERVAL 1 YEAR, NOW(), NOW())",
+          Statement.RETURN_GENERATED_KEYS
+      );
+      ps.setLong(1, FIXTURE_TRAINEE_ID);
+      ps.setLong(2, consentTypeId);
+      return ps;
+    }, keyHolder);
+
+    Number key = keyHolder.getKey();
+    if (key != null) {
+      Long consentId = key.longValue();
+      testOwnedConsentIds.add(consentId);
+      return consentId;
+    }
+    return null;
+  }
+
+  private Long revokeConsent(Long consentTypeId) {
+    KeyHolder keyHolder = new GeneratedKeyHolder();
+    jdbcTemplate.update(connection -> {
+      PreparedStatement ps = connection.prepareStatement(
+          "INSERT INTO trainee_consents (trainee_id, consent_type_id, purpose, consent_status_id, policy_version, granted_at, revoked_at, expires_at, created_at, updated_at) "
+              + "VALUES (?, ?, 'Test Consent', 2, 'v1.0', NOW() - INTERVAL 10 DAY, NOW() - INTERVAL 1 DAY, NOW() + INTERVAL 1 YEAR, NOW(), NOW())",
+          Statement.RETURN_GENERATED_KEYS
+      );
+      ps.setLong(1, FIXTURE_TRAINEE_ID);
+      ps.setLong(2, consentTypeId);
+      return ps;
+    }, keyHolder);
+
+    Number key = keyHolder.getKey();
+    if (key != null) {
+      Long consentId = key.longValue();
+      testOwnedConsentIds.add(consentId);
+      return consentId;
+    }
+    return null;
   }
 
   // =========================================================================
@@ -294,6 +347,7 @@ class NotificationDemoAndDeliveryStatusTest {
     );
 
     NotificationDispatchResponse response = notificationDispatcherService.dispatchNotification(command);
+    trackLog(response.communicationLogId());
 
     // Verify response contract
     assertThat(response).isNotNull();
@@ -346,6 +400,7 @@ class NotificationDemoAndDeliveryStatusTest {
     );
 
     NotificationDispatchResponse response = notificationDispatcherService.dispatchNotification(command);
+    trackLog(response.communicationLogId());
 
     assertThat(response).isNotNull();
     assertThat(response.deliveryMode()).isEqualTo("DEMO");
@@ -400,6 +455,7 @@ class NotificationDemoAndDeliveryStatusTest {
     // Persist via service logic directly
     CommunicationLog logEntity = ((in.gov.sih.sih26135.communication.service.NotificationDispatcherServiceImpl) notificationDispatcherService)
         .persistCommunicationLog(trainee, "SMS", "OPERATIONAL", "OPERATIONAL_ALERT", 1L, deliveryResult);
+    trackLog(logEntity.getId());
 
     assertThat(logEntity.getCommunicationStatus().getStatusCode()).isEqualTo("QUEUED");
     assertThat(logEntity.getSentAt()).isNull();
@@ -432,6 +488,7 @@ class NotificationDemoAndDeliveryStatusTest {
 
     CommunicationLog logEntity = ((in.gov.sih.sih26135.communication.service.NotificationDispatcherServiceImpl) notificationDispatcherService)
         .persistCommunicationLog(trainee, "SMS", "OPERATIONAL", "OPERATIONAL_ALERT", 1L, deliveryResult);
+    trackLog(logEntity.getId());
 
     assertThat(logEntity.getCommunicationStatus().getStatusCode()).isEqualTo("DELIVERED");
     assertThat(logEntity.getSentAt()).isNotNull();
@@ -459,13 +516,18 @@ class NotificationDemoAndDeliveryStatusTest {
         null
     );
 
-    assertThatThrownBy(() -> notificationDispatcherService.dispatchNotification(command))
-        .isInstanceOf(CommunicationConsentException.class)
-        .satisfies(ex -> {
-          CommunicationConsentException cce = (CommunicationConsentException) ex;
-          assertThat(cce.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
-          assertThat(cce.getErrorCode()).isEqualTo("CONSENT_NOT_GRANTED");
-        });
+    Long maxBefore = getMaxCommunicationLogId();
+    try {
+      assertThatThrownBy(() -> notificationDispatcherService.dispatchNotification(command))
+          .isInstanceOf(CommunicationConsentException.class)
+          .satisfies(ex -> {
+            CommunicationConsentException cce = (CommunicationConsentException) ex;
+            assertThat(cce.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+            assertThat(cce.getErrorCode()).isEqualTo("CONSENT_NOT_GRANTED");
+          });
+    } finally {
+      trackNewLogsSince(maxBefore);
+    }
 
     // Zero messages sent to provider
     assertThat(mockSmsProvider.getDispatchedMessages()).isEmpty();
@@ -497,13 +559,18 @@ class NotificationDemoAndDeliveryStatusTest {
         null
     );
 
-    assertThatThrownBy(() -> notificationDispatcherService.dispatchNotification(command))
-        .isInstanceOf(CommunicationConsentException.class)
-        .satisfies(ex -> {
-          CommunicationConsentException cce = (CommunicationConsentException) ex;
-          assertThat(cce.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
-          assertThat(cce.getErrorCode()).isEqualTo("CONSENT_WITHDRAWN");
-        });
+    Long maxBefore = getMaxCommunicationLogId();
+    try {
+      assertThatThrownBy(() -> notificationDispatcherService.dispatchNotification(command))
+          .isInstanceOf(CommunicationConsentException.class)
+          .satisfies(ex -> {
+            CommunicationConsentException cce = (CommunicationConsentException) ex;
+            assertThat(cce.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+            assertThat(cce.getErrorCode()).isEqualTo("CONSENT_WITHDRAWN");
+          });
+    } finally {
+      trackNewLogsSince(maxBefore);
+    }
 
     assertThat(mockSmsProvider.getDispatchedMessages()).isEmpty();
   }
@@ -627,6 +694,7 @@ class NotificationDemoAndDeliveryStatusTest {
     );
 
     NotificationDispatchResponse response = notificationDispatcherService.dispatchNotification(command);
+    trackLog(response.communicationLogId());
     assertThat(response.status()).isEqualTo("SIMULATED");
 
     // Query 1: Real successful deliveries count (is_success_flag = 1) -> must be 0!
@@ -695,6 +763,7 @@ class NotificationDemoAndDeliveryStatusTest {
     Map<String, Object> rootNode = objectMapper.readValue(responseContent, Map.class);
     Map<String, Object> dataNode = (Map<String, Object>) rootNode.get("data");
     Long logId = ((Number) dataNode.get("communicationLogId")).longValue();
+    trackLog(logId);
 
     // 2. GET /api/v1/communication-logs/{id}
     mockMvc.perform(get("/api/v1/communication-logs/" + logId)
@@ -725,13 +794,18 @@ class NotificationDemoAndDeliveryStatusTest {
         Map.of("referenceId", "REF-NO-CONSENT")
     );
 
-    mockMvc.perform(post("/api/v1/communication-logs/dispatch")
-            .header("Authorization", adminToken)
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(objectMapper.writeValueAsString(request)))
-        .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.status").value(403))
-        .andExpect(jsonPath("$.code").value("CONSENT_NOT_GRANTED"));
+    Long maxBefore = getMaxCommunicationLogId();
+    try {
+      mockMvc.perform(post("/api/v1/communication-logs/dispatch")
+              .header("Authorization", adminToken)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(request)))
+          .andExpect(status().isForbidden())
+          .andExpect(jsonPath("$.status").value(403))
+          .andExpect(jsonPath("$.code").value("CONSENT_NOT_GRANTED"));
+    } finally {
+      trackNewLogsSince(maxBefore);
+    }
   }
 
   // =========================================================================
@@ -782,6 +856,7 @@ class NotificationDemoAndDeliveryStatusTest {
     );
 
     NotificationDispatchResponse response = notificationDispatcherService.dispatchNotification(command);
+    trackLog(response.communicationLogId());
     assertThat(response.status()).isEqualTo("SIMULATED");
 
     // Verify in database that initiated_by_user_id is truthfully NULL (never defaulted to 1)
@@ -790,5 +865,83 @@ class NotificationDemoAndDeliveryStatusTest {
         response.communicationLogId()
     );
     assertThat(logRow.get("initiated_by_user_id")).isNull();
+  }
+
+  @Test
+  @DisplayName("13. Pre-existing communication logs and consents survive setup, execution, and teardown unchanged")
+  void testPreExistingLogsAndConsentsSurviveExecutionAndTeardown() {
+    // 1. Provision pre-existing unowned consent for FIXTURE_TRAINEE_ID
+    KeyHolder consentKeyHolder = new GeneratedKeyHolder();
+    jdbcTemplate.update(connection -> {
+      PreparedStatement ps = connection.prepareStatement(
+          "INSERT INTO trainee_consents (trainee_id, consent_type_id, purpose, consent_status_id, policy_version, granted_at, expires_at, created_at, updated_at) "
+              + "VALUES (?, 3, 'Pre-existing Unowned Consent', 1, 'v0.9', NOW() - INTERVAL 30 DAY, NOW() + INTERVAL 2 YEAR, NOW() - INTERVAL 30 DAY, NOW() - INTERVAL 30 DAY)",
+          Statement.RETURN_GENERATED_KEYS
+      );
+      ps.setLong(1, FIXTURE_TRAINEE_ID);
+      return ps;
+    }, consentKeyHolder);
+    Long preExistingConsentId = consentKeyHolder.getKey().longValue();
+
+    // 2. Provision pre-existing unowned communication log for FIXTURE_TRAINEE_ID
+    KeyHolder logKeyHolder = new GeneratedKeyHolder();
+    jdbcTemplate.update(connection -> {
+      PreparedStatement ps = connection.prepareStatement(
+          "INSERT INTO communication_logs (trainee_id, communication_channel_id, communication_direction_id, communication_purpose_id, communication_status_id, consent_type_id, provider_message_id, created_at, updated_at) "
+              + "VALUES (?, 1, 1, 1, 9, 3, 'MSG_PRE_EXISTING_SURVIVOR', NOW() - INTERVAL 30 DAY, NOW() - INTERVAL 30 DAY)",
+          Statement.RETURN_GENERATED_KEYS
+      );
+      ps.setLong(1, FIXTURE_TRAINEE_ID);
+      return ps;
+    }, logKeyHolder);
+    Long preExistingLogId = logKeyHolder.getKey().longValue();
+
+    try {
+      // 3. Execute normal test operations (grant test-owned consents, perform dispatch)
+      grantConsent(1L);
+      grantConsent(5L);
+
+      Long maxBefore = getMaxCommunicationLogId();
+      CommunicationDispatchCommand command = new CommunicationDispatchCommand(
+          FIXTURE_TRAINEE_ID,
+          CommunicationChannel.SMS,
+          CommunicationPurpose.OPERATIONAL,
+          "OPERATIONAL_ALERT",
+          Map.of("referenceId", "REF-SURVIVAL-TEST"),
+          1L,
+          null,
+          null
+      );
+      NotificationDispatchResponse response = notificationDispatcherService.dispatchNotification(command);
+      trackNewLogsSince(maxBefore);
+
+      assertThat(response.status()).isEqualTo("SIMULATED");
+
+      // 4. Trigger teardown cleanup
+      cleanUpFixtures();
+
+      // 5. Assert that the pre-existing unowned consent SURVIVED and was NOT mutated or deleted
+      Map<String, Object> consentRow = jdbcTemplate.queryForMap(
+          "SELECT trainee_consent_id, purpose, policy_version, consent_status_id FROM trainee_consents WHERE trainee_consent_id = ?",
+          preExistingConsentId
+      );
+      assertThat(consentRow).isNotNull();
+      assertThat((String) consentRow.get("purpose")).isEqualTo("Pre-existing Unowned Consent");
+      assertThat((String) consentRow.get("policy_version")).isEqualTo("v0.9");
+      assertThat(((Number) consentRow.get("consent_status_id")).longValue()).isEqualTo(1L);
+
+      // 6. Assert that the pre-existing unowned communication log SURVIVED and was NOT deleted
+      Map<String, Object> logRow = jdbcTemplate.queryForMap(
+          "SELECT communication_log_id, provider_message_id, communication_status_id FROM communication_logs WHERE communication_log_id = ?",
+          preExistingLogId
+      );
+      assertThat(logRow).isNotNull();
+      assertThat((String) logRow.get("provider_message_id")).isEqualTo("MSG_PRE_EXISTING_SURVIVOR");
+
+    } finally {
+      // Clean up only the two survival fixture records explicitly created for this test
+      jdbcTemplate.update("DELETE FROM communication_logs WHERE communication_log_id = ?", preExistingLogId);
+      jdbcTemplate.update("DELETE FROM trainee_consents WHERE trainee_consent_id = ?", preExistingConsentId);
+    }
   }
 }

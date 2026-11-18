@@ -140,6 +140,59 @@ class ProviderAdaptersUnitTest {
   }
 
   @Test
+  @DisplayName("TwilioWhatsAppProvider fails closed when ContentSid is configured without ContentVariables (no fabricated fallback)")
+  void testTwilioWhatsAppProviderFailsWhenContentSidConfiguredWithoutVariables() {
+    properties.setLiveRecipientOverrideEnabled(false);
+    properties.getTwilio().setAccountSid("test-twilio-account-sid");
+    properties.getTwilio().setAuthToken("test_auth_token_1234567890");
+    properties.getTwilio().setWhatsappFrom("whatsapp:+17372508034");
+    properties.getTwilio().setWhatsappContentSid("HXfe5ab5f00277942d4d4200328b4d403c");
+    properties.getTwilio().setWhatsappContentVariables(""); // Missing variables
+
+    TwilioWhatsAppProvider twilioWhatsAppProvider = new TwilioWhatsAppProvider(properties);
+
+    assertThatThrownBy(() -> twilioWhatsAppProvider.sendWhatsApp("+919876543210", "Test body", "TEST"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("Content template variables are missing for ContentSid 'HXfe5ab5f00277942d4d4200328b4d403c'");
+  }
+
+  @Test
+  @DisplayName("TwilioWhatsAppProvider fails closed when ContentVariables contains invalid JSON")
+  void testTwilioWhatsAppProviderFailsWhenContentSidConfiguredWithInvalidJson() {
+    properties.setLiveRecipientOverrideEnabled(false);
+    properties.getTwilio().setAccountSid("test-twilio-account-sid");
+    properties.getTwilio().setAuthToken("test_auth_token_1234567890");
+    properties.getTwilio().setWhatsappFrom("whatsapp:+17372508034");
+    properties.getTwilio().setWhatsappContentSid("HXfe5ab5f00277942d4d4200328b4d403c");
+    properties.getTwilio().setWhatsappContentVariables("not-valid-json");
+
+    TwilioWhatsAppProvider twilioWhatsAppProvider = new TwilioWhatsAppProvider(properties);
+
+    assertThatThrownBy(() -> twilioWhatsAppProvider.sendWhatsApp("+919876543210", "Test body", "TEST"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("Invalid JSON in Twilio WhatsApp ContentVariables");
+  }
+
+  @Test
+  @DisplayName("TwilioWhatsAppProvider rejects dispatch when message body is missing and ContentSid is not specified")
+  void testTwilioWhatsAppProviderFailsWhenMessageBodyMissingWithoutContentSid() {
+    properties.setLiveRecipientOverrideEnabled(false);
+    properties.getTwilio().setAccountSid("test-twilio-account-sid");
+    properties.getTwilio().setAuthToken("test_auth_token_1234567890");
+    properties.getTwilio().setWhatsappFrom("whatsapp:+17372508034");
+    properties.getTwilio().setWhatsappContentSid(""); // Freeform message mode
+
+    TwilioWhatsAppProvider twilioWhatsAppProvider = new TwilioWhatsAppProvider(properties);
+
+    assertThatThrownBy(() -> twilioWhatsAppProvider.sendWhatsApp("+919876543210", "", "TEST"))
+        .isInstanceOf(BadRequestException.class)
+        .satisfies(ex -> {
+          BadRequestException bre = (BadRequestException) ex;
+          assertThat(bre.getErrorCode()).isEqualTo("MESSAGE_BODY_REQUIRED");
+        });
+  }
+
+  @Test
   @DisplayName("TwilioConfig default WhatsApp sender is empty (no hardcoded defaults)")
   void testTwilioConfigDefaultSenderIsEmpty() {
     CommunicationProperties.TwilioConfig config = new CommunicationProperties.TwilioConfig();

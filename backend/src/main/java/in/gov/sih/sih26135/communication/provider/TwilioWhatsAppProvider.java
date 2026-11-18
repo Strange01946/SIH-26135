@@ -105,22 +105,30 @@ public class TwilioWhatsAppProvider implements WhatsAppCommunicationProvider {
 
     String contentSid = config.getWhatsappContentSid();
     if (contentSid != null && !contentSid.isBlank()) {
-      formData.add("ContentSid", contentSid);
+      formData.add("ContentSid", contentSid.trim());
       String customVars = config.getWhatsappContentVariables();
-      if (customVars != null && !customVars.isBlank()) {
-        formData.add("ContentVariables", customVars.trim());
-      } else {
-        Map<String, String> defaultVariables = Map.of(
-            "1", "Tue Oct 29, 3:00 PM"
-        );
-        try {
-          formData.add("ContentVariables", OBJECT_MAPPER.writeValueAsString(defaultVariables));
-        } catch (Exception ex) {
-          log.warn("[TwilioWhatsAppProvider] Could not serialize ContentVariables: {}", ex.getMessage());
-        }
+      if (customVars == null || customVars.isBlank()) {
+        String msg = "Twilio WhatsApp Content template variables are missing for ContentSid '" + contentSid
+            + "'. Valid, explicitly supplied template variables (TWILIO_WHATSAPP_CONTENT_VARIABLES / communication.twilio.whatsapp-content-variables) are required.";
+        log.error("[TwilioWhatsAppProvider] Dispatch aborted: {}", msg);
+        throw new IllegalStateException(msg);
       }
+      try {
+        JsonNode parsed = OBJECT_MAPPER.readTree(customVars);
+        if (parsed == null || parsed.isEmpty() || !parsed.isObject()) {
+          throw new IllegalArgumentException("ContentVariables must be a non-empty JSON object");
+        }
+      } catch (Exception ex) {
+        String msg = "Invalid JSON in Twilio WhatsApp ContentVariables: " + ex.getMessage();
+        log.error("[TwilioWhatsAppProvider] Dispatch aborted: {}", msg);
+        throw new IllegalStateException(msg, ex);
+      }
+      formData.add("ContentVariables", customVars.trim());
       log.info("[TwilioWhatsAppProvider] Dispatching via Content API template: contentSid={}", contentSid);
     } else {
+      if (messageText == null || messageText.isBlank()) {
+        throw new BadRequestException("Message body is required when ContentSid is not specified", "MESSAGE_BODY_REQUIRED");
+      }
       formData.add("Body", messageText);
     }
 
