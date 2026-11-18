@@ -44,14 +44,14 @@ public class SendGridEmailProvider implements EmailCommunicationProvider {
     initRestClient();
   }
 
-  private void initRestClient() {
+  public void initRestClient() {
     CommunicationProperties.SendGridConfig config = properties.getSendgrid();
     SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
     factory.setConnectTimeout(Duration.ofMillis(config.getConnectTimeoutMs()));
     factory.setReadTimeout(Duration.ofMillis(config.getReadTimeoutMs()));
 
     this.restClient = RestClient.builder()
-        .baseUrl("https://api.sendgrid.com")
+        .baseUrl(config.getBaseUrl())
         .requestFactory(factory)
         .build();
   }

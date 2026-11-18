@@ -42,14 +42,14 @@ public class TwilioSmsProvider implements SmsCommunicationProvider {
     initRestClient();
   }
 
-  private void initRestClient() {
+  public void initRestClient() {
     CommunicationProperties.TwilioConfig config = properties.getTwilio();
     SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
     factory.setConnectTimeout(Duration.ofMillis(config.getConnectTimeoutMs()));
     factory.setReadTimeout(Duration.ofMillis(config.getReadTimeoutMs()));
 
     this.restClient = RestClient.builder()
-        .baseUrl("https://api.twilio.com/2010-04-01")
+        .baseUrl(config.getBaseUrl())
         .requestFactory(factory)
         .build();
   }
@@ -146,11 +146,15 @@ public class TwilioSmsProvider implements SmsCommunicationProvider {
     } catch (Exception ex) {
       String sanitizedMsg = CommunicationTriggerEvent.maskRecipient(ex.getMessage());
       log.error("[TwilioSmsProvider] Network or connection error during SMS dispatch: {}", sanitizedMsg, ex);
+      String errorCode = "TWILIO_CONNECTION_ERROR";
+      if (in.gov.sih.sih26135.communication.queue.DurableDispatchQueueServiceImpl.isAmbiguousTimeout(ex, null, sanitizedMsg)) {
+        errorCode = "AMBIGUOUS_PROVIDER_TIMEOUT";
+      }
       return ProviderDeliveryResult.failure(
           CommunicationChannel.SMS,
           getProviderName(),
           null,
-          "TWILIO_CONNECTION_ERROR",
+          errorCode,
           sanitizedMsg,
           null
       );

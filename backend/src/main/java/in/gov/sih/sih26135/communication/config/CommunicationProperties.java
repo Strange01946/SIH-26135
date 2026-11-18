@@ -327,6 +327,7 @@ public class CommunicationProperties implements EnvironmentAware {
   // --- Sub-configurations ---
 
   public static class TwilioConfig {
+    private String baseUrl = "https://api.twilio.com/2010-04-01";
     private String accountSid = "";
     private String authToken = "";
     private String smsFrom = "";
@@ -429,9 +430,18 @@ public class CommunicationProperties implements EnvironmentAware {
     public void setReadTimeoutMs(int readTimeoutMs) {
       this.readTimeoutMs = readTimeoutMs > 0 ? readTimeoutMs : 10000;
     }
+
+    public String getBaseUrl() {
+      return baseUrl;
+    }
+
+    public void setBaseUrl(String baseUrl) {
+      this.baseUrl = (baseUrl != null && !baseUrl.isBlank()) ? baseUrl.trim() : "https://api.twilio.com/2010-04-01";
+    }
   }
 
   public static class SendGridConfig {
+    private String baseUrl = "https://api.sendgrid.com";
     private String apiKey = "";
     private String fromEmail = "";
     private String liveTestEmail = "";
@@ -490,6 +500,14 @@ public class CommunicationProperties implements EnvironmentAware {
 
     public void setReadTimeoutMs(int readTimeoutMs) {
       this.readTimeoutMs = readTimeoutMs > 0 ? readTimeoutMs : 10000;
+    }
+
+    public String getBaseUrl() {
+      return baseUrl;
+    }
+
+    public void setBaseUrl(String baseUrl) {
+      this.baseUrl = (baseUrl != null && !baseUrl.isBlank()) ? baseUrl.trim() : "https://api.sendgrid.com";
     }
   }
 
