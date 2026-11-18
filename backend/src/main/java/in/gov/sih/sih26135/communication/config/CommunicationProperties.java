@@ -219,6 +219,58 @@ public class CommunicationProperties implements EnvironmentAware {
     this.allowTestWebhookSignatures = allowTestWebhookSignatures;
   }
 
+  /**
+   * Evaluates whether synthetic test webhook signatures are permitted.
+   *
+   * <p>Enforces a strict two-layer boundary:
+   * <ol>
+   *   <li>The configuration flag {@code allowTestWebhookSignatures} must be explicitly enabled.</li>
+   *   <li>The runtime must be verified as a non-production/test environment:
+   *       rejects LIVE mode, production profiles, production environment variables,
+   *       and any connection targeting production catalog {@code SIH26135}.</li>
+   * </ol>
+   *
+   * @return true if and only if synthetic test signatures are explicitly enabled in an authorized non-production test environment
+   */
+  public boolean isSyntheticTestSignatureAllowed() {
+    if (!allowTestWebhookSignatures) {
+      return false;
+    }
+    // 1. LIVE communication mode strictly forbids synthetic test signatures
+    if (isLiveMode()) {
+      log.warn("[CommunicationProperties] Rejected synthetic webhook signature: communication mode is LIVE");
+      return false;
+    }
+    // 2. Authoritative JDBC connection metadata check
+    if (this.dataSource != null) {
+      try (Connection conn = this.dataSource.getConnection()) {
+        String activeCatalog = conn.getCatalog();
+        if (isProductionCatalog(activeCatalog)) {
+          log.warn("[CommunicationProperties] Rejected synthetic webhook signature: production catalog '{}' detected", activeCatalog);
+          return false;
+        }
+      } catch (SQLException e) {
+        log.warn("[CommunicationProperties] Could not inspect active catalog from DataSource: {}", e.getMessage());
+      }
+    }
+    // 3. Environment, profile, and property guards
+    if (this.environment != null) {
+      boolean isProdProfile = this.environment.getActiveProfiles() != null && Arrays.stream(this.environment.getActiveProfiles())
+          .anyMatch(p -> p.equalsIgnoreCase("prod") || p.equalsIgnoreCase("production"));
+      String appEnv = this.environment.getProperty("APP_ENVIRONMENT", this.environment.getProperty("app.environment", ""));
+      boolean isProdEnv = "prod".equalsIgnoreCase(appEnv) || "production".equalsIgnoreCase(appEnv);
+      String dbUrl = this.environment.getProperty("spring.datasource.url", "");
+      String dbName = this.environment.getProperty("DB_NAME", "");
+      String catalogFromUrl = extractCatalogFromJdbcUrl(dbUrl);
+      if (isProdProfile || isProdEnv || isProductionCatalog(catalogFromUrl) || isProductionCatalog(dbName)) {
+        log.warn("[CommunicationProperties] Rejected synthetic webhook signature: production environment detected (prodProfile={}, prodEnv={}, urlIsProd={}, nameIsProd={})",
+            isProdProfile, isProdEnv, isProductionCatalog(catalogFromUrl), isProductionCatalog(dbName));
+        return false;
+      }
+    }
+    return true;
+  }
+
   public EmailProviderPreference getEmailProviderType() {
     return emailProviderType;
   }

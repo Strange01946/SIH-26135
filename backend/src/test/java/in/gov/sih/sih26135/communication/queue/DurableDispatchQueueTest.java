@@ -3,8 +3,11 @@ package in.gov.sih.sih26135.communication.queue;
 import in.gov.sih.sih26135.communication.dto.CommunicationDispatchCommand;
 import in.gov.sih.sih26135.communication.dto.DispatchAttemptDto;
 import in.gov.sih.sih26135.communication.dto.DispatchJobDto;
+import in.gov.sih.sih26135.communication.dto.NotificationDispatchResponse;
+import in.gov.sih.sih26135.communication.exception.CommunicationRateLimitException;
 import in.gov.sih.sih26135.communication.model.CommunicationChannel;
 import in.gov.sih.sih26135.communication.model.CommunicationPurpose;
+import in.gov.sih.sih26135.communication.service.NotificationDispatcherService;
 import in.gov.sih.sih26135.entity.Trainee;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.repository.TraineeRepository;
@@ -13,6 +16,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -42,6 +48,9 @@ class DurableDispatchQueueTest {
 
   @Autowired
   private TraineeRepository traineeRepository;
+
+  @Autowired
+  private NotificationDispatcherService notificationDispatcherService;
 
   @BeforeEach
   void setUp() {
@@ -264,7 +273,7 @@ class DurableDispatchQueueTest {
   }
 
   @Test
-  @DisplayName("6. Stale Job Recovery: Recovers jobs abandoned in PROCESSING status back to PENDING")
+  @DisplayName("6. Stale Job Recovery: Recovers jobs abandoned in PROCESSING status to DEAD_LETTER (AMBIGUOUS_STALE_PROCESSING) to prevent duplicate send")
   void testRecoverStaleJobs_recoversLockedJobs() {
     String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
@@ -292,7 +301,8 @@ class DurableDispatchQueueTest {
     assertThat(recoveredCount).isGreaterThanOrEqualTo(1);
 
     DispatchJobDto recoveredJob = queueService.getJobById(jobId);
-    assertThat(recoveredJob.jobStatus()).isEqualTo("PENDING");
+    assertThat(recoveredJob.jobStatus()).isEqualTo("DEAD_LETTER");
+    assertThat(recoveredJob.deadLetterReason()).isEqualTo("AMBIGUOUS_STALE_PROCESSING");
     assertThat(recoveredJob.lockedBy()).isNull();
     assertThat(recoveredJob.lockedAt()).isNull();
     // Lease version must be incremented by crash recovery
@@ -439,5 +449,99 @@ class DurableDispatchQueueTest {
 
     // No extra rate limit events inserted during replay itself
     assertThat(countAfterReplay).isEqualTo(countBeforeReplay);
+  }
+
+  @Test
+  @DisplayName("10. Concurrent Workers: Atomic claiming ensures exactly one worker acquires and processes job")
+  void testConcurrentWorkers_onlyOneClaimsJob() throws Exception {
+    String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
+    CommunicationDispatchCommand command = new CommunicationDispatchCommand(
+        AUTHORITATIVE_TEST_TRAINEE_ID,
+        CommunicationChannel.SMS,
+        CommunicationPurpose.OPERATIONAL,
+        "TPL-ENROLL-001",
+        Map.of("batchCode", "B-CONCURR-01", "courseName", "Solar", "startDate", "2026-12-01", "trainingCenterName", "NSTI"),
+        null,
+        null,
+        null
+    );
+
+    DispatchJobDto job = queueService.enqueueJob(command, key);
+    Long jobId = job.jobId();
+
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      CompletableFuture<NotificationDispatchResponse> worker1 = CompletableFuture.supplyAsync(
+          () -> queueService.claimAndProcessJob(jobId, "worker-alpha"), executor);
+      CompletableFuture<NotificationDispatchResponse> worker2 = CompletableFuture.supplyAsync(
+          () -> queueService.claimAndProcessJob(jobId, "worker-beta"), executor);
+
+      CompletableFuture.allOf(worker1, worker2).join();
+
+      NotificationDispatchResponse res1 = worker1.get();
+      NotificationDispatchResponse res2 = worker2.get();
+
+      // Exactly one worker must have successfully claimed and processed; the other worker received null
+      boolean oneProcessed = (res1 != null && res2 == null) || (res1 == null && res2 != null);
+      assertThat(oneProcessed).isTrue();
+
+      // Confirm job status is COMPLETED
+      DispatchJobDto finalJob = queueService.getJobById(jobId);
+      assertThat(finalJob.jobStatus()).isEqualTo("COMPLETED");
+
+      // Verify attempts table: exactly 1 attempt was recorded
+      List<DispatchAttemptDto> attempts = queueService.getAttemptsByJobId(jobId);
+      assertThat(attempts).hasSize(1);
+      assertThat(attempts.get(0).attemptStatus()).isEqualTo("COMPLETED");
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  @DisplayName("11. Retry Quota Wiring: Automatic internal queue retry bypasses trainee quota, but external caller cannot bypass")
+  void testRetryQuotaWiring_automaticRetryConsumesProviderBurstWithoutTrippingTraineeQuota() {
+    String traineeLimiterKey = "TRAINEE:SMS:" + AUTHORITATIVE_TEST_TRAINEE_ID;
+
+    // Simulate trainee exhausting 3/3 daily SMS limit
+    for (int i = 0; i < 3; i++) {
+      jdbcTemplate.update(
+          "INSERT INTO communication_rate_limit_events (limiter_key, event_type, created_at) VALUES (?, 'TRAINEE_DISPATCH', NOW())",
+          traineeLimiterKey
+      );
+    }
+
+    // 1. External caller attempting dispatch with isRetry=true fails closed because caller is not authenticated internal worker
+    CommunicationDispatchCommand externalCommand = new CommunicationDispatchCommand(
+        AUTHORITATIVE_TEST_TRAINEE_ID,
+        CommunicationChannel.SMS,
+        CommunicationPurpose.OPERATIONAL,
+        "TPL-ENROLL-001",
+        Map.of("batchCode", "B-RETRY-01", "courseName", "Solar", "startDate", "2026-12-01", "trainingCenterName", "NSTI"),
+        null,
+        null,
+        null,
+        true // external caller claiming isRetry=true
+    );
+
+    assertThatThrownBy(() -> notificationDispatcherService.dispatchNotification(externalCommand))
+        .isInstanceOf(CommunicationRateLimitException.class)
+        .hasMessageContaining("Trainee has exceeded maximum allowed SMS notifications");
+
+    // 2. Queue automatic retry (attempt_count > 0) executed by internal queue worker succeeds
+    String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
+    DispatchJobDto job = queueService.enqueueJob(externalCommand, key);
+    Long jobId = job.jobId();
+
+    // Set attempt_count = 1 so currentAttemptNumber becomes 2 (an automatic retry)
+    jdbcTemplate.update("UPDATE communication_dispatch_jobs SET attempt_count = 1 WHERE job_id = ?", jobId);
+
+    NotificationDispatchResponse retryResponse = queueService.claimAndProcessJob(jobId, "worker-retry-test");
+    assertThat(retryResponse).isNotNull();
+    assertThat(retryResponse.accepted() || "SIMULATED".equalsIgnoreCase(retryResponse.status())).isTrue();
+
+    DispatchJobDto completedJob = queueService.getJobById(jobId);
+    assertThat(completedJob.jobStatus()).isEqualTo("COMPLETED");
+    assertThat(completedJob.attemptCount()).isEqualTo(2);
   }
 }

@@ -44,7 +44,7 @@ public class MockWebhookSignatureValidator implements WebhookSignatureValidator 
     }
 
     // Fail closed: mock webhook authentication is strictly restricted to authorized non-production test environments
-    if (!properties.isAllowTestWebhookSignatures()) {
+    if (!properties.isSyntheticTestSignatureAllowed()) {
       log.warn("[MockWebhook] Mock webhook authentication is disabled outside authorized test environments");
       return false;
     }

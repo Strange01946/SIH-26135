@@ -17,7 +17,8 @@ public record CommunicationDispatchCommand(
     Map<String, String> templateParameters,
     Long initiatedByUserId,
     Long followupTaskId,
-    Long surveyResponseId
+    Long surveyResponseId,
+    boolean isRetry
 ) {
 
   public CommunicationDispatchCommand {
@@ -29,6 +30,27 @@ public record CommunicationDispatchCommand(
     if (purpose == null) {
       purpose = CommunicationPurpose.OPERATIONAL;
     }
+  }
+
+  /**
+   * Backward-compatible 8-argument constructor defaulting isRetry to false.
+   */
+  public CommunicationDispatchCommand(
+      Long traineeId,
+      CommunicationChannel channel,
+      CommunicationPurpose purpose,
+      String templateCode,
+      Map<String, String> templateParameters,
+      Long initiatedByUserId,
+      Long followupTaskId,
+      Long surveyResponseId) {
+    this(traineeId, channel, purpose, templateCode, templateParameters, initiatedByUserId, followupTaskId, surveyResponseId, false);
+  }
+
+  public CommunicationDispatchCommand asRetry() {
+    return new CommunicationDispatchCommand(
+        traineeId, channel, purpose, templateCode, templateParameters, initiatedByUserId, followupTaskId, surveyResponseId, true
+    );
   }
 
   public static CommunicationDispatchCommand of(
@@ -46,7 +68,8 @@ public record CommunicationDispatchCommand(
         templateParameters,
         initiatedByUserId,
         null,
-        null
+        null,
+        false
     );
   }
 }

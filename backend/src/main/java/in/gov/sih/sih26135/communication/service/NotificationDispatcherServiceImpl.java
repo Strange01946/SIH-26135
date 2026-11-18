@@ -226,7 +226,8 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
     if (rateLimiter != null) {
       Long authoritativeProviderId = rateLimiter.resolveAuthoritativeProviderId(trainee.getId(), null);
       String paramsHash = calculateParametersHash(command.templateParameters());
-      rateLimiter.checkAndReserveQuota(trainee.getId(), channel, authoritativeProviderId, command.templateCode(), paramsHash);
+      boolean effectiveRetry = command.isRetry() && isAuthorizedInternalQueueWorker();
+      rateLimiter.checkAndReserveQuota(trainee.getId(), channel, authoritativeProviderId, command.templateCode(), paramsHash, effectiveRetry);
     }
 
     // 6. Concrete Provider Delivery (Executed OUTSIDE any open database transaction)
@@ -798,5 +799,14 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
     } catch (Exception ex) {
       return "HASH_FALLBACK";
     }
+  }
+
+  private boolean isAuthorizedInternalQueueWorker() {
+    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    if (auth instanceof InternalAuthenticationToken internalAuth) {
+      InternalServicePrincipal principal = (InternalServicePrincipal) internalAuth.getPrincipal();
+      return principal != null && "COMMUNICATION_DISPATCH_QUEUE_WORKER".equalsIgnoreCase(principal.getServiceId());
+    }
+    return false;
   }
 }

@@ -1,6 +1,7 @@
 package in.gov.sih.sih26135.communication.webhook;
 
 import in.gov.sih.sih26135.communication.config.CommunicationProperties;
+import in.gov.sih.sih26135.communication.config.CommunicationProperties.ProviderMode;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -592,5 +593,41 @@ class CommunicationWebhookTest {
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.success").value(false))
         .andExpect(jsonPath("$.code").value("UNSUPPORTED_PROVIDER"));
+  }
+
+  @Test
+  @DisplayName("22. Synthetic signatures rejected under production conditions even if allowTestWebhookSignatures is true")
+  void testSyntheticSignatures_rejectedUnderProductionConditionsEvenWithFlagEnabled() throws Exception {
+    properties.setAllowTestWebhookSignatures(true);
+    ProviderMode originalMode = properties.getMode();
+    try {
+      properties.setMode(ProviderMode.LIVE);
+      assertThat(properties.isSyntheticTestSignatureAllowed()).isFalse();
+
+      // Test Twilio synthetic signature rejected with HTTP 401
+      mockMvc.perform(post("/api/v1/communication/webhooks/twilio")
+              .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+              .header(TwilioWebhookSignatureValidator.HEADER_TWILIO_SIGNATURE, TwilioWebhookSignatureValidator.TEST_TWILIO_SIGNATURE)
+              .param("MessageSid", MSG_PREFIX + "LIVE-REJECT-01")
+              .param("MessageStatus", "delivered"))
+          .andExpect(status().isUnauthorized());
+
+      // Test SendGrid synthetic signature rejected with HTTP 401
+      mockMvc.perform(post("/api/v1/communication/webhooks/sendgrid")
+              .contentType(MediaType.APPLICATION_JSON)
+              .header(SendGridWebhookSignatureValidator.HEADER_SENDGRID_SIGNATURE, SendGridWebhookSignatureValidator.TEST_SENDGRID_SIGNATURE)
+              .header(SendGridWebhookSignatureValidator.HEADER_SENDGRID_TIMESTAMP, "1700000000")
+              .content("[{\"sg_message_id\":\"" + MSG_PREFIX + "SG-REJECT-01\",\"event\":\"delivered\"}]"))
+          .andExpect(status().isUnauthorized());
+
+      // Test Mock synthetic signature rejected with HTTP 401
+      mockMvc.perform(post("/api/v1/communication/webhooks/mock")
+              .contentType(MediaType.APPLICATION_JSON)
+              .header(MockWebhookSignatureValidator.HEADER_MOCK_SIGNATURE, MockWebhookSignatureValidator.TEST_MOCK_VALID_SIGNATURE)
+              .content("{\"providerMessageId\":\"" + MSG_PREFIX + "MOCK-REJECT-01\",\"status\":\"DELIVERED\"}"))
+          .andExpect(status().isUnauthorized());
+    } finally {
+      properties.setMode(originalMode);
+    }
   }
 }

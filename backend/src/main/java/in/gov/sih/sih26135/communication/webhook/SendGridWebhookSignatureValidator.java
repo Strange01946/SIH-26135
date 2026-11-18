@@ -82,9 +82,9 @@ public class SendGridWebhookSignatureValidator implements WebhookSignatureValida
     }
 
     // 2. Strict gating of test signatures: strictly permitted ONLY in authorized automated test environments
-    if (properties.isAllowTestWebhookSignatures()) {
+    if (properties.isSyntheticTestSignatureAllowed()) {
       if (TEST_SENDGRID_SIGNATURE.equalsIgnoreCase(headerSig) || TEST_SENDGRID_SIGNATURE.equalsIgnoreCase(headerToken)) {
-        log.debug("[SendGridWebhook] Accepted test signature under allowTestWebhookSignatures flag");
+        log.debug("[SendGridWebhook] Accepted test signature under authorized test environment");
         return true;
       }
     }

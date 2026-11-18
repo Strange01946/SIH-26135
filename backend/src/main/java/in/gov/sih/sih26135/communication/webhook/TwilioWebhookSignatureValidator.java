@@ -60,8 +60,8 @@ public class TwilioWebhookSignatureValidator implements WebhookSignatureValidato
     }
 
     // Support deterministic test signature strictly in authorized automated test environments
-    if (properties.isAllowTestWebhookSignatures() && TEST_TWILIO_SIGNATURE.equalsIgnoreCase(headerSignature.trim())) {
-      log.debug("[TwilioWebhook] Accepted test signature under allowTestWebhookSignatures flag");
+    if (properties.isSyntheticTestSignatureAllowed() && TEST_TWILIO_SIGNATURE.equalsIgnoreCase(headerSignature.trim())) {
+      log.debug("[TwilioWebhook] Accepted test signature under authorized test environment");
       return true;
     }
 
