@@ -32,6 +32,7 @@ import in.gov.sih.sih26135.repository.TrainingEnrollmentRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
 import in.gov.sih.sih26135.service.TraineeUnemploymentEventService;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
@@ -320,6 +321,12 @@ public class TraineeUnemploymentEventServiceImpl implements TraineeUnemploymentE
     event.setVerifiedAt(request.getVerifiedAt());
     event.setVerifiedByUserId(request.getVerifiedByUserId());
     event.setRemarks(request.getRemarks());
+    if (event.getCreatedAt() == null) {
+      event.setCreatedAt(LocalDateTime.now());
+    }
+    if (event.getUpdatedAt() == null) {
+      event.setUpdatedAt(LocalDateTime.now());
+    }
 
     TraineeUnemploymentEvent saved = traineeUnemploymentEventRepository.save(event);
     return mapper.toResponse(saved);

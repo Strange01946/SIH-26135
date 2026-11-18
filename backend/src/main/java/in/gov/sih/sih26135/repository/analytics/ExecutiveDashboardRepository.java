@@ -236,12 +236,22 @@ public class ExecutiveDashboardRepository {
           rs.getBigDecimal("employmentRatePct")
       );
 
+  private static Long toNullableLong(Object obj) {
+    if (obj == null) {
+      return null;
+    }
+    if (obj instanceof Number num) {
+      return num.longValue();
+    }
+    return Long.valueOf(obj.toString());
+  }
+
   private static final RowMapper<SchemeProgramPerformanceProjection> MATRIX_ROW_MAPPER = (rs, rowNum) ->
       new SchemeProgramPerformanceRecord(
-          (Long) rs.getObject("programId"),
+          toNullableLong(rs.getObject("programId")),
           rs.getString("programCode"),
           rs.getString("programName"),
-          (Long) rs.getObject("schemeId"),
+          toNullableLong(rs.getObject("schemeId")),
           rs.getString("schemeCode"),
           rs.getString("schemeName"),
           (Number) rs.getObject("enrollmentCount"),

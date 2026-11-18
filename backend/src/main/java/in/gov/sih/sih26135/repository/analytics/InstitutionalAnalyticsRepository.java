@@ -110,7 +110,7 @@ public class InstitutionalAnalyticsRepository {
           rs.getLong("courseId"),
           rs.getString("courseCode"),
           rs.getString("courseName"),
-          (Long) rs.getObject("qualificationLevelId"),
+          rs.getObject("qualificationLevelId") != null ? ((Number) rs.getObject("qualificationLevelId")).longValue() : null,
           rs.getString("qualificationLevelCode"),
           rs.getString("qualificationLevelName"),
           (Integer) rs.getObject("nsqfLevel"),

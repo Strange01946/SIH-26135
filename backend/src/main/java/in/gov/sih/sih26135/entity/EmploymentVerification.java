@@ -115,6 +115,22 @@ public class EmploymentVerification {
   @Column(name = "updated_at", nullable = false)
   private LocalDateTime updatedAt;
 
+  @jakarta.persistence.PrePersist
+  protected void onCreate() {
+    LocalDateTime now = LocalDateTime.now();
+    if (this.createdAt == null) {
+      this.createdAt = now;
+    }
+    if (this.updatedAt == null) {
+      this.updatedAt = now;
+    }
+  }
+
+  @jakarta.persistence.PreUpdate
+  protected void onUpdate() {
+    this.updatedAt = LocalDateTime.now();
+  }
+
   public EmploymentVerification() {
   }
 

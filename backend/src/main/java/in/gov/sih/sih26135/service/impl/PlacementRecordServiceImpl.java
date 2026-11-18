@@ -449,6 +449,10 @@ public class PlacementRecordServiceImpl implements PlacementRecordService {
         employer, employerBranch, jobPosting, jobApplication, jobRole, engagementType,
         placementSource, placementStatus, joiningStatus, salaryFrequency, nonSelectionReason, recordVerificationStatus);
 
+    LocalDateTime now = LocalDateTime.now();
+    entity.setCreatedAt(now);
+    entity.setUpdatedAt(now);
+
     PlacementRecord saved = placementRecordRepository.save(entity);
     return placementRecordMapper.toResponse(saved);
   }

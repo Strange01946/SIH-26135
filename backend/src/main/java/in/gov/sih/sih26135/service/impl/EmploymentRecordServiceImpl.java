@@ -279,7 +279,9 @@ public class EmploymentRecordServiceImpl implements EmploymentRecordService {
       if (enrollment.getDeletedAt() != null) {
         throw new BadRequestException("Training enrollment is not active", "INACTIVE_ENROLLMENT");
       }
-      if (enrollment.getEnrollmentStatus() != null && Boolean.TRUE.equals(enrollment.getEnrollmentStatus().getIsTerminal())) {
+      if (enrollment.getEnrollmentStatus() != null
+          && Boolean.TRUE.equals(enrollment.getEnrollmentStatus().getIsTerminal())
+          && !Boolean.TRUE.equals(enrollment.getEnrollmentStatus().getIsCompletedFlag())) {
         throw new BadRequestException("Training enrollment is not active", "INACTIVE_ENROLLMENT");
       }
       if (!enrollment.getTrainee().getId().equals(trainee.getId())) {
@@ -413,6 +415,10 @@ public class EmploymentRecordServiceImpl implements EmploymentRecordService {
         engagementType, spellStatus, salaryFrequency, infoSource, verificationStatus, exitReason);
 
     entity.setIsCurrent(isCurrent);
+
+    LocalDateTime now = LocalDateTime.now();
+    entity.setCreatedAt(now);
+    entity.setUpdatedAt(now);
 
     EmploymentRecord saved = employmentRecordRepository.save(entity);
     return employmentRecordMapper.toResponse(saved);

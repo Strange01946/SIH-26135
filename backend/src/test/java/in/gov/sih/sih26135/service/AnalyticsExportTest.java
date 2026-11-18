@@ -272,12 +272,12 @@ public class AnalyticsExportTest {
   }
 
   private void cleanUpFixtures() {
-    jdbcTemplate.update("DELETE FROM salary_history WHERE trainee_id >= 99000");
-    jdbcTemplate.update("DELETE FROM employment_records WHERE trainee_id >= 99000");
-    jdbcTemplate.update("DELETE FROM training_enrollments WHERE trainee_id >= 99000");
+    jdbcTemplate.update("DELETE FROM salary_history WHERE (trainee_id >= 99000 AND trainee_id < 1000000)");
+    jdbcTemplate.update("DELETE FROM employment_records WHERE (trainee_id >= 99000 AND trainee_id < 1000000)");
+    jdbcTemplate.update("DELETE FROM training_enrollments WHERE (trainee_id >= 99000 AND trainee_id < 1000000)");
     jdbcTemplate.update("DELETE FROM training_batches WHERE batch_id >= 99890");
     jdbcTemplate.update("DELETE FROM training_centers WHERE center_id = 99885");
-    jdbcTemplate.update("DELETE FROM trainees WHERE trainee_id >= 99000 OR trainee_id = ?", userTraineeId);
+    jdbcTemplate.update("DELETE FROM trainees WHERE (trainee_id >= 99000 AND trainee_id < 1000000) OR trainee_id = ?", userTraineeId);
     jdbcTemplate.update("DELETE FROM courses WHERE course_id IN (99890, 99891)");
     jdbcTemplate.update("DELETE FROM programs WHERE program_id = ?", FIXTURE_PROGRAM_ID);
     jdbcTemplate.update("DELETE FROM schemes WHERE scheme_id = 99885");

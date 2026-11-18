@@ -215,6 +215,9 @@ public class JobPostingServiceImpl implements JobPostingService {
     JobPosting entity = jobPostingMapper.toEntity(
         request, employer, employerBranch, jobRole, engagementType,
         qualificationLevel, salaryFrequency, jobPostingStatus);
+    LocalDateTime now = LocalDateTime.now();
+    entity.setCreatedAt(now);
+    entity.setUpdatedAt(now);
     JobPosting saved = jobPostingRepository.save(entity);
     return jobPostingMapper.toResponse(saved);
   }

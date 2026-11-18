@@ -314,6 +314,10 @@ public class EmploymentVerificationServiceImpl implements EmploymentVerification
     entity.setNotes(request.getNotes());
     entity.setRejectionNotes(rejectionNotes);
 
+    LocalDateTime now = LocalDateTime.now();
+    entity.setCreatedAt(now);
+    entity.setUpdatedAt(now);
+
     EmploymentVerification saved = employmentVerificationRepository.save(entity);
     return employmentVerificationMapper.toResponse(saved);
   }

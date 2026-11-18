@@ -144,6 +144,22 @@ public class PlacementRecord {
   @Column(name = "deleted_at")
   private LocalDateTime deletedAt;
 
+  @jakarta.persistence.PrePersist
+  protected void onCreate() {
+    LocalDateTime now = LocalDateTime.now();
+    if (this.createdAt == null) {
+      this.createdAt = now;
+    }
+    if (this.updatedAt == null) {
+      this.updatedAt = now;
+    }
+  }
+
+  @jakarta.persistence.PreUpdate
+  protected void onUpdate() {
+    this.updatedAt = LocalDateTime.now();
+  }
+
   public PlacementRecord() {
   }
 

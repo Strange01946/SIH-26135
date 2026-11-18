@@ -27,6 +27,7 @@ import in.gov.sih.sih26135.repository.TrainingEnrollmentRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
 import in.gov.sih.sih26135.service.EmploymentExitEventService;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -183,6 +184,12 @@ public class EmploymentExitEventServiceImpl implements EmploymentExitEventServic
     exitEvent.setVerifiedAt(request.getVerifiedAt());
     exitEvent.setVerifiedByUserId(request.getVerifiedByUserId());
     exitEvent.setRemarks(request.getRemarks());
+    if (exitEvent.getCreatedAt() == null) {
+      exitEvent.setCreatedAt(LocalDateTime.now());
+    }
+    if (exitEvent.getUpdatedAt() == null) {
+      exitEvent.setUpdatedAt(LocalDateTime.now());
+    }
 
     EmploymentExitEvent saved = employmentExitEventRepository.save(exitEvent);
 

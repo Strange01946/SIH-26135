@@ -21,6 +21,7 @@ import in.gov.sih.sih26135.repository.SalaryHistoryRepository;
 import in.gov.sih.sih26135.service.SalaryHistoryService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import org.springframework.stereotype.Service;
@@ -188,6 +189,11 @@ public class SalaryHistoryServiceImpl implements SalaryHistoryService {
 
     SalaryHistory entity = salaryHistoryMapper.toEntity(
         request, employment, authoritativeTrainee, frequency, infoSource, verificationStatus);
+
+    LocalDateTime now = LocalDateTime.now();
+    entity.setCreatedAt(now);
+    entity.setUpdatedAt(now);
+
     SalaryHistory saved = salaryHistoryRepository.save(entity);
     return salaryHistoryMapper.toResponse(saved);
   }

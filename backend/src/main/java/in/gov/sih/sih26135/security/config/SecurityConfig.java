@@ -18,6 +18,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import in.gov.sih.sih26135.security.handler.RestAccessDeniedHandler;
 import in.gov.sih.sih26135.security.handler.RestAuthenticationEntryPoint;
 import in.gov.sih.sih26135.security.jwt.JwtAuthenticationFilter;
+import jakarta.servlet.DispatcherType;
 
 /**
  * Spring Security configuration establishing the stateless HTTP request processing pipeline,
@@ -87,6 +88,7 @@ public class SecurityConfig {
         )
         // Request authorization boundary: public vs authenticated
         .authorizeHttpRequests(authorize -> authorize
+            .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
             .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
             .requestMatchers(HttpMethod.POST, "/api/v1/auth/login", "/api/v1/auth/refresh").permitAll()
             .requestMatchers(HttpMethod.POST, "/api/v1/communication/webhooks/**").permitAll()
