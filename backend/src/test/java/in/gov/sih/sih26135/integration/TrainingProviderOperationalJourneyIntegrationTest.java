@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -36,20 +37,20 @@ public class TrainingProviderOperationalJourneyIntegrationTest extends BaseJourn
   @Autowired
   private DataQualityRuleCatalogService catalogService;
 
-  private static final Long FIXTURE_USER_ID = 9200L;
-  private static final Long FIXTURE_DUP_TRAINEE_ID = 9299L;
-  private static final Long FIXTURE_TP_USER_ID = 9201L;
-  private static final Long FIXTURE_TP_B_USER_ID = 9202L;
-  private static final Long FIXTURE_TP_ID = 9102L;
-  private static final Long FIXTURE_TP_B_ID = 9103L;
-  private static final Long FIXTURE_TP_CENTER_ID = 9102L;
-  private static final Long FIXTURE_TP_BATCH_ID = 9102L;
-  private static final Long FIXTURE_TP_COURSE_ID = 9102L;
-  private static final Long FIXTURE_TP_SECTOR_ID = 9102L;
-  private static final Long FIXTURE_TP_ORG_ID = 9102L;
-  private static final Long FIXTURE_TP_DEPT_ID = 9102L;
-  private static final Long FIXTURE_TP_SCHEME_ID = 9102L;
-  private static final Long FIXTURE_TP_PROGRAM_ID = 9102L;
+  private Long fixtureUserId;
+  private Long fixtureTpUserId;
+  private Long fixtureTpBUserId;
+  private Long fixtureTpId;
+  private Long fixtureTpBId;
+  private Long fixtureTpCenterId;
+  private Long fixtureTpBatchId;
+  private Long fixtureTpCourseId;
+  private Long fixtureTpSectorId;
+  private Long fixtureTpOrgId;
+  private Long fixtureTpDeptId;
+  private Long fixtureTpSchemeId;
+  private Long fixtureTpProgramId;
+  private String runToken;
 
   private String adminToken;
   private HttpHeaders adminHeaders;
@@ -60,133 +61,130 @@ public class TrainingProviderOperationalJourneyIntegrationTest extends BaseJourn
 
   @BeforeEach
   void setUpOperationalFixtures() {
+    runToken = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+
     // 1. Provision default Data Quality rules
     catalogService.ensureDefaultRulesProvisioned();
 
-    // 2. Build authentication tokens
-    adminToken = generateBearerToken(
-        FIXTURE_USER_ID,
-        "superadmin",
-        List.of("ROLE_super_admin", "system.manage", "audit.read", "trainee.write", "placement.manage", "analytics.read")
-    );
-    adminHeaders = createAuthHeaders(adminToken);
+    // 2. Training Domain Fixtures
+    fixtureTpSectorId = insertAndGetId("""
+        INSERT INTO sectors (sector_code, sector_name, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, 1, NOW(), NOW())
+        """, "SEC-TP-" + runToken, "Healthcare & Life Sciences " + runToken);
+    trackedSectorIds.add(fixtureTpSectorId);
 
-    providerToken = generateBearerToken(
-        FIXTURE_TP_USER_ID,
-        "tp_user_295",
-        List.of("ROLE_training_provider", "trainee.write", "trainee.read", "placement.manage", "center.manage")
-    );
-    providerHeaders = createAuthHeaders(providerToken);
+    fixtureTpCourseId = insertAndGetId("""
+        INSERT INTO courses (course_code, course_name, sector_id, delivery_mode_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, 1, 1, NOW(), NOW())
+        """, "CRS-TP-" + runToken, "Emergency Medical EMT " + runToken, fixtureTpSectorId);
+    trackedCourseIds.add(fixtureTpCourseId);
 
-    providerBToken = generateBearerToken(
-        FIXTURE_TP_B_USER_ID,
-        "tp_user_b_295",
-        List.of("ROLE_training_provider", "trainee.write", "trainee.read", "placement.manage", "center.manage")
-    );
-    providerBHeaders = createAuthHeaders(providerBToken);
+    fixtureTpOrgId = insertAndGetId("""
+        INSERT INTO organizations (organization_code, organization_name, organization_type_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, 1, 1, NOW(), NOW())
+        """, "ORG-TP-" + runToken, "Paramedical Council " + runToken);
+    trackedOrgIds.add(fixtureTpOrgId);
 
-    // 3. Setup domain fixtures
-    jdbcTemplate.update("""
-        INSERT INTO sectors (sector_id, sector_code, sector_name, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, 'SEC-TP-295', 'Healthcare & Life Sciences', 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_TP_SECTOR_ID);
-    trackedSectorIds.add(FIXTURE_TP_SECTOR_ID);
+    fixtureTpDeptId = insertAndGetId("""
+        INSERT INTO departments (organization_id, department_code, department_name, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, 1, NOW(), NOW())
+        """, fixtureTpOrgId, "DEP-TP-" + runToken, "Health Division " + runToken);
+    trackedDeptIds.add(fixtureTpDeptId);
 
-    jdbcTemplate.update("""
-        INSERT INTO courses (course_id, course_code, course_name, sector_id, delivery_mode_id, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, 'CRS-TP-295', 'Advanced Emergency Medical Technician', ?, 1, 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_TP_COURSE_ID, FIXTURE_TP_SECTOR_ID);
-    trackedCourseIds.add(FIXTURE_TP_COURSE_ID);
+    fixtureTpSchemeId = insertAndGetId("""
+        INSERT INTO schemes (scheme_code, scheme_name, department_id, currency_code, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, 'INR', 1, NOW(), NOW())
+        """, "SCH-TP-" + runToken, "National Paramedic Mission " + runToken, fixtureTpDeptId);
+    trackedSchemeIds.add(fixtureTpSchemeId);
 
-    jdbcTemplate.update("""
-        INSERT INTO organizations (organization_id, organization_code, organization_name, organization_type_id, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, 'ORG-TP-295', 'Paramedical Council', 1, 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_TP_ORG_ID);
-    trackedOrgIds.add(FIXTURE_TP_ORG_ID);
-
-    jdbcTemplate.update("""
-        INSERT INTO departments (department_id, organization_id, department_code, department_name, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, ?, 'DEP-TP-295', 'Health Training Division', 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_TP_DEPT_ID, FIXTURE_TP_ORG_ID);
-    trackedDeptIds.add(FIXTURE_TP_DEPT_ID);
-
-    jdbcTemplate.update("""
-        INSERT INTO schemes (scheme_id, scheme_code, scheme_name, department_id, currency_code, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, 'SCH-TP-295', 'National Paramedic Mission', ?, 'INR', 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_TP_SCHEME_ID, FIXTURE_TP_DEPT_ID);
-    trackedSchemeIds.add(FIXTURE_TP_SCHEME_ID);
-
-    jdbcTemplate.update("""
-        INSERT INTO programs (program_id, program_code, program_name, department_id, scheme_id, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, 'PRG-TP-295', 'Certified Paramedic Accelerated Program', ?, ?, 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_TP_PROGRAM_ID, FIXTURE_TP_DEPT_ID, FIXTURE_TP_SCHEME_ID);
-    trackedProgramIds.add(FIXTURE_TP_PROGRAM_ID);
+    fixtureTpProgramId = insertAndGetId("""
+        INSERT INTO programs (program_code, program_name, department_id, scheme_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 1, NOW(), NOW())
+        """, "PRG-TP-" + runToken, "Paramedic Accelerated Program " + runToken, fixtureTpDeptId, fixtureTpSchemeId);
+    trackedProgramIds.add(fixtureTpProgramId);
 
     // Primary Provider (Provider A)
-    jdbcTemplate.update("""
-        INSERT INTO training_providers (provider_id, provider_code, provider_name, registration_number, organization_type_id, organization_id, state_id, district_id, accreditation_status_id, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, 'PRV-TP-295A', 'LifeCare Training Institute', 'REG-PRV-TP-295A', 5, ?, 101, 1001, 1, 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_TP_ID, FIXTURE_TP_ORG_ID);
-    trackedProviderIds.add(FIXTURE_TP_ID);
+    fixtureTpId = insertAndGetId("""
+        INSERT INTO training_providers (provider_code, provider_name, registration_number, organization_type_id, organization_id, state_id, district_id, accreditation_status_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, 5, ?, 101, 1001, 1, 1, NOW(), NOW())
+        """, "PRV-TP-295A-" + runToken, "LifeCare Institute " + runToken, "REG-PRV-TP-295A-" + runToken, fixtureTpOrgId);
+    trackedProviderIds.add(fixtureTpId);
 
     // Cross-tenant Provider (Provider B)
-    jdbcTemplate.update("""
-        INSERT INTO training_providers (provider_id, provider_code, provider_name, registration_number, organization_type_id, organization_id, state_id, district_id, accreditation_status_id, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, 'PRV-TP-295B', 'City Care Skills', 'REG-PRV-TP-295B', 5, ?, 101, 1001, 1, 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_TP_B_ID, FIXTURE_TP_ORG_ID);
-    trackedProviderIds.add(FIXTURE_TP_B_ID);
+    fixtureTpBId = insertAndGetId("""
+        INSERT INTO training_providers (provider_code, provider_name, registration_number, organization_type_id, organization_id, state_id, district_id, accreditation_status_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, 5, ?, 101, 1001, 1, 1, NOW(), NOW())
+        """, "PRV-TP-295B-" + runToken, "City Care Skills " + runToken, "REG-PRV-TP-295B-" + runToken, fixtureTpOrgId);
+    trackedProviderIds.add(fixtureTpBId);
 
-    jdbcTemplate.update("""
-        INSERT INTO training_centers (center_id, provider_id, center_code, center_name, state_id, district_id, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, ?, 'CTR-TP-295', 'Connaught Place LifeCare Center', 101, 1001, 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_TP_CENTER_ID, FIXTURE_TP_ID);
-    trackedCenterIds.add(FIXTURE_TP_CENTER_ID);
+    fixtureTpCenterId = insertAndGetId("""
+        INSERT INTO training_centers (provider_id, center_code, center_name, state_id, district_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, 101, 1001, 1, NOW(), NOW())
+        """, fixtureTpId, "CTR-TP-" + runToken, "LifeCare Center " + runToken);
+    trackedCenterIds.add(fixtureTpCenterId);
 
-    jdbcTemplate.update("""
-        INSERT INTO training_batches (batch_id, batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at)
-        VALUES (?, 'BAT-TP-295', ?, ?, ?, ?, '2026-01-01', 500, 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_TP_BATCH_ID, FIXTURE_TP_COURSE_ID, FIXTURE_TP_ID, FIXTURE_TP_CENTER_ID, FIXTURE_TP_PROGRAM_ID);
-    trackedBatchIds.add(FIXTURE_TP_BATCH_ID);
+    fixtureTpBatchId = insertAndGetId("""
+        INSERT INTO training_batches (batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, '2026-01-01', 500, 1, NOW(), NOW())
+        """, "BAT-TP-" + runToken, fixtureTpCourseId, fixtureTpId, fixtureTpCenterId, fixtureTpProgramId);
+    trackedBatchIds.add(fixtureTpBatchId);
 
     // Admin user
-    jdbcTemplate.update("""
-        INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, state_id, district_id, created_at, updated_at)
-        VALUES (?, 'superadmin', 'superadmin_tp@test.gov.in', 'hash', 'argon2id', 1, NULL, NULL, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_USER_ID);
-    trackedUserIds.add(FIXTURE_USER_ID);
+    fixtureUserId = insertAndGetId("""
+        INSERT INTO users (username, email, password_hash, password_algo, user_status_id, state_id, district_id, created_at, updated_at)
+        VALUES (?, ?, 'hash', 'argon2id', 1, NULL, NULL, NOW(), NOW())
+        """, "superadmin_tp_" + runToken, "superadmin_tp_" + runToken + "@test.gov.in");
+    trackedUserIds.add(fixtureUserId);
 
     jdbcTemplate.update("""
         INSERT INTO user_roles (user_id, role_id, assigned_at)
         SELECT ?, role_id, NOW() FROM roles WHERE role_code = 'super_admin' LIMIT 1
-        ON DUPLICATE KEY UPDATE assigned_at = NOW()
-        """, FIXTURE_USER_ID);
+        """, fixtureUserId);
+
+    adminToken = generateBearerToken(
+        fixtureUserId,
+        "superadmin_tp_" + runToken,
+        List.of("ROLE_super_admin", "system.manage", "audit.read", "trainee.write", "placement.manage", "analytics.read")
+    );
+    adminHeaders = createAuthHeaders(adminToken);
 
     // Provider A user
+    fixtureTpUserId = insertAndGetId("""
+        INSERT INTO users (username, email, password_hash, password_algo, user_status_id, state_id, district_id, training_provider_id, created_at, updated_at)
+        VALUES (?, ?, 'hash', 'argon2id', 1, NULL, NULL, ?, NOW(), NOW())
+        """, "tp_user_" + runToken, "tp295a_" + runToken + "@test.gov.in", fixtureTpId);
+    trackedUserIds.add(fixtureTpUserId);
+
     jdbcTemplate.update("""
-        INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, state_id, district_id, training_provider_id, created_at, updated_at)
-        VALUES (?, 'tp_user_295', 'tp295a@test.gov.in', 'hash', 'argon2id', 1, NULL, NULL, ?, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_TP_USER_ID, FIXTURE_TP_ID);
-    trackedUserIds.add(FIXTURE_TP_USER_ID);
+        INSERT INTO user_roles (user_id, role_id, assigned_at)
+        SELECT ?, role_id, NOW() FROM roles WHERE role_code = 'training_provider' LIMIT 1
+        """, fixtureTpUserId);
+
+    providerToken = generateBearerToken(
+        fixtureTpUserId,
+        "tp_user_" + runToken,
+        List.of("ROLE_training_provider", "trainee.write", "trainee.read", "placement.manage", "center.manage")
+    );
+    providerHeaders = createAuthHeaders(providerToken);
 
     // Provider B user
+    fixtureTpBUserId = insertAndGetId("""
+        INSERT INTO users (username, email, password_hash, password_algo, user_status_id, state_id, district_id, training_provider_id, created_at, updated_at)
+        VALUES (?, ?, 'hash', 'argon2id', 1, NULL, NULL, ?, NOW(), NOW())
+        """, "tp_user_b_" + runToken, "tp295b_" + runToken + "@test.gov.in", fixtureTpBId);
+    trackedUserIds.add(fixtureTpBUserId);
+
     jdbcTemplate.update("""
-        INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, state_id, district_id, training_provider_id, created_at, updated_at)
-        VALUES (?, 'tp_user_b_295', 'tp295b@test.gov.in', 'hash', 'argon2id', 1, NULL, NULL, ?, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_TP_B_USER_ID, FIXTURE_TP_B_ID);
-    trackedUserIds.add(FIXTURE_TP_B_USER_ID);
+        INSERT INTO user_roles (user_id, role_id, assigned_at)
+        SELECT ?, role_id, NOW() FROM roles WHERE role_code = 'training_provider' LIMIT 1
+        """, fixtureTpBUserId);
+
+    providerBToken = generateBearerToken(
+        fixtureTpBUserId,
+        "tp_user_b_" + runToken,
+        List.of("ROLE_training_provider", "trainee.write", "trainee.read", "placement.manage", "center.manage")
+    );
+    providerBHeaders = createAuthHeaders(providerBToken);
   }
 
   @Test
@@ -207,12 +205,11 @@ public class TrainingProviderOperationalJourneyIntegrationTest extends BaseJourn
     String dupRegNo = "REG-TP500-DUP-001-" + timestamp;
 
     // Pre-insert an authoritative duplicate record so all 15 CSV rows matching dupRegNo are classified as DUPLICATE
-    jdbcTemplate.update("""
-        INSERT INTO trainees (trainee_id, registration_number, first_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
-        VALUES (?, ?, 'PreExistingDupCandidate', 1, 101, 1001, 1, 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_DUP_TRAINEE_ID, dupRegNo);
-    trackedTraineeIds.add(FIXTURE_DUP_TRAINEE_ID);
+    Long dupTraineeId = insertAndGetId("""
+        INSERT INTO trainees (registration_number, first_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
+        VALUES (?, 'PreExistingDupCandidate', 1, 101, 1001, 1, 1, NOW(), NOW())
+        """, dupRegNo);
+    trackedTraineeIds.add(dupTraineeId);
 
     // 450 Valid Rows
     for (int i = 1; i <= 450; i++) {
@@ -304,10 +301,10 @@ public class TrainingProviderOperationalJourneyIntegrationTest extends BaseJourn
     assertThat(progressData.get("failureCount").asInt()).isEqualTo(35);
     assertThat(progressData.get("duplicateCount").asInt()).isEqualTo(15);
 
-    // Track successfully created trainees for cleanup
+    // Track successfully created trainees for cleanup using exact import batch ID
     List<Long> importedTraineeIds = jdbcTemplate.queryForList(
-        "SELECT trainee_id FROM trainees WHERE registration_number LIKE 'REG-TP500-%'",
-        Long.class
+        "SELECT entity_id FROM import_records WHERE import_batch_id = ? AND entity_type = 'Trainee' AND entity_id IS NOT NULL",
+        Long.class, batchId
     );
     trackedTraineeIds.addAll(importedTraineeIds);
 
@@ -389,7 +386,7 @@ public class TrainingProviderOperationalJourneyIntegrationTest extends BaseJourn
     trackedDqIssueIds.add(dqIssueId);
 
     // 1. Assign Issue
-    AssignDataQualityIssueRequest assignReq = new AssignDataQualityIssueRequest(FIXTURE_USER_ID, "Assigned to data quality steward");
+    AssignDataQualityIssueRequest assignReq = new AssignDataQualityIssueRequest(fixtureUserId, "Assigned to data quality steward");
     ResponseEntity<String> assignResp = restTemplate.exchange(
         getBaseUrl("/api/v1/data-quality-issues/" + dqIssueId + "/assign"),
         HttpMethod.POST,
@@ -441,7 +438,7 @@ public class TrainingProviderOperationalJourneyIntegrationTest extends BaseJourn
 
     // Provider reads own centers
     ResponseEntity<String> centersResp = restTemplate.exchange(
-        getBaseUrl("/api/v1/training-centers?providerId=" + FIXTURE_TP_ID),
+        getBaseUrl("/api/v1/training-centers?providerId=" + fixtureTpId),
         HttpMethod.GET,
         new HttpEntity<>(providerHeaders),
         String.class

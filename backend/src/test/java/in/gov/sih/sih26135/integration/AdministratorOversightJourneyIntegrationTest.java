@@ -1,9 +1,8 @@
 package in.gov.sih.sih26135.integration;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -13,34 +12,36 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 /**
- * Phase 29.5 — End-to-End Administrator Oversight Journey Integration Test.
+ * Phase 29.5 — Administrator Oversight Journey Integration Test.
  *
- * <p>Exercises administrator oversight workflows across real HTTP endpoints:
+ * <p>Validates:
  * <ol>
- *   <li>Setup: National Admin (nationwide, state/district=null), State Admin A (state 101), State Admin B (state 9988)</li>
- *   <li>National Overview: {@code GET /api/v1/dashboards/national} -> 200 OK for National Admin</li>
- *   <li>Operational System Health: {@code GET /api/v1/operational/system-health} -> 200 OK</li>
- *   <li>Data Quality Index / Scorecard: {@code GET /api/v1/operational/data-quality-scorecard} -> 200 OK</li>
- *   <li>Geographic Drill-Down: {@code GET /api/v1/dashboards/states/101} -> 200 OK for National Admin &amp; State Admin A</li>
- *   <li>Territorial Boundary Enforcement: State Admin A calls {@code /api/v1/dashboards/states/9988} -> 403 Forbidden</li>
- *   <li>Nationwide Dashboard Boundary: State Admin A calls {@code /api/v1/dashboards/national} -> 403 Forbidden</li>
- *   <li>Streaming MIS Export (DSDP): {@code GET /api/v1/analytics/export/dsdp/csv?districtId=1001} -> 200 OK (text/csv)</li>
- *   <li>Streaming MIS Export (QPR): {@code GET /api/v1/analytics/export/qpr/csv?fiscalYear=FY2026-27&quarter=Q1} -> 200 OK for National Admin</li>
+ *   <li>National Executive Dashboard Overview: {@code GET /api/v1/dashboards/national} -> 200 OK</li>
+ *   <li>System Health & Operational Status: {@code GET /api/v1/operational/system-health} -> 200 OK</li>
+ *   <li>Data Quality Scorecard: {@code GET /api/v1/operational/data-quality-scorecard} -> 200 OK</li>
+ *   <li>Geographic Drill-Down: {@code GET /api/v1/dashboards/states/101} -> 200 OK</li>
+ *   <li>Streaming DSDP CSV Export: {@code GET /api/v1/analytics/export/dsdp/csv?districtId=1001} -> 200 OK (text/csv)</li>
+ *   <li>Streaming QPR CSV Export: {@code GET /api/v1/analytics/export/qpr/csv?fiscalYear=FY2026-27&quarter=Q1} -> 200 OK (text/csv)</li>
+ *   <li>State Admin Tenancy Boundary: State Admin A views State 101 -> 200 OK; views State B -> 403 Forbidden</li>
+ *   <li>State Admin B views State B -> 200 OK</li>
+ *   <li>National Overview Boundary: State Admin A calls National Dashboard -> 403 Forbidden</li>
  *   <li>MIS Export Boundary: State Admin A calls QPR export -> 403 Forbidden</li>
- *   <li>Cross-State District Boundary: State Admin A calls DSDP for district in State B (9988) -> 403 Forbidden</li>
- *   <li>Immutable Audit Timeline: {@code GET /api/v1/audit-logs/entities/User/9400/timeline} -> 200 OK</li>
+ *   <li>Cross-State District Boundary: State Admin A calls DSDP for district in State B -> 403 Forbidden</li>
+ *   <li>Immutable Audit Timeline: {@code GET /api/v1/audit-logs/entities/User/{id}/timeline} -> 200 OK</li>
  *   <li>Audit Log Search: {@code GET /api/v1/audit-logs?size=10} -> 200 OK</li>
  * </ol>
  */
 @DisplayName("Phase 29.5 — Administrator Oversight Journey Integration Test")
 public class AdministratorOversightJourneyIntegrationTest extends BaseJourneyIntegrationTest {
 
-  private static final Long FIXTURE_NAT_ADMIN_USER_ID = 9400L;
-  private static final Long FIXTURE_STATE_A_ADMIN_USER_ID = 9401L;
-  private static final Long FIXTURE_STATE_B_ADMIN_USER_ID = 9402L;
-  private static final Long FIXTURE_STATE_B_ID = 9988L;
-  private static final Long FIXTURE_DISTRICT_B_ID = 9988L;
+  private Long fixtureNatAdminUserId;
+  private Long fixtureStateAAdminUserId;
+  private Long fixtureStateBAdminUserId;
+  private Long fixtureStateBId;
+  private Long fixtureDistrictBId;
 
   private String natAdminToken;
   private HttpHeaders natAdminHeaders;
@@ -51,38 +52,49 @@ public class AdministratorOversightJourneyIntegrationTest extends BaseJourneyInt
 
   @BeforeEach
   void setUpAdministratorOversightFixtures() {
-    // 1. Fixture State B and District B for Cross-State Boundary Testing
-    jdbcTemplate.update("""
-        INSERT INTO states (state_id, state_code, state_name, lgd_code, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, 'KA', 'Karnataka Test State', 'LGD-KA-9988', 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_STATE_B_ID);
-    trackedStateIds.add(FIXTURE_STATE_B_ID);
+    String runToken = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
 
-    jdbcTemplate.update("""
-        INSERT INTO districts (district_id, state_id, district_code, district_name, lgd_code, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, ?, 'DIS-KA-9988', 'Bengaluru Urban Test', 'LGD-DIS-9988', 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_DISTRICT_B_ID, FIXTURE_STATE_B_ID);
-    trackedDistrictIds.add(FIXTURE_DISTRICT_B_ID);
+    // 1. Fixture State B and District B for Cross-State Boundary Testing (dynamically allocated)
+    String stateCodeB = null;
+    for (char c1 = 'Z'; c1 >= 'A'; c1--) {
+      for (char c2 = 'Z'; c2 >= 'A'; c2--) {
+        String candidate = "" + c1 + c2;
+        Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM states WHERE state_code = ?", Integer.class, candidate);
+        if (count == null || count == 0) {
+          stateCodeB = candidate;
+          break;
+        }
+      }
+      if (stateCodeB != null) break;
+    }
+
+    fixtureStateBId = insertAndGetId("""
+        INSERT INTO states (state_code, state_name, lgd_code, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, 1, NOW(), NOW())
+        """, stateCodeB, "Karnataka Test State " + runToken, "LG" + runToken.substring(0, 4));
+    trackedStateIds.add(fixtureStateBId);
+
+    fixtureDistrictBId = insertAndGetId("""
+        INSERT INTO districts (state_id, district_code, district_name, lgd_code, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 1, NOW(), NOW())
+        """, fixtureStateBId, "DK" + runToken.substring(0, 5), "Bengaluru Urban Test " + runToken, "LGD" + runToken.substring(0, 4));
+    trackedDistrictIds.add(fixtureDistrictBId);
 
     // 2. National Admin: Super Admin with Nationwide Scope (state_id = null, district_id = null)
-    jdbcTemplate.update("""
-        INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, state_id, district_id, created_at, updated_at)
-        VALUES (?, 'national_superadmin', 'national_admin@test.gov.in', 'hash', 'argon2id', 2, NULL, NULL, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE user_status_id = 2, updated_at = NOW()
-        """, FIXTURE_NAT_ADMIN_USER_ID);
-    trackedUserIds.add(FIXTURE_NAT_ADMIN_USER_ID);
+    fixtureNatAdminUserId = insertAndGetId("""
+        INSERT INTO users (username, email, password_hash, password_algo, user_status_id, state_id, district_id, created_at, updated_at)
+        VALUES (?, ?, 'hash', 'argon2id', 2, NULL, NULL, NOW(), NOW())
+        """, "national_superadmin_" + runToken, "national_admin_" + runToken + "@test.gov.in");
+    trackedUserIds.add(fixtureNatAdminUserId);
 
     jdbcTemplate.update("""
         INSERT INTO user_roles (user_id, role_id, assigned_at)
         SELECT ?, role_id, NOW() FROM roles WHERE role_code = 'super_admin' LIMIT 1
-        ON DUPLICATE KEY UPDATE assigned_at = NOW()
-        """, FIXTURE_NAT_ADMIN_USER_ID);
+        """, fixtureNatAdminUserId);
 
     natAdminToken = generateBearerToken(
-        FIXTURE_NAT_ADMIN_USER_ID,
-        "national_superadmin",
+        fixtureNatAdminUserId,
+        "national_superadmin_" + runToken,
         List.of(
             "ROLE_super_admin",
             "analytics.read",
@@ -95,22 +107,20 @@ public class AdministratorOversightJourneyIntegrationTest extends BaseJourneyInt
     natAdminHeaders = createAuthHeaders(natAdminToken);
 
     // 3. State Admin A: Restricted to State 101 (Delhi)
-    jdbcTemplate.update("""
-        INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, state_id, district_id, created_at, updated_at)
-        VALUES (?, 'stateadmin_101', 'stateadmin_101@test.gov.in', 'hash', 'argon2id', 2, ?, NULL, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE user_status_id = 2, state_id = VALUES(state_id), updated_at = NOW()
-        """, FIXTURE_STATE_A_ADMIN_USER_ID, BASE_STATE_ID);
-    trackedUserIds.add(FIXTURE_STATE_A_ADMIN_USER_ID);
+    fixtureStateAAdminUserId = insertAndGetId("""
+        INSERT INTO users (username, email, password_hash, password_algo, user_status_id, state_id, district_id, created_at, updated_at)
+        VALUES (?, ?, 'hash', 'argon2id', 2, ?, NULL, NOW(), NOW())
+        """, "stateadmin_101_" + runToken, "stateadmin_101_" + runToken + "@test.gov.in", BASE_STATE_ID);
+    trackedUserIds.add(fixtureStateAAdminUserId);
 
     jdbcTemplate.update("""
         INSERT INTO user_roles (user_id, role_id, assigned_at)
         SELECT ?, role_id, NOW() FROM roles WHERE role_code = 'government_admin' LIMIT 1
-        ON DUPLICATE KEY UPDATE assigned_at = NOW()
-        """, FIXTURE_STATE_A_ADMIN_USER_ID);
+        """, fixtureStateAAdminUserId);
 
     stateAAdminToken = generateBearerToken(
-        FIXTURE_STATE_A_ADMIN_USER_ID,
-        "stateadmin_101",
+        fixtureStateAAdminUserId,
+        "stateadmin_101_" + runToken,
         List.of(
             "ROLE_state_admin",
             "analytics.read",
@@ -119,23 +129,21 @@ public class AdministratorOversightJourneyIntegrationTest extends BaseJourneyInt
     );
     stateAAdminHeaders = createAuthHeaders(stateAAdminToken);
 
-    // 4. State Admin B: Restricted to State 9988 (Karnataka)
-    jdbcTemplate.update("""
-        INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, state_id, district_id, created_at, updated_at)
-        VALUES (?, 'stateadmin_9988', 'stateadmin_9988@test.gov.in', 'hash', 'argon2id', 2, ?, NULL, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE user_status_id = 2, state_id = VALUES(state_id), updated_at = NOW()
-        """, FIXTURE_STATE_B_ADMIN_USER_ID, FIXTURE_STATE_B_ID);
-    trackedUserIds.add(FIXTURE_STATE_B_ADMIN_USER_ID);
+    // 4. State Admin B: Restricted to State B (Karnataka)
+    fixtureStateBAdminUserId = insertAndGetId("""
+        INSERT INTO users (username, email, password_hash, password_algo, user_status_id, state_id, district_id, created_at, updated_at)
+        VALUES (?, ?, 'hash', 'argon2id', 2, ?, NULL, NOW(), NOW())
+        """, "stateadmin_b_" + runToken, "stateadmin_b_" + runToken + "@test.gov.in", fixtureStateBId);
+    trackedUserIds.add(fixtureStateBAdminUserId);
 
     jdbcTemplate.update("""
         INSERT INTO user_roles (user_id, role_id, assigned_at)
         SELECT ?, role_id, NOW() FROM roles WHERE role_code = 'government_admin' LIMIT 1
-        ON DUPLICATE KEY UPDATE assigned_at = NOW()
-        """, FIXTURE_STATE_B_ADMIN_USER_ID);
+        """, fixtureStateBAdminUserId);
 
     stateBAdminToken = generateBearerToken(
-        FIXTURE_STATE_B_ADMIN_USER_ID,
-        "stateadmin_9988",
+        fixtureStateBAdminUserId,
+        "stateadmin_b_" + runToken,
         List.of(
             "ROLE_state_admin",
             "analytics.read",
@@ -149,7 +157,7 @@ public class AdministratorOversightJourneyIntegrationTest extends BaseJourneyInt
   @DisplayName("Journey 4: Complete National Administrator Oversight & MIS Reporting End-to-End")
   void testNationalAdministratorOversightEndToEnd() throws Exception {
     // -------------------------------------------------------------------------
-    // Step 1: National Overview Dashboard via GET /api/v1/dashboards/national
+    // Step 1: National Executive Dashboard Overview via GET /api/v1/dashboards/national
     // -------------------------------------------------------------------------
     ResponseEntity<String> nationalResp = restTemplate.exchange(
         getBaseUrl("/api/v1/dashboards/national"),
@@ -160,21 +168,23 @@ public class AdministratorOversightJourneyIntegrationTest extends BaseJourneyInt
     assertThat(nationalResp.getStatusCode()).isEqualTo(HttpStatus.OK);
     JsonNode nationalJson = parseResponseJson(nationalResp.getBody());
     assertThat(nationalJson.get("success").asBoolean()).isTrue();
-    assertThat(nationalJson.has("data")).isTrue();
+    JsonNode nationalData = nationalJson.get("data");
+    assertThat(nationalData.has("kpiStrip")).isTrue();
+    assertThat(nationalData.has("pipelineFunnel")).isTrue();
 
     // -------------------------------------------------------------------------
-    // Step 2: Operational System Health via GET /api/v1/operational/system-health
+    // Step 2: System Health Status via GET /api/v1/operational/system-health
     // -------------------------------------------------------------------------
-    ResponseEntity<String> sysHealthResp = restTemplate.exchange(
+    ResponseEntity<String> healthResp = restTemplate.exchange(
         getBaseUrl("/api/v1/operational/system-health"),
         HttpMethod.GET,
         new HttpEntity<>(natAdminHeaders),
         String.class
     );
-    assertThat(sysHealthResp.getStatusCode()).isEqualTo(HttpStatus.OK);
-    JsonNode sysHealthJson = parseResponseJson(sysHealthResp.getBody());
-    assertThat(sysHealthJson.get("success").asBoolean()).isTrue();
-    assertThat(sysHealthJson.has("data")).isTrue();
+    assertThat(healthResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    JsonNode healthJson = parseResponseJson(healthResp.getBody());
+    assertThat(healthJson.get("success").asBoolean()).isTrue();
+    assertThat(healthJson.get("data").has("totalIncidents")).isTrue();
 
     // -------------------------------------------------------------------------
     // Step 3: Operational Data Quality Scorecard via GET /api/v1/operational/data-quality-scorecard
@@ -186,26 +196,26 @@ public class AdministratorOversightJourneyIntegrationTest extends BaseJourneyInt
         String.class
     );
     assertThat(dqScorecardResp.getStatusCode()).isEqualTo(HttpStatus.OK);
-    JsonNode dqJson = parseResponseJson(dqScorecardResp.getBody());
-    assertThat(dqJson.get("success").asBoolean()).isTrue();
-    assertThat(dqJson.has("data")).isTrue();
+    JsonNode dqScorecardJson = parseResponseJson(dqScorecardResp.getBody());
+    assertThat(dqScorecardJson.get("success").asBoolean()).isTrue();
+    assertThat(dqScorecardJson.get("data").has("dataCleanlinessIndexPct")).isTrue();
 
     // -------------------------------------------------------------------------
-    // Step 4: Geographic State Drill-Down via GET /api/v1/dashboards/states/101
+    // Step 4: Geographic State Drill-Down via GET /api/v1/dashboards/states/{stateId}
     // -------------------------------------------------------------------------
-    ResponseEntity<String> state101Resp = restTemplate.exchange(
+    ResponseEntity<String> stateDrilldownResp = restTemplate.exchange(
         getBaseUrl("/api/v1/dashboards/states/" + BASE_STATE_ID),
         HttpMethod.GET,
         new HttpEntity<>(natAdminHeaders),
         String.class
     );
-    assertThat(state101Resp.getStatusCode()).isEqualTo(HttpStatus.OK);
-    JsonNode state101Json = parseResponseJson(state101Resp.getBody());
-    assertThat(state101Json.get("success").asBoolean()).isTrue();
-    assertThat(state101Json.get("data").get("stateId").asLong()).isEqualTo(BASE_STATE_ID);
+    assertThat(stateDrilldownResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    JsonNode stateDrilldownJson = parseResponseJson(stateDrilldownResp.getBody());
+    assertThat(stateDrilldownJson.get("success").asBoolean()).isTrue();
+    assertThat(stateDrilldownJson.get("data").get("stateId").asLong()).isEqualTo(BASE_STATE_ID);
 
     // -------------------------------------------------------------------------
-    // Step 5: Streaming MIS Export - DSDP CSV via GET /api/v1/analytics/export/dsdp/csv
+    // Step 5: Streaming DSDP District CSV Export via GET /api/v1/analytics/export/dsdp/csv?districtId=1001
     // -------------------------------------------------------------------------
     ResponseEntity<String> dsdpResp = restTemplate.exchange(
         getBaseUrl("/api/v1/analytics/export/dsdp/csv?districtId=" + BASE_DISTRICT_ID),
@@ -221,7 +231,7 @@ public class AdministratorOversightJourneyIntegrationTest extends BaseJourneyInt
     assertThat(dsdpResp.getBody()).isNotNull();
 
     // -------------------------------------------------------------------------
-    // Step 6: Streaming MIS Export - QPR CSV via GET /api/v1/analytics/export/qpr/csv
+    // Step 6: Streaming QPR National CSV Export via GET /api/v1/analytics/export/qpr/csv?fiscalYear=FY2026-27&quarter=Q1
     // -------------------------------------------------------------------------
     ResponseEntity<String> qprResp = restTemplate.exchange(
         getBaseUrl("/api/v1/analytics/export/qpr/csv?fiscalYear=FY2026-27&quarter=Q1"),
@@ -240,7 +250,7 @@ public class AdministratorOversightJourneyIntegrationTest extends BaseJourneyInt
     // Step 7: Immutable Audit Trail Timeline via GET /api/v1/audit-logs/entities/User/{id}/timeline
     // -------------------------------------------------------------------------
     ResponseEntity<String> timelineResp = restTemplate.exchange(
-        getBaseUrl("/api/v1/audit-logs/entities/User/" + FIXTURE_NAT_ADMIN_USER_ID + "/timeline"),
+        getBaseUrl("/api/v1/audit-logs/entities/User/" + fixtureNatAdminUserId + "/timeline"),
         HttpMethod.GET,
         new HttpEntity<>(natAdminHeaders),
         String.class
@@ -249,7 +259,7 @@ public class AdministratorOversightJourneyIntegrationTest extends BaseJourneyInt
     JsonNode timelineJson = parseResponseJson(timelineResp.getBody());
     assertThat(timelineJson.get("success").asBoolean()).isTrue();
     assertThat(timelineJson.get("data").get("entityType").asText()).isEqualTo("User");
-    assertThat(timelineJson.get("data").get("entityId").asLong()).isEqualTo(FIXTURE_NAT_ADMIN_USER_ID);
+    assertThat(timelineJson.get("data").get("entityId").asLong()).isEqualTo(fixtureNatAdminUserId);
 
     // -------------------------------------------------------------------------
     // Step 8: Audit Log Search via GET /api/v1/audit-logs
@@ -283,26 +293,26 @@ public class AdministratorOversightJourneyIntegrationTest extends BaseJourneyInt
     assertThat(allowedStateJson.get("data").get("stateId").asLong()).isEqualTo(BASE_STATE_ID);
 
     // -------------------------------------------------------------------------
-    // 2. State Admin A cannot view State 9988 (Karnataka) Dashboard -> 403 Forbidden
+    // 2. State Admin A cannot view State B Dashboard -> 403 Forbidden
     // -------------------------------------------------------------------------
     ResponseEntity<String> forbiddenStateResp = restTemplate.exchange(
-        getBaseUrl("/api/v1/dashboards/states/" + FIXTURE_STATE_B_ID),
+        getBaseUrl("/api/v1/dashboards/states/" + fixtureStateBId),
         HttpMethod.GET,
         new HttpEntity<>(stateAAdminHeaders),
         String.class
     );
     assertThat(forbiddenStateResp.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
 
-    // State Admin B can view State 9988 Dashboard
+    // State Admin B can view State B Dashboard
     ResponseEntity<String> stateBResp = restTemplate.exchange(
-        getBaseUrl("/api/v1/dashboards/states/" + FIXTURE_STATE_B_ID),
+        getBaseUrl("/api/v1/dashboards/states/" + fixtureStateBId),
         HttpMethod.GET,
         new HttpEntity<>(stateBAdminHeaders),
         String.class
     );
     assertThat(stateBResp.getStatusCode()).isEqualTo(HttpStatus.OK);
     JsonNode stateBJson = parseResponseJson(stateBResp.getBody());
-    assertThat(stateBJson.get("data").get("stateId").asLong()).isEqualTo(FIXTURE_STATE_B_ID);
+    assertThat(stateBJson.get("data").get("stateId").asLong()).isEqualTo(fixtureStateBId);
 
     // -------------------------------------------------------------------------
     // 3. State Admin A cannot view National Overview Dashboard -> 403 Forbidden
@@ -339,10 +349,10 @@ public class AdministratorOversightJourneyIntegrationTest extends BaseJourneyInt
     assertThat(allowedDsdpResp.getHeaders().getContentType().toString()).contains("text/csv");
 
     // -------------------------------------------------------------------------
-    // 6. State Admin A cannot trigger DSDP Export for District 9988 (in State B) -> 403 Forbidden
+    // 6. State Admin A cannot trigger DSDP Export for District B (in State B) -> 403 Forbidden
     // -------------------------------------------------------------------------
     ResponseEntity<String> forbiddenDsdpResp = restTemplate.exchange(
-        getBaseUrl("/api/v1/analytics/export/dsdp/csv?districtId=" + FIXTURE_DISTRICT_B_ID),
+        getBaseUrl("/api/v1/analytics/export/dsdp/csv?districtId=" + fixtureDistrictBId),
         HttpMethod.GET,
         new HttpEntity<>(stateAAdminHeaders),
         String.class

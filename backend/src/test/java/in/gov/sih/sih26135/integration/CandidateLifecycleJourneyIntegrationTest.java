@@ -19,6 +19,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -51,37 +52,37 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DisplayName("Phase 29.5 — Candidate Lifecycle Journey Integration Test")
 class CandidateLifecycleJourneyIntegrationTest extends BaseJourneyIntegrationTest {
 
-  private static final Long FIXTURE_USER_ID = 9101L;
-  private static final Long FIXTURE_SECTOR_ID = 9101L;
-  private static final Long FIXTURE_COURSE_ID = 9101L;
-  private static final Long FIXTURE_ORG_ID = 9101L;
-  private static final Long FIXTURE_DEPT_ID = 9101L;
-  private static final Long FIXTURE_SCHEME_ID = 9101L;
-  private static final Long FIXTURE_PROGRAM_ID = 9101L;
-  private static final Long FIXTURE_PROVIDER_ID = 9101L;
-  private static final Long FIXTURE_CENTER_ID = 9101L;
-  private static final Long FIXTURE_BATCH_ID = 9101L;
-  private static final Long FIXTURE_EMPLOYER_ID = 9101L;
-  private static final Long FIXTURE_ASSESSMENT_ID = 9101L;
-  private static final Long FIXTURE_TRAINEE_ASSESSMENT_ID = 9101L;
-  private static final Long FIXTURE_SURVEY_TEMPLATE_ID = 9101L;
-  private static final Long FIXTURE_SURVEY_TEMPLATE_VERSION_ID = 9101L;
-  private static final Long FIXTURE_SURVEY_ID = 9101L;
+  private Long fixtureUserId;
+  private Long fixtureSectorId;
+  private Long fixtureCourseId;
+  private Long fixtureOrgId;
+  private Long fixtureDeptId;
+  private Long fixtureSchemeId;
+  private Long fixtureProgramId;
+  private Long fixtureProviderId;
+  private Long fixtureCenterId;
+  private Long fixtureBatchId;
+  private Long fixtureEmployerId;
+  private Long fixtureSurveyTemplateId;
+  private Long fixtureSurveyTemplateVersionId;
+  private Long fixtureSurveyId;
+  private String runToken;
 
   private String adminToken;
   private HttpHeaders adminHeaders;
 
   @BeforeEach
   void setUpFixtures() {
-    // 1. Administrative caller user fixture
-    jdbcTemplate.update("""
-        INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, created_at, updated_at)
-        VALUES (?, 'cand_lifecycle_admin', 'cand_admin@test.gov.in', 'hash', 'argon2id', 2, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_USER_ID);
-    trackedUserIds.add(FIXTURE_USER_ID);
+    runToken = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
 
-    adminToken = generateBearerToken(FIXTURE_USER_ID, "cand_lifecycle_admin", List.of(
+    // 1. Administrative caller user fixture
+    fixtureUserId = insertAndGetId("""
+        INSERT INTO users (username, email, password_hash, password_algo, user_status_id, created_at, updated_at)
+        VALUES (?, ?, 'hash', 'argon2id', 2, NOW(), NOW())
+        """, "cand_lifecycle_admin_" + runToken, "cand_admin_" + runToken + "@test.gov.in");
+    trackedUserIds.add(fixtureUserId);
+
+    adminToken = generateBearerToken(fixtureUserId, "cand_lifecycle_admin_" + runToken, List.of(
         "ROLE_super_admin",
         "ROLE_government_admin",
         "trainee.read",
@@ -101,95 +102,85 @@ class CandidateLifecycleJourneyIntegrationTest extends BaseJourneyIntegrationTes
     adminHeaders = createAuthHeaders(adminToken);
 
     // 2. Training Domain Fixtures
-    jdbcTemplate.update("""
-        INSERT INTO sectors (sector_id, sector_code, sector_name, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, 'SEC-295-01', 'IT & Software', 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_SECTOR_ID);
-    trackedSectorIds.add(FIXTURE_SECTOR_ID);
+    fixtureSectorId = insertAndGetId("""
+        INSERT INTO sectors (sector_code, sector_name, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, 1, NOW(), NOW())
+        """, "SEC-295-" + runToken, "IT & Software " + runToken);
+    trackedSectorIds.add(fixtureSectorId);
 
-    jdbcTemplate.update("""
-        INSERT INTO courses (course_id, course_code, course_name, sector_id, delivery_mode_id, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, 'CRS-295-01', 'Full Stack Java Engineering', ?, 1, 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_COURSE_ID, FIXTURE_SECTOR_ID);
-    trackedCourseIds.add(FIXTURE_COURSE_ID);
+    fixtureCourseId = insertAndGetId("""
+        INSERT INTO courses (course_code, course_name, sector_id, delivery_mode_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, 1, 1, NOW(), NOW())
+        """, "CRS-295-" + runToken, "Full Stack Java " + runToken, fixtureSectorId);
+    trackedCourseIds.add(fixtureCourseId);
 
-    jdbcTemplate.update("""
-        INSERT INTO organizations (organization_id, organization_code, organization_name, organization_type_id, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, 'ORG-295-01', 'National Skill Org', 1, 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_ORG_ID);
-    trackedOrgIds.add(FIXTURE_ORG_ID);
+    fixtureOrgId = insertAndGetId("""
+        INSERT INTO organizations (organization_code, organization_name, organization_type_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, 1, 1, NOW(), NOW())
+        """, "ORG-295-" + runToken, "National Skill Org " + runToken);
+    trackedOrgIds.add(fixtureOrgId);
 
-    jdbcTemplate.update("""
-        INSERT INTO departments (department_id, organization_id, department_code, department_name, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, ?, 'DEP-295-01', 'Vocational Training Dept', 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_DEPT_ID, FIXTURE_ORG_ID);
-    trackedDeptIds.add(FIXTURE_DEPT_ID);
+    fixtureDeptId = insertAndGetId("""
+        INSERT INTO departments (organization_id, department_code, department_name, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, 1, NOW(), NOW())
+        """, fixtureOrgId, "DEP-295-" + runToken, "Vocational Training " + runToken);
+    trackedDeptIds.add(fixtureDeptId);
 
-    jdbcTemplate.update("""
-        INSERT INTO schemes (scheme_id, scheme_code, scheme_name, department_id, currency_code, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, 'SCH-295-01', 'PM National Skill Mission', ?, 'INR', 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_SCHEME_ID, FIXTURE_DEPT_ID);
-    trackedSchemeIds.add(FIXTURE_SCHEME_ID);
+    fixtureSchemeId = insertAndGetId("""
+        INSERT INTO schemes (scheme_code, scheme_name, department_id, currency_code, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, 'INR', 1, NOW(), NOW())
+        """, "SCH-295-" + runToken, "PM National Skill " + runToken, fixtureDeptId);
+    trackedSchemeIds.add(fixtureSchemeId);
 
-    jdbcTemplate.update("""
-        INSERT INTO programs (program_id, program_code, program_name, department_id, scheme_id, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, 'PRG-295-01', 'Digital India Accelerated Skills', ?, ?, 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_PROGRAM_ID, FIXTURE_DEPT_ID, FIXTURE_SCHEME_ID);
-    trackedProgramIds.add(FIXTURE_PROGRAM_ID);
+    fixtureProgramId = insertAndGetId("""
+        INSERT INTO programs (program_code, program_name, department_id, scheme_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 1, NOW(), NOW())
+        """, "PRG-295-" + runToken, "Digital India Skills " + runToken, fixtureDeptId, fixtureSchemeId);
+    trackedProgramIds.add(fixtureProgramId);
 
-    jdbcTemplate.update("""
-        INSERT INTO training_providers (provider_id, provider_code, provider_name, registration_number, organization_type_id, organization_id, state_id, district_id, accreditation_status_id, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, 'PRV-295-01', 'Apex Technical Academy', 'REG-PRV-295-01', 5, ?, 101, 1001, 1, 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_PROVIDER_ID, FIXTURE_ORG_ID);
-    trackedProviderIds.add(FIXTURE_PROVIDER_ID);
+    fixtureProviderId = insertAndGetId("""
+        INSERT INTO training_providers (provider_code, provider_name, registration_number, organization_type_id, organization_id, state_id, district_id, accreditation_status_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, 5, ?, 101, 1001, 1, 1, NOW(), NOW())
+        """, "PRV-295-" + runToken, "Apex Technical " + runToken, "REG-PRV-295-" + runToken, fixtureOrgId);
+    trackedProviderIds.add(fixtureProviderId);
 
-    jdbcTemplate.update("""
-        INSERT INTO training_centers (center_id, provider_id, center_code, center_name, state_id, district_id, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, ?, 'CTR-295-01', 'Connaught Place Center', 101, 1001, 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_CENTER_ID, FIXTURE_PROVIDER_ID);
-    trackedCenterIds.add(FIXTURE_CENTER_ID);
+    fixtureCenterId = insertAndGetId("""
+        INSERT INTO training_centers (provider_id, center_code, center_name, state_id, district_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, 101, 1001, 1, NOW(), NOW())
+        """, fixtureProviderId, "CTR-295-" + runToken, "CP Center " + runToken);
+    trackedCenterIds.add(fixtureCenterId);
 
-    jdbcTemplate.update("""
-        INSERT INTO training_batches (batch_id, batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at)
-        VALUES (?, 'BAT-295-01', ?, ?, ?, ?, '2026-01-01', 30, 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_BATCH_ID, FIXTURE_COURSE_ID, FIXTURE_PROVIDER_ID, FIXTURE_CENTER_ID, FIXTURE_PROGRAM_ID);
-    trackedBatchIds.add(FIXTURE_BATCH_ID);
+    fixtureBatchId = insertAndGetId("""
+        INSERT INTO training_batches (batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, '2026-01-01', 30, 1, NOW(), NOW())
+        """, "BAT-295-" + runToken, fixtureCourseId, fixtureProviderId, fixtureCenterId, fixtureProgramId);
+    trackedBatchIds.add(fixtureBatchId);
 
     // 3. Employer Fixture
-    jdbcTemplate.update("""
-        INSERT INTO employers (employer_id, employer_code, employer_name, registration_number, organization_type_id, organization_id, state_id, district_id, record_verification_status_id, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, 'EMP-295-01', 'Tech Mahindra Innovations', 'REG-EMP-295-01', 6, ?, 101, 1001, 1, 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_EMPLOYER_ID, FIXTURE_ORG_ID);
-    trackedEmployerIds.add(FIXTURE_EMPLOYER_ID);
+    fixtureEmployerId = insertAndGetId("""
+        INSERT INTO employers (employer_code, employer_name, registration_number, organization_type_id, organization_id, state_id, district_id, record_verification_status_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, 6, ?, 101, 1001, 1, 1, NOW(), NOW())
+        """, "EMP-295-" + runToken, "Tech Mahindra " + runToken, "REG-EMP-295-" + runToken, fixtureOrgId);
+    trackedEmployerIds.add(fixtureEmployerId);
 
-    // 4. Survey Template Fixtures
-    jdbcTemplate.update("""
-        INSERT INTO survey_templates (survey_template_id, template_code, template_name, survey_purpose_id, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, 'TPL-295-01', 'Post-Training Employment Survey', 1, 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_SURVEY_TEMPLATE_ID);
+    // 4. Survey Template Fixtures (tracked for clean reverse teardown)
+    fixtureSurveyTemplateId = insertAndGetId("""
+        INSERT INTO survey_templates (template_code, template_name, survey_purpose_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, 1, 1, NOW(), NOW())
+        """, "TPL-295-" + runToken, "Post-Training Survey " + runToken);
+    trackedSurveyTemplateIds.add(fixtureSurveyTemplateId);
 
-    jdbcTemplate.update("""
-        INSERT INTO survey_template_versions (survey_template_version_id, survey_template_id, version_number, version_label, effective_from, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, ?, 1, 'v1.0', '2026-01-01', 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_SURVEY_TEMPLATE_VERSION_ID, FIXTURE_SURVEY_TEMPLATE_ID);
+    fixtureSurveyTemplateVersionId = insertAndGetId("""
+        INSERT INTO survey_template_versions (survey_template_id, version_number, version_label, effective_from, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, 1, 'v1.0', '2026-01-01', 1, NOW(), NOW())
+        """, fixtureSurveyTemplateId);
+    trackedSurveyTemplateVersionIds.add(fixtureSurveyTemplateVersionId);
 
-    jdbcTemplate.update("""
-        INSERT INTO surveys (survey_id, survey_code, survey_name, survey_template_version_id, survey_purpose_id, scheduled_start_date, survey_instance_status_id, created_at, updated_at)
-        VALUES (?, 'SRV-295-01', 'Q1 Longitudinal Outcome Survey', ?, 1, '2026-01-01', 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_SURVEY_ID, FIXTURE_SURVEY_TEMPLATE_VERSION_ID);
+    fixtureSurveyId = insertAndGetId("""
+        INSERT INTO surveys (survey_code, survey_name, survey_template_version_id, survey_purpose_id, scheduled_start_date, survey_instance_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, 1, '2026-01-01', 1, NOW(), NOW())
+        """, "SRV-295-" + runToken, "Outcome Survey " + runToken, fixtureSurveyTemplateVersionId);
+    trackedSurveyIds.add(fixtureSurveyId);
   }
 
   @Test
@@ -316,11 +307,11 @@ class CandidateLifecycleJourneyIntegrationTest extends BaseJourneyIntegrationTes
     CreateTrainingEnrollmentRequest enrollReq = new CreateTrainingEnrollmentRequest();
     enrollReq.setEnrollmentNumber(enrollmentNo);
     enrollReq.setTraineeId(candidateId);
-    enrollReq.setBatchId(FIXTURE_BATCH_ID);
-    enrollReq.setCourseId(FIXTURE_COURSE_ID);
-    enrollReq.setProgramId(FIXTURE_PROGRAM_ID);
-    enrollReq.setProviderId(FIXTURE_PROVIDER_ID);
-    enrollReq.setCenterId(FIXTURE_CENTER_ID);
+    enrollReq.setBatchId(fixtureBatchId);
+    enrollReq.setCourseId(fixtureCourseId);
+    enrollReq.setProgramId(fixtureProgramId);
+    enrollReq.setProviderId(fixtureProviderId);
+    enrollReq.setCenterId(fixtureCenterId);
     enrollReq.setEnrollmentDate(LocalDate.now());
     enrollReq.setStartDate(LocalDate.now());
     enrollReq.setExpectedCompletionDate(LocalDate.now().plusMonths(3));
@@ -340,7 +331,7 @@ class CandidateLifecycleJourneyIntegrationTest extends BaseJourneyIntegrationTes
 
     Integer enrollDbCount = jdbcTemplate.queryForObject(
         "SELECT COUNT(*) FROM training_enrollments WHERE enrollment_id = ? AND trainee_id = ? AND batch_id = ?",
-        Integer.class, enrollmentId, candidateId, FIXTURE_BATCH_ID);
+        Integer.class, enrollmentId, candidateId, fixtureBatchId);
     assertThat(enrollDbCount).isEqualTo(1);
 
     // -------------------------------------------------------------------------
@@ -349,7 +340,7 @@ class CandidateLifecycleJourneyIntegrationTest extends BaseJourneyIntegrationTes
     CreateAttendanceRecordRequest attReq = new CreateAttendanceRecordRequest();
     attReq.setEnrollmentId(enrollmentId);
     attReq.setTraineeId(candidateId);
-    attReq.setBatchId(FIXTURE_BATCH_ID);
+    attReq.setBatchId(fixtureBatchId);
     attReq.setSessionDate(LocalDate.now());
     attReq.setAttendanceStatusId(1L); // PRESENT
     attReq.setSessionSequence(1);
@@ -376,22 +367,20 @@ class CandidateLifecycleJourneyIntegrationTest extends BaseJourneyIntegrationTes
     // Step 5 & 6: Assessment Result & Certificate Issuance via Training Outcome Workflow
     // -------------------------------------------------------------------------
     // Create prerequisite assessment and trainee_assessment rows
-    jdbcTemplate.update("""
-        INSERT INTO assessments (assessment_id, assessment_code, assessment_name, course_id, batch_id, program_id, assessment_type_id, maximum_score, pass_score, assessment_date, lifecycle_status_id, created_at, updated_at)
-        VALUES (?, 'ASM-295-01', 'Final Full Stack Certification Exam', ?, ?, ?, 1, 100.00, 40.00, CURDATE(), 1, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_ASSESSMENT_ID, FIXTURE_COURSE_ID, FIXTURE_BATCH_ID, FIXTURE_PROGRAM_ID);
-    trackedAssessmentIds.add(FIXTURE_ASSESSMENT_ID);
+    Long assessmentId = insertAndGetId("""
+        INSERT INTO assessments (assessment_code, assessment_name, course_id, batch_id, program_id, assessment_type_id, maximum_score, pass_score, assessment_date, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, 'Final Full Stack Certification Exam', ?, ?, ?, 1, 100.00, 40.00, CURDATE(), 1, NOW(), NOW())
+        """, "ASM-295-" + runToken, fixtureCourseId, fixtureBatchId, fixtureProgramId);
+    trackedAssessmentIds.add(assessmentId);
 
-    jdbcTemplate.update("""
-        INSERT INTO trainee_assessments (trainee_assessment_id, assessment_id, trainee_id, enrollment_id, attempt_number, appeared_flag, assessment_date, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 1, 1, CURDATE(), NOW(), NOW())
-        ON DUPLICATE KEY UPDATE updated_at = NOW()
-        """, FIXTURE_TRAINEE_ASSESSMENT_ID, FIXTURE_ASSESSMENT_ID, candidateId, enrollmentId);
-    trackedTraineeAssessmentIds.add(FIXTURE_TRAINEE_ASSESSMENT_ID);
+    Long traineeAssessmentId = insertAndGetId("""
+        INSERT INTO trainee_assessments (assessment_id, trainee_id, enrollment_id, attempt_number, appeared_flag, assessment_date, created_at, updated_at)
+        VALUES (?, ?, ?, 1, 1, CURDATE(), NOW(), NOW())
+        """, assessmentId, candidateId, enrollmentId);
+    trackedTraineeAssessmentIds.add(traineeAssessmentId);
 
     CreateAssessmentResultRequest resultReq = new CreateAssessmentResultRequest(
-        FIXTURE_TRAINEE_ASSESSMENT_ID,
+        traineeAssessmentId,
         candidateId,
         new BigDecimal("100.00"),
         new BigDecimal("88.50"),
@@ -406,8 +395,8 @@ class CandidateLifecycleJourneyIntegrationTest extends BaseJourneyIntegrationTes
         certNo,
         candidateId,
         enrollmentId,
-        FIXTURE_COURSE_ID,
-        FIXTURE_PROGRAM_ID,
+        fixtureCourseId,
+        fixtureProgramId,
         null, // Linked by orchestrator
         "National Skill Development Council",
         LocalDate.now(),
@@ -415,7 +404,7 @@ class CandidateLifecycleJourneyIntegrationTest extends BaseJourneyIntegrationTes
         1L, // ACTIVE
         1L, // VERIFIED
         LocalDateTime.now(),
-        FIXTURE_USER_ID
+        fixtureUserId
     );
 
     RecordAssessmentAndIssueCertificateRequest outcomeReq = new RecordAssessmentAndIssueCertificateRequest(
@@ -464,10 +453,10 @@ class CandidateLifecycleJourneyIntegrationTest extends BaseJourneyIntegrationTes
         1L  // PENDING_VERIFICATION
     );
     plcReq.setTraineeId(candidateId);
-    plcReq.setCourseId(FIXTURE_COURSE_ID);
-    plcReq.setProgramId(FIXTURE_PROGRAM_ID);
-    plcReq.setProviderId(FIXTURE_PROVIDER_ID);
-    plcReq.setEmployerId(FIXTURE_EMPLOYER_ID);
+    plcReq.setCourseId(fixtureCourseId);
+    plcReq.setProgramId(fixtureProgramId);
+    plcReq.setProviderId(fixtureProviderId);
+    plcReq.setEmployerId(fixtureEmployerId);
     plcReq.setOfferedSalary(new BigDecimal("48000.00"));
     plcReq.setJoiningSalary(new BigDecimal("48000.00"));
     plcReq.setSalaryFrequencyId(1L); // MONTHLY
@@ -496,7 +485,7 @@ class CandidateLifecycleJourneyIntegrationTest extends BaseJourneyIntegrationTes
     empReq.setTraineeId(candidateId);
     empReq.setEnrollmentId(enrollmentId);
     empReq.setPlacementId(placementId);
-    empReq.setEmployerId(FIXTURE_EMPLOYER_ID);
+    empReq.setEmployerId(fixtureEmployerId);
     empReq.setEngagementTypeId(1L);
     empReq.setEmploymentSpellStatusId(1L); // ACTIVE
     empReq.setEmploymentInfoSourceId(1L);
@@ -562,7 +551,7 @@ class CandidateLifecycleJourneyIntegrationTest extends BaseJourneyIntegrationTes
     );
     verifReq.setTraineeId(candidateId);
     verifReq.setPlacementRecordId(placementId);
-    verifReq.setEmployerId(FIXTURE_EMPLOYER_ID);
+    verifReq.setEmployerId(fixtureEmployerId);
     verifReq.setEmployerConfirmedFlag(true);
     verifReq.setTraineeAttestedFlag(true);
     verifReq.setIsCurrent(true);
@@ -622,8 +611,8 @@ class CandidateLifecycleJourneyIntegrationTest extends BaseJourneyIntegrationTes
     // Step 10: Longitudinal Survey Response via POST /api/v1/survey-responses
     // -------------------------------------------------------------------------
     CreateSurveyResponseRequest surveyReq = new CreateSurveyResponseRequest(
-        FIXTURE_SURVEY_ID,
-        FIXTURE_SURVEY_TEMPLATE_VERSION_ID,
+        fixtureSurveyId,
+        fixtureSurveyTemplateVersionId,
         candidateId,
         1,
         1L, // IN_PROGRESS / COMPLETED
@@ -689,11 +678,11 @@ class CandidateLifecycleJourneyIntegrationTest extends BaseJourneyIntegrationTes
     CreateTrainingEnrollmentRequest enrollReq = new CreateTrainingEnrollmentRequest();
     enrollReq.setEnrollmentNumber("ENR-FAIL-" + System.currentTimeMillis());
     enrollReq.setTraineeId(noConsentTraineeId);
-    enrollReq.setBatchId(FIXTURE_BATCH_ID);
-    enrollReq.setCourseId(FIXTURE_COURSE_ID);
-    enrollReq.setProgramId(FIXTURE_PROGRAM_ID);
-    enrollReq.setProviderId(FIXTURE_PROVIDER_ID);
-    enrollReq.setCenterId(FIXTURE_CENTER_ID);
+    enrollReq.setBatchId(fixtureBatchId);
+    enrollReq.setCourseId(fixtureCourseId);
+    enrollReq.setProgramId(fixtureProgramId);
+    enrollReq.setProviderId(fixtureProviderId);
+    enrollReq.setCenterId(fixtureCenterId);
     enrollReq.setEnrollmentDate(LocalDate.now());
     enrollReq.setStartDate(LocalDate.now());
     enrollReq.setExpectedCompletionDate(LocalDate.now().plusMonths(3));
