@@ -644,6 +644,7 @@ public class GlobalExceptionHandler {
       "Skill gap assessment number already exists",
       "Skill gap recommendation number already exists",
       "Training enrollment number already exists",
+      "Training batch capacity has been reached",
 
       // 6. Analytics Multi-Dimensional Filtering Constraints
       "Demographic dimension 'socialCategory' is not supported by the existing database schema",
@@ -690,6 +691,7 @@ public class GlobalExceptionHandler {
       case "RESOURCE_CONFLICT" -> "A resource with the specified unique attributes already exists";
       case "DUPLICATE_PLACEMENT_EMPLOYMENT" -> "Placement record is already linked to another employment record";
       case "DUPLICATE_ENROLLMENT" -> "Trainee is already enrolled in this training batch";
+      case "BATCH_CAPACITY_EXCEEDED" -> "Training batch capacity has been reached";
       case "EXIT_EVENT_ALREADY_EXISTS" -> "Employment exit event already exists for this employment record";
       case "UNEMPLOYMENT_EVENT_NOT_ACTIVE" -> "Trainee does not have an active unemployment record to transition";
       case "OPEN_REQUEST_EXISTS" -> "An open verification request already exists for this employment record";

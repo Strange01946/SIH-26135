@@ -257,11 +257,21 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
       throw new BadRequestException("Cannot create training enrollment for soft-deleted trainee", "TRAINEE_DELETED");
     }
 
-    TrainingBatch batch = trainingBatchRepository.findById(request.getBatchId())
+    TrainingBatch batch = trainingBatchRepository.findByIdForUpdate(request.getBatchId())
+        .or(() -> trainingBatchRepository.findById(request.getBatchId()))
         .orElseThrow(() -> new ResourceNotFoundException("TrainingBatch", "batchId"));
 
     if (batch.getDeletedAt() != null) {
       throw new BadRequestException("Cannot create training enrollment for soft-deleted training batch", "BATCH_DELETED");
+    }
+
+    // Capacity enforcement under locking read (bypasses MVCC read-view to count current committed records)
+    List<TrainingEnrollment> activeList = trainingEnrollmentRepository.findActiveEnrollmentsForUpdate(batch.getId());
+    long activeEnrollments = (activeList != null && !activeList.isEmpty())
+        ? activeList.size()
+        : trainingEnrollmentRepository.countActiveEnrollmentsByBatchId(batch.getId());
+    if (batch.getCapacity() != null && activeEnrollments >= batch.getCapacity()) {
+      throw new ConflictException("Training batch capacity has been reached", "BATCH_CAPACITY_EXCEEDED");
     }
 
     // Mandatory statutory consent enforcement (DPDP Act): DATA_PROCESSING consent is non-negotiable for all enrollments

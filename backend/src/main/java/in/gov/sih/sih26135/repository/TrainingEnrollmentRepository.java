@@ -1,11 +1,15 @@
 package in.gov.sih.sih26135.repository;
 
 import in.gov.sih.sih26135.entity.TrainingEnrollment;
+import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -18,6 +22,13 @@ public interface TrainingEnrollmentRepository extends JpaRepository<TrainingEnro
   Optional<TrainingEnrollment> findByTraineeIdAndTrainingBatchId(Long traineeId, Long batchId);
 
   boolean existsByTraineeIdAndTrainingBatchId(Long traineeId, Long batchId);
+
+  @Query("SELECT COUNT(e) FROM TrainingEnrollment e WHERE e.trainingBatch.id = :batchId AND e.deletedAt IS NULL")
+  long countActiveEnrollmentsByBatchId(@Param("batchId") Long batchId);
+
+  @Lock(LockModeType.PESSIMISTIC_READ)
+  @Query("SELECT e FROM TrainingEnrollment e WHERE e.trainingBatch.id = :batchId AND e.deletedAt IS NULL")
+  List<TrainingEnrollment> findActiveEnrollmentsForUpdate(@Param("batchId") Long batchId);
 
   List<TrainingEnrollment> findByTraineeId(Long traineeId);
 

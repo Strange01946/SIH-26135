@@ -148,16 +148,17 @@ public class CandidateLifecycleOrchestratorServiceImpl implements CandidateLifec
       throw new BadRequestException("Enrollment date is required", "ENROLLMENT_DATE_REQUIRED");
     }
 
+    TrainingBatch batch = trainingBatchRepository.findByIdForUpdate(request.getBatchId())
+        .or(() -> trainingBatchRepository.findById(request.getBatchId()))
+        .orElseThrow(() -> new ResourceNotFoundException("TrainingBatch", "batchId"));
+    if (batch.getDeletedAt() != null) {
+      throw new BadRequestException("Cannot create training enrollment for soft-deleted training batch", "BATCH_DELETED");
+    }
+
     Trainee trainee = traineeRepository.findById(request.getTraineeId())
         .orElseThrow(() -> new ResourceNotFoundException("Trainee", "traineeId"));
     if (trainee.getDeletedAt() != null) {
       throw new BadRequestException("Cannot create training enrollment for soft-deleted trainee", "TRAINEE_DELETED");
-    }
-
-    TrainingBatch batch = trainingBatchRepository.findById(request.getBatchId())
-        .orElseThrow(() -> new ResourceNotFoundException("TrainingBatch", "batchId"));
-    if (batch.getDeletedAt() != null) {
-      throw new BadRequestException("Cannot create training enrollment for soft-deleted training batch", "BATCH_DELETED");
     }
 
     if (request.getTrainingProviderId() != null) {
