@@ -17,6 +17,8 @@ import in.gov.sih.sih26135.security.UserPrincipal;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.Statement;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -26,6 +28,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadLocalRandom;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -33,6 +36,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -66,7 +71,12 @@ class DurableDispatchQueueTest {
   private final List<Long> trackedJobIds = new CopyOnWriteArrayList<>();
   private final List<Long> trackedRateLimitEventIds = new CopyOnWriteArrayList<>();
   private final List<Long> trackedCommLogIds = new CopyOnWriteArrayList<>();
-  private Long testStartRateLimitEventId;
+  private final List<Long> trackedConsentIds = new CopyOnWriteArrayList<>();
+
+  private Long fixtureTraineeId;
+  private String fixtureTraineeRegNo;
+  private String fixtureTraineePhone;
+  private String fixtureTraineeEmail;
 
   @BeforeEach
   void setUp() throws Exception {
@@ -75,10 +85,7 @@ class DurableDispatchQueueTest {
       assertThat(conn.getCatalog()).isEqualTo("SIH26135_TEST");
     }
     setAdminUser();
-    testStartRateLimitEventId = jdbcTemplate.queryForObject(
-        "SELECT COALESCE(MAX(event_id), 0) FROM communication_rate_limit_events",
-        Long.class
-    );
+    insertDynamicFixtureTrainee();
   }
 
   @AfterEach
@@ -108,16 +115,69 @@ class DurableDispatchQueueTest {
     );
   }
 
-  private void cleanTestJobs() {
-    if (testStartRateLimitEventId != null) {
-      List<Long> newEventIds = jdbcTemplate.queryForList(
-          "SELECT event_id FROM communication_rate_limit_events WHERE event_id > ?",
-          Long.class,
-          testStartRateLimitEventId
+  private void insertDynamicFixtureTrainee() {
+    String uniqueSuffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+    this.fixtureTraineeRegNo = "REG-QUEUE-" + uniqueSuffix;
+    int randomSuffix = ThreadLocalRandom.current().nextInt(1000, 9999);
+    this.fixtureTraineePhone = "+91980000" + randomSuffix;
+    this.fixtureTraineeEmail = "queue." + uniqueSuffix + "@example.com";
+
+    KeyHolder keyHolder = new GeneratedKeyHolder();
+    jdbcTemplate.update(connection -> {
+      PreparedStatement ps = connection.prepareStatement(
+          "INSERT INTO trainees (registration_number, first_name, last_name, phone, email, date_of_birth, "
+              + "gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at) "
+              + "VALUES (?, 'QueueTest', 'Trainee', ?, ?, '2001-02-14', 2, 101, 1001, 1, 3, NOW(), NOW())",
+          Statement.RETURN_GENERATED_KEYS
       );
-      trackedRateLimitEventIds.addAll(newEventIds);
+      ps.setString(1, fixtureTraineeRegNo);
+      ps.setString(2, fixtureTraineePhone);
+      ps.setString(3, fixtureTraineeEmail);
+      return ps;
+    }, keyHolder);
+
+    Number key = keyHolder.getKey();
+    if (key == null) {
+      throw new IllegalStateException("Failed to insert fixture trainee for DurableDispatchQueueTest");
+    }
+    this.fixtureTraineeId = key.longValue();
+
+    grantAllConsents(this.fixtureTraineeId);
+  }
+
+  private void grantAllConsents(Long traineeId) {
+    long[] consentTypeIds = {1L, 2L, 3L, 4L, 5L, 6L};
+    for (long typeId : consentTypeIds) {
+      KeyHolder keyHolder = new GeneratedKeyHolder();
+      jdbcTemplate.update(connection -> {
+        PreparedStatement ps = connection.prepareStatement(
+            "INSERT INTO trainee_consents (trainee_id, consent_type_id, purpose, consent_status_id, policy_version, granted_at, expires_at, created_at, updated_at) "
+                + "VALUES (?, ?, 'Queue Test Consent', 1, 'v1.0', NOW() - INTERVAL 1 DAY, NOW() + INTERVAL 1 YEAR, NOW(), NOW())",
+            Statement.RETURN_GENERATED_KEYS
+        );
+        ps.setLong(1, traineeId);
+        ps.setLong(2, typeId);
+        return ps;
+      }, keyHolder);
+      if (keyHolder.getKey() != null) {
+        trackedConsentIds.add(keyHolder.getKey().longValue());
+      }
+    }
+  }
+
+  private void cleanTestJobs() {
+    // 1. Collect rate-limit events explicitly owned by this test's fixture trainee
+    if (this.fixtureTraineeId != null) {
+      List<Long> fixtureEventIds = jdbcTemplate.queryForList(
+          "SELECT event_id FROM communication_rate_limit_events WHERE limiter_key LIKE ? OR limiter_key LIKE ?",
+          Long.class,
+          "%:" + this.fixtureTraineeId,
+          "%:" + this.fixtureTraineeId + ":%"
+      );
+      trackedRateLimitEventIds.addAll(fixtureEventIds);
     }
 
+    // 2. Delete ONLY tracked rate-limit events by exact primary key
     for (Long eventId : trackedRateLimitEventIds) {
       if (eventId != null && eventId > 0) {
         jdbcTemplate.update("DELETE FROM communication_rate_limit_events WHERE event_id = ?", eventId);
@@ -125,6 +185,7 @@ class DurableDispatchQueueTest {
     }
     trackedRateLimitEventIds.clear();
 
+    // 3. Delete tracked jobs and their attempts / logs
     for (Long jobId : trackedJobIds) {
       if (jobId != null) {
         List<Long> logIds = jdbcTemplate.query(
@@ -141,12 +202,29 @@ class DurableDispatchQueueTest {
     }
     trackedJobIds.clear();
 
+    // 4. Delete explicitly tracked communication logs
     for (Long logId : trackedCommLogIds) {
       if (logId != null) {
         jdbcTemplate.update("DELETE FROM communication_logs WHERE communication_log_id = ?", logId);
       }
     }
     trackedCommLogIds.clear();
+
+    // 5. Clean up fixture trainee, consents, and logs if fixture trainee exists
+    if (this.fixtureTraineeId != null && !this.fixtureTraineeId.equals(AUTHORITATIVE_TEST_TRAINEE_ID)) {
+      for (Long consentId : trackedConsentIds) {
+        if (consentId != null) {
+          jdbcTemplate.update("DELETE FROM trainee_consents WHERE trainee_consent_id = ?", consentId);
+        }
+      }
+      trackedConsentIds.clear();
+
+      jdbcTemplate.update("DELETE FROM communication_dispatch_jobs WHERE trainee_id = ? AND trainee_id != ?", this.fixtureTraineeId, AUTHORITATIVE_TEST_TRAINEE_ID);
+      jdbcTemplate.update("DELETE FROM communication_logs WHERE trainee_id = ? AND trainee_id != ?", this.fixtureTraineeId, AUTHORITATIVE_TEST_TRAINEE_ID);
+      jdbcTemplate.update("DELETE FROM trainee_consents WHERE trainee_id = ? AND trainee_id != ?", this.fixtureTraineeId, AUTHORITATIVE_TEST_TRAINEE_ID);
+      jdbcTemplate.update("DELETE FROM trainees WHERE trainee_id = ? AND trainee_id != ?", this.fixtureTraineeId, AUTHORITATIVE_TEST_TRAINEE_ID);
+      this.fixtureTraineeId = null;
+    }
   }
 
   private DispatchJobDto enqueueAndTrackJob(CommunicationDispatchCommand command, String idempotencyKey) {
@@ -168,7 +246,7 @@ class DurableDispatchQueueTest {
         "trainingCenterName", "NSTI Noida"
     );
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-        AUTHORITATIVE_TEST_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "TPL-ENROLL-001",
@@ -183,7 +261,7 @@ class DurableDispatchQueueTest {
     assertThat(job).isNotNull();
     assertThat(job.jobId()).isPositive();
     assertThat(job.idempotencyKey()).isEqualTo(key);
-    assertThat(job.traineeId()).isEqualTo(AUTHORITATIVE_TEST_TRAINEE_ID);
+    assertThat(job.traineeId()).isEqualTo(this.fixtureTraineeId);
     assertThat(job.channel()).isEqualTo(CommunicationChannel.SMS);
     assertThat(job.templateCode()).isEqualTo("TPL-ENROLL-001");
     assertThat(job.maxAttempts()).isEqualTo(3);
@@ -194,7 +272,7 @@ class DurableDispatchQueueTest {
   void testAtomicJobClaim_concurrencySafe() {
     String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-        AUTHORITATIVE_TEST_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "TPL-ENROLL-001",
@@ -230,7 +308,7 @@ class DurableDispatchQueueTest {
   void testPermanentFailure_immediatelyDeadLettersZeroRetries() {
     String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-        AUTHORITATIVE_TEST_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "INVALID_UNKNOWN_TEMPLATE_CODE",
@@ -263,7 +341,7 @@ class DurableDispatchQueueTest {
     String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
     // Use SURVEY_INVITE purpose which requires employment follow-up consent
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-        AUTHORITATIVE_TEST_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.SURVEY_INVITE,
         "TPL-SURVEY-004",
@@ -279,7 +357,7 @@ class DurableDispatchQueueTest {
     // Temporarily revoke employment follow-up consent for testing
     jdbcTemplate.update(
         "UPDATE trainee_consents SET consent_status_id = 2 WHERE trainee_id = ? AND consent_type_id = 2",
-        AUTHORITATIVE_TEST_TRAINEE_ID
+        this.fixtureTraineeId
     );
 
     try {
@@ -294,10 +372,10 @@ class DurableDispatchQueueTest {
       assertThat(attempts).isNotEmpty();
       assertThat(attempts.get(0).errorCode()).contains("CONSENT");
     } finally {
-      // Restore active consent for authoritative trainee
+      // Restore active consent for fixture trainee
       jdbcTemplate.update(
           "UPDATE trainee_consents SET consent_status_id = 1 WHERE trainee_id = ? AND consent_type_id = 2",
-          AUTHORITATIVE_TEST_TRAINEE_ID
+          this.fixtureTraineeId
       );
     }
   }
@@ -307,7 +385,7 @@ class DurableDispatchQueueTest {
   void testOperatorReplayDeadLetterJob_resetsAndReenqueues() {
     String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-        AUTHORITATIVE_TEST_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "TPL-ENROLL-001",
@@ -339,7 +417,7 @@ class DurableDispatchQueueTest {
   void testRecoverStaleJobs_recoversLockedJobs() {
     String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-        AUTHORITATIVE_TEST_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "TPL-ENROLL-001",
@@ -376,7 +454,7 @@ class DurableDispatchQueueTest {
   void testLeaseFencing_staleWorkerCannotOverwriteNewerState() {
     String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-        AUTHORITATIVE_TEST_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "TPL-ENROLL-001",
@@ -439,7 +517,7 @@ class DurableDispatchQueueTest {
   void testScheduledRetry_doesNotClaimBeforeScheduledAt() {
     String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-        AUTHORITATIVE_TEST_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "TPL-ENROLL-001",
@@ -474,7 +552,7 @@ class DurableDispatchQueueTest {
   void testDeadLetterReplay_doesNotDoubleCountRateLimitQuota() {
     String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-        AUTHORITATIVE_TEST_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "TPL-ENROLL-001",
@@ -497,7 +575,7 @@ class DurableDispatchQueueTest {
     int countBeforeReplay = jdbcTemplate.queryForObject(
         "SELECT COUNT(*) FROM communication_rate_limit_events WHERE limiter_key LIKE ?",
         Integer.class,
-        "%:" + AUTHORITATIVE_TEST_TRAINEE_ID + "%"
+        "%:" + this.fixtureTraineeId + "%"
     );
 
     // Replay job
@@ -506,7 +584,7 @@ class DurableDispatchQueueTest {
     int countAfterReplay = jdbcTemplate.queryForObject(
         "SELECT COUNT(*) FROM communication_rate_limit_events WHERE limiter_key LIKE ?",
         Integer.class,
-        "%:" + AUTHORITATIVE_TEST_TRAINEE_ID + "%"
+        "%:" + this.fixtureTraineeId + "%"
     );
 
     // No extra rate limit events inserted during replay itself
@@ -518,7 +596,7 @@ class DurableDispatchQueueTest {
   void testConcurrentWorkers_onlyOneClaimsJob() throws Exception {
     String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-        AUTHORITATIVE_TEST_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "TPL-ENROLL-001",
@@ -563,19 +641,27 @@ class DurableDispatchQueueTest {
   @Test
   @DisplayName("11. Retry Quota Wiring: Automatic internal queue retry bypasses trainee quota, but external caller cannot bypass")
   void testRetryQuotaWiring_automaticRetryConsumesProviderBurstWithoutTrippingTraineeQuota() {
-    String traineeLimiterKey = "TRAINEE:SMS:" + AUTHORITATIVE_TEST_TRAINEE_ID;
+    String traineeLimiterKey = "TRAINEE:SMS:" + this.fixtureTraineeId;
 
     // Simulate trainee exhausting 3/3 daily SMS limit
     for (int i = 0; i < 3; i++) {
-      jdbcTemplate.update(
-          "INSERT INTO communication_rate_limit_events (limiter_key, event_type, created_at) VALUES (?, 'TRAINEE_DISPATCH', NOW())",
-          traineeLimiterKey
-      );
+      KeyHolder kh = new GeneratedKeyHolder();
+      jdbcTemplate.update(con -> {
+        PreparedStatement ps = con.prepareStatement(
+            "INSERT INTO communication_rate_limit_events (limiter_key, event_type, created_at) VALUES (?, 'TRAINEE_DISPATCH', NOW())",
+            Statement.RETURN_GENERATED_KEYS
+        );
+        ps.setString(1, traineeLimiterKey);
+        return ps;
+      }, kh);
+      if (kh.getKey() != null) {
+        trackedRateLimitEventIds.add(kh.getKey().longValue());
+      }
     }
 
     // 1. External caller attempting dispatch with isRetry=true fails closed because caller is not authenticated internal worker
     CommunicationDispatchCommand externalCommand = new CommunicationDispatchCommand(
-        AUTHORITATIVE_TEST_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "TPL-ENROLL-001",
@@ -612,7 +698,7 @@ class DurableDispatchQueueTest {
   void testAmbiguousProviderTimeout_doesNotAutoRetry_transitionsToDeadLetter() {
     String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-        AUTHORITATIVE_TEST_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "TPL-ENROLL-001",
@@ -678,7 +764,7 @@ class DurableDispatchQueueTest {
   void testSafeTransientConnectionFailure_schedulesBoundedRetry() {
     String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-        AUTHORITATIVE_TEST_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "TPL-ENROLL-001",
@@ -718,7 +804,7 @@ class DurableDispatchQueueTest {
   void testPermanentProvider4xxRejection_transitionsToDeadLetterWithoutRetry() {
     String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-        AUTHORITATIVE_TEST_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "TPL-ENROLL-001",
@@ -754,13 +840,18 @@ class DurableDispatchQueueTest {
   @Test
   @DisplayName("15. Test Fixture Survival: Pre-existing and unrelated records survive setup and teardown")
   void testUnrelatedRecordsSurviveSetupAndTeardown() {
-    // 1. Insert an unrelated rate-limit event for an unrelated entity
-    String unrelatedLimiterKey = "UNRELATED:SMS:999999";
-    jdbcTemplate.update(
-        "INSERT INTO communication_rate_limit_events (limiter_key, event_type, created_at) VALUES (?, 'UNRELATED_TEST', NOW())",
-        unrelatedLimiterKey
-    );
-    Long unrelatedEventId = jdbcTemplate.queryForObject(
+    // 1. Insert an unrelated rate-limit event for an unrelated entity AFTER setup has run
+    String unrelatedLimiterKey = "UNRELATED:SMS:" + UUID.randomUUID();
+    KeyHolder eventKh = new GeneratedKeyHolder();
+    jdbcTemplate.update(con -> {
+      PreparedStatement ps = con.prepareStatement(
+          "INSERT INTO communication_rate_limit_events (limiter_key, event_type, created_at) VALUES (?, 'UNRELATED_TEST', NOW())",
+          Statement.RETURN_GENERATED_KEYS
+      );
+      ps.setString(1, unrelatedLimiterKey);
+      return ps;
+    }, eventKh);
+    Long unrelatedEventId = eventKh.getKey() != null ? eventKh.getKey().longValue() : jdbcTemplate.queryForObject(
         "SELECT event_id FROM communication_rate_limit_events WHERE limiter_key = ? ORDER BY event_id DESC LIMIT 1",
         Long.class,
         unrelatedLimiterKey
@@ -783,12 +874,10 @@ class DurableDispatchQueueTest {
     );
 
     try {
-      // Set testStartRateLimitEventId so cleanTestJobs treats unrelatedEventId as pre-existing
-      testStartRateLimitEventId = unrelatedEventId;
       // 3. Enqueue and process a test job through the tracking helper
       String testKey = IDEMPOTENCY_PREFIX + UUID.randomUUID();
       CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-          AUTHORITATIVE_TEST_TRAINEE_ID,
+          this.fixtureTraineeId,
           CommunicationChannel.SMS,
           CommunicationPurpose.OPERATIONAL,
           "TPL-ENROLL-001",
@@ -818,7 +907,7 @@ class DurableDispatchQueueTest {
       );
       assertThat(unrelatedJobCount).isEqualTo(1);
 
-      // Assert unrelated rate limit event survived untouched
+      // Assert unrelated rate limit event inserted AFTER setup survived untouched
       Integer unrelatedEventCount = jdbcTemplate.queryForObject(
           "SELECT COUNT(*) FROM communication_rate_limit_events WHERE event_id = ?",
           Integer.class,
