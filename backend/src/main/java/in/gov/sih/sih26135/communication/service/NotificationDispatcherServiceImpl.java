@@ -43,6 +43,7 @@ import in.gov.sih.sih26135.repository.TraineeConsentRepository;
 import in.gov.sih.sih26135.repository.TraineeRepository;
 import in.gov.sih.sih26135.repository.TrainingEnrollmentRepository;
 import in.gov.sih.sih26135.security.InternalAuthenticationToken;
+import in.gov.sih.sih26135.security.InternalServicePrincipal;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -721,8 +722,18 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
 
   private Long resolveEffectiveInitiatedByUserId(Long commandUserId) {
     Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-    if (auth instanceof InternalAuthenticationToken) {
-      return commandUserId != null ? commandUserId : 1L;
+    if (auth instanceof InternalAuthenticationToken internalAuth) {
+      InternalServicePrincipal principal = internalAuth.getPrincipal();
+      if (principal != null) {
+        log.info("[NotificationDispatcher] Internal service dispatch: serviceId={}, serviceName={}, tenantScopeType={}",
+            principal.getServiceId(), principal.getServiceName(), principal.getTenantScopeType());
+      } else {
+        log.info("[NotificationDispatcher] Internal service dispatch authenticated: {}", internalAuth.getName());
+      }
+      // Truthful internal audit identity: automated background/internal executions do not originate
+      // from a human user. When commandUserId is null, persist null in communication_logs.initiated_by_user_id
+      // (which is nullable). Never artificially attribute system operations to human user ID 1.
+      return commandUserId;
     }
     if (workflowSecurityScopeValidator != null) {
       Long authUserId = workflowSecurityScopeValidator.resolveAuthenticatedUserId();
@@ -735,7 +746,7 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
       }
       return authUserId;
     }
-    return commandUserId != null ? commandUserId : 1L;
+    return commandUserId;
   }
 
   private String resolveChannelTestRecipient(CommunicationChannel channel, String requestOverride) {

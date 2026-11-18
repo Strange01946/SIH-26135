@@ -16,8 +16,12 @@ import in.gov.sih.sih26135.dto.request.DispatchNotificationRequest;
 import in.gov.sih.sih26135.entity.CommunicationLog;
 import in.gov.sih.sih26135.entity.Trainee;
 import in.gov.sih.sih26135.repository.TraineeRepository;
+import in.gov.sih.sih26135.security.InternalAuthenticationToken;
+import in.gov.sih.sih26135.security.InternalServicePrincipal;
+import in.gov.sih.sih26135.security.TenantScopeType;
 import in.gov.sih.sih26135.security.UserPrincipal;
 import in.gov.sih.sih26135.security.jwt.JwtTokenProvider;
+import java.sql.Connection;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +45,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -71,6 +77,12 @@ class NotificationDemoAndDeliveryStatusTest {
   private static final Long FIXTURE_STATE_ID = 9984L;
   private static final Long FIXTURE_DISTRICT_ID = 9984L;
   private static final Long FIXTURE_TRAINEE_ID = 9984L;
+  private static final Long AUTHORITATIVE_TEST_TRAINEE_ID = 1005143L;
+
+  private boolean stateCreatedByTest = false;
+  private boolean districtCreatedByTest = false;
+  private boolean traineeCreatedByTest = false;
+  private final java.util.Set<Long> createdConsentTypeIds = new java.util.HashSet<>();
 
   @Autowired
   private MockMvc mockMvc;
@@ -137,6 +149,8 @@ class NotificationDemoAndDeliveryStatusTest {
       SecurityContextHolder.clearContext();
       communicationProperties.setMode(CommunicationProperties.ProviderMode.MOCK);
       mockSmsProvider.clear();
+      mockWhatsAppProvider.clear();
+      mockEmailProvider.clear();
     }
   }
 
@@ -158,20 +172,39 @@ class NotificationDemoAndDeliveryStatusTest {
   }
 
   private void insertFixtures() {
-    jdbcTemplate.update(
-        "INSERT INTO states (state_id, state_code, state_name, lifecycle_status_id, created_at, updated_at) "
-            + "VALUES (?, 'T8', 'Test State 9984', 1, NOW(), NOW())",
-        FIXTURE_STATE_ID);
+    if (FIXTURE_TRAINEE_ID.equals(AUTHORITATIVE_TEST_TRAINEE_ID)) {
+      throw new IllegalStateException("FIXTURE_TRAINEE_ID must NEVER collide with authoritative test trainee " + AUTHORITATIVE_TEST_TRAINEE_ID);
+    }
 
-    jdbcTemplate.update(
-        "INSERT INTO districts (district_id, state_id, district_code, district_name, lifecycle_status_id, created_at, updated_at) "
-            + "VALUES (?, ?, 'TD84', 'Test District 9984', 1, NOW(), NOW())",
-        FIXTURE_DISTRICT_ID, FIXTURE_STATE_ID);
+    Integer stateCount = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM states WHERE state_id = ?", Integer.class, FIXTURE_STATE_ID);
+    if (stateCount == null || stateCount == 0) {
+      jdbcTemplate.update(
+          "INSERT INTO states (state_id, state_code, state_name, lifecycle_status_id, created_at, updated_at) "
+              + "VALUES (?, 'T8', 'Test State 9984', 1, NOW(), NOW())",
+          FIXTURE_STATE_ID);
+      stateCreatedByTest = true;
+    }
 
-    jdbcTemplate.update(
-        "INSERT INTO trainees (trainee_id, registration_number, first_name, last_name, phone, email, date_of_birth, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at, deleted_at) "
-            + "VALUES (?, 'REG-DEMO-9984', 'Ananya', 'Sharma', '+919800009984', 'ananya.demo9984@example.com', '2001-02-14', 2, ?, ?, 1, 3, NOW(), NOW(), null)",
-        FIXTURE_TRAINEE_ID, FIXTURE_STATE_ID, FIXTURE_DISTRICT_ID);
+    Integer districtCount = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM districts WHERE district_id = ?", Integer.class, FIXTURE_DISTRICT_ID);
+    if (districtCount == null || districtCount == 0) {
+      jdbcTemplate.update(
+          "INSERT INTO districts (district_id, state_id, district_code, district_name, lifecycle_status_id, created_at, updated_at) "
+              + "VALUES (?, ?, 'TD84', 'Test District 9984', 1, NOW(), NOW())",
+          FIXTURE_DISTRICT_ID, FIXTURE_STATE_ID);
+      districtCreatedByTest = true;
+    }
+
+    Integer traineeCount = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM trainees WHERE trainee_id = ?", Integer.class, FIXTURE_TRAINEE_ID);
+    if (traineeCount == null || traineeCount == 0) {
+      jdbcTemplate.update(
+          "INSERT INTO trainees (trainee_id, registration_number, first_name, last_name, phone, email, date_of_birth, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at, deleted_at) "
+              + "VALUES (?, 'REG-DEMO-9984', 'Ananya', 'Sharma', '+919800009984', 'ananya.demo9984@example.com', '2001-02-14', 2, ?, ?, 1, 3, NOW(), NOW(), null)",
+          FIXTURE_TRAINEE_ID, FIXTURE_STATE_ID, FIXTURE_DISTRICT_ID);
+      traineeCreatedByTest = true;
+    }
   }
 
   private void cleanUpFixtures() {
@@ -179,11 +212,43 @@ class NotificationDemoAndDeliveryStatusTest {
       return;
     }
     try {
-      jdbcTemplate.update("DELETE FROM communication_logs WHERE trainee_id = ?", FIXTURE_TRAINEE_ID);
-      jdbcTemplate.update("DELETE FROM trainee_consents WHERE trainee_id = ?", FIXTURE_TRAINEE_ID);
-      jdbcTemplate.update("DELETE FROM trainees WHERE trainee_id = ?", FIXTURE_TRAINEE_ID);
-      jdbcTemplate.update("DELETE FROM districts WHERE district_id = ?", FIXTURE_DISTRICT_ID);
-      jdbcTemplate.update("DELETE FROM states WHERE state_id = ?", FIXTURE_STATE_ID);
+      // 1. Delete consents explicitly created or modified by this test execution for the fixture trainee
+      if (!createdConsentTypeIds.isEmpty()) {
+        for (Long typeId : createdConsentTypeIds) {
+          jdbcTemplate.update(
+              "DELETE FROM trainee_consents WHERE trainee_id = ? AND consent_type_id = ?",
+              FIXTURE_TRAINEE_ID, typeId
+          );
+        }
+        createdConsentTypeIds.clear();
+      }
+
+      // 2. Delete communication logs created for the test fixture trainee during execution
+      jdbcTemplate.update(
+          "DELETE FROM communication_logs WHERE trainee_id = ? AND trainee_id != ?",
+          FIXTURE_TRAINEE_ID, AUTHORITATIVE_TEST_TRAINEE_ID
+      );
+
+      // 3. Delete trainee only if this test execution created it, never deleting authoritative trainee 1005143
+      if (traineeCreatedByTest) {
+        jdbcTemplate.update(
+            "DELETE FROM trainees WHERE trainee_id = ? AND trainee_id != ?",
+            FIXTURE_TRAINEE_ID, AUTHORITATIVE_TEST_TRAINEE_ID
+        );
+        traineeCreatedByTest = false;
+      }
+
+      // 4. Delete district only if this test execution created it
+      if (districtCreatedByTest) {
+        jdbcTemplate.update("DELETE FROM districts WHERE district_id = ?", FIXTURE_DISTRICT_ID);
+        districtCreatedByTest = false;
+      }
+
+      // 5. Delete state only if this test execution created it
+      if (stateCreatedByTest) {
+        jdbcTemplate.update("DELETE FROM states WHERE state_id = ?", FIXTURE_STATE_ID);
+        stateCreatedByTest = false;
+      }
     } catch (Exception ignored) {
     }
   }
@@ -191,15 +256,19 @@ class NotificationDemoAndDeliveryStatusTest {
   private void grantConsent(Long consentTypeId) {
     jdbcTemplate.update(
         "INSERT INTO trainee_consents (trainee_id, consent_type_id, purpose, consent_status_id, policy_version, granted_at, expires_at, created_at, updated_at) "
-            + "VALUES (?, ?, 'Test Consent', 1, 'v1.0', NOW() - INTERVAL 1 DAY, NOW() + INTERVAL 1 YEAR, NOW(), NOW())",
+            + "VALUES (?, ?, 'Test Consent', 1, 'v1.0', NOW() - INTERVAL 1 DAY, NOW() + INTERVAL 1 YEAR, NOW(), NOW()) "
+            + "ON DUPLICATE KEY UPDATE consent_status_id = 1, revoked_at = NULL, updated_at = NOW()",
         FIXTURE_TRAINEE_ID, consentTypeId);
+    createdConsentTypeIds.add(consentTypeId);
   }
 
   private void revokeConsent(Long consentTypeId) {
     jdbcTemplate.update(
         "INSERT INTO trainee_consents (trainee_id, consent_type_id, purpose, consent_status_id, policy_version, granted_at, revoked_at, expires_at, created_at, updated_at) "
-            + "VALUES (?, ?, 'Test Consent', 2, 'v1.0', NOW() - INTERVAL 10 DAY, NOW() - INTERVAL 1 DAY, NOW() + INTERVAL 1 YEAR, NOW(), NOW())",
+            + "VALUES (?, ?, 'Test Consent', 2, 'v1.0', NOW() - INTERVAL 10 DAY, NOW() - INTERVAL 1 DAY, NOW() + INTERVAL 1 YEAR, NOW(), NOW()) "
+            + "ON DUPLICATE KEY UPDATE consent_status_id = 2, revoked_at = NOW() - INTERVAL 1 DAY, updated_at = NOW()",
         FIXTURE_TRAINEE_ID, consentTypeId);
+    createdConsentTypeIds.add(consentTypeId);
   }
 
   // =========================================================================
@@ -445,7 +514,7 @@ class NotificationDemoAndDeliveryStatusTest {
 
   @Test
   @DisplayName("7. Production guard strictly prohibits DEMO/MOCK mode when running against production environment")
-  void testProductionGuardProhibitsDemoModeInProduction() {
+  void testProductionGuardProhibitsDemoModeInProduction() throws Exception {
     CommunicationProperties props = new CommunicationProperties();
     props.setMode(CommunicationProperties.ProviderMode.DEMO);
 
@@ -463,15 +532,73 @@ class NotificationDemoAndDeliveryStatusTest {
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("DEMO/MOCK communication mode is strictly prohibited in production environment");
 
-    // 3. Prohibit when datasource URL targets production catalog SIH26135
+    // 3. Prohibit when datasource URL targets production catalog SIH26135 (uppercase)
     MockEnvironment prodEnv3 = new MockEnvironment();
     prodEnv3.setProperty("spring.datasource.url", "jdbc:mysql://localhost:3306/SIH26135?useUnicode=true");
     assertThatThrownBy(() -> props.validateProductionSafety(prodEnv3))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("catalog: SIH26135");
 
-    // 4. LIVE mode is completely permitted in production
+    // 4. Prohibit when datasource URL uses lowercase catalog 'sih26135'
+    MockEnvironment prodEnv4 = new MockEnvironment();
+    prodEnv4.setProperty("spring.datasource.url", "jdbc:mysql://localhost:3306/sih26135");
+    assertThatThrownBy(() -> props.validateProductionSafety(prodEnv4))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("catalog: SIH26135");
+
+    // 5. Prohibit when datasource URL uses mixed-case catalog 'Sih26135'
+    MockEnvironment prodEnv5 = new MockEnvironment();
+    prodEnv5.setProperty("spring.datasource.url", "jdbc:mysql://127.0.0.1:3306/Sih26135?serverTimezone=UTC");
+    assertThatThrownBy(() -> props.validateProductionSafety(prodEnv5))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("catalog: SIH26135");
+
+    // 6. Prohibit when DB_NAME targets production catalog (mixed case)
+    MockEnvironment prodEnv6 = new MockEnvironment();
+    prodEnv6.setProperty("DB_NAME", "sih26135");
+    assertThatThrownBy(() -> props.validateProductionSafety(prodEnv6))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("catalog: SIH26135");
+
+    // 7. Prohibit on conflicting DB configuration: spring.datasource.url is test, but DB_NAME is production
+    MockEnvironment prodEnv7 = new MockEnvironment();
+    prodEnv7.setProperty("spring.datasource.url", "jdbc:mysql://localhost:3306/SIH26135_TEST");
+    prodEnv7.setProperty("DB_NAME", "sih26135");
+    assertThatThrownBy(() -> props.validateProductionSafety(prodEnv7))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("catalog: SIH26135");
+
+    // 8. Prohibit on conflicting DB configuration: spring.datasource.url is production, but DB_NAME is test
+    MockEnvironment prodEnv8 = new MockEnvironment();
+    prodEnv8.setProperty("spring.datasource.url", "jdbc:mysql://localhost:3306/sih26135");
+    prodEnv8.setProperty("DB_NAME", "SIH26135_TEST");
+    assertThatThrownBy(() -> props.validateProductionSafety(prodEnv8))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("catalog: SIH26135");
+
+    // 9. Permit when targeting test catalog SIH26135_TEST (uppercase or lowercase)
+    MockEnvironment testEnv1 = new MockEnvironment();
+    testEnv1.setProperty("spring.datasource.url", "jdbc:mysql://localhost:3306/SIH26135_TEST?useUnicode=true");
+    testEnv1.setProperty("DB_NAME", "SIH26135_TEST");
+    props.validateProductionSafety(testEnv1);
+
+    MockEnvironment testEnv2 = new MockEnvironment();
+    testEnv2.setProperty("spring.datasource.url", "jdbc:mysql://localhost:3306/sih26135_test");
+    testEnv2.setProperty("DB_NAME", "sih26135_test");
+    props.validateProductionSafety(testEnv2);
+
+    // 10. Authoritative DataSource metadata check: mock DataSource reporting production catalog
+    DataSource mockProdDs = mock(DataSource.class);
+    Connection mockConn = mock(Connection.class);
+    when(mockProdDs.getConnection()).thenReturn(mockConn);
+    when(mockConn.getCatalog()).thenReturn("sih26135");
+    assertThatThrownBy(() -> props.validateProductionSafety(mockProdDs, testEnv1))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("detected via connection metadata: 'sih26135'");
+
+    // 11. LIVE mode is completely permitted in production
     props.setMode(CommunicationProperties.ProviderMode.LIVE);
+    props.validateProductionSafety(mockProdDs, prodEnv1);
     props.validateProductionSafety(prodEnv1);
     props.validateProductionSafety(prodEnv2);
     props.validateProductionSafety(prodEnv3);
@@ -605,5 +732,63 @@ class NotificationDemoAndDeliveryStatusTest {
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.status").value(403))
         .andExpect(jsonPath("$.code").value("CONSENT_NOT_GRANTED"));
+  }
+
+  // =========================================================================
+  // 7. FIXTURE ISOLATION & TRUTHFUL AUDIT IDENTITY
+  // =========================================================================
+
+  @Test
+  @DisplayName("11. Authoritative test trainee 1005143 and its 5 active valid consents remain strictly preserved in SIH26135_TEST")
+  void testAuthoritativeTestTrainee1005143Preserved() {
+    Integer traineeCount = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM trainees WHERE trainee_id = ? AND deleted_at IS NULL",
+        Integer.class,
+        AUTHORITATIVE_TEST_TRAINEE_ID
+    );
+    assertThat(traineeCount).isEqualTo(1);
+
+    Integer activeConsentCount = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM trainee_consents WHERE trainee_id = ? AND consent_status_id = 1 AND revoked_at IS NULL",
+        Integer.class,
+        AUTHORITATIVE_TEST_TRAINEE_ID
+    );
+    assertThat(activeConsentCount).isEqualTo(5);
+  }
+
+  @Test
+  @DisplayName("12. Internal service execution with null commandUserId stores null initiated_by_user_id and logs service identity")
+  void testInternalServiceExecutionWithNullCommandUserIdStoresNull() {
+    communicationProperties.setMode(CommunicationProperties.ProviderMode.DEMO);
+    grantConsent(1L);
+    grantConsent(5L);
+
+    // Establish authoritative InternalAuthenticationToken
+    InternalServicePrincipal servicePrincipal = new InternalServicePrincipal(
+        "DEMO_BATCH_JOB", "Demo Batch Communication Service", null, TenantScopeType.NATIONWIDE);
+    InternalAuthenticationToken internalAuth = new InternalAuthenticationToken(
+        servicePrincipal, List.of(new SimpleGrantedAuthority("admin.nationwide")));
+    SecurityContextHolder.getContext().setAuthentication(internalAuth);
+
+    CommunicationDispatchCommand command = new CommunicationDispatchCommand(
+        FIXTURE_TRAINEE_ID,
+        CommunicationChannel.SMS,
+        CommunicationPurpose.OPERATIONAL,
+        "OPERATIONAL_ALERT",
+        Map.of("referenceId", "REF-INTERNAL-NULL-USER"),
+        null, // commandUserId is explicitly null for automated background executions
+        null,
+        null
+    );
+
+    NotificationDispatchResponse response = notificationDispatcherService.dispatchNotification(command);
+    assertThat(response.status()).isEqualTo("SIMULATED");
+
+    // Verify in database that initiated_by_user_id is truthfully NULL (never defaulted to 1)
+    Map<String, Object> logRow = jdbcTemplate.queryForMap(
+        "SELECT initiated_by_user_id FROM communication_logs WHERE communication_log_id = ?",
+        response.communicationLogId()
+    );
+    assertThat(logRow.get("initiated_by_user_id")).isNull();
   }
 }

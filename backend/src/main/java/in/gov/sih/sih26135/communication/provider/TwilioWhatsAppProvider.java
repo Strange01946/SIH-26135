@@ -69,6 +69,12 @@ public class TwilioWhatsAppProvider implements WhatsAppCommunicationProvider {
       throw new IllegalStateException(msg);
     }
 
+    if (fromWhatsApp == null || fromWhatsApp.isBlank()) {
+      String msg = "Twilio WhatsApp sender (TWILIO_WHATSAPP_FROM / communication.twilio.whatsapp-from) is not configured";
+      log.error("[TwilioWhatsAppProvider] Live delivery failed: {}", msg);
+      throw new IllegalStateException(msg);
+    }
+
     if (recipientPhone == null || recipientPhone.isBlank()) {
       throw new BadRequestException("Recipient phone number is required for WhatsApp delivery", "RECIPIENT_PHONE_REQUIRED");
     }

@@ -126,6 +126,54 @@ class ProviderAdaptersUnitTest {
   }
 
   @Test
+  @DisplayName("TwilioWhatsAppProvider fails closed when sender is missing even if credentials are present")
+  void testTwilioWhatsAppProviderFailsClosedWhenSenderMissing() {
+    properties.getTwilio().setAccountSid("test-twilio-account-sid");
+    properties.getTwilio().setAuthToken("test_auth_token_1234567890");
+    properties.getTwilio().setWhatsappFrom(""); // Explicitly empty sender
+
+    TwilioWhatsAppProvider twilioWhatsAppProvider = new TwilioWhatsAppProvider(properties);
+
+    assertThatThrownBy(() -> twilioWhatsAppProvider.sendWhatsApp("+919876543210", "Test body", "TEST"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("TWILIO_WHATSAPP_FROM");
+  }
+
+  @Test
+  @DisplayName("TwilioConfig default WhatsApp sender is empty (no hardcoded defaults)")
+  void testTwilioConfigDefaultSenderIsEmpty() {
+    CommunicationProperties.TwilioConfig config = new CommunicationProperties.TwilioConfig();
+    assertThat(config.getWhatsappFrom()).isEmpty();
+    assertThat(config.isWhatsAppConfigured()).isFalse();
+  }
+
+  @Test
+  @DisplayName("TwilioConfig null setter resets to empty string without hardcoded fallback")
+  void testTwilioConfigNullSetterBehavior() {
+    CommunicationProperties.TwilioConfig config = new CommunicationProperties.TwilioConfig();
+    config.setWhatsappFrom("whatsapp:+15551234567");
+    assertThat(config.getWhatsappFrom()).isEqualTo("whatsapp:+15551234567");
+
+    config.setWhatsappFrom(null);
+    assertThat(config.getWhatsappFrom()).isEmpty();
+
+    config.setWhatsappFrom("   ");
+    assertThat(config.getWhatsappFrom()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("TwilioConfig preserves explicitly configured WhatsApp sender")
+  void testTwilioConfigConfiguredSenderPreserved() {
+    CommunicationProperties.TwilioConfig config = new CommunicationProperties.TwilioConfig();
+    config.setAccountSid("test-twilio-account-sid");
+    config.setAuthToken("test_auth_token_1234567890");
+    config.setWhatsappFrom("whatsapp:+17372508034");
+
+    assertThat(config.getWhatsappFrom()).isEqualTo("whatsapp:+17372508034");
+    assertThat(config.isWhatsAppConfigured()).isTrue();
+  }
+
+  @Test
   @DisplayName("SendGridEmailProvider fails closed when credentials are missing")
   void testSendGridEmailProviderFailsClosedWhenUnconfigured() {
     SendGridEmailProvider sendGridEmailProvider = new SendGridEmailProvider(properties);

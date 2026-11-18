@@ -1,7 +1,14 @@
 package in.gov.sih.sih26135.communication.config;
 
 import jakarta.annotation.PostConstruct;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.Arrays;
+import java.util.Locale;
+import javax.sql.DataSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.EnvironmentAware;
 import org.springframework.core.env.Environment;
@@ -30,10 +37,15 @@ public class CommunicationProperties implements EnvironmentAware {
     SMTP
   }
 
+  private static final Logger log = LoggerFactory.getLogger(CommunicationProperties.class);
+
   private ProviderMode mode = ProviderMode.MOCK;
   private boolean liveRecipientOverrideEnabled = true;
   private EmailProviderPreference emailProviderType = EmailProviderPreference.AUTO;
   private Environment environment;
+
+  @Autowired(required = false)
+  private DataSource dataSource;
 
   private TwilioConfig twilio = new TwilioConfig();
   private SendGridConfig sendgrid = new SendGridConfig();
@@ -44,9 +56,61 @@ public class CommunicationProperties implements EnvironmentAware {
     this.environment = environment;
   }
 
+  public DataSource getDataSource() {
+    return dataSource;
+  }
+
+  public void setDataSource(DataSource dataSource) {
+    this.dataSource = dataSource;
+  }
+
   @PostConstruct
   public void validateConfiguration() {
-    validateProductionSafety(this.environment);
+    validateProductionSafety(this.dataSource, this.environment);
+  }
+
+  /**
+   * Robustly extracts database catalog name from a JDBC URL by stripping query parameters
+   * and extracting the terminal path element.
+   *
+   * @param jdbcUrl raw JDBC URL string
+   * @return extracted catalog name, or empty string if unresolvable
+   */
+  public static String extractCatalogFromJdbcUrl(String jdbcUrl) {
+    if (jdbcUrl == null || jdbcUrl.isBlank()) {
+      return "";
+    }
+    String cleanUrl = jdbcUrl.trim();
+    int queryIdx = cleanUrl.indexOf('?');
+    if (queryIdx >= 0) {
+      cleanUrl = cleanUrl.substring(0, queryIdx);
+    }
+    while (cleanUrl.endsWith("/")) {
+      cleanUrl = cleanUrl.substring(0, cleanUrl.length() - 1);
+    }
+    int slashIdx = cleanUrl.lastIndexOf('/');
+    if (slashIdx >= 0 && slashIdx < cleanUrl.length() - 1) {
+      return cleanUrl.substring(slashIdx + 1).trim();
+    }
+    return "";
+  }
+
+  /**
+   * Authoritatively determines whether a given catalog name designates the production database
+   * (case-insensitive SIH26135, rejecting test catalogs containing "test").
+   *
+   * @param catalogName catalog/database identifier
+   * @return true if catalog indicates production, false otherwise
+   */
+  public static boolean isProductionCatalog(String catalogName) {
+    if (catalogName == null || catalogName.isBlank()) {
+      return false;
+    }
+    String lower = catalogName.trim().toLowerCase(Locale.ROOT);
+    if ("sih26135".equals(lower)) {
+      return true;
+    }
+    return lower.contains("sih26135") && !lower.contains("test");
   }
 
   /**
@@ -56,28 +120,63 @@ public class CommunicationProperties implements EnvironmentAware {
    * @throws IllegalStateException if DEMO/MOCK mode is enabled against production
    */
   public void validateProductionSafety(Environment env) {
+    validateProductionSafety(this.dataSource, env);
+  }
+
+  /**
+   * Validates production safety using authoritative DataSource connection metadata and environment.
+   *
+   * @param ds optional DataSource to inspect active catalog
+   * @param env Spring environment abstraction
+   * @throws IllegalStateException if DEMO/MOCK mode is enabled against production
+   */
+  public void validateProductionSafety(DataSource ds, Environment env) {
     if (!isDemoMode()) {
       return;
     }
+
+    // 1. Authoritative JDBC Connection Metadata Check (when DataSource is available)
+    if (ds != null) {
+      try (Connection conn = ds.getConnection()) {
+        String activeCatalog = conn.getCatalog();
+        if (isProductionCatalog(activeCatalog)) {
+          throw new IllegalStateException(
+              "DEMO/MOCK communication mode is strictly prohibited against production catalog "
+                  + "(catalog: SIH26135, detected via connection metadata: '" + activeCatalog + "'). "
+                  + "Set communication.mode=LIVE for production operations or target test catalog SIH26135_TEST."
+          );
+        }
+      } catch (SQLException e) {
+        log.warn("[CommunicationProperties] Could not inspect active catalog from DataSource: {}", e.getMessage());
+      }
+    }
+
     if (env == null) {
       return;
     }
 
+    // 2. Active profile check
     boolean isProdProfile = env.getActiveProfiles() != null && Arrays.stream(env.getActiveProfiles())
         .anyMatch(p -> p.equalsIgnoreCase("prod") || p.equalsIgnoreCase("production"));
 
+    // 3. Application environment variable check
     String appEnv = env.getProperty("APP_ENVIRONMENT", env.getProperty("app.environment", ""));
     boolean isProdEnv = "prod".equalsIgnoreCase(appEnv) || "production".equalsIgnoreCase(appEnv);
 
+    // 4. JDBC URL and DB_NAME checks (case-insensitive & conflict-aware)
     String dbUrl = env.getProperty("spring.datasource.url", "");
     String dbName = env.getProperty("DB_NAME", "");
-    boolean isProdCatalog = (dbUrl.contains("/SIH26135") && !dbUrl.contains("/SIH26135_TEST"))
-        || ("SIH26135".equalsIgnoreCase(dbName) && !dbUrl.contains("SIH26135_TEST"));
+    String catalogFromUrl = extractCatalogFromJdbcUrl(dbUrl);
 
-    if (isProdProfile || isProdEnv || isProdCatalog) {
+    boolean urlIsProd = isProductionCatalog(catalogFromUrl);
+    boolean nameIsProd = isProductionCatalog(dbName);
+
+    if (isProdProfile || isProdEnv || urlIsProd || nameIsProd) {
       throw new IllegalStateException(
           "DEMO/MOCK communication mode is strictly prohibited in production environment "
-              + "(catalog: SIH26135, detected: prodProfile=" + isProdProfile + ", prodEnv=" + isProdEnv + ", prodCatalog=" + isProdCatalog + "). "
+              + "(catalog: SIH26135, catalogFromUrl: '" + catalogFromUrl + "', DB_NAME: '" + dbName
+              + "', detected: prodProfile=" + isProdProfile + ", prodEnv=" + isProdEnv
+              + ", urlIsProd=" + urlIsProd + ", nameIsProd=" + nameIsProd + "). "
               + "Set communication.mode=LIVE for production operations or target test catalog SIH26135_TEST."
       );
     }
@@ -153,7 +252,7 @@ public class CommunicationProperties implements EnvironmentAware {
     private String accountSid = "";
     private String authToken = "";
     private String smsFrom = "";
-    private String whatsappFrom = "whatsapp:+17372508034";
+    private String whatsappFrom = "";
     private String liveTestPhone = "";
     private String liveTestWhatsapp = "";
     private String whatsappContentSid = "";
@@ -165,6 +264,12 @@ public class CommunicationProperties implements EnvironmentAware {
       return accountSid != null && !accountSid.isBlank()
           && authToken != null && !authToken.isBlank()
           && smsFrom != null && !smsFrom.isBlank();
+    }
+
+    public boolean isWhatsAppConfigured() {
+      return accountSid != null && !accountSid.isBlank()
+          && authToken != null && !authToken.isBlank()
+          && whatsappFrom != null && !whatsappFrom.isBlank();
     }
 
     public String getAccountSid() {
@@ -196,7 +301,7 @@ public class CommunicationProperties implements EnvironmentAware {
     }
 
     public void setWhatsappFrom(String whatsappFrom) {
-      this.whatsappFrom = whatsappFrom != null ? whatsappFrom.trim() : "whatsapp:+14155238886";
+      this.whatsappFrom = whatsappFrom != null ? whatsappFrom.trim() : "";
     }
 
     public String getLiveTestPhone() {
