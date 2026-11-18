@@ -27,12 +27,16 @@ import java.sql.Statement;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ThreadLocalRandom;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -79,14 +83,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DisplayName("Phase 29.3 - Notification Demo Mode, Delivery Status Accuracy & API Readiness Tests")
 class NotificationDemoAndDeliveryStatusTest {
 
-  private static final Long FIXTURE_STATE_ID = 9984L;
-  private static final Long FIXTURE_DISTRICT_ID = 9984L;
-  private static final Long FIXTURE_TRAINEE_ID = 9984L;
+  private static final Logger log = LoggerFactory.getLogger(NotificationDemoAndDeliveryStatusTest.class);
   private static final Long AUTHORITATIVE_TEST_TRAINEE_ID = 1005143L;
 
-  private boolean stateCreatedByTest = false;
-  private boolean districtCreatedByTest = false;
-  private boolean traineeCreatedByTest = false;
+  private Long fixtureTraineeId;
+  private String fixtureTraineeRegNo;
+  private String fixtureTraineePhone;
+  private String fixtureTraineePhoneLast4;
+  private String fixtureTraineeEmail;
+
   private final List<Long> testOwnedLogIds = new CopyOnWriteArrayList<>();
   private final List<Long> testOwnedConsentIds = new CopyOnWriteArrayList<>();
 
@@ -129,7 +134,12 @@ class NotificationDemoAndDeliveryStatusTest {
     mockWhatsAppProvider.clear();
     mockEmailProvider.clear();
 
-    cleanUpFixtures();
+    if (fixtureTraineeId != null) {
+      cleanUpFixtures();
+    }
+    testOwnedLogIds.clear();
+    testOwnedConsentIds.clear();
+
     insertFixtures();
     setAdminAuthentication();
 
@@ -178,43 +188,39 @@ class NotificationDemoAndDeliveryStatusTest {
   }
 
   private void insertFixtures() {
-    if (FIXTURE_TRAINEE_ID.equals(AUTHORITATIVE_TEST_TRAINEE_ID)) {
-      throw new IllegalStateException("FIXTURE_TRAINEE_ID must NEVER collide with authoritative test trainee " + AUTHORITATIVE_TEST_TRAINEE_ID);
-    }
+    String uniqueSuffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+    this.fixtureTraineeRegNo = "REG-DEMO-" + uniqueSuffix;
+    int randomSuffix = ThreadLocalRandom.current().nextInt(1000, 9999);
+    this.fixtureTraineePhoneLast4 = String.valueOf(randomSuffix);
+    this.fixtureTraineePhone = "+91980000" + fixtureTraineePhoneLast4;
+    this.fixtureTraineeEmail = "demo." + uniqueSuffix + "@example.com";
 
-    Integer stateCount = jdbcTemplate.queryForObject(
-        "SELECT COUNT(*) FROM states WHERE state_id = ?", Integer.class, FIXTURE_STATE_ID);
-    if (stateCount == null || stateCount == 0) {
-      jdbcTemplate.update(
-          "INSERT INTO states (state_id, state_code, state_name, lifecycle_status_id, created_at, updated_at) "
-              + "VALUES (?, 'T8', 'Test State 9984', 1, NOW(), NOW())",
-          FIXTURE_STATE_ID);
-      stateCreatedByTest = true;
-    }
+    KeyHolder keyHolder = new GeneratedKeyHolder();
+    jdbcTemplate.update(connection -> {
+      PreparedStatement ps = connection.prepareStatement(
+          "INSERT INTO trainees (registration_number, first_name, last_name, phone, email, date_of_birth, "
+              + "gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at) "
+              + "VALUES (?, 'Ananya', 'Sharma', ?, ?, '2001-02-14', 2, 101, 1001, 1, 3, NOW(), NOW())",
+          Statement.RETURN_GENERATED_KEYS
+      );
+      ps.setString(1, fixtureTraineeRegNo);
+      ps.setString(2, fixtureTraineePhone);
+      ps.setString(3, fixtureTraineeEmail);
+      return ps;
+    }, keyHolder);
 
-    Integer districtCount = jdbcTemplate.queryForObject(
-        "SELECT COUNT(*) FROM districts WHERE district_id = ?", Integer.class, FIXTURE_DISTRICT_ID);
-    if (districtCount == null || districtCount == 0) {
-      jdbcTemplate.update(
-          "INSERT INTO districts (district_id, state_id, district_code, district_name, lifecycle_status_id, created_at, updated_at) "
-              + "VALUES (?, ?, 'TD84', 'Test District 9984', 1, NOW(), NOW())",
-          FIXTURE_DISTRICT_ID, FIXTURE_STATE_ID);
-      districtCreatedByTest = true;
+    Number generatedKey = keyHolder.getKey();
+    if (generatedKey == null) {
+      throw new IllegalStateException("Failed to insert exclusive test fixture trainee: no generated key returned");
     }
-
-    Integer traineeCount = jdbcTemplate.queryForObject(
-        "SELECT COUNT(*) FROM trainees WHERE trainee_id = ?", Integer.class, FIXTURE_TRAINEE_ID);
-    if (traineeCount == null || traineeCount == 0) {
-      jdbcTemplate.update(
-          "INSERT INTO trainees (trainee_id, registration_number, first_name, last_name, phone, email, date_of_birth, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at, deleted_at) "
-              + "VALUES (?, 'REG-DEMO-9984', 'Ananya', 'Sharma', '+919800009984', 'ananya.demo9984@example.com', '2001-02-14', 2, ?, ?, 1, 3, NOW(), NOW(), null)",
-          FIXTURE_TRAINEE_ID, FIXTURE_STATE_ID, FIXTURE_DISTRICT_ID);
-      traineeCreatedByTest = true;
+    this.fixtureTraineeId = generatedKey.longValue();
+    if (this.fixtureTraineeId.equals(AUTHORITATIVE_TEST_TRAINEE_ID)) {
+      throw new IllegalStateException("Generated fixture trainee ID collided with authoritative test trainee " + AUTHORITATIVE_TEST_TRAINEE_ID);
     }
   }
 
   private void cleanUpFixtures() {
-    if (jdbcTemplate == null) {
+    if (jdbcTemplate == null || this.fixtureTraineeId == null) {
       return;
     }
     try {
@@ -226,7 +232,13 @@ class NotificationDemoAndDeliveryStatusTest {
         testOwnedLogIds.clear();
       }
 
-      // 2. Delete ONLY trainee consent records explicitly tracked and owned by this test execution
+      // 2. Delete any remaining communication logs specifically for this test's fixture trainee
+      jdbcTemplate.update(
+          "DELETE FROM communication_logs WHERE trainee_id = ? AND trainee_id != ?",
+          this.fixtureTraineeId, AUTHORITATIVE_TEST_TRAINEE_ID
+      );
+
+      // 3. Delete ONLY trainee consent records explicitly tracked and owned by this test execution
       if (!testOwnedConsentIds.isEmpty()) {
         for (Long consentId : testOwnedConsentIds) {
           jdbcTemplate.update("DELETE FROM trainee_consents WHERE trainee_consent_id = ?", consentId);
@@ -234,27 +246,21 @@ class NotificationDemoAndDeliveryStatusTest {
         testOwnedConsentIds.clear();
       }
 
-      // 3. Delete trainee only if this test execution created it, never deleting authoritative trainee 1005143
-      if (traineeCreatedByTest) {
-        jdbcTemplate.update(
-            "DELETE FROM trainees WHERE trainee_id = ? AND trainee_id != ?",
-            FIXTURE_TRAINEE_ID, AUTHORITATIVE_TEST_TRAINEE_ID
-        );
-        traineeCreatedByTest = false;
-      }
+      // 4. Delete any remaining consents specifically for this test's fixture trainee
+      jdbcTemplate.update(
+          "DELETE FROM trainee_consents WHERE trainee_id = ? AND trainee_id != ?",
+          this.fixtureTraineeId, AUTHORITATIVE_TEST_TRAINEE_ID
+      );
 
-      // 4. Delete district only if this test execution created it
-      if (districtCreatedByTest) {
-        jdbcTemplate.update("DELETE FROM districts WHERE district_id = ?", FIXTURE_DISTRICT_ID);
-        districtCreatedByTest = false;
-      }
-
-      // 5. Delete state only if this test execution created it
-      if (stateCreatedByTest) {
-        jdbcTemplate.update("DELETE FROM states WHERE state_id = ?", FIXTURE_STATE_ID);
-        stateCreatedByTest = false;
-      }
-    } catch (Exception ignored) {
+      // 5. Delete fixture trainee only, never deleting authoritative trainee 1005143
+      jdbcTemplate.update(
+          "DELETE FROM trainees WHERE trainee_id = ? AND trainee_id != ?",
+          this.fixtureTraineeId, AUTHORITATIVE_TEST_TRAINEE_ID
+      );
+      this.fixtureTraineeId = null;
+    } catch (Exception ex) {
+      log.error("[NotificationDemoAndDeliveryStatusTest] Teardown fixture cleanup failed: {}", ex.getMessage(), ex);
+      throw new RuntimeException("Teardown fixture cleanup failed: " + ex.getMessage(), ex);
     }
   }
 
@@ -264,19 +270,16 @@ class NotificationDemoAndDeliveryStatusTest {
     }
   }
 
-  private Long getMaxCommunicationLogId() {
-    return jdbcTemplate.queryForObject(
-        "SELECT COALESCE(MAX(communication_log_id), 0) FROM communication_logs", Long.class);
-  }
-
-  private void trackNewLogsSince(Long maxIdBefore) {
-    List<Long> newIds = jdbcTemplate.queryForList(
-        "SELECT communication_log_id FROM communication_logs WHERE communication_log_id > ?",
-        Long.class,
-        maxIdBefore != null ? maxIdBefore : 0L
-    );
-    for (Long id : newIds) {
-      trackLog(id);
+  private void trackBlockedLogsForFixtureTrainee() {
+    if (this.fixtureTraineeId != null) {
+      List<Long> blockedIds = jdbcTemplate.queryForList(
+          "SELECT communication_log_id FROM communication_logs WHERE trainee_id = ? AND communication_status_id = 8",
+          Long.class,
+          this.fixtureTraineeId
+      );
+      for (Long id : blockedIds) {
+        trackLog(id);
+      }
     }
   }
 
@@ -288,7 +291,7 @@ class NotificationDemoAndDeliveryStatusTest {
               + "VALUES (?, ?, 'Test Consent', 1, 'v1.0', NOW() - INTERVAL 1 DAY, NOW() + INTERVAL 1 YEAR, NOW(), NOW())",
           Statement.RETURN_GENERATED_KEYS
       );
-      ps.setLong(1, FIXTURE_TRAINEE_ID);
+      ps.setLong(1, this.fixtureTraineeId);
       ps.setLong(2, consentTypeId);
       return ps;
     }, keyHolder);
@@ -310,7 +313,7 @@ class NotificationDemoAndDeliveryStatusTest {
               + "VALUES (?, ?, 'Test Consent', 2, 'v1.0', NOW() - INTERVAL 10 DAY, NOW() - INTERVAL 1 DAY, NOW() + INTERVAL 1 YEAR, NOW(), NOW())",
           Statement.RETURN_GENERATED_KEYS
       );
-      ps.setLong(1, FIXTURE_TRAINEE_ID);
+      ps.setLong(1, this.fixtureTraineeId);
       ps.setLong(2, consentTypeId);
       return ps;
     }, keyHolder);
@@ -336,7 +339,7 @@ class NotificationDemoAndDeliveryStatusTest {
     grantConsent(5L); // COMMUNICATION_SMS
 
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-        FIXTURE_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "TRAINEE_ENROLLMENT_CONFIRMATION",
@@ -389,7 +392,7 @@ class NotificationDemoAndDeliveryStatusTest {
     mockSmsProvider.setFailureDetails("SIMULATED_21211", "Simulated invalid phone number in demo environment");
 
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-        FIXTURE_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "OPERATIONAL_ALERT",
@@ -439,7 +442,7 @@ class NotificationDemoAndDeliveryStatusTest {
     // Mock provider configured with custom QUEUED outcome (simulating Twilio async acceptance)
     mockSmsProvider.setCustomResult("QUEUED", true, null);
 
-    Trainee trainee = traineeRepository.findById(FIXTURE_TRAINEE_ID).orElseThrow();
+    Trainee trainee = traineeRepository.findById(this.fixtureTraineeId).orElseThrow();
     ProviderDeliveryResult deliveryResult = new ProviderDeliveryResult(
         CommunicationChannel.SMS,
         "TwilioSmsProvider",
@@ -473,7 +476,7 @@ class NotificationDemoAndDeliveryStatusTest {
     grantConsent(1L);
     grantConsent(5L);
 
-    Trainee trainee = traineeRepository.findById(FIXTURE_TRAINEE_ID).orElseThrow();
+    Trainee trainee = traineeRepository.findById(this.fixtureTraineeId).orElseThrow();
     ProviderDeliveryResult deliveryResult = new ProviderDeliveryResult(
         CommunicationChannel.SMS,
         "TwilioSmsProvider",
@@ -506,7 +509,7 @@ class NotificationDemoAndDeliveryStatusTest {
     // Neither DATA_PROCESSING nor SMS consent granted
 
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-        FIXTURE_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "OPERATIONAL_ALERT",
@@ -516,7 +519,6 @@ class NotificationDemoAndDeliveryStatusTest {
         null
     );
 
-    Long maxBefore = getMaxCommunicationLogId();
     try {
       assertThatThrownBy(() -> notificationDispatcherService.dispatchNotification(command))
           .isInstanceOf(CommunicationConsentException.class)
@@ -526,7 +528,7 @@ class NotificationDemoAndDeliveryStatusTest {
             assertThat(cce.getErrorCode()).isEqualTo("CONSENT_NOT_GRANTED");
           });
     } finally {
-      trackNewLogsSince(maxBefore);
+      trackBlockedLogsForFixtureTrainee();
     }
 
     // Zero messages sent to provider
@@ -536,7 +538,7 @@ class NotificationDemoAndDeliveryStatusTest {
     Integer blockedCount = jdbcTemplate.queryForObject(
         "SELECT COUNT(*) FROM communication_logs WHERE trainee_id = ? AND communication_status_id = 8",
         Integer.class,
-        FIXTURE_TRAINEE_ID
+        this.fixtureTraineeId
     );
     assertThat(blockedCount).isGreaterThanOrEqualTo(1);
   }
@@ -549,7 +551,7 @@ class NotificationDemoAndDeliveryStatusTest {
     revokeConsent(5L); // Revoked COMMUNICATION_SMS
 
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-        FIXTURE_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "OPERATIONAL_ALERT",
@@ -559,7 +561,6 @@ class NotificationDemoAndDeliveryStatusTest {
         null
     );
 
-    Long maxBefore = getMaxCommunicationLogId();
     try {
       assertThatThrownBy(() -> notificationDispatcherService.dispatchNotification(command))
           .isInstanceOf(CommunicationConsentException.class)
@@ -569,7 +570,7 @@ class NotificationDemoAndDeliveryStatusTest {
             assertThat(cce.getErrorCode()).isEqualTo("CONSENT_WITHDRAWN");
           });
     } finally {
-      trackNewLogsSince(maxBefore);
+      trackBlockedLogsForFixtureTrainee();
     }
 
     assertThat(mockSmsProvider.getDispatchedMessages()).isEmpty();
@@ -683,7 +684,7 @@ class NotificationDemoAndDeliveryStatusTest {
     grantConsent(5L);
 
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-        FIXTURE_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "OPERATIONAL_ALERT",
@@ -736,7 +737,7 @@ class NotificationDemoAndDeliveryStatusTest {
     grantConsent(5L);
 
     DispatchNotificationRequest request = new DispatchNotificationRequest(
-        FIXTURE_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "ASSESSMENT_CERTIFICATION_NOTICE",
@@ -756,7 +757,7 @@ class NotificationDemoAndDeliveryStatusTest {
         .andExpect(jsonPath("$.data.simulated").value(true))
         .andExpect(jsonPath("$.data.physicallyDelivered").value(false))
         .andExpect(jsonPath("$.data.accepted").value(true))
-        .andExpect(jsonPath("$.data.recipientMasked").value("+XXXXXXXX9984"))
+        .andExpect(jsonPath("$.data.recipientMasked").value("+XXXXXXXX" + fixtureTraineePhoneLast4))
         .andExpect(jsonPath("$.data.providerName").value("MockSmsProvider"))
         .andReturn().getResponse().getContentAsString();
 
@@ -787,14 +788,13 @@ class NotificationDemoAndDeliveryStatusTest {
     // No consent granted
 
     DispatchNotificationRequest request = new DispatchNotificationRequest(
-        FIXTURE_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "OPERATIONAL_ALERT",
         Map.of("referenceId", "REF-NO-CONSENT")
     );
 
-    Long maxBefore = getMaxCommunicationLogId();
     try {
       mockMvc.perform(post("/api/v1/communication-logs/dispatch")
               .header("Authorization", adminToken)
@@ -804,7 +804,7 @@ class NotificationDemoAndDeliveryStatusTest {
           .andExpect(jsonPath("$.status").value(403))
           .andExpect(jsonPath("$.code").value("CONSENT_NOT_GRANTED"));
     } finally {
-      trackNewLogsSince(maxBefore);
+      trackBlockedLogsForFixtureTrainee();
     }
   }
 
@@ -845,7 +845,7 @@ class NotificationDemoAndDeliveryStatusTest {
     SecurityContextHolder.getContext().setAuthentication(internalAuth);
 
     CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-        FIXTURE_TRAINEE_ID,
+        this.fixtureTraineeId,
         CommunicationChannel.SMS,
         CommunicationPurpose.OPERATIONAL,
         "OPERATIONAL_ALERT",
@@ -868,80 +868,141 @@ class NotificationDemoAndDeliveryStatusTest {
   }
 
   @Test
-  @DisplayName("13. Pre-existing communication logs and consents survive setup, execution, and teardown unchanged")
-  void testPreExistingLogsAndConsentsSurviveExecutionAndTeardown() {
-    // 1. Provision pre-existing unowned consent for FIXTURE_TRAINEE_ID
-    KeyHolder consentKeyHolder = new GeneratedKeyHolder();
+  @DisplayName("13. Unrelated records created before and during test execution survive setup, execution, and teardown completely unchanged")
+  void testUnrelatedRecordsCreatedBeforeAndDuringExecutionSurviveTeardown() {
+    // 1. Provision an unrelated trainee
+    String unrelatedSuffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+    String unrelatedRegNo = "REG-UNRELATED-" + unrelatedSuffix;
+    KeyHolder unrelatedTraineeKh = new GeneratedKeyHolder();
+    jdbcTemplate.update(connection -> {
+      PreparedStatement ps = connection.prepareStatement(
+          "INSERT INTO trainees (registration_number, first_name, last_name, phone, email, date_of_birth, "
+              + "gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at) "
+              + "VALUES (?, 'Vikram', 'Mehta', '+919900112233', 'vikram.unrelated@example.com', '1998-05-20', 1, 101, 1001, 1, 3, NOW(), NOW())",
+          Statement.RETURN_GENERATED_KEYS
+      );
+      ps.setString(1, unrelatedRegNo);
+      return ps;
+    }, unrelatedTraineeKh);
+    Long unrelatedTraineeId = unrelatedTraineeKh.getKey().longValue();
+
+    // 2. Provision an unrelated consent for the unrelated trainee
+    KeyHolder unrelatedConsentKh = new GeneratedKeyHolder();
     jdbcTemplate.update(connection -> {
       PreparedStatement ps = connection.prepareStatement(
           "INSERT INTO trainee_consents (trainee_id, consent_type_id, purpose, consent_status_id, policy_version, granted_at, expires_at, created_at, updated_at) "
-              + "VALUES (?, 3, 'Pre-existing Unowned Consent', 1, 'v0.9', NOW() - INTERVAL 30 DAY, NOW() + INTERVAL 2 YEAR, NOW() - INTERVAL 30 DAY, NOW() - INTERVAL 30 DAY)",
+              + "VALUES (?, 3, 'Unrelated Pre-existing Consent', 1, 'v0.9', NOW() - INTERVAL 30 DAY, NOW() + INTERVAL 2 YEAR, NOW() - INTERVAL 30 DAY, NOW() - INTERVAL 30 DAY)",
           Statement.RETURN_GENERATED_KEYS
       );
-      ps.setLong(1, FIXTURE_TRAINEE_ID);
+      ps.setLong(1, unrelatedTraineeId);
       return ps;
-    }, consentKeyHolder);
-    Long preExistingConsentId = consentKeyHolder.getKey().longValue();
+    }, unrelatedConsentKh);
+    Long unrelatedConsentId = unrelatedConsentKh.getKey().longValue();
 
-    // 2. Provision pre-existing unowned communication log for FIXTURE_TRAINEE_ID
-    KeyHolder logKeyHolder = new GeneratedKeyHolder();
+    // 3. Provision an unrelated communication log created BEFORE test dispatch
+    KeyHolder preLogKh = new GeneratedKeyHolder();
     jdbcTemplate.update(connection -> {
       PreparedStatement ps = connection.prepareStatement(
           "INSERT INTO communication_logs (trainee_id, communication_channel_id, communication_direction_id, communication_purpose_id, communication_status_id, consent_type_id, provider_message_id, created_at, updated_at) "
-              + "VALUES (?, 1, 1, 1, 9, 3, 'MSG_PRE_EXISTING_SURVIVOR', NOW() - INTERVAL 30 DAY, NOW() - INTERVAL 30 DAY)",
+              + "VALUES (?, 1, 1, 1, 9, 3, 'MSG_UNRELATED_PRE_EXISTING', NOW() - INTERVAL 10 DAY, NOW() - INTERVAL 10 DAY)",
           Statement.RETURN_GENERATED_KEYS
       );
-      ps.setLong(1, FIXTURE_TRAINEE_ID);
+      ps.setLong(1, unrelatedTraineeId);
       return ps;
-    }, logKeyHolder);
-    Long preExistingLogId = logKeyHolder.getKey().longValue();
+    }, preLogKh);
+    Long unrelatedPreLogId = preLogKh.getKey().longValue();
+
+    Long unrelatedConcurrentLogId = null;
 
     try {
-      // 3. Execute normal test operations (grant test-owned consents, perform dispatch)
-      grantConsent(1L);
-      grantConsent(5L);
+      // 4. Execute test operations for this test's fixture trainee
+      grantConsent(1L); // DATA_PROCESSING
+      grantConsent(5L); // COMMUNICATION_SMS
 
-      Long maxBefore = getMaxCommunicationLogId();
+      // 5. Simulate an unrelated concurrent communication log created by an external job DURING execution
+      KeyHolder concurrentLogKh = new GeneratedKeyHolder();
+      jdbcTemplate.update(connection -> {
+        PreparedStatement ps = connection.prepareStatement(
+            "INSERT INTO communication_logs (trainee_id, communication_channel_id, communication_direction_id, communication_purpose_id, communication_status_id, consent_type_id, provider_message_id, created_at, updated_at) "
+                + "VALUES (?, 2, 1, 2, 9, 3, 'MSG_UNRELATED_CONCURRENT', NOW(), NOW())",
+            Statement.RETURN_GENERATED_KEYS
+        );
+        ps.setLong(1, unrelatedTraineeId);
+        return ps;
+      }, concurrentLogKh);
+      unrelatedConcurrentLogId = concurrentLogKh.getKey().longValue();
+
+      // 6. Dispatch test notification for this test's fixture trainee
       CommunicationDispatchCommand command = new CommunicationDispatchCommand(
-          FIXTURE_TRAINEE_ID,
+          this.fixtureTraineeId,
           CommunicationChannel.SMS,
           CommunicationPurpose.OPERATIONAL,
           "OPERATIONAL_ALERT",
-          Map.of("referenceId", "REF-SURVIVAL-TEST"),
+          Map.of("referenceId", "REF-ISOLATION-REGRESSION"),
           1L,
           null,
           null
       );
       NotificationDispatchResponse response = notificationDispatcherService.dispatchNotification(command);
-      trackNewLogsSince(maxBefore);
+      trackLog(response.communicationLogId());
 
       assertThat(response.status()).isEqualTo("SIMULATED");
+      assertThat(response.communicationLogId()).isNotEqualTo(unrelatedPreLogId);
+      assertThat(response.communicationLogId()).isNotEqualTo(unrelatedConcurrentLogId);
 
-      // 4. Trigger teardown cleanup
+      // 7. Trigger teardown cleanup for this test's fixtures
       cleanUpFixtures();
 
-      // 5. Assert that the pre-existing unowned consent SURVIVED and was NOT mutated or deleted
+      // 8. Assert that the unrelated trainee SURVIVED completely untouched
+      Integer unrelatedTraineeCount = jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM trainees WHERE trainee_id = ?",
+          Integer.class,
+          unrelatedTraineeId
+      );
+      assertThat(unrelatedTraineeCount).isEqualTo(1);
+
+      // 9. Assert that the unrelated consent SURVIVED completely untouched
       Map<String, Object> consentRow = jdbcTemplate.queryForMap(
           "SELECT trainee_consent_id, purpose, policy_version, consent_status_id FROM trainee_consents WHERE trainee_consent_id = ?",
-          preExistingConsentId
+          unrelatedConsentId
       );
       assertThat(consentRow).isNotNull();
-      assertThat((String) consentRow.get("purpose")).isEqualTo("Pre-existing Unowned Consent");
+      assertThat((String) consentRow.get("purpose")).isEqualTo("Unrelated Pre-existing Consent");
       assertThat((String) consentRow.get("policy_version")).isEqualTo("v0.9");
       assertThat(((Number) consentRow.get("consent_status_id")).longValue()).isEqualTo(1L);
 
-      // 6. Assert that the pre-existing unowned communication log SURVIVED and was NOT deleted
-      Map<String, Object> logRow = jdbcTemplate.queryForMap(
+      // 10. Assert that the pre-existing unrelated communication log SURVIVED
+      Map<String, Object> preLogRow = jdbcTemplate.queryForMap(
           "SELECT communication_log_id, provider_message_id, communication_status_id FROM communication_logs WHERE communication_log_id = ?",
-          preExistingLogId
+          unrelatedPreLogId
       );
-      assertThat(logRow).isNotNull();
-      assertThat((String) logRow.get("provider_message_id")).isEqualTo("MSG_PRE_EXISTING_SURVIVOR");
+      assertThat(preLogRow).isNotNull();
+      assertThat((String) preLogRow.get("provider_message_id")).isEqualTo("MSG_UNRELATED_PRE_EXISTING");
+
+      // 11. Assert that the concurrent unrelated communication log SURVIVED
+      Map<String, Object> concurrentLogRow = jdbcTemplate.queryForMap(
+          "SELECT communication_log_id, provider_message_id, communication_status_id FROM communication_logs WHERE communication_log_id = ?",
+          unrelatedConcurrentLogId
+      );
+      assertThat(concurrentLogRow).isNotNull();
+      assertThat((String) concurrentLogRow.get("provider_message_id")).isEqualTo("MSG_UNRELATED_CONCURRENT");
+
+      // 12. Assert that this test's fixture trainee was cleanly deleted
+      Integer fixtureTraineeCount = jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM trainees WHERE registration_number = ?",
+          Integer.class,
+          this.fixtureTraineeRegNo
+      );
+      assertThat(fixtureTraineeCount).isEqualTo(0);
 
     } finally {
-      // Clean up only the two survival fixture records explicitly created for this test
-      jdbcTemplate.update("DELETE FROM communication_logs WHERE communication_log_id = ?", preExistingLogId);
-      jdbcTemplate.update("DELETE FROM trainee_consents WHERE trainee_consent_id = ?", preExistingConsentId);
+      // Clean up ONLY the specific unrelated test records created in this test method
+      if (unrelatedConcurrentLogId != null) {
+        jdbcTemplate.update("DELETE FROM communication_logs WHERE communication_log_id = ?", unrelatedConcurrentLogId);
+      }
+      jdbcTemplate.update("DELETE FROM communication_logs WHERE communication_log_id = ?", unrelatedPreLogId);
+      jdbcTemplate.update("DELETE FROM trainee_consents WHERE trainee_consent_id = ?", unrelatedConsentId);
+      jdbcTemplate.update("DELETE FROM trainees WHERE trainee_id = ?", unrelatedTraineeId);
     }
   }
 }
