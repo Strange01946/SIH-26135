@@ -11,9 +11,11 @@ import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.mapper.TraineeMapper;
 import in.gov.sih.sih26135.repository.TraineeRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.TraineeService;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -28,18 +30,32 @@ public class TraineeServiceImpl implements TraineeService {
   private final TraineeRepository traineeRepository;
   private final UserRepository userRepository;
   private final TraineeMapper traineeMapper;
+  private final WorkflowSecurityScopeValidator securityScopeValidator;
 
   public TraineeServiceImpl(
       TraineeRepository traineeRepository,
       UserRepository userRepository,
       TraineeMapper traineeMapper) {
+    this(traineeRepository, userRepository, traineeMapper, null);
+  }
+
+  @Autowired
+  public TraineeServiceImpl(
+      TraineeRepository traineeRepository,
+      UserRepository userRepository,
+      TraineeMapper traineeMapper,
+      @Autowired(required = false) WorkflowSecurityScopeValidator securityScopeValidator) {
     this.traineeRepository = traineeRepository;
     this.userRepository = userRepository;
     this.traineeMapper = traineeMapper;
+    this.securityScopeValidator = securityScopeValidator;
   }
 
   @Override
   public TraineeResponse getById(Long id) {
+    if (securityScopeValidator != null) {
+      securityScopeValidator.validateTraineeScope(id);
+    }
     Trainee trainee = traineeRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("Trainee", "id"));
     return traineeMapper.toResponse(trainee);
@@ -49,6 +65,9 @@ public class TraineeServiceImpl implements TraineeService {
   public TraineeResponse getByRegistrationNumber(String registrationNumber) {
     Trainee trainee = traineeRepository.findByRegistrationNumber(registrationNumber)
         .orElseThrow(() -> new ResourceNotFoundException("Trainee", "registrationNumber"));
+    if (securityScopeValidator != null) {
+      securityScopeValidator.validateTraineeScope(trainee.getId());
+    }
     return traineeMapper.toResponse(trainee);
   }
 
@@ -56,6 +75,9 @@ public class TraineeServiceImpl implements TraineeService {
   public TraineeResponse getByUserId(Long userId) {
     Trainee trainee = traineeRepository.findByUserId(userId)
         .orElseThrow(() -> new ResourceNotFoundException("Trainee", "userId"));
+    if (securityScopeValidator != null) {
+      securityScopeValidator.validateTraineeScope(trainee.getId());
+    }
     return traineeMapper.toResponse(trainee);
   }
 
@@ -152,6 +174,9 @@ public class TraineeServiceImpl implements TraineeService {
     if (request == null) {
       throw new BadRequestException("Trainee update request cannot be null");
     }
+    if (securityScopeValidator != null) {
+      securityScopeValidator.validateTraineeScope(id);
+    }
 
     Trainee trainee = traineeRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("Trainee", "id"));
@@ -220,6 +245,9 @@ public class TraineeServiceImpl implements TraineeService {
   @Override
   @Transactional
   public void deleteTrainee(Long id, Long actorUserId) {
+    if (securityScopeValidator != null) {
+      securityScopeValidator.validateTraineeScope(id);
+    }
     Trainee trainee = traineeRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("Trainee", "id"));
 

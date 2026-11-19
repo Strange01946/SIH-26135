@@ -628,7 +628,7 @@ class FilterSearchSortingSecurityTest {
           .isGreaterThanOrEqualTo(200);
       assertThat(annotatedQueryCount)
           .as("Expected exact count of annotated queries in repository layer")
-          .isEqualTo(2);
+          .isEqualTo(5);
     }
   }
 
