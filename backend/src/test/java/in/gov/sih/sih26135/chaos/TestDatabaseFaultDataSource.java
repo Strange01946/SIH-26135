@@ -7,6 +7,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.sql.DataSource;
@@ -15,15 +16,18 @@ import org.springframework.jdbc.datasource.DelegatingDataSource;
 
 /**
  * Test-only fault-injecting DataSource proxy for Phase 29.7 chaos engineering.
- * Allows deterministic simulation of database connection failure at the external JDBC boundary
- * and mid-transaction statement/commit boundary without disrupting or shutting down the shared MySQL instance.
+ * Allows deterministic simulation of database connection failure at the external JDBC boundary,
+ * mid-transaction statement/mutation failure after genuine writes, and commit boundaries
+ * without disrupting or shutting down the shared MySQL instance.
  */
 public class TestDatabaseFaultDataSource extends DelegatingDataSource {
 
   private final AtomicBoolean connectionFailureEnabled = new AtomicBoolean(false);
   private final AtomicBoolean midStreamFailureEnabled = new AtomicBoolean(false);
   private final AtomicInteger statementCount = new AtomicInteger(0);
-  private final AtomicInteger failAfterStatements = new AtomicInteger(1);
+  private final AtomicInteger failAfterStatements = new AtomicInteger(-1);
+  private final AtomicInteger mutationCount = new AtomicInteger(0);
+  private final AtomicInteger failAfterMutations = new AtomicInteger(-1);
   private final AtomicBoolean failOnCommit = new AtomicBoolean(false);
 
   public TestDatabaseFaultDataSource(DataSource targetDataSource) {
@@ -40,7 +44,17 @@ public class TestDatabaseFaultDataSource extends DelegatingDataSource {
 
   public void setMidStreamFailure(int failAfterStatements) {
     this.failAfterStatements.set(failAfterStatements);
+    this.failAfterMutations.set(-1);
     this.statementCount.set(0);
+    this.mutationCount.set(0);
+    this.midStreamFailureEnabled.set(true);
+  }
+
+  public void setFailAfterMutations(int failAfterMutations) {
+    this.failAfterMutations.set(failAfterMutations);
+    this.failAfterStatements.set(-1);
+    this.statementCount.set(0);
+    this.mutationCount.set(0);
     this.midStreamFailureEnabled.set(true);
   }
 
@@ -53,10 +67,17 @@ public class TestDatabaseFaultDataSource extends DelegatingDataSource {
     this.midStreamFailureEnabled.set(false);
     this.failOnCommit.set(false);
     this.statementCount.set(0);
+    this.failAfterStatements.set(-1);
+    this.mutationCount.set(0);
+    this.failAfterMutations.set(-1);
   }
 
   public int getStatementCount() {
     return this.statementCount.get();
+  }
+
+  public int getMutationCount() {
+    return this.mutationCount.get();
   }
 
   public DataSource getActualTargetDataSource() {
@@ -107,8 +128,11 @@ public class TestDatabaseFaultDataSource extends DelegatingDataSource {
             try {
               Object result = method.invoke(actualConnection, args);
               if (midStreamFailureEnabled.get()) {
-                if ("prepareStatement".equals(methodName) || "createStatement".equals(methodName)) {
-                  return wrapStatement((Statement) result);
+                if ("prepareStatement".equals(methodName)) {
+                  String sql = args != null && args.length > 0 && args[0] instanceof String ? (String) args[0] : null;
+                  return wrapStatement((Statement) result, sql);
+                } else if ("createStatement".equals(methodName)) {
+                  return wrapStatement((Statement) result, null);
                 }
               }
               return result;
@@ -120,7 +144,7 @@ public class TestDatabaseFaultDataSource extends DelegatingDataSource {
     );
   }
 
-  private Statement wrapStatement(Statement actualStatement) {
+  private Statement wrapStatement(Statement actualStatement, String preparedSql) {
     Class<?>[] interfaces = actualStatement instanceof PreparedStatement
         ? new Class<?>[]{PreparedStatement.class}
         : new Class<?>[]{Statement.class};
@@ -133,9 +157,28 @@ public class TestDatabaseFaultDataSource extends DelegatingDataSource {
           public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             String methodName = method.getName();
             if (methodName.startsWith("execute") && midStreamFailureEnabled.get()) {
-              int currentCount = statementCount.incrementAndGet();
-              if (currentCount >= failAfterStatements.get()) {
-                throw new SQLException("Communications link failure during statement execution: simulated mid-stream JDBC network drop");
+              String sql = (args != null && args.length > 0 && args[0] instanceof String)
+                  ? (String) args[0]
+                  : preparedSql;
+
+              boolean isMutation = false;
+              if (methodName.startsWith("executeUpdate") || methodName.startsWith("executeLargeUpdate") || methodName.equals("executeBatch")) {
+                isMutation = true;
+              } else if (sql != null) {
+                String trimmed = sql.trim().toUpperCase(Locale.ROOT);
+                isMutation = trimmed.startsWith("INSERT") || trimmed.startsWith("UPDATE") || trimmed.startsWith("DELETE") || trimmed.startsWith("REPLACE");
+              }
+
+              if (failAfterMutations.get() >= 0 && isMutation) {
+                int currentMutation = mutationCount.incrementAndGet();
+                if (currentMutation > failAfterMutations.get()) {
+                  throw new SQLException("Communications link failure during statement execution: simulated mid-stream JDBC network drop after mutation #" + (currentMutation - 1));
+                }
+              } else if (failAfterStatements.get() > 0) {
+                int currentCount = statementCount.incrementAndGet();
+                if (currentCount >= failAfterStatements.get()) {
+                  throw new SQLException("Communications link failure during statement execution: simulated mid-stream JDBC network drop");
+                }
               }
             }
             try {

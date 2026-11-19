@@ -12,7 +12,10 @@ import in.gov.sih.sih26135.communication.provider.MockSmsProvider;
 import in.gov.sih.sih26135.communication.provider.TwilioSmsProvider;
 import in.gov.sih.sih26135.communication.queue.DurableDispatchQueueService;
 import in.gov.sih.sih26135.correlation.CorrelationContextHolder;
+import in.gov.sih.sih26135.dto.request.CreateAssessmentResultRequest;
+import in.gov.sih.sih26135.dto.request.CreateCertificationRequest;
 import in.gov.sih.sih26135.dto.request.CreateTrainingEnrollmentRequest;
+import in.gov.sih.sih26135.dto.request.RecordAssessmentAndIssueCertificateRequest;
 import in.gov.sih.sih26135.dto.response.ImportBatchProgressResponse;
 import in.gov.sih.sih26135.dto.response.ImportBatchResponse;
 import in.gov.sih.sih26135.dto.response.SystemEventLogResponse;
@@ -25,7 +28,10 @@ import in.gov.sih.sih26135.security.jwt.JwtTokenProvider;
 import in.gov.sih.sih26135.service.ImportBatchProcessingWorkflow;
 import in.gov.sih.sih26135.service.SystemEventLoggingService;
 import in.gov.sih.sih26135.service.TrainingEnrollmentService;
+import in.gov.sih.sih26135.service.TrainingOutcomeWorkflowService;
 import java.io.IOException;
+import java.io.InputStream;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -59,6 +65,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -168,6 +175,9 @@ public class BackendChaosAndFaultInjectionTest {
   private TrainingEnrollmentService trainingEnrollmentService;
 
   @Autowired
+  private TrainingOutcomeWorkflowService trainingOutcomeWorkflowService;
+
+  @Autowired
   private TraineeRepository traineeRepository;
 
   @Autowired
@@ -182,13 +192,87 @@ public class BackendChaosAndFaultInjectionTest {
   private final List<Long> trackedTraineeIds = new CopyOnWriteArrayList<>();
   private final List<Long> trackedBatchIds = new CopyOnWriteArrayList<>();
   private final List<Long> trackedEnrollmentIds = new CopyOnWriteArrayList<>();
+  private final List<Long> trackedCertificationIds = new CopyOnWriteArrayList<>();
+  private final List<Long> trackedAssessmentResultIds = new CopyOnWriteArrayList<>();
+  private final List<Long> trackedTraineeAssessmentIds = new CopyOnWriteArrayList<>();
+  private final List<Long> trackedAssessmentIds = new CopyOnWriteArrayList<>();
   private final List<Long> trackedJobIds = new CopyOnWriteArrayList<>();
   private final List<Long> trackedCommLogIds = new CopyOnWriteArrayList<>();
   private final List<Long> trackedSystemEventIds = new CopyOnWriteArrayList<>();
   private final List<Long> trackedImportBatchIds = new CopyOnWriteArrayList<>();
 
+  private record CommPropertiesSnapshot(
+      CommunicationProperties.ProviderMode mode,
+      boolean liveRecipientOverrideEnabled,
+      CommunicationProperties.EmailProviderPreference emailProviderPreference,
+      boolean allowTestWebhookSignatures,
+      String twilioBaseUrl,
+      String twilioAccountSid,
+      String twilioAuthToken,
+      String twilioSmsFrom,
+      String twilioWhatsappFrom,
+      String twilioLiveTestPhone,
+      String twilioLiveTestWhatsapp,
+      String twilioWhatsappContentSid,
+      String twilioWhatsappContentVariables,
+      int twilioConnectTimeoutMs,
+      int twilioReadTimeoutMs
+  ) {
+    static CommPropertiesSnapshot capture(CommunicationProperties props) {
+      if (props == null) {
+        return null;
+      }
+      CommunicationProperties.TwilioConfig tw = props.getTwilio();
+      return new CommPropertiesSnapshot(
+          props.getMode(),
+          props.isLiveRecipientOverrideEnabled(),
+          props.getEmailProviderType(),
+          props.isAllowTestWebhookSignatures(),
+          tw != null ? tw.getBaseUrl() : "",
+          tw != null ? tw.getAccountSid() : "",
+          tw != null ? tw.getAuthToken() : "",
+          tw != null ? tw.getSmsFrom() : "",
+          tw != null ? tw.getWhatsappFrom() : "",
+          tw != null ? tw.getLiveTestPhone() : "",
+          tw != null ? tw.getLiveTestWhatsapp() : "",
+          tw != null ? tw.getWhatsappContentSid() : "",
+          tw != null ? tw.getWhatsappContentVariables() : "",
+          tw != null ? tw.getConnectTimeoutMs() : 5000,
+          tw != null ? tw.getReadTimeoutMs() : 10000
+      );
+    }
+
+    void restore(CommunicationProperties props) {
+      if (props == null) {
+        return;
+      }
+      props.setMode(this.mode);
+      props.setLiveRecipientOverrideEnabled(this.liveRecipientOverrideEnabled);
+      props.setEmailProviderType(this.emailProviderPreference);
+      props.setAllowTestWebhookSignatures(this.allowTestWebhookSignatures);
+
+      CommunicationProperties.TwilioConfig tw = props.getTwilio();
+      if (tw != null) {
+        tw.setBaseUrl(this.twilioBaseUrl);
+        tw.setAccountSid(this.twilioAccountSid);
+        tw.setAuthToken(this.twilioAuthToken);
+        tw.setSmsFrom(this.twilioSmsFrom);
+        tw.setWhatsappFrom(this.twilioWhatsappFrom);
+        tw.setLiveTestPhone(this.twilioLiveTestPhone);
+        tw.setLiveTestWhatsapp(this.twilioLiveTestWhatsapp);
+        tw.setWhatsappContentSid(this.twilioWhatsappContentSid);
+        tw.setWhatsappContentVariables(this.twilioWhatsappContentVariables);
+        tw.setConnectTimeoutMs(this.twilioConnectTimeoutMs);
+        tw.setReadTimeoutMs(this.twilioReadTimeoutMs);
+      }
+    }
+  }
+
+  private CommPropertiesSnapshot initialCommSnapshot;
+
   @BeforeEach
   void setUp() throws SQLException, IOException {
+    this.initialCommSnapshot = CommPropertiesSnapshot.capture(this.communicationProperties);
     setAdminAuthentication();
     this.adminAuthHeader = "Bearer " + jwtTokenProvider.generateAccessToken(
         ROOT_ADMIN_USER_ID,
@@ -229,18 +313,17 @@ public class BackendChaosAndFaultInjectionTest {
         gatewayServer.reset();
         gatewayServer.close();
       }
-      if (communicationProperties != null) {
-        communicationProperties.setMode(CommunicationProperties.ProviderMode.MOCK);
-        communicationProperties.getTwilio().setBaseUrl("https://api.twilio.com/2010-04-01");
-        if (twilioSmsProvider != null) {
-          twilioSmsProvider.initRestClient();
-        }
-      }
       if (mockSmsProvider != null) {
         mockSmsProvider.clear();
       }
       cleanTestFixtures();
     } finally {
+      if (initialCommSnapshot != null && communicationProperties != null) {
+        initialCommSnapshot.restore(communicationProperties);
+        if (twilioSmsProvider != null) {
+          twilioSmsProvider.initRestClient();
+        }
+      }
       SecurityContextHolder.clearContext();
       CorrelationContextHolder.clear();
     }
@@ -277,6 +360,43 @@ public class BackendChaosAndFaultInjectionTest {
   private void cleanTestFixtures() {
     // Teardown in strict reverse dependency order with exact primary key ownership tracking.
     // Silent catch blocks removed; fail visibly if cleanup fails.
+
+    // 0. Clean tracked certifications & assessment workflow fixtures
+    List<Long> certIds = new ArrayList<>(trackedCertificationIds);
+    for (Long certId : certIds) {
+      directJdbcTemplate.update("DELETE FROM certifications WHERE certification_id = ?", certId);
+      Integer remaining = directJdbcTemplate.queryForObject(
+          "SELECT count(*) FROM certifications WHERE certification_id = ?", Integer.class, certId);
+      assertThat(remaining).as("Certification id=" + certId + " must be completely deleted").isEqualTo(0);
+      trackedCertificationIds.remove(certId);
+    }
+
+    List<Long> arIds = new ArrayList<>(trackedAssessmentResultIds);
+    for (Long arId : arIds) {
+      directJdbcTemplate.update("DELETE FROM assessment_results WHERE assessment_result_id = ?", arId);
+      Integer remaining = directJdbcTemplate.queryForObject(
+          "SELECT count(*) FROM assessment_results WHERE assessment_result_id = ?", Integer.class, arId);
+      assertThat(remaining).as("Assessment result id=" + arId + " must be completely deleted").isEqualTo(0);
+      trackedAssessmentResultIds.remove(arId);
+    }
+
+    List<Long> taIds = new ArrayList<>(trackedTraineeAssessmentIds);
+    for (Long taId : taIds) {
+      directJdbcTemplate.update("DELETE FROM trainee_assessments WHERE trainee_assessment_id = ?", taId);
+      Integer remaining = directJdbcTemplate.queryForObject(
+          "SELECT count(*) FROM trainee_assessments WHERE trainee_assessment_id = ?", Integer.class, taId);
+      assertThat(remaining).as("Trainee assessment id=" + taId + " must be completely deleted").isEqualTo(0);
+      trackedTraineeAssessmentIds.remove(taId);
+    }
+
+    List<Long> aIds = new ArrayList<>(trackedAssessmentIds);
+    for (Long aId : aIds) {
+      directJdbcTemplate.update("DELETE FROM assessments WHERE assessment_id = ?", aId);
+      Integer remaining = directJdbcTemplate.queryForObject(
+          "SELECT count(*) FROM assessments WHERE assessment_id = ?", Integer.class, aId);
+      assertThat(remaining).as("Assessment id=" + aId + " must be completely deleted").isEqualTo(0);
+      trackedAssessmentIds.remove(aId);
+    }
 
     // 1. Clean tracked enrollments
     List<Long> enrIds = new ArrayList<>(trackedEnrollmentIds);
@@ -331,9 +451,14 @@ public class BackendChaosAndFaultInjectionTest {
     }
 
     // 5. Clean tracked training batches
+    // Exact ownership tracking: remove batch-wide enrollment deletion; fail visibly if unexpected dependents exist
     List<Long> tBatchIds = new ArrayList<>(trackedBatchIds);
     for (Long bId : tBatchIds) {
-      directJdbcTemplate.update("DELETE FROM training_enrollments WHERE batch_id = ?", bId);
+      Integer dependentEnrollments = directJdbcTemplate.queryForObject(
+          "SELECT count(*) FROM training_enrollments WHERE batch_id = ?", Integer.class, bId);
+      if (dependentEnrollments != null && dependentEnrollments > 0) {
+        throw new IllegalStateException("Training batch id=" + bId + " has unexpected dependent enrollments (" + dependentEnrollments + ")");
+      }
       int deleted = directJdbcTemplate.update("DELETE FROM training_batches WHERE batch_id = ?", bId);
       Integer remaining = directJdbcTemplate.queryForObject(
           "SELECT count(*) FROM training_batches WHERE batch_id = ?", Integer.class, bId);
@@ -347,6 +472,9 @@ public class BackendChaosAndFaultInjectionTest {
       if (trId.equals(AUTHORITATIVE_TEST_TRAINEE_ID)) {
         continue; // Never touch authoritative trainee
       }
+      directJdbcTemplate.update("DELETE FROM certifications WHERE trainee_id = ?", trId);
+      directJdbcTemplate.update("DELETE FROM assessment_results WHERE trainee_id = ?", trId);
+      directJdbcTemplate.update("DELETE FROM trainee_assessments WHERE trainee_id = ?", trId);
       directJdbcTemplate.update("DELETE FROM communication_logs WHERE trainee_id = ?", trId);
       directJdbcTemplate.update("DELETE FROM communication_dispatch_attempts WHERE job_id IN (SELECT job_id FROM communication_dispatch_jobs WHERE trainee_id = ?)", trId);
       directJdbcTemplate.update("DELETE FROM communication_dispatch_jobs WHERE trainee_id = ?", trId);
@@ -486,7 +614,7 @@ public class BackendChaosAndFaultInjectionTest {
 
   @Test
   @Order(2)
-  @DisplayName("2. Mid-Transaction Statement JDBC Failure: Statement-level JDBC fault during business workflow rolls back completely with zero orphaned records")
+  @DisplayName("2. Mid-Transaction Statement JDBC Failure: Statement-level JDBC fault after genuine mutation rolls back earlier write with zero orphaned records")
   void testTransactionRollback_midWorkflowFailure_preservesAtomicityWithoutOrphanedRows() {
     Long traineeId = insertTestTrainee("ROLLBACK");
     Long batchId = insertTestBatch(10);
@@ -500,60 +628,155 @@ public class BackendChaosAndFaultInjectionTest {
     Long centerId = ((Number) ref.get("center_id")).longValue();
     Long programId = ((Number) ref.get("program_id")).longValue();
 
-    CreateTrainingEnrollmentRequest req = new CreateTrainingEnrollmentRequest();
-    req.setEnrollmentNumber(enrollmentNumber);
-    req.setTraineeId(traineeId);
-    req.setBatchId(batchId);
-    req.setProgramId(programId);
-    req.setCourseId(courseId);
-    req.setProviderId(providerId);
-    req.setCenterId(centerId);
-    req.setEnrollmentStatusId(1L);
-    req.setEnrollmentDate(LocalDate.of(2026, 6, 1));
+    // 1. Create baseline active enrollment
+    CreateTrainingEnrollmentRequest enrReq = new CreateTrainingEnrollmentRequest();
+    enrReq.setEnrollmentNumber(enrollmentNumber);
+    enrReq.setTraineeId(traineeId);
+    enrReq.setBatchId(batchId);
+    enrReq.setProgramId(programId);
+    enrReq.setCourseId(courseId);
+    enrReq.setProviderId(providerId);
+    enrReq.setCenterId(centerId);
+    enrReq.setEnrollmentStatusId(1L);
+    enrReq.setEnrollmentDate(LocalDate.of(2026, 6, 1));
+    var enrResp = trainingEnrollmentService.createEnrollment(enrReq);
+    Long enrollmentId = enrResp.getId();
+    trackedEnrollmentIds.add(enrollmentId);
 
-    // Enable deterministic JDBC statement failure after 2 statements (after initial SELECT FOR UPDATE begins)
-    faultDataSource.setMidStreamFailure(2);
+    // 2. Setup prerequisite assessment and trainee_assessment
+    String assessCode = "ASS-RB-" + RUN_TOKEN;
+    KeyHolder aKey = new GeneratedKeyHolder();
+    directJdbcTemplate.update(conn -> {
+      PreparedStatement ps = conn.prepareStatement(
+          "INSERT INTO assessments (assessment_code, assessment_name, course_id, batch_id, program_id, assessment_type_id, maximum_score, pass_score, assessment_date, lifecycle_status_id, created_at, updated_at) "
+              + "VALUES (?, 'Rollback Test Exam', ?, ?, ?, 1, 100.00, 40.00, CURDATE(), 1, NOW(), NOW())",
+          Statement.RETURN_GENERATED_KEYS
+      );
+      ps.setString(1, assessCode);
+      ps.setLong(2, courseId);
+      ps.setLong(3, batchId);
+      ps.setLong(4, programId);
+      return ps;
+    }, aKey);
+    Long assessmentId = aKey.getKey().longValue();
+    trackedAssessmentIds.add(assessmentId);
+
+    KeyHolder taKey = new GeneratedKeyHolder();
+    directJdbcTemplate.update(conn -> {
+      PreparedStatement ps = conn.prepareStatement(
+          "INSERT INTO trainee_assessments (assessment_id, trainee_id, enrollment_id, attempt_number, appeared_flag, assessment_date, created_at, updated_at) "
+              + "VALUES (?, ?, ?, 1, 1, CURDATE(), NOW(), NOW())",
+          Statement.RETURN_GENERATED_KEYS
+      );
+      ps.setLong(1, assessmentId);
+      ps.setLong(2, traineeId);
+      ps.setLong(3, enrollmentId);
+      return ps;
+    }, taKey);
+    Long traineeAssessmentId = taKey.getKey().longValue();
+    trackedTraineeAssessmentIds.add(traineeAssessmentId);
+
+    // 3. Prepare multi-write transactional request:
+    // Write 1: INSERT INTO assessment_results
+    // Write 2: INSERT INTO certifications
+    // Write 3: UPDATE training_enrollments
+    String certNo = "CERT-RB-" + RUN_TOKEN;
+    CreateAssessmentResultRequest resultReq = new CreateAssessmentResultRequest(
+        traineeAssessmentId,
+        traineeId,
+        new BigDecimal("100.00"),
+        new BigDecimal("88.50"),
+        new BigDecimal("88.50"),
+        2L, // PASS (outcome_id=2 in ref_assessment_outcome)
+        LocalDateTime.now(),
+        "Rollback test assessment result"
+    );
+    CreateCertificationRequest certReq = new CreateCertificationRequest(
+        certNo,
+        traineeId,
+        enrollmentId,
+        courseId,
+        programId,
+        null,
+        "National Skill Development Council",
+        LocalDate.now(),
+        LocalDate.now().plusYears(5),
+        1L, // ACTIVE
+        1L, // VERIFIED
+        LocalDateTime.now(),
+        ROOT_ADMIN_USER_ID
+    );
+    RecordAssessmentAndIssueCertificateRequest outcomeReq = new RecordAssessmentAndIssueCertificateRequest(
+        resultReq, certReq, enrollmentId, 3L
+    );
+
+    // 4. Inject controlled failure after exactly 1 mutation:
+    // Mutation 1 (INSERT assessment_results) executes against MySQL!
+    // Mutation 2 (INSERT certifications) fails with simulated JDBC drop!
+    faultDataSource.setFailAfterMutations(1);
 
     try {
-      // Execute existing multi-table business operation: trainingEnrollmentService.createEnrollment
-      assertThatThrownBy(() -> trainingEnrollmentService.createEnrollment(req))
+      assertThatThrownBy(() -> trainingOutcomeWorkflowService.recordAssessmentResultAndIssueCertificate(outcomeReq))
           .isInstanceOf(DataAccessException.class);
 
-      // Verify that statement execution actually occurred before failure
-      assertThat(faultDataSource.getStatementCount())
-          .as("Fault must occur after genuine database operations have begun")
+      // Verify that genuine write executed before failure
+      assertThat(faultDataSource.getMutationCount())
+          .as("Fault must occur on subsequent mutation after first database write executed")
           .isGreaterThanOrEqualTo(2);
     } finally {
-      // Disable fault before verification and recovery
       faultDataSource.disableAllFaults();
     }
 
-    // Independent SQL verification: Verify 0 partial rows exist in training_enrollments
-    Integer enrollmentCount = directJdbcTemplate.queryForObject(
-        "SELECT count(*) FROM training_enrollments WHERE enrollment_number = ?",
-        Integer.class,
-        enrollmentNumber
+    // 5. Verification: Transaction rolled back earlier mutation; 0 partially committed records remain
+    Integer resultCount = directJdbcTemplate.queryForObject(
+        "SELECT count(*) FROM assessment_results WHERE trainee_id = ? AND trainee_assessment_id = ?",
+        Integer.class, traineeId, traineeAssessmentId
     );
-    assertThat(enrollmentCount)
-        .as("Transaction must completely roll back: 0 rows committed")
+    assertThat(resultCount)
+        .as("Transaction must completely roll back earlier mutation: 0 assessment results committed")
         .isEqualTo(0);
 
-    // Recovery verification: With fault removed, business workflow succeeds atomically
-    var response = trainingEnrollmentService.createEnrollment(req);
-    assertThat(response).isNotNull();
-    trackedEnrollmentIds.add(response.getId());
-
-    Integer committedCount = directJdbcTemplate.queryForObject(
-        "SELECT count(*) FROM training_enrollments WHERE enrollment_id = ?",
-        Integer.class,
-        response.getId()
+    Integer certCount = directJdbcTemplate.queryForObject(
+        "SELECT count(*) FROM certifications WHERE certificate_number = ?",
+        Integer.class, certNo
     );
-    assertThat(committedCount).isEqualTo(1);
+    assertThat(certCount)
+        .as("Transaction must completely roll back: 0 certificates committed")
+        .isEqualTo(0);
+
+    Integer enrStatus = directJdbcTemplate.queryForObject(
+        "SELECT enrollment_status_id FROM training_enrollments WHERE enrollment_id = ?",
+        Integer.class, enrollmentId
+    );
+    assertThat(enrStatus)
+        .as("Enrollment status must remain rolled back at original active status (1)")
+        .isEqualTo(1);
+
+    // 6. Recovery verification: With fault removed, business workflow succeeds atomically
+    var successResponse = trainingOutcomeWorkflowService.recordAssessmentResultAndIssueCertificate(outcomeReq);
+    assertThat(successResponse).isNotNull();
+    assertThat(successResponse.assessmentResult()).isNotNull();
+    assertThat(successResponse.certification()).isNotNull();
+
+    trackedAssessmentResultIds.add(successResponse.assessmentResult().getId());
+    trackedCertificationIds.add(successResponse.certification().getId());
+
+    Integer committedResult = directJdbcTemplate.queryForObject(
+        "SELECT count(*) FROM assessment_results WHERE assessment_result_id = ?",
+        Integer.class, successResponse.assessmentResult().getId()
+    );
+    assertThat(committedResult).isEqualTo(1);
+
+    Integer committedCert = directJdbcTemplate.queryForObject(
+        "SELECT count(*) FROM certifications WHERE certification_id = ?",
+        Integer.class, successResponse.certification().getId()
+    );
+    assertThat(committedCert).isEqualTo(1);
   }
 
   @Test
   @Order(3)
-  @DisplayName("3. Commit Ambiguity Classification: Fault during commit acknowledgment is classified as ambiguous rather than falsely claiming rollback")
+  @DisplayName("3. Commit-Boundary Exception Simulation: An exception thrown at connection commit() boundary is reconciled through operational identifiers rather than assuming state")
   void testCommitAmbiguity_distinguishesAmbiguousAcknowledgmentFromRollback() {
     Long traineeId = insertTestTrainee("COMMIT_AMBIG");
     Long batchId = insertTestBatch(10);
@@ -581,7 +804,12 @@ public class BackendChaosAndFaultInjectionTest {
       faultDataSource.disableAllFaults();
     }
 
-    // Critical transaction ambiguity rule: Reconcile actual persisted state via operational identifier
+    // Accurate simulation documentation:
+    // The test proxy throws before actualConnection.commit() is invoked.
+    // Because the underlying commit was not executed, MySQL rolls back uncommitted changes.
+    // In production, when an exception occurs at the commit boundary (such as socket drop during commit),
+    // the client cannot determine whether the commit succeeded on the server.
+    // Therefore, the application must reconcile the actual state using operational identifiers (enrollmentNumber).
     List<Long> enrIds = directJdbcTemplate.queryForList(
         "SELECT enrollment_id FROM training_enrollments WHERE enrollment_number = ?",
         Long.class,
@@ -1020,18 +1248,108 @@ public class BackendChaosAndFaultInjectionTest {
 
   @Test
   @Order(15)
-  @DisplayName("15. Payload Bounds: Configured upload size limit (25MB) is enforced without unbounded memory growth")
-  void testCorruptedMultipart_payloadBounds_verifiedCorrectly() {
-    long maxMemoryBefore = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
-    assertThat(maxMemoryBefore).isGreaterThan(0);
+  @DisplayName("15. Payload Bounds: Configured upload size limit (25MB) is enforced with real HTTP oversized rejection and resource cleanup")
+  void testCorruptedMultipart_payloadBounds_verifiedCorrectly() throws Exception {
+    // 1. Verify configured limits in Spring Boot environment
+    long maxMultipartBytes = 25L * 1024L * 1024L; // 25MB
+    long pipelineMaxBytes = 10L * 1024L * 1024L; // 10MB
 
-    // Verify configured multipart limits in Spring application context
-    assertThat(communicationProperties).isNotNull();
-    assertThat(importWorkflow).isNotNull();
+    // 2. Real HTTP oversized-upload rejection:
+    // Generate a bounded streaming body exceeding the 25MB limit (25MB + 50KB) with zero unbounded heap consumption
+    long targetFileSize = maxMultipartBytes + 50L * 1024L; // 25MB + 50KB overflow
+    String boundary = "----ChaosBoundaryOversized" + RUN_TOKEN;
+    String header = "--" + boundary + "\r\n"
+        + "Content-Disposition: form-data; name=\"file\"; filename=\"oversized_test.csv\"\r\n"
+        + "Content-Type: text/csv\r\n\r\n";
+    String footer = "\r\n--" + boundary + "--\r\n";
+    byte[] headerBytes = header.getBytes(StandardCharsets.UTF_8);
+    byte[] footerBytes = footer.getBytes(StandardCharsets.UTF_8);
+    byte[] chunk = "1,Test,Data,Row,Value,Column\n".getBytes(StandardCharsets.UTF_8);
 
-    // Verify parser is streaming and bounded: heap growth does not exhaust memory
-    long maxMemoryAfter = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
-    assertThat(Math.abs(maxMemoryAfter - maxMemoryBefore)).isLessThan(200_000_000L); // Bounded memory growth < 200MB
+    long heapBefore = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
+
+    InputStream streamingBody = new InputStream() {
+      private int headerPos = 0;
+      private long bodyBytesEmitted = 0;
+      private int footerPos = 0;
+
+      @Override
+      public int read() {
+        if (headerPos < headerBytes.length) {
+          return headerBytes[headerPos++] & 0xFF;
+        }
+        if (bodyBytesEmitted < targetFileSize) {
+          int b = chunk[(int) (bodyBytesEmitted % chunk.length)] & 0xFF;
+          bodyBytesEmitted++;
+          return b;
+        }
+        if (footerPos < footerBytes.length) {
+          return footerBytes[footerPos++] & 0xFF;
+        }
+        return -1;
+      }
+
+      @Override
+      public int read(byte[] b, int off, int len) {
+        if (headerPos < headerBytes.length) {
+          int count = Math.min(len, headerBytes.length - headerPos);
+          System.arraycopy(headerBytes, headerPos, b, off, count);
+          headerPos += count;
+          return count;
+        }
+        if (bodyBytesEmitted < targetFileSize) {
+          int count = (int) Math.min(len, targetFileSize - bodyBytesEmitted);
+          for (int i = 0; i < count; i++) {
+            b[off + i] = chunk[(int) ((bodyBytesEmitted + i) % chunk.length)];
+          }
+          bodyBytesEmitted += count;
+          return count;
+        }
+        if (footerPos < footerBytes.length) {
+          int count = Math.min(len, footerBytes.length - footerPos);
+          System.arraycopy(footerBytes, footerPos, b, off, count);
+          footerPos += count;
+          return count;
+        }
+        return -1;
+      }
+    };
+
+    HttpRequest request = HttpRequest.newBuilder()
+        .uri(URI.create("http://localhost:" + port + "/api/v1/import-batches"))
+        .header("Authorization", adminAuthHeader)
+        .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+        .POST(HttpRequest.BodyPublishers.ofInputStream(() -> streamingBody))
+        .build();
+
+    HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+    // 3. Appropriate HTTP 413 or 400 rejection contract
+    assertThat(response.statusCode())
+        .as("Oversized payload exceeding multipart max-file-size must be rejected with 413 or 400")
+        .isIn(413, 400);
+
+    String body = response.body();
+    assertThat(body)
+        .doesNotContain(".java:")
+        .doesNotContain("org.apache.catalina");
+
+    if (response.statusCode() == 413) {
+      JsonNode json = objectMapper.readTree(body);
+      assertThat(json.path("status").asInt()).isEqualTo(413);
+      assertThat(json.path("code").asText()).isEqualTo("FILE_SIZE_LIMIT_EXCEEDED");
+    }
+
+    // 4. Resource cleanup & server responsiveness: subsequent valid request succeeds immediately
+    MvcResult validCheck = mockMvc.perform(get("/api/v1/trainees/1005143")
+            .header("Authorization", adminAuthHeader))
+        .andExpect(status().isOk())
+        .andReturn();
+    assertThat(validCheck.getResponse().getContentAsString()).contains("1005143");
+
+    // 5. Memory bounds verified: heap growth during streaming upload is strictly bounded (< 50MB)
+    long heapAfter = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
+    assertThat(Math.abs(heapAfter - heapBefore)).isLessThan(50_000_000L);
   }
 
   @Test
@@ -1303,7 +1621,7 @@ public class BackendChaosAndFaultInjectionTest {
   @Test
   @Order(23)
   @DisplayName("23. Disaster Recovery Audit: Evaluates project configuration/scripts for automated backup/restore, formally classifying Full DR as NOT VERIFIED")
-  void testDisasterRecoveryAudit_backupAndRestoreFeasibility() {
+  void testDisasterRecoveryAudit_backupAndRestoreFeasibility() throws IOException {
     // Dynamically locate project root by resolving existing directories
     Path projectRoot = Paths.get("").toAbsolutePath();
     if (!Files.exists(projectRoot.resolve("database")) && Files.exists(projectRoot.resolve("../database"))) {
@@ -1316,7 +1634,8 @@ public class BackendChaosAndFaultInjectionTest {
         .isTrue();
 
     // Inspect repository for automated database backup and restore scripts
-    List<Path> backupScripts = new ArrayList<>();
+    // Notice: Any filesystem scan error is reported visibly rather than silently suppressed
+    List<Path> backupScripts;
     try (Stream<Path> stream = Files.walk(projectRoot, 2)) {
       backupScripts = stream
           .filter(p -> {
@@ -1325,7 +1644,7 @@ public class BackendChaosAndFaultInjectionTest {
                 && (name.endsWith(".sh") || name.endsWith(".ps1") || name.endsWith(".sql"));
           })
           .toList();
-    } catch (IOException ignored) {}
+    }
 
     // Verify absence of automated backup/restore scripts in repository
     assertThat(backupScripts)
@@ -1360,11 +1679,58 @@ public class BackendChaosAndFaultInjectionTest {
     int deleted = directJdbcTemplate.update("DELETE FROM training_batches WHERE batch_id = ?", unrelatedBatchId);
     assertThat(deleted).isEqualTo(1);
 
-    // 4. Prove that a genuine cleanup failure is reported visibly (rethrow / AssertionError)
-    assertThatThrownBy(() -> {
-      Long dummyId = -999999L;
-      Integer remaining = 1; // Simulated failure: row was NOT deleted
-      assertThat(remaining).as("Record id=" + dummyId + " must be completely deleted").isEqualTo(0);
-    }).isInstanceOf(AssertionError.class);
+    // 4. Genuine controlled cleanup failure test:
+    // Create an owned batch in trackedBatchIds, an owned trainee in trackedTraineeIds,
+    // and an untracked dependent enrollment referencing the batch.
+    // The cleanup implementation must detect the unexpected dependent enrollment and visibly fail!
+    Long failBatchId = insertTestBatch(5);
+    Long failTraineeId = insertTestTrainee("CLEAN_FAIL");
+    String unexpectedEnrNo = "ENR-FAIL-" + RUN_TOKEN;
+
+    Map<String, Object> ref = directJdbcTemplate.queryForMap(
+        "SELECT course_id, provider_id, center_id, program_id FROM training_batches WHERE batch_id = ?", failBatchId
+    );
+    KeyHolder enrKey = new GeneratedKeyHolder();
+    directJdbcTemplate.update(conn -> {
+      PreparedStatement ps = conn.prepareStatement(
+          "INSERT INTO training_enrollments (enrollment_number, trainee_id, batch_id, program_id, course_id, provider_id, center_id, enrollment_status_id, enrollment_date, created_at, updated_at) "
+              + "VALUES (?, ?, ?, ?, ?, ?, ?, 1, '2026-06-01', NOW(), NOW())",
+          Statement.RETURN_GENERATED_KEYS
+      );
+      ps.setString(1, unexpectedEnrNo);
+      ps.setLong(2, failTraineeId);
+      ps.setLong(3, failBatchId);
+      ps.setLong(4, ((Number) ref.get("program_id")).longValue());
+      ps.setLong(5, ((Number) ref.get("course_id")).longValue());
+      ps.setLong(6, ((Number) ref.get("provider_id")).longValue());
+      ps.setLong(7, ((Number) ref.get("center_id")).longValue());
+      return ps;
+    }, enrKey);
+    Long unexpectedEnrollmentId = enrKey.getKey().longValue();
+
+    try {
+      // Act & Assert: cleanTestFixtures() must report cleanup failure visibly
+      assertThatThrownBy(this::cleanTestFixtures)
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("unexpected dependent enrollments");
+    } finally {
+      // Safely delete temporary regression fixtures in reverse dependency order
+      directJdbcTemplate.update("DELETE FROM training_enrollments WHERE enrollment_id = ?", unexpectedEnrollmentId);
+      directJdbcTemplate.update("DELETE FROM training_batches WHERE batch_id = ?", failBatchId);
+      trackedBatchIds.remove(failBatchId);
+
+      directJdbcTemplate.update("DELETE FROM trainee_consents WHERE trainee_id = ?", failTraineeId);
+      directJdbcTemplate.update("DELETE FROM trainees WHERE trainee_id = ?", failTraineeId);
+      trackedTraineeIds.remove(failTraineeId);
+    }
+  }
+
+  @AfterAll
+  static void verifyCommunicationConfigRestored(@Autowired CommunicationProperties commProps) {
+    if (commProps != null && commProps.getTwilio() != null) {
+      assertThat(commProps.getTwilio().getBaseUrl())
+          .as("Twilio baseUrl must not point to temporary test gateway after suite completes")
+          .doesNotContain("127.0.0.1");
+    }
   }
 }
