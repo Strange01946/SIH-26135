@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import in.gov.sih.sih26135.MysqlConnectionTest;
 import in.gov.sih.sih26135.security.jwt.JwtTokenProvider;
@@ -34,6 +35,9 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Import;
+import org.springframework.core.task.support.TaskExecutorAdapter;
 import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -41,6 +45,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.context.WebApplicationContext;
+import org.springframework.web.servlet.config.annotation.AsyncSupportConfigurer;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
  * Phase 29.8 — Global PII & Credential Leakage Scanner Test Suite.
@@ -59,8 +65,17 @@ import org.springframework.web.context.WebApplicationContext;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@Import(GlobalPiiAndCredentialLeakageTest.AsyncTestConfig.class)
 @DisplayName("Phase 29.8 — Global PII & Credential Leakage Scanner Tests")
 public class GlobalPiiAndCredentialLeakageTest {
+
+  @TestConfiguration
+  static class AsyncTestConfig implements WebMvcConfigurer {
+    @Override
+    public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
+      configurer.setTaskExecutor(new TaskExecutorAdapter(Runnable::run));
+    }
+  }
 
   @Autowired
   private WebApplicationContext context;
@@ -96,15 +111,21 @@ public class GlobalPiiAndCredentialLeakageTest {
   private static final String CANARY_AADHAAR_A = "9876-5432-1098";
   private static final String CANARY_PAN_A = "ABCDE1234F";
 
-  // Dedicated SDC fixture IDs in isolated 99761..99797 range
+  // Dedicated SDC fixture IDs in isolated 99748..99799 range
   private static final Long SDC_STATE_ID = 99761L;
+  private static final Long SDC_STATE_QPR_ID = 99760L;
   private static final Long SDC_DISTRICT_ZERO_ID = 99762L;
   private static final Long SDC_DISTRICT_SPARSE_ID = 99763L;
   private static final Long SDC_DISTRICT_BOUNDARY_ID = 99764L;
+  private static final Long SDC_DISTRICT_QPR_SPARSE_ID = 99759L;
   private static final Long SDC_PROVIDER_ID = 99765L;
+  private static final Long SDC_PROVIDER_BOUNDARY_ID = 99758L;
   private static final Long SDC_CENTER_ID = 99766L;
+  private static final Long SDC_CENTER_BOUNDARY_ID = 99757L;
+  private static final Long SDC_CENTER_QPR_ID = 99749L;
   private static final Long SDC_BATCH_SPARSE_ID = 99767L;
   private static final Long SDC_BATCH_BOUNDARY_ID = 99768L;
+  private static final Long SDC_BATCH_QPR_ID = 99748L;
   private static final Long SDC_COURSE_ID = 99769L;
   private static final Long SDC_SECTOR_ID = 99769L;
 
@@ -154,19 +175,23 @@ public class GlobalPiiAndCredentialLeakageTest {
   private void cleanUpCanaryFixtures() {
     try {
       SecurityContextHolder.clearContext();
-      jdbcTemplate.update("DELETE FROM training_enrollments WHERE enrollment_id BETWEEN 99790 AND 99797");
-      jdbcTemplate.update("DELETE FROM training_batches WHERE batch_id IN (?, ?)",
-          SDC_BATCH_SPARSE_ID, SDC_BATCH_BOUNDARY_ID);
-      jdbcTemplate.update("DELETE FROM training_centers WHERE center_id = ?", SDC_CENTER_ID);
+      jdbcTemplate.update("DELETE FROM training_enrollments WHERE enrollment_id BETWEEN 99790 AND 99799");
+      jdbcTemplate.update("DELETE FROM training_batches WHERE batch_id IN (?, ?, ?)",
+          SDC_BATCH_SPARSE_ID, SDC_BATCH_BOUNDARY_ID, SDC_BATCH_QPR_ID);
+      jdbcTemplate.update("DELETE FROM training_centers WHERE center_id IN (?, ?, ?)",
+          SDC_CENTER_ID, SDC_CENTER_BOUNDARY_ID, SDC_CENTER_QPR_ID);
       jdbcTemplate.update("DELETE FROM courses WHERE course_id = ?", SDC_COURSE_ID);
       jdbcTemplate.update("DELETE FROM sectors WHERE sector_id = ?", SDC_SECTOR_ID);
-      jdbcTemplate.update("DELETE FROM training_providers WHERE provider_id = ?", SDC_PROVIDER_ID);
-      jdbcTemplate.update("DELETE FROM trainees WHERE trainee_id BETWEEN 99780 AND 99787");
-      jdbcTemplate.update("DELETE FROM users WHERE user_id BETWEEN 99770 AND 99777");
-      jdbcTemplate.update("DELETE FROM users WHERE user_id = 99765");
-      jdbcTemplate.update("DELETE FROM districts WHERE district_id IN (?, ?, ?)",
-          SDC_DISTRICT_ZERO_ID, SDC_DISTRICT_SPARSE_ID, SDC_DISTRICT_BOUNDARY_ID);
-      jdbcTemplate.update("DELETE FROM states WHERE state_id = ?", SDC_STATE_ID);
+      jdbcTemplate.update("DELETE FROM training_providers WHERE provider_id IN (?, ?)",
+          SDC_PROVIDER_ID, SDC_PROVIDER_BOUNDARY_ID);
+      jdbcTemplate.update("DELETE FROM trainees WHERE trainee_id BETWEEN 99780 AND 99789");
+      jdbcTemplate.update("DELETE FROM users WHERE user_id BETWEEN 99770 AND 99779");
+      jdbcTemplate.update("DELETE FROM users WHERE user_id IN (?, ?)",
+          SDC_PROVIDER_ID, SDC_PROVIDER_BOUNDARY_ID);
+      jdbcTemplate.update("DELETE FROM districts WHERE district_id IN (?, ?, ?, ?)",
+          SDC_DISTRICT_ZERO_ID, SDC_DISTRICT_SPARSE_ID, SDC_DISTRICT_BOUNDARY_ID, SDC_DISTRICT_QPR_SPARSE_ID);
+      jdbcTemplate.update("DELETE FROM states WHERE state_id IN (?, ?)",
+          SDC_STATE_ID, SDC_STATE_QPR_ID);
 
       jdbcTemplate.update("DELETE FROM trainees WHERE trainee_id IN (?, ?)",
           CANARY_TRAINEE_A_ID, CANARY_TRAINEE_B_ID);
@@ -224,12 +249,20 @@ public class GlobalPiiAndCredentialLeakageTest {
         VALUES (?, ?, 'REG-CANARY-B', 'Canary', 'Beta', 'canary.b@sih.test', '9876543211', 1, ?, ?, 1, 1, NOW(), NOW())
         """, CANARY_TRAINEE_B_ID, CANARY_USER_B_ID, refStateId, refDistrictId);
 
-    // 2. SDC Structures: State and 3 Districts (Zero, Sparse, Boundary)
+    // 2. SDC Structures:
+    // State 99761 ('SS', "State SDC") with 3 districts: Zero (99762), Sparse (99763), Boundary (99764)
+    // State 99760 ('SQ', "State SDC QPR") with District QPR Sparse (99759)
     jdbcTemplate.update("""
         INSERT INTO states (state_id, state_code, state_name, lgd_code, lifecycle_status_id, created_at, updated_at)
         VALUES (?, 'SS', 'State SDC', 'LG99761', 1, NOW(), NOW())
         ON DUPLICATE KEY UPDATE state_name = state_name
         """, SDC_STATE_ID);
+
+    jdbcTemplate.update("""
+        INSERT INTO states (state_id, state_code, state_name, lgd_code, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, 'SQ', 'State SDC QPR', 'LG99760', 1, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE state_name = state_name
+        """, SDC_STATE_QPR_ID);
 
     jdbcTemplate.update("""
         INSERT INTO districts (district_id, state_id, district_code, district_name, lgd_code, lifecycle_status_id, created_at, updated_at)
@@ -249,7 +282,13 @@ public class GlobalPiiAndCredentialLeakageTest {
         ON DUPLICATE KEY UPDATE district_name = district_name
         """, SDC_DISTRICT_BOUNDARY_ID, SDC_STATE_ID);
 
-    // Provider 99765 and User 99765
+    jdbcTemplate.update("""
+        INSERT INTO districts (district_id, state_id, district_code, district_name, lgd_code, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, 'D-QPR-SP', 'District QPR Sparse SDC', 'LGD99759', 1, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE district_name = district_name
+        """, SDC_DISTRICT_QPR_SPARSE_ID, SDC_STATE_QPR_ID);
+
+    // Providers: Provider Sparse (99765) and Provider Boundary (99758)
     jdbcTemplate.update("""
         INSERT INTO training_providers (provider_id, provider_code, provider_name, registration_number, organization_type_id, state_id, district_id, accreditation_status_id, lifecycle_status_id, created_at, updated_at)
         VALUES (?, 'PRV-SDC-99765', 'Provider SDC Scorecard', 'REG-SDC-99765', 1, ?, ?, 1, 1, NOW(), NOW())
@@ -262,12 +301,36 @@ public class GlobalPiiAndCredentialLeakageTest {
         ON DUPLICATE KEY UPDATE username = username
         """);
 
-    // Training Center 99766
+    jdbcTemplate.update("""
+        INSERT INTO training_providers (provider_id, provider_code, provider_name, registration_number, organization_type_id, state_id, district_id, accreditation_status_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, 'PRV-SDC-99758', 'Provider SDC Boundary', 'REG-SDC-99758', 1, ?, ?, 1, 1, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE provider_name = provider_name
+        """, SDC_PROVIDER_BOUNDARY_ID, SDC_STATE_ID, SDC_DISTRICT_BOUNDARY_ID);
+
+    jdbcTemplate.update("""
+        INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, training_provider_id, created_at, updated_at)
+        VALUES (99758, 'sdc_provider_bound_user', 'sdc_provider_bound@test.gov.in', '$argon2id$v=19$m=65536,t=3,p=4$CANARY_HASH_PROVIDER_BOUND', 'argon2id', 1, 99758, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE username = username
+        """);
+
+    // Centers
     jdbcTemplate.update("""
         INSERT INTO training_centers (center_id, provider_id, center_code, center_name, state_id, district_id, lifecycle_status_id, created_at, updated_at)
         VALUES (?, ?, 'CTR-SDC-99766', 'Center SDC', ?, ?, 1, NOW(), NOW())
         ON DUPLICATE KEY UPDATE center_name = center_name
         """, SDC_CENTER_ID, SDC_PROVIDER_ID, SDC_STATE_ID, SDC_DISTRICT_SPARSE_ID);
+
+    jdbcTemplate.update("""
+        INSERT INTO training_centers (center_id, provider_id, center_code, center_name, state_id, district_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, 'CTR-SDC-99757', 'Center Boundary SDC', ?, ?, 1, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE center_name = center_name
+        """, SDC_CENTER_BOUNDARY_ID, SDC_PROVIDER_BOUNDARY_ID, SDC_STATE_ID, SDC_DISTRICT_BOUNDARY_ID);
+
+    jdbcTemplate.update("""
+        INSERT INTO training_centers (center_id, provider_id, center_code, center_name, state_id, district_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, 'CTR-SDC-99749', 'Center QPR SDC', ?, ?, 1, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE center_name = center_name
+        """, SDC_CENTER_QPR_ID, SDC_PROVIDER_BOUNDARY_ID, SDC_STATE_QPR_ID, SDC_DISTRICT_QPR_SPARSE_ID);
 
     // Sector & Course
     Long sdcCourseId = null;
@@ -294,20 +357,26 @@ public class GlobalPiiAndCredentialLeakageTest {
     } catch (Exception ignored) {}
     if (sdcProgramId == null) sdcProgramId = 1L;
 
-    // Batches: Sparse (99767) and Boundary (99768)
+    // Batches (batch_status_id = 2 for OPEN active batches)
     jdbcTemplate.update("""
         INSERT INTO training_batches (batch_id, batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at, deleted_at)
-        VALUES (?, 'BAT-SDC-SPARSE', ?, ?, ?, ?, '2026-01-01', 30, 1, NOW(), NOW(), NULL)
+        VALUES (?, 'BAT-SDC-SPARSE', ?, ?, ?, ?, '2026-04-01', 30, 2, NOW(), NOW(), NULL)
         ON DUPLICATE KEY UPDATE batch_code = batch_code
         """, SDC_BATCH_SPARSE_ID, sdcCourseId, SDC_PROVIDER_ID, SDC_CENTER_ID, sdcProgramId);
 
     jdbcTemplate.update("""
         INSERT INTO training_batches (batch_id, batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at, deleted_at)
-        VALUES (?, 'BAT-SDC-BOUND', ?, ?, ?, ?, '2026-01-01', 30, 1, NOW(), NOW(), NULL)
+        VALUES (?, 'BAT-SDC-BOUND', ?, ?, ?, ?, '2026-04-01', 30, 2, NOW(), NOW(), NULL)
         ON DUPLICATE KEY UPDATE batch_code = batch_code
-        """, SDC_BATCH_BOUNDARY_ID, sdcCourseId, SDC_PROVIDER_ID, SDC_CENTER_ID, sdcProgramId);
+        """, SDC_BATCH_BOUNDARY_ID, sdcCourseId, SDC_PROVIDER_BOUNDARY_ID, SDC_CENTER_BOUNDARY_ID, sdcProgramId);
 
-    // 3 Trainees & Enrollments for Sparse District (99763) -> Sparse count = 3
+    jdbcTemplate.update("""
+        INSERT INTO training_batches (batch_id, batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at, deleted_at)
+        VALUES (?, 'BAT-SDC-QPR-SP', ?, ?, ?, ?, '2026-04-01', 30, 2, NOW(), NOW(), NULL)
+        ON DUPLICATE KEY UPDATE batch_code = batch_code
+        """, SDC_BATCH_QPR_ID, sdcCourseId, SDC_PROVIDER_BOUNDARY_ID, SDC_CENTER_QPR_ID, sdcProgramId);
+
+    // 1. 3 Trainees & Enrollments for Sparse District (99763) -> Provider 99765, Sparse count = 3 (Dated 2026-01-05 in FY2025-26 Q4)
     for (int i = 0; i < 3; i++) {
       long userId = 99770L + i;
       long traineeId = 99780L + i;
@@ -331,7 +400,7 @@ public class GlobalPiiAndCredentialLeakageTest {
           """, enrollmentId, "ENR-SPARSE-" + i, traineeId, sdcProgramId, sdcCourseId, SDC_PROVIDER_ID, SDC_CENTER_ID, SDC_BATCH_SPARSE_ID);
     }
 
-    // 5 Trainees & Enrollments for Boundary District (99764) -> Boundary count = 5
+    // 2. 5 Trainees & Enrollments for Boundary District (99764) -> Provider 99758, Boundary count = 5 (Dated 2026-01-05 in FY2025-26 Q4)
     for (int i = 0; i < 5; i++) {
       long userId = 99773L + i;
       long traineeId = 99783L + i;
@@ -352,7 +421,31 @@ public class GlobalPiiAndCredentialLeakageTest {
           INSERT INTO training_enrollments (enrollment_id, enrollment_number, trainee_id, program_id, course_id, provider_id, center_id, batch_id, enrollment_date, enrollment_status_id, created_at, updated_at, deleted_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, '2026-01-05', 1, NOW(), NOW(), NULL)
           ON DUPLICATE KEY UPDATE enrollment_number = enrollment_number
-          """, enrollmentId, "ENR-BOUND-" + i, traineeId, sdcProgramId, sdcCourseId, SDC_PROVIDER_ID, SDC_CENTER_ID, SDC_BATCH_BOUNDARY_ID);
+          """, enrollmentId, "ENR-BOUND-" + i, traineeId, sdcProgramId, sdcCourseId, SDC_PROVIDER_BOUNDARY_ID, SDC_CENTER_BOUNDARY_ID, SDC_BATCH_BOUNDARY_ID);
+    }
+
+    // 3. 2 Trainees & Enrollments for QPR Sparse State (99760) -> Provider 99758, Sparse count = 2 (Dated 2026-04-15 in FY2026-27 Q1)
+    for (int i = 0; i < 2; i++) {
+      long userId = 99778L + i;
+      long traineeId = 99788L + i;
+      long enrollmentId = 99798L + i;
+      jdbcTemplate.update("""
+          INSERT INTO users (user_id, username, email, password_hash, password_algo, user_status_id, created_at, updated_at)
+          VALUES (?, ?, ?, 'hash', 'argon2id', 1, NOW(), NOW())
+          ON DUPLICATE KEY UPDATE username = username
+          """, userId, "sdc_qpr_user_" + i, "sdc_qpr_" + i + "@test.gov.in");
+
+      jdbcTemplate.update("""
+          INSERT INTO trainees (trainee_id, user_id, registration_number, first_name, last_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
+          VALUES (?, ?, ?, 'QprSparseTrainee', ?, 1, ?, ?, 1, 1, NOW(), NOW())
+          ON DUPLICATE KEY UPDATE first_name = first_name
+          """, traineeId, userId, "REG-QPR-" + i, "No" + i, SDC_STATE_QPR_ID, SDC_DISTRICT_QPR_SPARSE_ID);
+
+      jdbcTemplate.update("""
+          INSERT INTO training_enrollments (enrollment_id, enrollment_number, trainee_id, program_id, course_id, provider_id, center_id, batch_id, enrollment_date, enrollment_status_id, created_at, updated_at, deleted_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, '2026-04-15', 1, NOW(), NOW(), NULL)
+          ON DUPLICATE KEY UPDATE enrollment_number = enrollment_number
+          """, enrollmentId, "ENR-QPR-" + i, traineeId, sdcProgramId, sdcCourseId, SDC_PROVIDER_BOUNDARY_ID, SDC_CENTER_QPR_ID, SDC_BATCH_QPR_ID);
     }
   }
 
@@ -600,7 +693,7 @@ public class GlobalPiiAndCredentialLeakageTest {
     @DisplayName("SDC 09: Live HTTP State Dashboard applies secondary suppression / anti-differencing when constituent district is sparse")
     void testLiveHttpStateDashboardAppliesSecondarySuppression() throws Exception {
       // In State 99761, District 99763 is sparse (3), District 99762 has 0, District 99764 has 5.
-      // SDC secondary suppression withholds state-level totals when exactly 1 district is suppressed
+      // SDC secondary suppression withholds state-level totals and constituent boundary district
       // to prevent deductive differencing (Total - District 99764 = District 99763).
       MvcResult result = mockMvc.perform(get("/api/v1/dashboards/states/" + SDC_STATE_ID)
               .header(HttpHeaders.AUTHORIZATION, tokenSuperAdmin))
@@ -609,16 +702,101 @@ public class GlobalPiiAndCredentialLeakageTest {
           .andReturn();
 
       String json = result.getResponse().getContentAsString();
-      assertThat(json).contains("\"stateId\":" + SDC_STATE_ID);
+      JsonNode root = objectMapper.readTree(json);
+      JsonNode data = root.path("data");
+      assertThat(data.path("stateId").asLong()).isEqualTo(SDC_STATE_ID);
+
+      // 1. Explicitly assert that protected state summary totals are suppressed to null
+      JsonNode stateSummary = data.path("stateSummary");
+      assertThat(stateSummary.path("traineeCount").isNull() || stateSummary.path("traineeCount").isMissingNode())
+          .as("State summary traineeCount must be suppressed to null to prevent differencing")
+          .isTrue();
+      assertThat(stateSummary.path("enrollmentCount").isNull() || stateSummary.path("enrollmentCount").isMissingNode())
+          .as("State summary enrollmentCount must be suppressed to null")
+          .isTrue();
+
+      // 2. Explicitly assert that constituent districts have secondary suppression applied
+      JsonNode districts = data.path("districts");
+      assertThat(districts.isArray()).isTrue();
+
+      boolean foundSparse = false;
+      boolean foundBound = false;
+      boolean foundZero = false;
+
+      for (JsonNode d : districts) {
+        long dId = d.path("districtId").asLong();
+        if (dId == SDC_DISTRICT_SPARSE_ID) {
+          foundSparse = true;
+          // Primary suppression: sparse count 3 is suppressed to null
+          assertThat(d.path("traineeCount").isNull() || d.path("traineeCount").isMissingNode())
+              .as("Sparse district traineeCount must be suppressed to null")
+              .isTrue();
+        } else if (dId == SDC_DISTRICT_BOUNDARY_ID) {
+          foundBound = true;
+          // Secondary suppression: boundary district count 5 is ALSO suppressed to null in state context
+          // to prevent (State Total - District Boundary = District Sparse) differencing
+          assertThat(d.path("traineeCount").isNull() || d.path("traineeCount").isMissingNode())
+              .as("Boundary district traineeCount must be secondary-suppressed to null in state context")
+              .isTrue();
+        } else if (dId == SDC_DISTRICT_ZERO_ID) {
+          foundZero = true;
+          // Safe zero: non-reconstructive 0 is preserved
+          assertThat(d.path("traineeCount").asLong())
+              .as("Safe zero district must preserve count 0")
+              .isEqualTo(0L);
+        }
+      }
+
+      assertThat(foundSparse).as("District Sparse must be in districts list").isTrue();
+      assertThat(foundBound).as("District Boundary must be in districts list").isTrue();
+      assertThat(foundZero).as("District Zero must be in districts list").isTrue();
+
+      // 3. Mathematical proof: Neither the raw sparse count (3) nor the total (8) can be reconstructed
+      assertThat(json).doesNotContain("\"traineeCount\":3");
+      assertThat(json).doesNotContain("\"traineeCount\":8");
     }
 
     @Test
     @DisplayName("SDC 10: Streaming QPR JSON export enforces partition anti-differencing on national summary")
     void testStreamingQprJsonExportEnforcesPartitionAntiDifferencing() throws Exception {
       String json = executeStreamingGet("/api/v1/analytics/export/qpr/json?fiscalYear=FY2026-27&quarter=Q1", tokenSuperAdmin);
-      assertThat(json).contains("\"reportType\":\"QPR\"");
-      assertThat(json).contains("\"privacyThreshold\":5");
-      // Must not leak passwords or hashes
+      JsonNode root = objectMapper.readTree(json);
+
+      assertThat(root.path("reportType").asText()).isEqualTo("QPR");
+      assertThat(root.path("metadata").path("privacyThreshold").asLong()).isEqualTo(5L);
+
+      // 1. Explicitly assert partition anti-differencing on national summary
+      JsonNode summary = root.path("summary");
+      assertThat(summary.path("totalTrainees").isNull() || summary.path("totalTrainees").isMissingNode())
+          .as("National summary totalTrainees must be suppressed to null when any state partition is suppressed")
+          .isTrue();
+      assertThat(summary.path("totalEnrollments").isNull() || summary.path("totalEnrollments").isMissingNode())
+          .as("National summary totalEnrollments must be suppressed to null")
+          .isTrue();
+      assertThat(summary.path("nationalCompletionRatePct").isNull() || summary.path("nationalCompletionRatePct").isMissingNode())
+          .as("National completion rate must be suppressed to null")
+          .isTrue();
+
+      // 2. Explicitly inspect state rows
+      JsonNode rows = root.path("rows");
+      assertThat(rows.isArray()).isTrue();
+
+      boolean foundSparseState = false;
+
+      for (JsonNode row : rows) {
+        long stId = row.path("stateId").asLong();
+        if (stId == SDC_STATE_QPR_ID) {
+          foundSparseState = true;
+          // Sparse state row has traineeCount suppressed to null
+          assertThat(row.path("traineeCount").isNull() || row.path("traineeCount").isMissingNode())
+              .as("Sparse state partition traineeCount must be null")
+              .isTrue();
+        }
+      }
+
+      assertThat(foundSparseState).as("Sparse state 99760 must be in QPR rows").isTrue();
+
+      // 3. Verify sensitive canary markers & credentials absent
       assertThat(json).doesNotContain("$argon2id$");
       assertThat(json).doesNotContain("password");
     }
@@ -671,7 +849,7 @@ public class GlobalPiiAndCredentialLeakageTest {
     void testProviderScorecardExportTenantIsolation() throws Exception {
       String csv = executeStreamingGet("/api/v1/analytics/export/provider-scorecard/csv?providerId=" + SDC_PROVIDER_ID, tokenSdcProvider);
       String[] lines = csv.split("\r?\n");
-      assertThat(lines.length).isGreaterThanOrEqualTo(1);
+      assertThat(lines.length).isGreaterThanOrEqualTo(2);
 
       // Verify header matches formal specification
       assertThat(lines[0]).contains("Provider ID");
@@ -686,27 +864,126 @@ public class GlobalPiiAndCredentialLeakageTest {
         }
       }
 
+      // Verify foreign boundary provider 99758 is completely absent from Provider 99765's stream
+      assertThat(csv).doesNotContain("PRV-SDC-99758");
+      assertThat(csv).doesNotContain(String.valueOf(SDC_PROVIDER_BOUNDARY_ID));
+
       // Verify canary absence
       assertThat(csv).doesNotContain("$argon2id$");
       assertThat(csv).doesNotContain("CANARY_HASH");
     }
 
     @Test
-    @DisplayName("EXPORT 05: Provider Scorecard CSV export enforces statistical suppression with empty string cells for sparse groups")
+    @DisplayName("EXPORT 05: Provider Scorecard CSV export enforces statistical suppression with parsed empty string cells for sparse groups")
     void testProviderScorecardExportSuppressionEmptyCells() throws Exception {
-      String csv = executeStreamingGet("/api/v1/analytics/export/provider-scorecard/csv?providerId=" + SDC_PROVIDER_ID, tokenSdcProvider);
-      // For sparse provider scorecard rows, counts are suppressed to "" (empty string)
-      assertThat(csv).doesNotContain(",3,3,"); // Sparse count 3 must NOT be rendered as raw count
+      // 1. Export as Provider SDC (Sparse, 3 trainees)
+      String csvSparse = executeStreamingGet("/api/v1/analytics/export/provider-scorecard/csv?providerId=" + SDC_PROVIDER_ID, tokenSdcProvider);
+      String[] sparseLines = csvSparse.split("\r?\n");
+      assertThat(sparseLines.length).isGreaterThanOrEqualTo(2);
+
+      // Verify header columns
+      String header = sparseLines[0];
+      assertThat(header).contains("Provider ID");
+      assertThat(header).contains("Enrollments");
+      assertThat(header).contains("Trainees");
+
+      // Parse Provider Sparse data row
+      String[] sparseCols = sparseLines[1].split(",", -1);
+      assertThat(sparseCols[0]).isEqualTo(String.valueOf(SDC_PROVIDER_ID));
+      assertThat(sparseCols[1]).isEqualTo("PRV-SDC-99765");
+      // col 5: Active Batch Capacity (non-sensitive institutional capacity preserved)
+      assertThat(sparseCols[5]).isEqualTo("30");
+
+      // Verify relevant sensitive count columns are empty strings (suppressed), NOT raw count "3"
+      // Header mapping:
+      // Index 6: Enrollments
+      // Index 7: Trainees
+      // Index 8: Completions
+      // Index 9: Certifications
+      // Index 10: Placements
+      // Index 11: Employed
+      // Index 12: Completion Rate (%)
+      // Index 15: Employment Rate (%)
+      assertThat(sparseCols[6]).as("Enrollment count for sparse provider must be empty string").isEmpty();
+      assertThat(sparseCols[7]).as("Trainee count for sparse provider must be empty string").isEmpty();
+      assertThat(sparseCols[8]).as("Completed count for sparse provider must be empty string").isEmpty();
+      assertThat(sparseCols[9]).as("Certified count for sparse provider must be empty string").isEmpty();
+      assertThat(sparseCols[10]).as("Placed count for sparse provider must be empty string").isEmpty();
+      assertThat(sparseCols[11]).as("Employed count for sparse provider must be empty string").isEmpty();
+      assertThat(sparseCols[12]).as("Completion rate for sparse provider must be empty string").isEmpty();
+      assertThat(sparseCols[15]).as("Employment rate for sparse provider must be empty string").isEmpty();
+
+      // 2. Export as Super Admin to verify authorized non-sparse provider values remain available
+      String csvAll = executeStreamingGet("/api/v1/analytics/export/provider-scorecard/csv", tokenSuperAdmin);
+      String[] allLines = csvAll.split("\r?\n");
+      boolean foundBoundProvider = false;
+
+      for (int i = 1; i < allLines.length; i++) {
+        String line = allLines[i];
+        if (line.startsWith(String.valueOf(SDC_PROVIDER_BOUNDARY_ID))) {
+          foundBoundProvider = true;
+          String[] boundCols = line.split(",", -1);
+          assertThat(boundCols[0]).isEqualTo(String.valueOf(SDC_PROVIDER_BOUNDARY_ID));
+          assertThat(boundCols[1]).isEqualTo("PRV-SDC-99758");
+          // Boundary provider (7 trainees) is non-sparse (k >= 5) -> authorized non-sparse values must be disclosed!
+          assertThat(boundCols[6]).as("Enrollment count for boundary provider must be disclosed as 7").isEqualTo("7");
+          assertThat(boundCols[7]).as("Trainee count for boundary provider must be disclosed as 7").isEqualTo("7");
+        }
+      }
+      assertThat(foundBoundProvider).as("Boundary provider 99758 must be present in full export").isTrue();
     }
 
     @Test
-    @DisplayName("EXPORT 06: Provider Scorecard JSON export streams structured JSON with null fields for suppressed values and zero canary leaks")
+    @DisplayName("EXPORT 06: Provider Scorecard JSON export streams structured JSON with null fields for suppressed values and disclosed boundary counts")
     void testProviderScorecardJsonExportSuppressedValues() throws Exception {
-      String json = executeStreamingGet("/api/v1/analytics/export/provider-scorecard/json?providerId=" + SDC_PROVIDER_ID, tokenSdcProvider);
-      assertThat(json).contains("\"reportType\":\"PROVIDER_SCORECARD\"");
-      assertThat(json).contains("\"privacyThreshold\":5");
-      assertThat(json).doesNotContain("$argon2id$");
-      assertThat(json).doesNotContain("CANARY_HASH");
+      // 1. Export as Provider SDC (Sparse, 3 trainees)
+      String jsonSparse = executeStreamingGet("/api/v1/analytics/export/provider-scorecard/json?providerId=" + SDC_PROVIDER_ID, tokenSdcProvider);
+      JsonNode rootSparse = objectMapper.readTree(jsonSparse);
+
+      assertThat(rootSparse.path("reportType").asText()).isEqualTo("PROVIDER_SCORECARD");
+      assertThat(rootSparse.path("metadata").path("privacyThreshold").asLong()).isEqualTo(5L);
+
+      JsonNode rowsSparse = rootSparse.path("rows");
+      assertThat(rowsSparse.isArray()).isTrue();
+      assertThat(rowsSparse.size()).isEqualTo(1);
+
+      JsonNode sparseRow = rowsSparse.get(0);
+      assertThat(sparseRow.path("providerId").asLong()).isEqualTo(SDC_PROVIDER_ID);
+      assertThat(sparseRow.path("providerCode").asText()).isEqualTo("PRV-SDC-99765");
+      assertThat(sparseRow.path("activeBatchCapacity").asLong()).isEqualTo(30L);
+
+      // Assert expected suppressed fields are null according to privacy contract
+      assertThat(sparseRow.path("enrollmentCount").isNull()).as("Sparse enrollmentCount must be null").isTrue();
+      assertThat(sparseRow.path("traineeCount").isNull()).as("Sparse traineeCount must be null").isTrue();
+      assertThat(sparseRow.path("completedCount").isNull()).as("Sparse completedCount must be null").isTrue();
+      assertThat(sparseRow.path("certifiedCount").isNull()).as("Sparse certifiedCount must be null").isTrue();
+      assertThat(sparseRow.path("joinedPlacementCount").isNull()).as("Sparse joinedPlacementCount must be null").isTrue();
+      assertThat(sparseRow.path("employedCount").isNull()).as("Sparse employedCount must be null").isTrue();
+      assertThat(sparseRow.path("completionRatePct").isNull()).as("Sparse completionRatePct must be null").isTrue();
+      assertThat(sparseRow.path("employmentRatePct").isNull()).as("Sparse employmentRatePct must be null").isTrue();
+
+      // 2. Export as Super Admin to verify authorized non-sparse provider values in JSON
+      String jsonAll = executeStreamingGet("/api/v1/analytics/export/provider-scorecard/json", tokenSuperAdmin);
+      JsonNode rootAll = objectMapper.readTree(jsonAll);
+      JsonNode rowsAll = rootAll.path("rows");
+      boolean foundBound = false;
+
+      for (JsonNode r : rowsAll) {
+        if (r.path("providerId").asLong() == SDC_PROVIDER_BOUNDARY_ID) {
+          foundBound = true;
+          assertThat(r.path("providerCode").asText()).isEqualTo("PRV-SDC-99758");
+          // Boundary provider (7 trainees) disclosed
+          assertThat(r.path("enrollmentCount").asLong()).as("Boundary enrollmentCount must be 7").isEqualTo(7L);
+          assertThat(r.path("traineeCount").asLong()).as("Boundary traineeCount must be 7").isEqualTo(7L);
+        }
+      }
+      assertThat(foundBound).as("Boundary provider 99758 must be present in JSON export").isTrue();
+
+      // 3. Canary absence
+      assertThat(jsonSparse).doesNotContain("$argon2id$");
+      assertThat(jsonSparse).doesNotContain("CANARY_HASH");
+      assertThat(jsonAll).doesNotContain("$argon2id$");
+      assertThat(jsonAll).doesNotContain("CANARY_HASH");
     }
   }
 
@@ -715,10 +992,10 @@ public class GlobalPiiAndCredentialLeakageTest {
         .andExpect(status().isOk())
         .andReturn();
     if (result.getRequest().isAsyncStarted()) {
-      MvcResult asyncResult = mockMvc.perform(asyncDispatch(result))
-          .andExpect(status().isOk())
-          .andReturn();
-      return asyncResult.getResponse().getContentAsString();
+      long deadline = System.currentTimeMillis() + 5000;
+      while (result.getRequest().isAsyncStarted() && System.currentTimeMillis() < deadline) {
+        Thread.sleep(10);
+      }
     }
     return result.getResponse().getContentAsString();
   }

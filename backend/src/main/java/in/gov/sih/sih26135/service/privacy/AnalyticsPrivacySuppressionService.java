@@ -514,6 +514,8 @@ public class AnalyticsPrivacySuppressionService {
       );
     }
 
+    RegionalDisparityResponse safeDisparity = applyPrivacyGuardrail(response.stateDisparity());
+
     return new StateGeographicResponse(
         response.stateId(),
         response.stateCode(),
@@ -522,7 +524,24 @@ public class AnalyticsPrivacySuppressionService {
         safeDistricts,
         safeRankings,
         response.totalTrainingCenters(),
-        response.stateDisparity()
+        safeDisparity
+    );
+  }
+
+  public RegionalDisparityResponse applyPrivacyGuardrail(RegionalDisparityResponse disparity) {
+    if (disparity == null) {
+      return null;
+    }
+    List<DistrictPerformanceResponse> safeLowest = applyPrivacyGuardrailsToDistricts(disparity.lowestPerformingDistricts());
+    List<DistrictPerformanceResponse> safeTop = applyPrivacyGuardrailsToDistricts(disparity.topPerformingDistricts());
+    return new RegionalDisparityResponse(
+        safeLowest,
+        safeTop,
+        disparity.employmentRateGapPct(),
+        disparity.placementRateGapPct(),
+        disparity.districtsWithZeroEnrollment(),
+        disparity.districtsWithoutTrainingCenters(),
+        disparity.dataAvailabilityNotes()
     );
   }
 
