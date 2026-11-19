@@ -390,11 +390,11 @@ public class OwaspTop10ApiSecurityPenetrationTest {
 
     tokenProviderA = "Bearer " + jwtTokenProvider.generateAccessToken(
         USER_PROVIDER_A_ID, "p29_provider_a",
-        List.of("ROLE_training_provider", "batch.read", "batch.write", "trainee.read", "provider.read", "course.manage"));
+        List.of("ROLE_training_provider", "batch.read", "batch.write", "trainee.read", "provider.read", "course.manage", "center.manage", "analytics.export"));
 
     tokenProviderB = "Bearer " + jwtTokenProvider.generateAccessToken(
         USER_PROVIDER_B_ID, "p29_provider_b",
-        List.of("ROLE_training_provider", "batch.read", "batch.write", "trainee.read", "provider.read", "course.manage"));
+        List.of("ROLE_training_provider", "batch.read", "batch.write", "trainee.read", "provider.read", "course.manage", "center.manage", "analytics.export"));
 
     tokenEmployerA = "Bearer " + jwtTokenProvider.generateAccessToken(
         USER_EMPLOYER_A_ID, "p29_employer_a",
@@ -406,11 +406,11 @@ public class OwaspTop10ApiSecurityPenetrationTest {
 
     tokenTraineeA = "Bearer " + jwtTokenProvider.generateAccessToken(
         USER_TRAINEE_A_ID, "p29_trainee_a",
-        List.of("ROLE_trainee", "trainee.read"));
+        List.of("ROLE_trainee", "trainee.read", "trainee.write"));
 
     tokenTraineeB = "Bearer " + jwtTokenProvider.generateAccessToken(
         USER_TRAINEE_B_ID, "p29_trainee_b",
-        List.of("ROLE_trainee", "trainee.read"));
+        List.of("ROLE_trainee", "trainee.read", "trainee.write"));
   }
 
   // =========================================================================
@@ -529,6 +529,169 @@ public class OwaspTop10ApiSecurityPenetrationTest {
       mockMvc.perform(get("/api/v1/training-batches/" + FIXTURE_BATCH_A_ID)
               .header(HttpHeaders.AUTHORIZATION, tokenNationalAdmin))
           .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("BOLA 09: Trainee A cannot mutate Trainee B profile (PUT /api/v1/trainees/{id})")
+    void testTraineeCannotMutateOtherTraineeProfile() throws Exception {
+      String updatePayload = """
+          {
+            "firstName": "HackedByTraineeA",
+            "lastName": "Compromised"
+          }
+          """;
+
+      mockMvc.perform(put("/api/v1/trainees/" + FIXTURE_TRAINEE_B_ID)
+              .header(HttpHeaders.AUTHORIZATION, tokenTraineeA)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(updatePayload))
+          .andExpect(status().is(org.hamcrest.Matchers.isOneOf(400, 403)))
+          .andExpect(jsonPath("$.code").value(org.hamcrest.Matchers.isOneOf("TRAINEE_MISMATCH", "ACCESS_DENIED")));
+
+      // Verify DB record of Trainee B is unchanged
+      String firstName = jdbcTemplate.queryForObject(
+          "SELECT first_name FROM trainees WHERE trainee_id = ?",
+          String.class, FIXTURE_TRAINEE_B_ID);
+      assertThat(firstName).isEqualTo("Trainee");
+    }
+
+    @Test
+    @DisplayName("BOLA 10: Trainee A cannot delete Trainee B profile (DELETE /api/v1/trainees/{id})")
+    void testTraineeCannotDeleteOtherTraineeProfile() throws Exception {
+      mockMvc.perform(delete("/api/v1/trainees/" + FIXTURE_TRAINEE_B_ID)
+              .header(HttpHeaders.AUTHORIZATION, tokenTraineeA))
+          .andExpect(status().is(org.hamcrest.Matchers.isOneOf(400, 403)))
+          .andExpect(jsonPath("$.code").value(org.hamcrest.Matchers.isOneOf("TRAINEE_MISMATCH", "ACCESS_DENIED")));
+
+      // Verify DB record of Trainee B is not deleted
+      String deletedAt = jdbcTemplate.queryForObject(
+          "SELECT IFNULL(deleted_at, 'NOT_DELETED') FROM trainees WHERE trainee_id = ?",
+          String.class, FIXTURE_TRAINEE_B_ID);
+      assertThat(deletedAt).isEqualTo("NOT_DELETED");
+    }
+
+    @Test
+    @DisplayName("BOLA 11: Trainee A cannot enumerate Trainee B via filtered query params")
+    void testTraineeCannotEnumerateOtherTraineeViaFilter() throws Exception {
+      // 1. Filter by foreign user_id
+      mockMvc.perform(get("/api/v1/trainees?userId=" + USER_TRAINEE_B_ID)
+              .header(HttpHeaders.AUTHORIZATION, tokenTraineeA))
+          .andExpect(status().is(org.hamcrest.Matchers.isOneOf(400, 403)))
+          .andExpect(jsonPath("$.code").value(org.hamcrest.Matchers.isOneOf("TRAINEE_MISMATCH", "ACCESS_DENIED")));
+
+      // 2. Filter by foreign registration_number
+      mockMvc.perform(get("/api/v1/trainees?registrationNumber=REG-P29-99736")
+              .header(HttpHeaders.AUTHORIZATION, tokenTraineeA))
+          .andExpect(status().is(org.hamcrest.Matchers.isOneOf(400, 403)))
+          .andExpect(jsonPath("$.code").value(org.hamcrest.Matchers.isOneOf("TRAINEE_MISMATCH", "ACCESS_DENIED")));
+    }
+
+    @Test
+    @DisplayName("BOLA 12: Provider A cannot access Provider B's training center (GET /api/v1/training-centers/{id})")
+    void testProviderCannotAccessOtherProviderCenter() throws Exception {
+      // Provider A accesses own center -> 200 OK
+      mockMvc.perform(get("/api/v1/training-centers/" + FIXTURE_CENTER_A_ID)
+              .header(HttpHeaders.AUTHORIZATION, tokenProviderA))
+          .andExpect(status().isOk());
+
+      // Provider A accesses Provider B's center -> 403 Forbidden
+      mockMvc.perform(get("/api/v1/training-centers/" + FIXTURE_CENTER_B_ID)
+              .header(HttpHeaders.AUTHORIZATION, tokenProviderA))
+          .andExpect(status().is(org.hamcrest.Matchers.isOneOf(403, 404)));
+    }
+
+    @Test
+    @DisplayName("BOLA 13: Provider A cannot modify Provider B's training center (PUT /api/v1/training-centers/{id})")
+    void testProviderCannotModifyOtherProviderCenter() throws Exception {
+      String updatePayload = """
+          {
+            "centerName": "Center Tampered By Provider A",
+            "operationalCapacity": 100
+          }
+          """;
+
+      mockMvc.perform(put("/api/v1/training-centers/" + FIXTURE_CENTER_B_ID)
+              .header(HttpHeaders.AUTHORIZATION, tokenProviderA)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(updatePayload))
+          .andExpect(status().is(org.hamcrest.Matchers.isOneOf(403, 404)));
+
+      String centerName = jdbcTemplate.queryForObject(
+          "SELECT center_name FROM training_centers WHERE center_id = ?",
+          String.class, FIXTURE_CENTER_B_ID);
+      assertThat(centerName).isEqualTo("Center P29 B");
+    }
+
+    @Test
+    @DisplayName("BOLA 14: Provider A cannot delete Provider B's training center (DELETE /api/v1/training-centers/{id})")
+    void testProviderCannotDeleteOtherProviderCenter() throws Exception {
+      mockMvc.perform(delete("/api/v1/training-centers/" + FIXTURE_CENTER_B_ID)
+              .header(HttpHeaders.AUTHORIZATION, tokenProviderA))
+          .andExpect(status().is(org.hamcrest.Matchers.isOneOf(403, 404)));
+
+      Integer count = jdbcTemplate.queryForObject(
+          "SELECT count(*) FROM training_centers WHERE center_id = ?",
+          Integer.class, FIXTURE_CENTER_B_ID);
+      assertThat(count).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("BOLA 15: Provider A cannot mutate status of Provider B's batch (PUT /api/v1/training-batches/{id}/status)")
+    void testProviderCannotMutateBatchStatusOfOtherProvider() throws Exception {
+      String statusPayload = """
+          {
+            "batchStatusId": 2
+          }
+          """;
+
+      mockMvc.perform(put("/api/v1/training-batches/" + FIXTURE_BATCH_B_ID + "/status")
+              .header(HttpHeaders.AUTHORIZATION, tokenProviderA)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(statusPayload))
+          .andExpect(status().is(org.hamcrest.Matchers.isOneOf(403, 404)));
+
+      Long statusId = jdbcTemplate.queryForObject(
+          "SELECT batch_status_id FROM training_batches WHERE batch_id = ?",
+          Long.class, FIXTURE_BATCH_B_ID);
+      assertThat(statusId).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("BOLA 16: Provider A cannot export Provider B's scorecard (/api/v1/analytics/export/provider-scorecard/csv)")
+    void testProviderCannotExportOtherProviderScorecard() throws Exception {
+      mockMvc.perform(get("/api/v1/analytics/export/provider-scorecard/csv?providerId=" + FIXTURE_PROVIDER_B_ID)
+              .header(HttpHeaders.AUTHORIZATION, tokenProviderA))
+          .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("BOLA 17: Trainee A cannot access Trainee B's consent records (GET /api/v1/consents?traineeId={id})")
+    void testTraineeCannotAccessOtherTraineeConsents() throws Exception {
+      mockMvc.perform(get("/api/v1/consents?traineeId=" + FIXTURE_TRAINEE_B_ID)
+              .header(HttpHeaders.AUTHORIZATION, tokenTraineeA))
+          .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("BOLA 18: Cross-employer access boundary is enforced (PUT /api/v1/employers/{id})")
+    void testCrossEmployerBoundaryEnforced() throws Exception {
+      String employerPayload = """
+          {
+            "employerName": "Tampered Employer Name",
+            "contactPersonName": "Malicious Actor"
+          }
+          """;
+
+      mockMvc.perform(put("/api/v1/employers/" + FIXTURE_EMPLOYER_B_ID)
+              .header(HttpHeaders.AUTHORIZATION, tokenEmployerA)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(employerPayload))
+          .andExpect(status().isForbidden());
+
+      String empName = jdbcTemplate.queryForObject(
+          "SELECT employer_name FROM employers WHERE employer_id = ?",
+          String.class, FIXTURE_EMPLOYER_B_ID);
+      assertThat(empName).isEqualTo("Employer B Pentest");
     }
   }
 
