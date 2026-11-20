@@ -2,9 +2,7 @@ package in.gov.sih.sih26135.security.config;
 
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
-import io.swagger.v3.oas.models.info.Contact;
 import io.swagger.v3.oas.models.info.Info;
-import io.swagger.v3.oas.models.info.License;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
@@ -83,13 +81,7 @@ public class OpenApiConfig {
                 - **Role-Based Authorization**: `ROLE_super_admin`, `ROLE_national_admin`, `ROLE_state_admin`, `ROLE_district_admin`, `ROLE_training_provider`, `ROLE_employer`, `ROLE_trainee`, `ROLE_auditor`.
                 - **Tenancy Scoping**: Territorial bounding (State/District), Institutional bounding (Provider/Employer), and Trainee self-service scoping.
                 - **Statistical Disclosure Control (SDC)**: $k=5$ minimum cell suppression, complementary secondary suppression, partition anti-differencing, and zero canary credential leakage.
-                """)
-            .contact(new Contact()
-                .name("SIH-26135 National Technical Administration")
-                .email("support@sih26135.gov.in"))
-            .license(new License()
-                .name("Government of India / SIH-26135 Proprietary")
-                .url("https://sih26135.gov.in/license")))
+                """))
         .servers(List.of(
             new Server()
                 .url(serverUrl)

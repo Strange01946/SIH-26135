@@ -15,7 +15,7 @@ public class AuthenticatedUserResponse {
   @Schema(description = "Username", example = "admin")
   private String username;
 
-  @Schema(description = "Email address", example = "admin@sih26135.gov.in")
+  @Schema(description = "Email address", example = "admin@example.org")
   private String email;
 
   @Schema(description = "List of assigned roles and authorities", example = "[\"ROLE_super_admin\"]")

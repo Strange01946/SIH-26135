@@ -36,7 +36,7 @@ public class CreateTraineeRequest {
   @Schema(description = "Gender lookup ID", example = "1")
   private Long genderId;
 
-  @Schema(description = "Email address", example = "trainee@example.gov.in")
+  @Schema(description = "Email address", example = "trainee@example.org")
   @Email(message = "Email must be a valid email address")
   @Size(max = 255, message = "Email cannot exceed 255 characters")
   private String email;

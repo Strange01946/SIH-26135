@@ -59,6 +59,9 @@ public class OpenApiDocumentationSecurityTest {
   @org.springframework.beans.factory.annotation.Qualifier("requestMappingHandlerMapping")
   private RequestMappingHandlerMapping handlerMapping;
 
+  @org.springframework.beans.factory.annotation.Value("${spring.datasource.password:}")
+  private String configuredDbPassword;
+
   @Nested
   @DisplayName("1. Core OpenAPI 3.0 Specification Contracts")
   class CoreSpecificationContracts {
@@ -79,9 +82,13 @@ public class OpenApiDocumentationSecurityTest {
       String jsonContent = result.getResponse().getContentAsString();
       JsonNode root = objectMapper.readTree(jsonContent);
 
+      // Verify unverified government contact/license are omitted
+      assertThat(root.path("info").has("contact")).isFalse();
+      assertThat(root.path("info").has("license")).isFalse();
+
       assertThat(root.has("paths")).isTrue();
       JsonNode paths = root.get("paths");
-      assertThat(paths.size()).isGreaterThan(50);
+      assertThat(paths.size()).isGreaterThanOrEqualTo(250);
     }
 
     @Test
@@ -362,8 +369,14 @@ public class OpenApiDocumentationSecurityTest {
         assertThat(doc).doesNotContain("BEGIN PRIVATE KEY");
         assertThat(doc).doesNotContain("BEGIN RSA PRIVATE KEY");
 
-        // Assert zero database password exposure
-        assertThat(doc).doesNotContain("Aditya7033@");
+        // Assert zero database password exposure (dynamically sourced from environment without literal in test code)
+        if (configuredDbPassword != null && !configuredDbPassword.isBlank()) {
+          assertThat(doc).doesNotContain(configuredDbPassword);
+        }
+
+        // Assert zero unverified government domains or contacts
+        assertThat(doc).doesNotContain("support@sih26135.gov.in");
+        assertThat(doc).doesNotContain("sih26135.gov.in");
 
         // Assert zero test JWT secret exposure
         assertThat(doc).doesNotContain("dedicated-test-only-jwt-secret-material");

@@ -38,12 +38,6 @@ info:
     - **Role-Based Authorization**: `ROLE_super_admin`, `ROLE_national_admin`, `ROLE_state_admin`, `ROLE_district_admin`, `ROLE_training_provider`, `ROLE_employer`, `ROLE_trainee`, `ROLE_auditor`.
     - **Tenancy Scoping**: Territorial bounding (State/District), Institutional bounding (Provider/Employer), and Trainee self-service scoping.
     - **Statistical Disclosure Control (SDC)**: $k=5$ minimum cell suppression, complementary secondary suppression, partition anti-differencing, and zero canary credential leakage.
-  contact:
-    name: SIH-26135 National Technical Administration
-    email: support@sih26135.gov.in
-  license:
-    name: Government of India / SIH-26135 Proprietary
-    url: https://sih26135.gov.in/license
   version: v1.0.0
 servers:
 - url: http://localhost:8080/

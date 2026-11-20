@@ -31,7 +31,7 @@ public class TraineeResponse {
   @Schema(description = "Gender lookup ID", example = "1")
   private Long genderId;
 
-  @Schema(description = "Contact email", example = "trainee@example.gov.in")
+  @Schema(description = "Contact email", example = "trainee@example.org")
   private String email;
 
   @Schema(description = "Contact phone number", example = "9876543210")
