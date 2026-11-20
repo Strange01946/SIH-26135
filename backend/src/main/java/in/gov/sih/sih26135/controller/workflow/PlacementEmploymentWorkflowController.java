@@ -9,6 +9,9 @@ import in.gov.sih.sih26135.dto.response.TraineePlacementEmploymentSummaryRespons
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.service.PlacementEmploymentWorkflowService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -28,6 +31,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  *
  * <p>Base Route: /api/v1/workflows/placement-employment (alias: /api/v1/workflows/placement-employments)
  */
+@Tag(name = "Workflows - Placement & Employment", description = "Cross-domain placement-to-employment transition orchestrations")
 @Validated
 @RestController
 @RequestMapping({"/api/v1/workflows/placement-employment", "/api/v1/workflows/placement-employments"})
@@ -58,6 +62,15 @@ public class PlacementEmploymentWorkflowController {
    * @param httpRequest HTTP servlet request for URI extraction and parameter validation
    * @return 201 Created with PlacementToEmploymentTransitionResponse enveloped in ApiResponse
    */
+  @Operation(
+      summary = "Transition Placement to Employment",
+      description = "Orchestrates cross-domain transition from an accepted placement offer to verified employment with initial compensation history.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Placement successfully transitioned to active employment"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed, invalid placement status, or unsupported parameters")
+      }
+  )
   @PostMapping("/transition-placement-to-employment")
   public ResponseEntity<ApiResponse<PlacementToEmploymentTransitionResponse>> transitionPlacementToEmployment(
       @Valid @RequestBody PlacementToEmploymentTransitionRequest request,
@@ -87,6 +100,16 @@ public class PlacementEmploymentWorkflowController {
    * @param httpRequest HTTP servlet request for query parameter validation
    * @return 200 OK with TraineePlacementEmploymentSummaryResponse enveloped in ApiResponse
    */
+  @Operation(
+      summary = "Get Trainee Placement & Employment Summary",
+      description = "Retrieves aggregated placement offers, verification history, and employment timeline for a specific trainee.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Trainee placement and employment summary returned"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid or unsupported query parameters"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Trainee not found")
+      }
+  )
   @GetMapping("/summary")
   public ResponseEntity<ApiResponse<TraineePlacementEmploymentSummaryResponse>> getTraineePlacementEmploymentSummary(
       @RequestParam("traineeId") @Positive Long traineeId,

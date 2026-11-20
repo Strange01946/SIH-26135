@@ -11,6 +11,12 @@ import in.gov.sih.sih26135.response.PagedResponse;
 import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.service.ImportBatchProcessingWorkflow;
 import in.gov.sih.sih26135.service.ImportBatchService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -47,6 +53,7 @@ import org.springframework.web.multipart.MultipartFile;
  * Consumes: CreateImportBatchRequest, UpdateImportBatchRequest, multipart/form-data uploads
  * Produces: ImportBatchResponse, ImportBatchProgressResponse, ImportRecordResponse enveloped in ApiResponse
  */
+@Tag(name = "Operations - Bulk Staging & Ingestion", description = "Bulk CSV dataset ingestion, staging tables, and processing pipelines")
 @Validated
 @RestController
 @RequestMapping({"/api/v1/import-batches", "/api/v1/import/batches"})
@@ -179,6 +186,16 @@ public class ImportBatchController {
    * @param httpRequest HTTP servlet request for URI extraction
    * @return 201 Created with staged ImportBatchResponse enveloped in ApiResponse
    */
+  @Operation(
+      summary = "Upload Bulk Dataset (Multipart)",
+      description = "Stages a multipart CSV, JSON, or NDJSON file for bulk ingestion and registers a PENDING staging batch.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Import batch staged successfully"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed, empty file, or unsupported format"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "413", description = "Payload too large - exceeds configured multipart file limit")
+      }
+  )
   @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   @PreAuthorize("hasAnyAuthority('system.manage', 'trainee.write', 'placement.manage')")
   public ResponseEntity<ApiResponse<ImportBatchResponse>> uploadBatch(
@@ -201,6 +218,16 @@ public class ImportBatchController {
    * @param httpRequest HTTP servlet request for URI extraction
    * @return 200 OK with reconciled ImportBatchProgressResponse enveloped in ApiResponse
    */
+  @Operation(
+      summary = "Process Staged Import Batch",
+      description = "Executes chunked validation, persistence, row quarantine, and finalization for a staged import batch.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Import batch processed with reconciled row counters"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Batch is not in PENDING or recoverable state"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Import batch not found")
+      }
+  )
   @PostMapping("/{id}/process")
   @PreAuthorize("hasAnyAuthority('system.manage', 'trainee.write', 'placement.manage')")
   public ResponseEntity<ApiResponse<ImportBatchProgressResponse>> processBatch(

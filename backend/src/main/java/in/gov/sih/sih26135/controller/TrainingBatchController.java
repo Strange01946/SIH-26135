@@ -13,6 +13,9 @@ import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.response.PagedResponse;
 import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.service.TrainingBatchService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import jakarta.servlet.http.HttpServletRequest;
@@ -37,6 +40,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * Consumes: CreateTrainingBatchRequest, UpdateTrainingBatchRequest, ChangeBatchStatusRequest
  * Produces: TrainingBatchResponse enveloped in ApiResponse
  */
+@Tag(name = "Training Batches", description = "Training batch lifecycle management")
 @Validated
 @RestController
 @RequestMapping("/api/v1/training-batches")
@@ -55,6 +59,15 @@ public class TrainingBatchController {
    * @param id primary key identifier of the training batch
    * @return 200 OK with TrainingBatchResponse enveloped in ApiResponse
    */
+  @Operation(
+      summary = "Get Training Batch by ID",
+      description = "Retrieves training batch details by primary key identifier.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Training batch found"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Training batch not found")
+      }
+  )
   @GetMapping("/{id}")
   public ResponseEntity<ApiResponse<TrainingBatchResponse>> getById(@PathVariable @Positive Long id) {
     TrainingBatchResponse response = trainingBatchService.getById(id);
@@ -72,6 +85,14 @@ public class TrainingBatchController {
    * @param statusId optional status identifier filter
    * @return 200 OK with list of training batches or single matched batch enveloped in ApiResponse
    */
+  @Operation(
+      summary = "Get Training Batches (Filter / Paginated)",
+      description = "Retrieves training batches with optional filtering by code, course ID, provider ID, center ID, program ID, or status ID.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Training batches retrieved successfully")
+      }
+  )
   @GetMapping
   public ResponseEntity<ApiResponse<?>> getTrainingBatches(
       @RequestParam(value = "code", required = false) String code,
@@ -122,6 +143,15 @@ public class TrainingBatchController {
    * @param httpRequest HTTP servlet request for URI extraction
    * @return 201 Created with created TrainingBatchResponse enveloped in ApiResponse
    */
+  @Operation(
+      summary = "Create Training Batch",
+      description = "Creates a new training batch associated with a course, provider, and training center.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Training batch created successfully"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed or invalid date sequence")
+      }
+  )
   @PostMapping
   public ResponseEntity<ApiResponse<TrainingBatchResponse>> createBatch(
       @Valid @RequestBody CreateTrainingBatchRequest request,
@@ -138,6 +168,15 @@ public class TrainingBatchController {
    * @param request training batch update payload
    * @return 200 OK with updated TrainingBatchResponse enveloped in ApiResponse
    */
+  @Operation(
+      summary = "Update Training Batch",
+      description = "Updates details, capacity, and dates of an existing training batch.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Training batch updated successfully"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Training batch not found")
+      }
+  )
   @PutMapping("/{id}")
   public ResponseEntity<ApiResponse<TrainingBatchResponse>> updateBatch(
       @PathVariable @Positive Long id,
@@ -153,6 +192,15 @@ public class TrainingBatchController {
    * @param request batch status change payload
    * @return 200 OK with updated TrainingBatchResponse enveloped in ApiResponse
    */
+  @Operation(
+      summary = "Update Training Batch Status",
+      description = "Transitions the lifecycle status of a training batch (e.g., SCHEDULED -> IN_PROGRESS -> COMPLETED).",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Training batch status updated successfully"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Training batch not found")
+      }
+  )
   @PutMapping("/{id}/status")
   public ResponseEntity<ApiResponse<TrainingBatchResponse>> updateBatchStatus(
       @PathVariable @Positive Long id,
@@ -167,6 +215,15 @@ public class TrainingBatchController {
    * @param id primary key identifier of the training batch to delete
    * @return 200 OK with success confirmation message
    */
+  @Operation(
+      summary = "Delete Training Batch",
+      description = "Soft-deletes an existing training batch by ID.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Training batch deleted successfully"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Training batch not found")
+      }
+  )
   @DeleteMapping("/{id}")
   public ResponseEntity<ApiResponse<Void>> deleteBatch(@PathVariable @Positive Long id) {
     trainingBatchService.deleteBatch(id);

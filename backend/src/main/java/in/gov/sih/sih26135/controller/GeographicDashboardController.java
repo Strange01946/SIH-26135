@@ -7,6 +7,9 @@ import in.gov.sih.sih26135.dto.response.StateGeographicResponse;
 import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.GeographicDashboardService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
@@ -27,6 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>Base Route: /api/v1/dashboards
  * Authorization: requires {@code analytics.read} authority and enforced tenancy scope validation.
  */
+@Tag(name = "Dashboards - Geographic", description = "Territorial metrics, district heatmaps, and spatial outcomes")
 @Validated
 @RestController
 @RequestMapping("/api/v1/dashboards")
@@ -51,6 +55,15 @@ public class GeographicDashboardController {
    * @param httpRequest HTTP servlet request for URI extraction
    * @return 200 OK with {@link GeographicOverviewResponse} enveloped in {@link ApiResponse}
    */
+  @Operation(
+      summary = "Get National Geographic Overview",
+      description = "Retrieves nationwide geographic distributions, state outcome rollups, and formal Q06 district rankings.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "National geographic overview returned"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Access denied - requires nationwide administrator scope")
+      }
+  )
   @GetMapping("/geography")
   public ResponseEntity<ApiResponse<GeographicOverviewResponse>> getNationalGeography(
       @Valid AnalyticsFilterCriteria criteria,
@@ -77,6 +90,16 @@ public class GeographicDashboardController {
    * @param httpRequest HTTP servlet request for URI extraction
    * @return 200 OK with {@link StateGeographicResponse} enveloped in {@link ApiResponse}
    */
+  @Operation(
+      summary = "Get State Geographic Analytics",
+      description = "Retrieves state-level outcome KPIs, constituent district rankings, and training center distributions.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "State geographic analytics returned"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Access denied - outside assigned state scope"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "State not found")
+      }
+  )
   @GetMapping("/states/{stateId}")
   public ResponseEntity<ApiResponse<StateGeographicResponse>> getStateGeography(
       @PathVariable @Positive Long stateId,
@@ -112,6 +135,16 @@ public class GeographicDashboardController {
    * @param httpRequest HTTP servlet request for URI extraction
    * @return 200 OK with {@link DistrictGeographicResponse} enveloped in {@link ApiResponse}
    */
+  @Operation(
+      summary = "Get District Geographic Analytics",
+      description = "Retrieves district KPI performance, statewide and nationwide rankings, and localized center metrics.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "District geographic analytics returned"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Access denied - outside assigned district tenancy"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "District not found")
+      }
+  )
   @GetMapping("/districts/{districtId}")
   public ResponseEntity<ApiResponse<DistrictGeographicResponse>> getDistrictGeography(
       @PathVariable @Positive Long districtId,

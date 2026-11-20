@@ -9,6 +9,9 @@ import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.service.DataQualityEngineService;
 import in.gov.sih.sih26135.service.DataQualityRuleService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -37,6 +40,7 @@ import java.util.List;
  * Consumes: CreateDataQualityRuleRequest, UpdateDataQualityRuleRequest, DataQualityScanRequest
  * Produces: DataQualityRuleResponse, DataQualityRuleExecutionSummary enveloped in ApiResponse
  */
+@Tag(name = "Operations - Data Quality Rules", description = "Data quality rule definitions, detection thresholds, and automated audits")
 @Validated
 @RestController
 @RequestMapping({"/api/v1/data-quality-rules", "/api/v1/data-quality"})

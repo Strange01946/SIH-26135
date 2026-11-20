@@ -10,6 +10,9 @@ import in.gov.sih.sih26135.security.InternalAuthenticationToken;
 import in.gov.sih.sih26135.security.InternalServicePrincipal;
 import in.gov.sih.sih26135.security.TenantScopeType;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
@@ -42,6 +45,7 @@ import org.springframework.web.bind.annotation.RestController;
  *   <li>Nationwide access requires verified administrative authorities (super_admin or nationwide government_admin).</li>
  * </ul>
  */
+@Tag(name = "Communication - Dispatch Queue", description = "Multi-channel asynchronous delivery queues and dispatch jobs")
 @RestController
 @RequestMapping("/api/v1/communication")
 @Validated
@@ -62,6 +66,16 @@ public class CommunicationJobController {
   /**
    * Retrieves durable dispatch job details by primary key identifier, enforcing tenant isolation.
    */
+  @Operation(
+      summary = "Get Dispatch Job by ID",
+      description = "Retrieves durable dispatch job details and delivery status, enforcing tenant isolation.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Dispatch job found"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Access denied - job belongs to different tenant"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Dispatch job not found")
+      }
+  )
   @GetMapping("/jobs/{jobId}")
   public ResponseEntity<ApiResponse<DispatchJobDto>> getJobById(@PathVariable @Positive Long jobId) {
     DispatchJobDto job = queueService.getJobById(jobId);
@@ -76,6 +90,16 @@ public class CommunicationJobController {
   /**
    * Retrieves execution attempt audit history for a dispatch job, enforcing tenant isolation.
    */
+  @Operation(
+      summary = "Get Job Execution Attempts",
+      description = "Retrieves execution attempt audit history for a dispatch job, enforcing tenant isolation.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Job execution attempts returned"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Access denied - job belongs to different tenant"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Dispatch job not found")
+      }
+  )
   @GetMapping("/jobs/{jobId}/attempts")
   public ResponseEntity<ApiResponse<List<DispatchAttemptDto>>> getJobAttempts(@PathVariable @Positive Long jobId) {
     DispatchJobDto job = queueService.getJobById(jobId);
@@ -92,6 +116,15 @@ public class CommunicationJobController {
    * Retrieves paginated dead-letter queue records for administrative review,
    * strictly partitioned by authorized tenant.
    */
+  @Operation(
+      summary = "Get Dead-Letter Queue Jobs",
+      description = "Retrieves paginated dead-letter queue records for administrative review, strictly partitioned by authorized tenant.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Dead letter jobs retrieved successfully"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Access denied - caller lacks required tenant scope")
+      }
+  )
   @GetMapping("/dead-letter")
   public ResponseEntity<ApiResponse<List<DispatchJobDto>>> getDeadLetterJobs(
       @RequestParam(name = "offset", defaultValue = "0") @Min(0) int offset,
@@ -116,6 +149,16 @@ public class CommunicationJobController {
    * Manually replays an exhausted or dead-lettered job after issue remediation,
    * enforcing strict tenant isolation on the replay operation.
    */
+  @Operation(
+      summary = "Replay Dead-Letter Job",
+      description = "Manually replays an exhausted or dead-lettered job after issue remediation, enforcing strict tenant isolation.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Job re-enqueued for delivery"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Access denied - job belongs to different tenant"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Dispatch job not found")
+      }
+  )
   @PostMapping("/dead-letter/{jobId}/replay")
   public ResponseEntity<ApiResponse<DispatchJobDto>> replayDeadLetterJob(
       @PathVariable @Positive Long jobId,

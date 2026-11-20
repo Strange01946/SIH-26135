@@ -1,42 +1,81 @@
 package in.gov.sih.sih26135.dto.request;
 import in.gov.sih.sih26135.validation.ValidDateOfBirth;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.*;
 
 import java.time.LocalDate;
 
+@Schema(description = "Request payload for creating a new trainee profile")
 public class CreateTraineeRequest {
 
+  @Schema(description = "Associated user identity ID", example = "1001")
   private Long userId;
+
+  @Schema(description = "Unique alphanumeric registration number", example = "TRN-2026-0001", requiredMode = Schema.RequiredMode.REQUIRED)
   @NotBlank(message = "Registration number is required")
   @Size(max = 32, message = "Registration number cannot exceed 32 characters")
   private String registrationNumber;
+
+  @Schema(description = "First name of the trainee", example = "Rajesh", requiredMode = Schema.RequiredMode.REQUIRED)
   @NotBlank(message = "firstName is required")
   @Size(max = 80, message = "firstName cannot exceed 80 characters")
   private String firstName;
+
+  @Schema(description = "Middle name of the trainee", example = "Kumar")
   @Size(max = 80, message = "middleName cannot exceed 80 characters")
   private String middleName;
+
+  @Schema(description = "Last name of the trainee", example = "Sharma")
   @Size(max = 80, message = "lastName cannot exceed 80 characters")
   private String lastName;
+
+  @Schema(description = "Date of birth (ISO-8601)", example = "2000-01-15")
   @ValidDateOfBirth
   private LocalDate dateOfBirth;
+
+  @Schema(description = "Gender lookup ID", example = "1")
   private Long genderId;
+
+  @Schema(description = "Email address", example = "trainee@example.gov.in")
   @Email(message = "Email must be a valid email address")
   @Size(max = 255, message = "Email cannot exceed 255 characters")
   private String email;
+
+  @Schema(description = "Mobile phone number (10-15 digits)", example = "9876543210")
   @Pattern(regexp = "^[0-9]{10,15}$", message = "Phone number must be between 10 and 15 digits")
   private String phone;
+
+  @Schema(description = "Primary street address", example = "123 Main Street")
   @Size(max = 200, message = "addressLine1 cannot exceed 200 characters")
   private String addressLine1;
+
+  @Schema(description = "Secondary address details", example = "Sector 4")
   @Size(max = 200, message = "addressLine2 cannot exceed 200 characters")
   private String addressLine2;
+
+  @Schema(description = "Postal pincode (6 digits)", example = "110001")
   @Pattern(regexp = "^[1-9][0-9]{5}$", message = "Pincode must be 6 digits and cannot start with 0")
   private String pincode;
+
+  @Schema(description = "Location lookup ID", example = "1")
   private Long locationId;
+
+  @Schema(description = "State jurisdiction ID", example = "10")
   private Long stateId;
+
+  @Schema(description = "District jurisdiction ID", example = "101")
   private Long districtId;
+
+  @Schema(description = "Block ID", example = "1001")
   private Long blockId;
+
+  @Schema(description = "Education level lookup ID", example = "2")
   private Long educationLevelId;
+
+  @Schema(description = "Current employment status lookup ID", example = "1")
   private Long currentEmploymentStatusId;
+
+  @Schema(description = "Profile status lookup ID", example = "1")
   private Long profileStatusId;
 
   public CreateTraineeRequest() {

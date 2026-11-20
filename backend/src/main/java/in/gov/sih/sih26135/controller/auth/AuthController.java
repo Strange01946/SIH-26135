@@ -10,6 +10,9 @@ import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.security.UserPrincipal;
 import in.gov.sih.sih26135.service.auth.AuthenticationService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -29,6 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
  *   <li>GET /me — Authenticated self-profile information of the current principal</li>
  * </ul>
  */
+@Tag(name = "Authentication", description = "Authentication and session token lifecycle endpoints")
 @Validated
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -47,6 +51,15 @@ public class AuthController {
    * @param httpRequest HTTP servlet request
    * @return 200 OK with AuthResponse enveloped in ApiResponse
    */
+  @Operation(
+      summary = "User Login",
+      description = "Public endpoint to authenticate user credentials and issue JWT access and refresh token pair.",
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Authentication successful, JWT tokens returned"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Bad request - missing or blank credentials"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized - invalid credentials or locked account")
+      }
+  )
   @PostMapping("/login")
   public ResponseEntity<ApiResponse<AuthResponse>> login(
       @RequestBody LoginRequest request,
@@ -71,6 +84,15 @@ public class AuthController {
    * @param httpRequest HTTP servlet request
    * @return 200 OK with new AuthResponse enveloped in ApiResponse
    */
+  @Operation(
+      summary = "Refresh JWT Access Token",
+      description = "Public endpoint to renew an expired access token using a valid refresh token with token rotation.",
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Token refreshed successfully, new JWT tokens returned"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Bad request - missing or blank refresh token"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized - expired, revoked, or invalid refresh token")
+      }
+  )
   @PostMapping("/refresh")
   public ResponseEntity<ApiResponse<AuthResponse>> refresh(
       @RequestBody RefreshTokenRequest request,
@@ -92,6 +114,15 @@ public class AuthController {
    * @param httpRequest HTTP servlet request
    * @return 200 OK with AuthenticatedUserResponse enveloped in ApiResponse
    */
+  @Operation(
+      summary = "Get Current User Profile",
+      description = "Retrieve profile, tenancy bounds, and granted authorities for the currently authenticated principal.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Authenticated user profile returned successfully"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized - missing or invalid JWT bearer token")
+      }
+  )
   @GetMapping("/me")
   public ResponseEntity<ApiResponse<AuthenticatedUserResponse>> me(
       @AuthenticationPrincipal UserPrincipal principal,

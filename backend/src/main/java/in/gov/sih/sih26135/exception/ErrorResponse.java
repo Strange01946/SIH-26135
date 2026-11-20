@@ -2,6 +2,7 @@ package in.gov.sih.sih26135.exception;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import in.gov.sih.sih26135.correlation.CorrelationContextHolder;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -10,16 +11,34 @@ import java.util.List;
  * Designed to prevent leakage of credentials, SQL queries, or internal stack traces.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Schema(description = "Sanitized standard error response body preventing sensitive leakage")
 public class ErrorResponse {
 
+  @Schema(description = "Error type category", example = "VALIDATION_ERROR")
   private String type;
+
+  @Schema(description = "Timestamp when error occurred", example = "2026-11-19T18:00:00")
   private LocalDateTime timestamp;
+
+  @Schema(description = "HTTP status code", example = "400")
   private int status;
+
+  @Schema(description = "HTTP status description", example = "Bad Request")
   private String error;
+
+  @Schema(description = "Machine-readable operational error code", example = "TRAINEE_MISMATCH")
   private String code;
+
+  @Schema(description = "Sanitized human-readable error explanation", example = "Request validation failed")
   private String message;
+
+  @Schema(description = "Target request path where error occurred", example = "/api/v1/trainees")
   private String path;
+
+  @Schema(description = "List of specific validation or error details", example = "[\"traineeId is required\"]")
   private List<String> details;
+
+  @Schema(description = "Unique correlation identifier for tracking in logs", example = "c8f9b2a1-0000-4000-a000-000000000001")
   private String correlationId;
 
   public ErrorResponse() {

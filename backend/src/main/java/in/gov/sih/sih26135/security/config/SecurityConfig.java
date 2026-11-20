@@ -96,10 +96,13 @@ public class SecurityConfig {
             .requestMatchers("/actuator/health").permitAll()
             .requestMatchers("/error").permitAll()
             .requestMatchers(
-    "/swagger-ui/**",
-    "/swagger-ui.html",
-    "/v3/api-docs/**"
-).permitAll()
+                "/swagger-ui/**",
+                "/swagger-ui.html",
+                "/v3/api-docs",
+                "/v3/api-docs/**",
+                "/v3/api-docs.yaml",
+                "/v3/api-docs.yaml/**"
+            ).permitAll()
             .anyRequest().authenticated()
         )
         // Register JWT authentication filter before the standard username/password filter

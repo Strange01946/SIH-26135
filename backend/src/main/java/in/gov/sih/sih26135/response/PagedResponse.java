@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.data.domain.Page;
 
 /**
@@ -15,16 +16,34 @@ import org.springframework.data.domain.Page;
  * @param <T> data transfer object type of the page content
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Schema(description = "Standard pagination wrapper enveloped inside ApiResponse")
 public class PagedResponse<T> {
 
+  @Schema(description = "List of records in the current page")
   private final List<T> content;
+
+  @Schema(description = "Current page index (0-based)", example = "0")
   private final int page;
+
+  @Schema(description = "Number of records per page", example = "20")
   private final int size;
+
+  @Schema(description = "Total number of records matching criteria", example = "100")
   private final long totalElements;
+
+  @Schema(description = "Total number of available pages", example = "5")
   private final int totalPages;
+
+  @Schema(description = "True if this is the first page", example = "true")
   private final boolean first;
+
+  @Schema(description = "True if this is the last page", example = "false")
   private final boolean last;
+
+  @Schema(description = "True if there is a next page", example = "true")
   private final boolean hasNext;
+
+  @Schema(description = "True if there is a previous page", example = "false")
   private final boolean hasPrevious;
 
   @JsonCreator

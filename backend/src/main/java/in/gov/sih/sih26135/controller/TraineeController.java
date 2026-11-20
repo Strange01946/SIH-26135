@@ -12,6 +12,9 @@ import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.response.PagedResponse;
 import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.service.TraineeService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import org.springframework.data.domain.Page;
@@ -37,6 +40,7 @@ import org.springframework.web.bind.annotation.RestController;
  * Consumes: CreateTraineeRequest, UpdateTraineeRequest
  * Produces: TraineeResponse enveloped in ApiResponse
  */
+@Tag(name = "Trainees", description = "Trainee profile and lifecycle management")
 @Validated
 @RestController
 @RequestMapping("/api/v1/trainees")
@@ -54,6 +58,15 @@ public class TraineeController {
    * @param id primary key identifier of the trainee
    * @return 200 OK with TraineeResponse enveloped in ApiResponse
    */
+  @Operation(
+      summary = "Get Trainee by ID",
+      description = "Retrieves complete trainee profile by primary key identifier.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Trainee profile found"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Trainee not found")
+      }
+  )
   @GetMapping("/{id}")
   @PreAuthorize("hasAuthority('trainee.read')")
   public ResponseEntity<ApiResponse<TraineeResponse>> getById(@PathVariable @Positive Long id) {
@@ -73,6 +86,14 @@ public class TraineeController {
    * @param direction sort direction (ASC or DESC, default: ASC)
    * @return 200 OK with paginated trainees or single matched trainee enveloped in ApiResponse
    */
+  @Operation(
+      summary = "Get Trainees (Search / Paginated)",
+      description = "Retrieves trainees with optional filtering by registration number or user ID, or returns a paginated list.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Trainees retrieved successfully")
+      }
+  )
   @GetMapping
   @PreAuthorize("hasAuthority('trainee.read')")
   public ResponseEntity<ApiResponse<?>> getTrainees(
@@ -105,6 +126,15 @@ public class TraineeController {
    * @param httpRequest HTTP servlet request for URI extraction
    * @return 201 Created with created TraineeResponse enveloped in ApiResponse
    */
+  @Operation(
+      summary = "Create Trainee",
+      description = "Registers a new trainee record with territorial and demographic details.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Trainee created successfully"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed or duplicate registration number")
+      }
+  )
   @PostMapping
   @PreAuthorize("hasAuthority('trainee.write')")
   public ResponseEntity<ApiResponse<TraineeResponse>> createTrainee(
@@ -124,6 +154,16 @@ public class TraineeController {
    * @param actorUserId optional ID of the actor performing the update
    * @return 200 OK with updated TraineeResponse enveloped in ApiResponse
    */
+  @Operation(
+      summary = "Update Trainee",
+      description = "Updates an existing trainee's demographic and contact information.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Trainee updated successfully"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed or trainee mismatch"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Trainee not found")
+      }
+  )
   @PutMapping("/{id}")
   @PreAuthorize("hasAuthority('trainee.write')")
   public ResponseEntity<ApiResponse<TraineeResponse>> updateTrainee(
@@ -141,6 +181,15 @@ public class TraineeController {
    * @param actorUserId optional ID of the actor performing the deletion
    * @return 200 OK with success confirmation message
    */
+  @Operation(
+      summary = "Delete Trainee",
+      description = "Soft-deletes an existing trainee record by ID.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Trainee deleted successfully"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Trainee not found")
+      }
+  )
   @DeleteMapping("/{id}")
   @PreAuthorize("hasAuthority('trainee.write')")
   public ResponseEntity<ApiResponse<Void>> deleteTrainee(

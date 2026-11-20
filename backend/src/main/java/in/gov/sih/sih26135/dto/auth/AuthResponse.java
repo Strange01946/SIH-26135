@@ -1,18 +1,33 @@
 package in.gov.sih.sih26135.dto.auth;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
 /**
  * Authentication response payload returning access token, refresh token, and user identity metadata.
  */
+@Schema(description = "Authentication token response containing access and refresh tokens")
 public class AuthResponse {
 
+  @Schema(description = "Signed JWT access token for API authorization", example = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
   private String accessToken;
+
+  @Schema(description = "Signed JWT refresh token for renewing access tokens", example = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
   private String refreshToken;
+
+  @Schema(description = "Token type identifier", example = "Bearer")
   private String tokenType;
+
+  @Schema(description = "Access token lifespan in milliseconds", example = "900000")
   private Long expiresIn;
+
+  @Schema(description = "Unique user identifier", example = "1")
   private Long userId;
+
+  @Schema(description = "Username of authenticated principal", example = "admin")
   private String username;
+
+  @Schema(description = "List of granted role authorities", example = "[\"ROLE_super_admin\"]")
   private List<String> authorities;
 
   public AuthResponse() {

@@ -17,6 +17,9 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -25,6 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
  * Publicly reachable, signature-authenticated webhook ingestion endpoint
  * for external delivery receipts and status notifications.
  */
+@Tag(name = "Communication - Inbound Webhooks", description = "Inbound vendor delivery status webhooks (Twilio SMS/WhatsApp, SendGrid Email)")
 @RestController
 @RequestMapping("/api/v1/communication/webhooks")
 public class CommunicationWebhookController {
@@ -49,6 +53,17 @@ public class CommunicationWebhookController {
   /**
    * Ingests delivery receipts from external providers (e.g., Twilio SMS/WhatsApp, SendGrid Email, Mock).
    */
+  @Operation(
+      summary = "Ingest Provider Webhook",
+      description = "Public webhook endpoint for receiving asynchronous delivery receipts from external providers (Twilio, SendGrid, Mock). Authenticated via HMAC/Ed25519 vendor signature headers.",
+      security = {},
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Webhook payload validated and processed successfully"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid payload or missing provider identifier"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized - invalid HMAC vendor signature"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Provider not supported")
+      }
+  )
   @PostMapping(value = "/{provider}", consumes = {MediaType.APPLICATION_FORM_URLENCODED_VALUE, MediaType.APPLICATION_JSON_VALUE, MediaType.ALL_VALUE})
   public ResponseEntity<ApiResponse<WebhookProcessingResult>> handleProviderWebhook(
       @PathVariable("provider") String provider,

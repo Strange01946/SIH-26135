@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import in.gov.sih.sih26135.correlation.CorrelationContextHolder;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 
 /**
@@ -11,20 +12,31 @@ import java.time.Instant;
  *
  * @param <T> the type of the payload data
  */
+@Schema(description = "Standard generic envelope for REST API responses")
 public class ApiResponse<T> {
 
+  @Schema(description = "Whether the request completed successfully", example = "true")
   private final boolean success;
+
+  @Schema(description = "Human-readable result or status message", example = "Operation completed successfully")
   private final String message;
+
+  @Schema(description = "Payload data of type T")
   private final T data;
+
+  @Schema(description = "UTC ISO-8601 timestamp of response generation", example = "2026-11-19T18:00:00Z")
   private final Instant timestamp;
 
   @JsonInclude(JsonInclude.Include.NON_NULL)
+  @Schema(description = "Request URI path", example = "/api/v1/trainees")
   private final String path;
 
   @JsonInclude(JsonInclude.Include.NON_NULL)
+  @Schema(description = "Machine-readable status or error code", example = "SUCCESS")
   private final String code;
 
   @JsonInclude(JsonInclude.Include.NON_NULL)
+  @Schema(description = "Unique correlation identifier for request tracing across services", example = "c8f9b2a1-0000-4000-a000-000000000001")
   private final String correlationId;
 
   @JsonCreator

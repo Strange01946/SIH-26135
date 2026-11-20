@@ -11,6 +11,9 @@ import in.gov.sih.sih26135.dto.response.RecordVerificationVerdictResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.service.VerificationWorkflowService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -30,6 +33,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  *
  * <p>Base Route: /api/v1/workflows/verification (alias: /api/v1/workflows/verifications)
  */
+@Tag(name = "Workflows - Verification", description = "Trainee identity, credential, and employment verification workflows")
 @Validated
 @RestController
 @RequestMapping({"/api/v1/workflows/verification", "/api/v1/workflows/verifications"})
@@ -60,6 +64,15 @@ public class VerificationWorkflowController {
    * @param httpRequest HTTP servlet request for URI extraction and parameter validation
    * @return 201 Created with EmploymentVerificationRequestResponse enveloped in ApiResponse
    */
+  @Operation(
+      summary = "Initiate Verification from Survey",
+      description = "Triggers an employment verification request workflow derived from candidate survey responses.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Employment verification initiated successfully"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed or unsupported query parameters")
+      }
+  )
   @PostMapping("/initiate-from-survey")
   public ResponseEntity<ApiResponse<EmploymentVerificationRequestResponse>> initiateVerificationFromSurvey(
       @Valid @RequestBody InitiateVerificationFromSurveyRequest request,
@@ -86,6 +99,15 @@ public class VerificationWorkflowController {
    * @param httpRequest HTTP servlet request for URI extraction and parameter validation
    * @return 201 Created with RecordVerificationVerdictResponse enveloped in ApiResponse
    */
+  @Operation(
+      summary = "Record Verification Verdict",
+      description = "Records a multi-attempt employment verification outcome, uploads evidence links, and updates employment status.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Verification verdict recorded successfully"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed or unsupported parameters")
+      }
+  )
   @PostMapping("/record-verdict")
   public ResponseEntity<ApiResponse<RecordVerificationVerdictResponse>> recordVerificationVerdict(
       @Valid @RequestBody RecordVerificationVerdictRequest request,
@@ -115,6 +137,16 @@ public class VerificationWorkflowController {
    * @param httpRequest HTTP servlet request for query parameter validation
    * @return 200 OK with EmploymentVerificationSummaryResponse enveloped in ApiResponse
    */
+  @Operation(
+      summary = "Get Employment Verification Summary",
+      description = "Retrieves verification lifecycle history, attempts, evidence records, and current verification status for an employment record.",
+      security = @SecurityRequirement(name = "bearerAuth"),
+      responses = {
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Verification summary retrieved successfully"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid or unsupported query parameters"),
+          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Employment record not found")
+      }
+  )
   @GetMapping("/summary")
   public ResponseEntity<ApiResponse<EmploymentVerificationSummaryResponse>> getEmploymentVerificationSummary(
       @RequestParam("employmentId") @Positive Long employmentId,

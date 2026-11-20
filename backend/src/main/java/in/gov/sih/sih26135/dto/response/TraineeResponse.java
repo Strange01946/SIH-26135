@@ -1,32 +1,79 @@
 package in.gov.sih.sih26135.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+@Schema(description = "Trainee profile response payload")
 public class TraineeResponse {
 
+  @Schema(description = "Trainee primary key identifier", example = "1005143")
   private Long id;
+
+  @Schema(description = "Associated user account ID", example = "1001")
   private Long userId;
+
+  @Schema(description = "Unique alphanumeric registration number", example = "TRN-2026-0001")
   private String registrationNumber;
+
+  @Schema(description = "First name", example = "Rajesh")
   private String firstName;
+
+  @Schema(description = "Middle name", example = "Kumar")
   private String middleName;
+
+  @Schema(description = "Last name", example = "Sharma")
   private String lastName;
+
+  @Schema(description = "Date of birth (ISO-8601)", example = "2000-01-15")
   private LocalDate dateOfBirth;
+
+  @Schema(description = "Gender lookup ID", example = "1")
   private Long genderId;
+
+  @Schema(description = "Contact email", example = "trainee@example.gov.in")
   private String email;
+
+  @Schema(description = "Contact phone number", example = "9876543210")
   private String phone;
+
+  @Schema(description = "Primary street address", example = "123 Main Street")
   private String addressLine1;
+
+  @Schema(description = "Secondary address details", example = "Sector 4")
   private String addressLine2;
+
+  @Schema(description = "Postal pincode", example = "110001")
   private String pincode;
+
+  @Schema(description = "Location ID", example = "1")
   private Long locationId;
+
+  @Schema(description = "State jurisdiction ID", example = "10")
   private Long stateId;
+
+  @Schema(description = "District jurisdiction ID", example = "101")
   private Long districtId;
+
+  @Schema(description = "Block ID", example = "1001")
   private Long blockId;
+
+  @Schema(description = "Education level ID", example = "2")
   private Long educationLevelId;
+
+  @Schema(description = "Employment status ID", example = "1")
   private Long currentEmploymentStatusId;
+
+  @Schema(description = "Profile status ID", example = "1")
   private Long profileStatusId;
+
+  @Schema(description = "Record creation timestamp", example = "2026-01-10T10:00:00")
   private LocalDateTime createdAt;
+
+  @Schema(description = "Last update timestamp", example = "2026-02-15T12:30:00")
   private LocalDateTime updatedAt;
+
+  @Schema(description = "Soft deletion timestamp if deleted", example = "null")
   private LocalDateTime deletedAt;
 
   public TraineeResponse() {
