@@ -100,11 +100,18 @@ public class ActuatorSecurityAndHealthTest {
   }
 
   @Test
-  @DisplayName("Anonymous access to /actuator/health/liveness returns 200 UP")
+  @DisplayName("Anonymous access to /actuator/health/liveness returns 200 UP and liveness includes only livenessState (not diskSpace)")
   void testPublicLivenessProbeIsAccessible() throws Exception {
     mockMvc.perform(get("/actuator/health/liveness"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("UP"));
+
+    // Verify authorized liveness group composition: strictly livenessState only, zero diskSpace
+    mockMvc.perform(get("/actuator/health/liveness")
+            .header("Authorization", createAdminBearerToken()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.components.livenessState").exists())
+        .andExpect(jsonPath("$.components.diskSpace").doesNotExist());
   }
 
   @Test
@@ -151,9 +158,9 @@ public class ActuatorSecurityAndHealthTest {
 
     String content = result.getResponse().getContentAsString();
     assertThat(content)
-        .as("Prometheus text scrape must contain JVM and application metrics")
+        .as("Prometheus text scrape must contain JVM and system metrics")
         .contains("jvm_memory_used_bytes")
-        .contains("jvm_gc_pause_seconds");
+        .contains("system_cpu_count");
   }
 
   // =========================================================================

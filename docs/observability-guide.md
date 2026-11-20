@@ -25,11 +25,11 @@ The observability stack delivers production-grade metrics exposition, health dia
 │  (Basic Status) │                       │ (App Metadata)  │ │  prometheus     │                       │  diagnostics    │
 └────────┬────────┘                       └─────────────────┘ └────────┬────────┘                       └────────┬────────┘
          │                                                             │                                         │
-         ├─ /liveness (livenessState, diskSpace)                       ├─ JVM & HikariCP Metrics                 ├─ databaseLatency
+         ├─ /liveness (livenessState)                                  ├─ JVM & HikariCP Metrics                 ├─ databaseLatency
          └─ /readiness (readinessState, db, databaseLatency)           ├─ HTTP Server Requests                   ├─ caffeineCache
                                                                        └─ Custom Business Metrics:               ├─ bulkImportStorage
-                                                                          • workflow.transition.duration         └─ communicationGateway
-                                                                          • bulk.import.rows.processed
+                                                                          • workflow.transition.duration         ├─ communicationGateway
+                                                                          • bulk.import.rows.processed           └─ diskSpace
                                                                           • data.quality.cleanliness.index
                                                                           • communication.dispatch.total
 ```

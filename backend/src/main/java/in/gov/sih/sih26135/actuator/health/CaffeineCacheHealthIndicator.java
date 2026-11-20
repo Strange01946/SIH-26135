@@ -42,14 +42,7 @@ public class CaffeineCacheHealthIndicator implements HealthIndicator {
 
   @PostConstruct
   public void registerCacheMetrics() {
-    Collection<String> cacheNames = cacheManager.getCacheNames();
-    for (String name : cacheNames) {
-      org.springframework.cache.Cache springCache = cacheManager.getCache(name);
-      if (springCache instanceof CaffeineCache caffeineCache) {
-        Cache<Object, Object> nativeCache = caffeineCache.getNativeCache();
-        CaffeineCacheMetrics.monitor(meterRegistry, nativeCache, name);
-      }
-    }
+    // Spring Boot's CacheMetricsRegistrar already binds cache metrics with standard tags [cache, cache.manager]
   }
 
   @Override

@@ -2,11 +2,14 @@ package in.gov.sih.sih26135.actuator.metrics;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import java.lang.reflect.Method;
 import java.util.Locale;
 import java.util.Objects;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Pointcut;
+import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -20,6 +23,7 @@ import org.springframework.stereotype.Component;
  *   <li>Strictly zero PII: no user IDs, trainee IDs, batch IDs, or arbitrary exception messages.</li>
  *   <li>Outcome is categorized as {@code SUCCESS} or {@code FAILURE}.</li>
  *   <li>Exceptions are recorded and rethrown unchanged, preserving business transaction semantics.</li>
+ *   <li>Read-only query methods (get*, find*, query*) and configuration setters (set*) are strictly excluded.</li>
  * </ul>
  */
 @Aspect
@@ -33,13 +37,34 @@ public class WorkflowMetricsAspect {
     this.meterRegistry = Objects.requireNonNull(meterRegistry, "MeterRegistry is required");
   }
 
-  @Around("execution(* in.gov.sih.sih26135.service.*WorkflowService.*(..))")
+  @Pointcut("(@annotation(in.gov.sih.sih26135.actuator.metrics.WorkflowTransition)) || "
+      + "(execution(* in.gov.sih.sih26135.service..*Workflow*.*(..)) "
+      + "&& !execution(* in.gov.sih.sih26135.service..*Workflow*.get*(..)) "
+      + "&& !execution(* in.gov.sih.sih26135.service..*Workflow*.set*(..)) "
+      + "&& !execution(* in.gov.sih.sih26135.service..*Workflow*.find*(..)) "
+      + "&& !execution(* in.gov.sih.sih26135.service..*Workflow*.query*(..)))")
+  public void workflowTransitionExecution() {}
+
+  @Around("workflowTransitionExecution()")
   public Object timeWorkflowTransition(ProceedingJoinPoint joinPoint) throws Throwable {
-    String className = joinPoint.getTarget().getClass().getSimpleName();
+    String rawClassName = joinPoint.getTarget() != null
+        ? joinPoint.getTarget().getClass().getSimpleName()
+        : joinPoint.getSignature().getDeclaringType().getSimpleName();
     String methodName = joinPoint.getSignature().getName();
 
-    String workflowType = deriveWorkflowType(className);
-    String transition = deriveTransition(methodName);
+    WorkflowTransition annotation = null;
+    if (joinPoint.getSignature() instanceof MethodSignature methodSignature) {
+      Method method = methodSignature.getMethod();
+      annotation = method.getAnnotation(WorkflowTransition.class);
+    }
+
+    String workflowType = (annotation != null && !annotation.type().isBlank())
+        ? annotation.type().toUpperCase(Locale.ROOT)
+        : deriveWorkflowType(rawClassName);
+
+    String transition = (annotation != null && !annotation.transition().isBlank())
+        ? annotation.transition().toUpperCase(Locale.ROOT)
+        : deriveTransition(methodName);
 
     Timer.Sample sample = Timer.start(meterRegistry);
     String outcome = "SUCCESS";
@@ -59,7 +84,12 @@ public class WorkflowMetricsAspect {
   }
 
   private String deriveWorkflowType(String className) {
-    String clean = className.replace("Impl", "").replace("WorkflowService", "").replace("Workflow", "");
+    String clean = className;
+    int cglibIdx = clean.indexOf("$$");
+    if (cglibIdx != -1) {
+      clean = clean.substring(0, cglibIdx);
+    }
+    clean = clean.replace("Impl", "").replace("WorkflowService", "").replace("Workflow", "");
     if (clean.isEmpty()) {
       return "GENERAL";
     }
