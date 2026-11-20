@@ -272,7 +272,7 @@ List endpoints return data inside `ApiResponse<PagedResponse<T>>`:
     "hasPrevious": false
   },
   "timestamp": "2026-11-20T10:15:30.123Z",
-  "path": "/api/v1/batches",
+  "path": "/api/v1/training-batches",
   "correlationId": "c8f9b2a1-0000-4000-a000-000000000002"
 }
 ```
@@ -315,7 +315,7 @@ The backend provides deterministic, machine-readable error codes in the `code` f
 | `ACCOUNT_LOCKED` | 423 | 5 failed login attempts exceeded | Wait 15 minutes for lockout window to elapse |
 | `TOKEN_EXPIRED` | 401 | Bearer JWT has expired | Call `POST /api/v1/auth/refresh` with `refreshToken` |
 | `INSUFFICIENT_PERMISSIONS` | 403 | User role lacks authority for route | Request role elevation or correct tenant context |
-| `DPDP_CONSENT_REQUIRED` | 403 | Trainee consent missing under DPDP 2023 | Obtain electronic consent via `/api/v1/trainees/{id}/consents` |
+| `DPDP_CONSENT_REQUIRED` | 403 | Trainee consent missing under DPDP 2023 | Obtain electronic consent via `/api/v1/consents` |
 | `TRAINEE_NOT_FOUND` | 404 | Trainee record does not exist | Verify ID in master catalog |
 | `TRAINEE_MISMATCH` | 400 | Payload identifier diverges from URI path | Align ID in request body with path variable |
 | `DUPLICATE_IDENTIFIER` | 409 | Unique constraint violated (e.g. Aadhaar hash) | Check existing records before resubmitting |
@@ -331,11 +331,19 @@ The backend provides deterministic, machine-readable error codes in the `code` f
 
 ### 9.1 Bulk Data Ingestion (Multipart File Upload)
 
-The bulk ingestion API processes CSV staging batches asynchronously.
+The bulk ingestion pipeline accepts CSV, JSON, or NDJSON dataset files to create a staged `PENDING` import batch, which is then processed through chunked validation and persistence pipelines.
+
+- **Endpoint**: `POST /api/v1/import-batches` (alternate route: `/api/v1/import/batches`)
+- **Content-Type**: `multipart/form-data`
+- **Form Part**: `file` (the CSV, JSON, or NDJSON file)
+- **Query Parameters**:
+  - `entityType` (optional): Target entity type, e.g. `Trainee` or `PlacementRecord`.
+  - `sourceSystem` (optional): Source system identifier, e.g. `STATE_PORTAL`.
+- **Response**: `201 Created` with `ApiResponse<ImportBatchResponse>`.
 
 #### cURL Example
 ```bash
-curl -X POST "http://localhost:8080/api/v1/operations/ingestion/upload" \
+curl -X POST "http://localhost:8080/api/v1/import-batches?entityType=Trainee&sourceSystem=STATE_PORTAL" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -F "file=@trainees_batch_2026.csv;type=text/csv"
 ```
@@ -345,7 +353,7 @@ curl -X POST "http://localhost:8080/api/v1/operations/ingestion/upload" \
 const formData = new FormData();
 formData.append('file', fileBlob, 'trainees_batch_2026.csv');
 
-const response = await fetch('http://localhost:8080/api/v1/operations/ingestion/upload', {
+const response = await fetch('http://localhost:8080/api/v1/import-batches?entityType=Trainee&sourceSystem=STATE_PORTAL', {
   method: 'POST',
   headers: {
     'Authorization': `Bearer ${accessToken}`
@@ -354,45 +362,80 @@ const response = await fetch('http://localhost:8080/api/v1/operations/ingestion/
 });
 
 const result = await response.json();
-console.log('Ingestion Batch ID:', result.data.batchId);
+console.log('Staged Import Batch ID:', result.data.id);
+console.log('Batch Code:', result.data.batchCode);
+
+// Trigger batch processing
+const processResponse = await fetch(`http://localhost:8080/api/v1/import-batches/${result.data.id}/process`, {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${accessToken}`
+  }
+});
+const processResult = await processResponse.json();
+console.log('Processed Records:', processResult.data.processedRecords);
 ```
 
 #### Python (Requests) Example
 ```python
 import requests
 
-url = "http://localhost:8080/api/v1/operations/ingestion/upload"
+url = "http://localhost:8080/api/v1/import-batches"
 headers = {"Authorization": f"Bearer {access_token}"}
+params = {"entityType": "Trainee", "sourceSystem": "STATE_PORTAL"}
 files = {"file": ("trainees_batch_2026.csv", open("trainees_batch_2026.csv", "rb"), "text/csv")}
 
-response = requests.post(url, headers=headers, files=files)
+# 1. Stage upload batch
+response = requests.post(url, headers=headers, params=params, files=files)
 response.raise_for_status()
-print("Batch ID:", response.json()["data"]["batchId"])
+batch_id = response.json()["data"]["id"]
+print(f"Staged Batch ID: {batch_id}")
+
+# 2. Trigger asynchronous batch processing
+process_url = f"http://localhost:8080/api/v1/import-batches/{batch_id}/process"
+proc_resp = requests.post(process_url, headers=headers)
+proc_resp.raise_for_status()
+print(f"Batch Processing State: {proc_resp.json()['data']['status']}")
 ```
 
 ### 9.2 Memory-Bounded Streaming CSV Export
 
-#### cURL Example
+The analytics export service streams large datasets directly from the database to HTTP clients using Spring's `StreamingResponseBody`. Statistical Disclosure Control ($k \ge 5$) and spreadsheet formula escaping are applied on the fly.
+
+- **Supported Export Endpoints**:
+  - Ministry Quarterly Progress Report (QPR): `GET /api/v1/analytics/export/qpr/csv` (or `/json`)
+  - District Skill Development Plan (DSDP): `GET /api/v1/analytics/export/dsdp/csv` (or `/json`)
+  - Training Provider Scorecard: `GET /api/v1/analytics/export/provider-scorecard/csv` (or `/json`)
+- **Headers Returned**: `Content-Type: text/csv; charset=UTF-8`, `Content-Disposition: attachment; filename="qpr-FY2026-27-Q1.csv"`
+
+#### cURL Example (QPR CSV Export)
 ```bash
-curl -X GET "http://localhost:8080/api/v1/analytics/export/trainees/csv?stateId=10" \
+curl -X GET "http://localhost:8080/api/v1/analytics/export/qpr/csv?fiscalYear=FY2026-27&quarter=Q1" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
-  -o "trainees_state_10.csv"
+  -o "qpr_FY2026_27_Q1.csv"
+```
+
+#### cURL Example (DSDP District CSV Export)
+```bash
+curl -X GET "http://localhost:8080/api/v1/analytics/export/dsdp/csv?districtId=101" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -o "dsdp_district_101.csv"
 ```
 
 #### Python (Streaming to Disk) Example
 ```python
 import requests
 
-url = "http://localhost:8080/api/v1/analytics/export/trainees/csv"
+url = "http://localhost:8080/api/v1/analytics/export/qpr/csv"
 headers = {"Authorization": f"Bearer {access_token}"}
-params = {"stateId": 10}
+params = {"fiscalYear": "FY2026-27", "quarter": "Q1"}
 
 with requests.get(url, headers=headers, params=params, stream=True) as r:
     r.raise_for_status()
-    with open("trainees_export.csv", "wb") as f:
+    with open("qpr_export.csv", "wb") as f:
         for chunk in r.iter_content(chunk_size=8192):
             f.write(chunk)
-print("Export streamed successfully without memory buffering.")
+print("QPR export streamed successfully without memory buffering.")
 ```
 
 ---
@@ -516,7 +559,7 @@ openapi-generator-cli generate \
 | :--- | :--- | :--- |
 | **HTTP 404 on `/swagger-ui/index.html`** | Check active Spring profile | Pass `--spring.profiles.active=local-demo` or set `SWAGGER_UI_ENABLED=true`. Disabled by default for security. |
 | **HTTP 401 Unauthorized across all requests** | Inspect `{{accessToken}}` in Postman environment | Run the `Login` request in Postman first to capture a fresh JWT token. |
-| **HTTP 403 Forbidden with `DPDP_CONSENT_REQUIRED`** | Inspect trainee consent status | Trainee records require valid consent. Invoke `POST /api/v1/trainees/{id}/consents` before querying PII fields. |
+| **HTTP 403 Forbidden with `DPDP_CONSENT_REQUIRED`** | Inspect trainee consent status | Trainee records require valid consent. Invoke `POST /api/v1/consents` with trainee ID before querying PII fields. |
 | **HTTP 429 Rate Limit Exceeded** | Inspect login retry frequency | The authentication endpoint enforces 5 req/min. Pause testing or use cached tokens. |
 | **HTTP 413 File Size Exceeded on upload** | Check file size | Staging file exceeds 10MB limit. Split CSV into smaller chunks. |
 | **MySQL Connection Refused on startup** | Check `localhost:3306` status | Start MySQL service: `net start MySQL80` or verify credentials in `application.properties`. |
