@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
@@ -49,6 +50,9 @@ public class OperationalDashboardServiceImpl implements OperationalDashboardServ
   private final OperationalDashboardQueryRepository queryRepository;
   private final WorkflowSecurityScopeValidator scopeValidator;
   private final JdbcTemplate jdbcTemplate;
+
+  @Autowired(required = false)
+  private in.gov.sih.sih26135.actuator.metrics.DataQualityMetricsHolder dataQualityMetricsHolder;
 
   public OperationalDashboardServiceImpl(
       OperationalDashboardQueryRepository queryRepository,
@@ -77,6 +81,9 @@ public class OperationalDashboardServiceImpl implements OperationalDashboardServ
       distinctAffectedEntities = OperationalMetricsMath.safeAdd(distinctAffectedEntities, domain.distinctAffectedCount());
     }
     BigDecimal dqiPct = OperationalMetricsMath.dataCleanlinessIndex(eligiblePopulation, distinctAffectedEntities);
+    if (dataQualityMetricsHolder != null && dqiPct != null) {
+      dataQualityMetricsHolder.updateCleanlinessIndex(dqiPct.doubleValue());
+    }
     long cleanEntitiesEstimate = eligiblePopulation > 0L
         ? Math.max(0L, Math.subtractExact(eligiblePopulation, Math.min(eligiblePopulation, distinctAffectedEntities)))
         : 0L;

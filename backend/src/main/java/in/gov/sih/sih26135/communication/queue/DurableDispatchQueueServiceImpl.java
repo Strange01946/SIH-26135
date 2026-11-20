@@ -95,6 +95,9 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
   private final TraineeRepository traineeRepository;
   private final WorkflowSecurityScopeValidator securityScopeValidator;
 
+  @Autowired(required = false)
+  private in.gov.sih.sih26135.actuator.metrics.CommunicationMetricsRecorder communicationMetricsRecorder;
+
   private final ScheduledExecutorService leaseRenewer = Executors.newSingleThreadScheduledExecutor(r -> {
     Thread t = new Thread(r, "dispatch-lease-renewer");
     t.setDaemon(true);
@@ -231,6 +234,10 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
       throw new IllegalStateException("Failed to retrieve generated primary key for dispatch job");
     }
     Long jobId = key.longValue();
+
+    if (communicationMetricsRecorder != null && command.channel() != null) {
+      communicationMetricsRecorder.recordDispatch(command.channel().name(), "QUEUED");
+    }
 
     log.info("[DispatchQueue] Enqueued dispatch job {}: traineeId={}, channel={}, mode={}, idempotencyKey={}",
         jobId, trainee.getId(), command.channel(), deliveryMode, effectiveKey);

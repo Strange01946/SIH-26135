@@ -109,6 +109,9 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
   private final CertificationRepository certificationRepository;
   private final EmploymentVerificationRequestRepository employmentVerificationRequestRepository;
 
+  @Autowired(required = false)
+  private in.gov.sih.sih26135.actuator.metrics.CommunicationMetricsRecorder communicationMetricsRecorder;
+
   @Autowired
   public NotificationDispatcherServiceImpl(
       CommunicationConsentValidator consentValidator,
@@ -215,6 +218,9 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
     try {
       consentValidator.validateCommunicationConsent(trainee.getId(), channelCode, purposeCode);
     } catch (CommunicationConsentException ex) {
+      if (communicationMetricsRecorder != null) {
+        communicationMetricsRecorder.recordDispatch(channelCode, "BLOCKED_NO_CONSENT");
+      }
       // Record BLOCKED_NO_CONSENT in communication_logs in an isolated transaction before failing closed
       recordBlockedConsentLog(trainee, channelCode, purposeCode, command.templateCode(), effectiveInitiatedByUserId, ex.getErrorCode());
       log.warn("[NotificationDispatcher] Outbound dispatch blocked by consent validator: traineeId={}, channel={}, code={}",
@@ -275,6 +281,11 @@ public class NotificationDispatcherServiceImpl implements NotificationDispatcher
     boolean isPhysicallyDelivered = "DELIVERED".equalsIgnoreCase(statusCode);
     boolean isAmbiguous = in.gov.sih.sih26135.communication.queue.DurableDispatchQueueServiceImpl.isAmbiguousTimeout(null, deliveryResult.errorCode(), deliveryResult.errorMessage());
     boolean effectiveAccepted = deliveryResult.accepted() && !"FAILED".equalsIgnoreCase(statusCode) && !isAmbiguous;
+
+    if (communicationMetricsRecorder != null) {
+      String outcome = (effectiveAccepted && !"FAILED".equalsIgnoreCase(statusCode)) ? "SUCCESS" : "FAILURE";
+      communicationMetricsRecorder.recordDispatch(channelCode, outcome);
+    }
 
     String safeMessage;
     String errorCode = null;

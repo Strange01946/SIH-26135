@@ -93,7 +93,19 @@ public class SecurityConfig {
             .requestMatchers(HttpMethod.POST, "/api/v1/auth/login", "/api/v1/auth/refresh").permitAll()
             .requestMatchers(HttpMethod.POST, "/api/v1/communication/webhooks/**").permitAll()
             .requestMatchers("/api/v1/auth/me").authenticated()
-            .requestMatchers("/actuator/health").permitAll()
+            .requestMatchers(
+                "/actuator/health",
+                "/actuator/health/liveness",
+                "/actuator/health/readiness",
+                "/actuator/info"
+            ).permitAll()
+            .requestMatchers(
+                "/actuator/prometheus",
+                "/actuator/metrics",
+                "/actuator/metrics/**",
+                "/actuator/health/diagnostics"
+            ).hasAnyAuthority("system.manage", "ROLE_ADMIN", "ROLE_super_admin")
+            .requestMatchers("/actuator/**").hasAnyAuthority("system.manage", "ROLE_ADMIN", "ROLE_super_admin")
             .requestMatchers("/error").permitAll()
             .requestMatchers(
                 "/swagger-ui/**",

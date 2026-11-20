@@ -129,6 +129,9 @@ public class ImportBatchProcessingWorkflowImpl implements ImportBatchProcessingW
   @Autowired(required = false)
   private SystemEventLoggingService systemEventLoggingService;
 
+  @Autowired(required = false)
+  private in.gov.sih.sih26135.actuator.metrics.ImportMetricsRecorder importMetricsRecorder;
+
   @PersistenceContext
   private EntityManager entityManager;
 
@@ -713,6 +716,13 @@ public class ImportBatchProcessingWorkflowImpl implements ImportBatchProcessingW
       int sourceRowNumber,
       RowOutcomeResult outcome,
       RecordStatusIds statusIds) {
+    if (importMetricsRecorder != null && outcome != null) {
+      String entity = outcome.entityType() != null ? outcome.entityType() : "UNKNOWN";
+      String result = outcome.outcomeType() != null ? outcome.outcomeType().name() : "UNKNOWN";
+      importMetricsRecorder.recordRowProcessed(entity, "PROCESSED");
+      importMetricsRecorder.recordRowProcessed(entity, result);
+    }
+
     Long targetStatusId = switch (outcome.outcomeType()) {
       case SUCCESS -> statusIds.successId();
       case FAILED -> statusIds.failedId();
