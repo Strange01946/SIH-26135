@@ -18,9 +18,12 @@ Generates:
 import json
 import os
 import re
+from pathlib import Path
 
-OPENAPI_DIR = r"E:\project\docs\openapi"
-INTEGRATION_DIR = r"E:\project\docs\integration"
+SCRIPT_DIR = Path(__file__).resolve().parent
+INTEGRATION_DIR = SCRIPT_DIR
+PROJECT_ROOT = SCRIPT_DIR.parent.parent
+OPENAPI_DIR = PROJECT_ROOT / "docs" / "openapi"
 
 GROUPS = [
     ("1-core-domain", "1. Core Domain & Master Data", "Geographies, Users, Roles, Permissions, Auth, Trainees, Consents, Courses, Programs, Schemes, Sectors, Centers, Providers, Batches, Enrollments, Assessments, Certifications, Placements, Employers, Surveys"),
@@ -286,8 +289,8 @@ def generate_collection():
 
     # 2. Iterate over the 5 partitioned groups
     for group_key, group_title, group_desc in GROUPS:
-        group_spec_path = os.path.join(OPENAPI_DIR, f"openapi-{group_key}.json")
-        group_spec = load_json(group_spec_path)
+        group_spec_path = OPENAPI_DIR / f"openapi-{group_key}.json"
+        group_spec = load_json(str(group_spec_path))
         group_paths = group_spec.get("paths", {})
 
         group_folder = {
@@ -336,6 +339,10 @@ def generate_collection():
                             p_def = str(p["example"])
                         elif "example" in p_schema:
                             p_def = str(p_schema["example"])
+                        elif p_name == "entityType":
+                            p_def = "Trainee"
+                        elif p_name == "sourceSystem":
+                            p_def = "STATE_PORTAL"
 
                         query_list.append({
                             "key": p_name,
@@ -355,12 +362,37 @@ def generate_collection():
                     }
                 ]
 
-                # Body Handling
+                # Body Handling: Prioritize multipart/form-data for file upload endpoints
                 body_obj = None
                 request_body = op.get("requestBody", {})
                 content_types = request_body.get("content", {})
 
-                if "application/json" in content_types:
+                if "multipart/form-data" in content_types:
+                    multipart_schema = content_types["multipart/form-data"].get("schema", {})
+                    formdata_entries = [
+                        {
+                            "key": "file",
+                            "type": "file",
+                            "src": "",
+                            "description": "Target CSV, JSON, or NDJSON file for bulk staging & ingestion"
+                        }
+                    ]
+                    props = multipart_schema.get("properties", {})
+                    for prop_name, prop_spec in props.items():
+                        if prop_name != "file":
+                            formdata_entries.append({
+                                "key": prop_name,
+                                "value": str(resolve_schema(prop_spec, components)),
+                                "type": "text",
+                                "description": prop_spec.get("description", "")
+                            })
+                    body_obj = {
+                        "mode": "formdata",
+                        "formdata": formdata_entries
+                    }
+                    if "application/json" in content_types:
+                        description += "\n\n**Note**: This endpoint also accepts raw JSON payloads (`CreateImportBatchRequest`) for programmatic batch descriptor registration."
+                elif "application/json" in content_types:
                     json_schema = content_types["application/json"].get("schema", {})
                     sample_payload = resolve_schema(json_schema, components)
 
@@ -388,18 +420,6 @@ def generate_collection():
                                 "language": "json"
                             }
                         }
-                    }
-                elif "multipart/form-data" in content_types:
-                    body_obj = {
-                        "mode": "formdata",
-                        "formdata": [
-                            {
-                                "key": "file",
-                                "type": "file",
-                                "src": "",
-                                "description": "Target CSV/data file for bulk staging & ingestion"
-                            }
-                        ]
                     }
 
                 # Authentication overrides for public endpoints
@@ -532,8 +552,8 @@ def generate_collection():
         collection["item"].append(group_folder)
 
     # Save collection
-    collection_path = os.path.join(INTEGRATION_DIR, "sih26135-postman-collection.json")
-    save_json(collection_path, collection)
+    collection_path = INTEGRATION_DIR / "sih26135-postman-collection.json"
+    save_json(str(collection_path), collection)
 
     print(f"Total operations generated in Postman collection: {total_operations_generated}")
 
@@ -762,8 +782,8 @@ def generate_collection():
         "_postman_variable_scope": "environment"
     }
 
-    env_path = os.path.join(INTEGRATION_DIR, "sih26135-local.postman_environment.json")
-    save_json(env_path, environment)
+    env_path = INTEGRATION_DIR / "sih26135-local.postman_environment.json"
+    save_json(str(env_path), environment)
     print("=" * 80)
     print("Generation Completed Successfully!")
     print("=" * 80)

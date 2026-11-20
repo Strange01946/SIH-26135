@@ -334,8 +334,10 @@ The backend provides deterministic, machine-readable error codes in the `code` f
 The bulk ingestion pipeline accepts CSV, JSON, or NDJSON dataset files to create a staged `PENDING` import batch, which is then processed through chunked validation and persistence pipelines.
 
 - **Endpoint**: `POST /api/v1/import-batches` (alternate route: `/api/v1/import/batches`)
-- **Content-Type**: `multipart/form-data`
-- **Form Part**: `file` (the CSV, JSON, or NDJSON file)
+- **Supported Media Types**:
+  1. `multipart/form-data` (Primary Bulk Upload): Stages a CSV, JSON, or NDJSON file for asynchronous chunked validation and persistence.
+  2. `application/json` (Programmatic Batch Descriptor): Accepts `CreateImportBatchRequest` (`batchCode`, `entityType`, `sourceSystem`, etc.) for clients that pre-register batch metadata before inserting records via `POST /api/v1/import-records`.
+- **Multipart Form Part**: `file` (the CSV, JSON, or NDJSON file)
 - **Query Parameters**:
   - `entityType` (optional): Target entity type, e.g. `Trainee` or `PlacementRecord`.
   - `sourceSystem` (optional): Source system identifier, e.g. `STATE_PORTAL`.

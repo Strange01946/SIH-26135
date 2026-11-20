@@ -21491,7 +21491,7 @@
                     },
                     {
                       "key": "entityType",
-                      "value": "",
+                      "value": "Trainee",
                       "description": "",
                       "disabled": true
                     },
@@ -21950,7 +21950,7 @@
                     },
                     {
                       "key": "entityType",
-                      "value": "",
+                      "value": "Trainee",
                       "description": "",
                       "disabled": false
                     },
@@ -22940,7 +22940,7 @@
                     },
                     {
                       "key": "entityType",
-                      "value": "",
+                      "value": "Trainee",
                       "description": "",
                       "disabled": false
                     },
@@ -23700,7 +23700,7 @@
                     },
                     {
                       "key": "sourceSystem",
-                      "value": "",
+                      "value": "STATE_PORTAL",
                       "description": "",
                       "disabled": false
                     },
@@ -23712,7 +23712,7 @@
                     },
                     {
                       "key": "entityType",
-                      "value": "",
+                      "value": "Trainee",
                       "description": "",
                       "disabled": false
                     },
@@ -23759,11 +23759,6 @@
                     "key": "Accept",
                     "value": "application/json",
                     "type": "text"
-                  },
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json",
-                    "type": "text"
                   }
                 ],
                 "url": {
@@ -23779,27 +23774,29 @@
                   "query": [
                     {
                       "key": "entityType",
-                      "value": "",
+                      "value": "Trainee",
                       "description": "",
                       "disabled": true
                     },
                     {
                       "key": "sourceSystem",
-                      "value": "",
+                      "value": "STATE_PORTAL",
                       "description": "",
                       "disabled": true
                     }
                   ]
                 },
-                "description": "Stages a multipart CSV, JSON, or NDJSON file for bulk ingestion and registers a PENDING staging batch.",
+                "description": "Stages a multipart CSV, JSON, or NDJSON file for bulk ingestion and registers a PENDING staging batch.\n\n**Note**: This endpoint also accepts raw JSON payloads (`CreateImportBatchRequest`) for programmatic batch descriptor registration.",
                 "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"batchCode\": \"sample_text\",\n  \"sourceSystem\": \"sample_text\",\n  \"entityType\": \"sample_text\",\n  \"importBatchStatusId\": 1,\n  \"initiatedByUserId\": 1,\n  \"rowCount\": 1,\n  \"startedAt\": \"2026-11-20T10:00:00Z\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "file",
+                      "type": "file",
+                      "src": "",
+                      "description": "Target CSV, JSON, or NDJSON file for bulk staging & ingestion"
                     }
-                  }
+                  ]
                 }
               },
               "event": [
@@ -23857,7 +23854,7 @@
                     },
                     {
                       "key": "sourceSystem",
-                      "value": "",
+                      "value": "STATE_PORTAL",
                       "description": "",
                       "disabled": false
                     },
@@ -23869,7 +23866,7 @@
                     },
                     {
                       "key": "entityType",
-                      "value": "",
+                      "value": "Trainee",
                       "description": "",
                       "disabled": false
                     },
@@ -23916,11 +23913,6 @@
                     "key": "Accept",
                     "value": "application/json",
                     "type": "text"
-                  },
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json",
-                    "type": "text"
                   }
                 ],
                 "url": {
@@ -23937,27 +23929,29 @@
                   "query": [
                     {
                       "key": "entityType",
-                      "value": "",
+                      "value": "Trainee",
                       "description": "",
                       "disabled": true
                     },
                     {
                       "key": "sourceSystem",
-                      "value": "",
+                      "value": "STATE_PORTAL",
                       "description": "",
                       "disabled": true
                     }
                   ]
                 },
-                "description": "Stages a multipart CSV, JSON, or NDJSON file for bulk ingestion and registers a PENDING staging batch.",
+                "description": "Stages a multipart CSV, JSON, or NDJSON file for bulk ingestion and registers a PENDING staging batch.\n\n**Note**: This endpoint also accepts raw JSON payloads (`CreateImportBatchRequest`) for programmatic batch descriptor registration.",
                 "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"batchCode\": \"sample_text\",\n  \"sourceSystem\": \"sample_text\",\n  \"entityType\": \"sample_text\",\n  \"importBatchStatusId\": 1,\n  \"initiatedByUserId\": 1,\n  \"rowCount\": 1,\n  \"startedAt\": \"2026-11-20T10:00:00Z\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "file",
+                      "type": "file",
+                      "src": "",
+                      "description": "Target CSV, JSON, or NDJSON file for bulk staging & ingestion"
                     }
-                  }
+                  ]
                 }
               },
               "event": [
@@ -25313,7 +25307,7 @@
                     },
                     {
                       "key": "entityType",
-                      "value": "",
+                      "value": "Trainee",
                       "description": "",
                       "disabled": true
                     },

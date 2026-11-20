@@ -35,15 +35,17 @@ import re
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
-DOCS_DIR = os.path.join(PROJECT_ROOT, "docs")
-DOCS_OPENAPI_DIR = os.path.join(DOCS_DIR, "openapi")
-COLLECTION_PATH = os.path.join(BASE_DIR, "sih26135-postman-collection.json")
-ENVIRONMENT_PATH = os.path.join(BASE_DIR, "sih26135-local.postman_environment.json")
-OPENAPI_ALL_PATH = os.path.join(DOCS_OPENAPI_DIR, "openapi-0-all-apis.json")
-ONBOARDING_GUIDE_PATH = os.path.join(DOCS_DIR, "developer-onboarding-guide.md")
+SCRIPT_DIR = Path(__file__).resolve().parent
+BASE_DIR = SCRIPT_DIR
+PROJECT_ROOT = SCRIPT_DIR.parent.parent
+DOCS_DIR = PROJECT_ROOT / "docs"
+DOCS_OPENAPI_DIR = DOCS_DIR / "openapi"
+COLLECTION_PATH = SCRIPT_DIR / "sih26135-postman-collection.json"
+ENVIRONMENT_PATH = SCRIPT_DIR / "sih26135-local.postman_environment.json"
+OPENAPI_ALL_PATH = DOCS_OPENAPI_DIR / "openapi-0-all-apis.json"
+ONBOARDING_GUIDE_PATH = DOCS_DIR / "developer-onboarding-guide.md"
 
 def load_json(path):
     if not os.path.exists(path):
@@ -285,6 +287,32 @@ def main():
         failures += 1
     else:
         print("  OK: 0 extraneous operations in Postman collection")
+
+    # 5b. Verify Multipart Upload Contract for Import Batch
+    print("\n[5b] Auditing Multipart Ingestion Contract (POST /api/v1/import-batches)...")
+    import_batch_req = None
+    for item, full_path in postman_requests:
+        req = item["request"]
+        raw_url = req.get("url", {}).get("raw", "")
+        if req["method"].upper() == "POST" and "/api/v1/import-batches" in raw_url and not any(k in raw_url for k in ["process", "recover"]):
+            import_batch_req = req
+            break
+
+    if not import_batch_req:
+        print("  FAIL: POST /api/v1/import-batches not found in Postman collection")
+        failures += 1
+    else:
+        body = import_batch_req.get("body", {})
+        if body.get("mode") != "formdata":
+            print(f"  FAIL: Expected body mode 'formdata', found: '{body.get('mode')}'")
+            failures += 1
+        else:
+            file_part = [f for f in body.get("formdata", []) if f.get("key") == "file" and f.get("type") == "file"]
+            if not file_part:
+                print("  FAIL: Missing 'file' (type: file) part in formdata body")
+                failures += 1
+            else:
+                print("  OK: POST /api/v1/import-batches body correctly configured with 'mode: formdata' and 'file' part")
 
     # 6. Verify 5 Logical Group Folders
     print("\n[6] Verifying 5 logical group folder structure...")
