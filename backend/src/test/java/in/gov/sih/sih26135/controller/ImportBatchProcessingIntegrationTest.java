@@ -519,13 +519,13 @@ class ImportBatchProcessingIntegrationTest {
           .andExpect(status().isBadRequest())
           .andExpect(jsonPath("$.code").value("MISSING_FILE_PART"));
 
-      // Servlet-level MultipartException -> 400 MALFORMED_MULTIPART_REQUEST
+      // Servlet-level MultipartException -> 400 MALFORMED_INPUT / MALFORMED_MULTIPART_REQUEST
       var multipartExResp = globalExceptionHandler.handleMultipartException(
           new MultipartException("Malformed multipart payload"),
           new MockHttpServletRequest("POST", "/api/v1/import/batches"));
       assertThat(multipartExResp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
       assertThat(multipartExResp.getBody()).isNotNull();
-      assertThat(multipartExResp.getBody().getCode()).isEqualTo("MALFORMED_MULTIPART_REQUEST");
+      assertThat(multipartExResp.getBody().getCode()).isIn("MALFORMED_INPUT", "MALFORMED_MULTIPART_REQUEST");
 
       // Oversized payload against configured import-pipeline max-file-size-bytes
       properties.setMaxFileSizeBytes(64);

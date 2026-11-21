@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,6 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
  * for external delivery receipts and status notifications.
  */
 @Tag(name = "Communication - Inbound Webhooks", description = "Inbound vendor delivery status webhooks (Twilio SMS/WhatsApp, SendGrid Email)")
+@Validated
 @RestController
 @RequestMapping("/api/v1/communication/webhooks")
 public class CommunicationWebhookController {

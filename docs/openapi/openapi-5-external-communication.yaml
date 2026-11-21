@@ -173,6 +173,7 @@ paths:
         schema:
           type: integer
           format: int64
+          exclusiveMinimum: 0
       requestBody:
         content:
           application/json:

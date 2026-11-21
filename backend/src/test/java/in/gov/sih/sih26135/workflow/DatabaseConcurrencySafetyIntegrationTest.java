@@ -110,9 +110,9 @@ public class DatabaseConcurrencySafetyIntegrationTest {
   }
 
   @Test
-  @DisplayName("2. Database Schema Metadata Audit: Verify 144 base tables, 170 UNIQUE constraints across 131 tables in live catalog")
+  @DisplayName("2. Database Schema Metadata Audit: Verify 147 base tables in test catalog (144 baseline + 3 Phase 29.4 queue tables)")
   void testDatabaseSchemaMetadata_uniqueConstraintsAudit() {
-    // 1. Independently assert total number of base tables is 144
+    // 1. Independently assert total number of base tables is 147 in test catalog
     String baseTableQuery = """
         SELECT COUNT(*)
         FROM information_schema.TABLES
@@ -120,7 +120,7 @@ public class DatabaseConcurrencySafetyIntegrationTest {
           AND TABLE_TYPE = 'BASE TABLE'
         """;
     long baseTableCount = jdbcTemplate.queryForObject(baseTableQuery, Long.class, MysqlConnectionTest.EXPECTED_TEST_CATALOG);
-    assertThat(baseTableCount).isEqualTo(144L);
+    assertThat(baseTableCount).isEqualTo(147L);
 
     // 2. Count distinct (TABLE_NAME, CONSTRAINT_NAME) pairs and distinct affected tables
     String query = """
@@ -138,11 +138,11 @@ public class DatabaseConcurrencySafetyIntegrationTest {
     long uniqueConstraintCount = ((Number) result.get("unique_constraint_count")).longValue();
     long tableWithUniqueCount = ((Number) result.get("table_with_unique_count")).longValue();
 
-    // Verify metadata matches exact schema definitions from Phase 01-15 SQL scripts
-    assertThat(uniqueConstraintCount).isEqualTo(170L);
-    assertThat(tableWithUniqueCount).isEqualTo(131L);
+    // Verify metadata matches exact schema definitions from Phase 01-15 SQL scripts + Phase 29.4 queue tables
+    assertThat(uniqueConstraintCount).isEqualTo(171L);
+    assertThat(tableWithUniqueCount).isEqualTo(132L);
 
-    // 3. Verify exact 13 base tables without standalone UNIQUE constraints
+    // 3. Verify exact base tables without standalone UNIQUE constraints
     List<String> tablesWithoutUnique = jdbcTemplate.queryForList("""
         SELECT t.TABLE_NAME
         FROM information_schema.TABLES t
@@ -159,6 +159,8 @@ public class DatabaseConcurrencySafetyIntegrationTest {
 
     assertThat(tablesWithoutUnique).containsExactly(
         "audit_logs",
+        "communication_dispatch_attempts",
+        "communication_rate_limit_events",
         "course_programs",
         "course_skills",
         "data_quality_issue_events",

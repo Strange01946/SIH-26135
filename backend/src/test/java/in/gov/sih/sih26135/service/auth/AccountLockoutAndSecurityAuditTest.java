@@ -18,6 +18,7 @@ import in.gov.sih.sih26135.entity.RefSystemEventCategory;
 import in.gov.sih.sih26135.entity.RefSystemEventSeverity;
 import in.gov.sih.sih26135.entity.RefUserStatus;
 import in.gov.sih.sih26135.entity.User;
+import in.gov.sih.sih26135.exception.AccountLockedException;
 import in.gov.sih.sih26135.exception.InvalidCredentialsException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.repository.RefAuditActionRepository;
@@ -258,7 +259,7 @@ class AccountLockoutAndSecurityAuditTest {
 
     LoginRequest request = new LoginRequest("user4", "WrongPassword");
     assertThatThrownBy(() -> authenticationService.login(request))
-        .isInstanceOf(InvalidCredentialsException.class);
+        .isInstanceOf(AccountLockedException.class);
 
     assertThat(user.getFailedLoginCount()).isEqualTo(5);
     assertThat(user.getUserStatusId()).isEqualTo(3L); // LOCKED
@@ -280,7 +281,7 @@ class AccountLockoutAndSecurityAuditTest {
 
     LoginRequest request = new LoginRequest("user5", "AnyPassword");
     assertThatThrownBy(() -> authenticationService.login(request))
-        .isInstanceOf(InvalidCredentialsException.class);
+        .isInstanceOf(AccountLockedException.class);
 
     verify(passwordEncoder, never()).matches(anyString(), anyString());
     verify(jwtTokenProvider, never()).generateAccessToken(anyLong(), anyString(), any());
@@ -452,7 +453,7 @@ class AccountLockoutAndSecurityAuditTest {
     when(refAuditActionRepository.findByActionCode("UPDATE")).thenReturn(Optional.of(updateAuditAction));
 
     assertThatThrownBy(() -> authenticationService.login(new LoginRequest("user13", "BadPass")))
-        .isInstanceOf(InvalidCredentialsException.class);
+        .isInstanceOf(AccountLockedException.class);
 
     // Verify LOGIN_FAILURE summary has no counter, attempt, or password text
     verify(systemEventLogService).recordSystemEvent(argThat(req -> {

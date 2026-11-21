@@ -356,6 +356,7 @@ class CandidateLifecycleOrchestrationIntegrationTest {
           TRAINEE_ID, BATCH_ID, LocalDate.of(2026, 1, 10)
       );
 
+      when(trainingBatchRepository.findById(BATCH_ID)).thenReturn(Optional.of(testBatch));
       when(traineeRepository.findById(TRAINEE_ID)).thenReturn(Optional.of(testTrainee));
 
       assertThatThrownBy(() -> orchestratorService.enrollCandidateWithConsentValidation(request))
@@ -374,7 +375,6 @@ class CandidateLifecycleOrchestrationIntegrationTest {
           TRAINEE_ID, BATCH_ID, LocalDate.of(2026, 1, 10)
       );
 
-      when(traineeRepository.findById(TRAINEE_ID)).thenReturn(Optional.of(testTrainee));
       when(trainingBatchRepository.findById(BATCH_ID)).thenReturn(Optional.of(testBatch));
 
       assertThatThrownBy(() -> orchestratorService.enrollCandidateWithConsentValidation(request))

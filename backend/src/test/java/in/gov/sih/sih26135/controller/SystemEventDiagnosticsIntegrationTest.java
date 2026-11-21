@@ -598,12 +598,16 @@ class SystemEventDiagnosticsIntegrationTest {
             "usernameOrEmail", VICTIM_USERNAME,
             "password", wrongSecret
         ));
-        mockMvc.perform(post("/api/v1/auth/login")
+        var action = mockMvc.perform(post("/api/v1/auth/login")
                 .header(CorrelationIdFilter.CORRELATION_ID_HEADER, corrId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(body))
-            .andExpect(status().isUnauthorized())
-            .andExpect(header().string(CorrelationIdFilter.CORRELATION_ID_HEADER, corrId));
+                .content(body));
+        if (attempt < maxAttempts) {
+          action.andExpect(status().isUnauthorized());
+        } else {
+          action.andExpect(status().isLocked());
+        }
+        action.andExpect(header().string(CorrelationIdFilter.CORRELATION_ID_HEADER, corrId));
       }
 
       Integer blockedCount = jdbcTemplate.queryForObject(
@@ -769,8 +773,8 @@ class SystemEventDiagnosticsIntegrationTest {
       assertThat(belowSummaries.get(0).newIssuesCreated()).isEqualTo(1L);
 
       Integer beforeSpikeCount = jdbcTemplate.queryForObject(
-          "SELECT COUNT(*) FROM system_event_logs WHERE event_code = 'DATA_QUALITY_CRITICAL_SPIKE'",
-          Integer.class);
+          "SELECT COUNT(*) FROM system_event_logs WHERE event_code = 'DATA_QUALITY_CRITICAL_SPIKE' AND entity_type = 'TrainingProvider' AND entity_id = ?",
+          Integer.class, PROVIDER_A_ID);
       assertThat(beforeSpikeCount).isZero();
 
       // Add 2 more broken trainees and set spikeNewIssuesThreshold = 2 -> next scan creates 2 new issues -> spike triggered

@@ -175,7 +175,7 @@ class OperationalErrorCodeContractTest {
   }
 
   @Test
-  @DisplayName("Architectural Invariant: Exactly 2 @Query annotations are preserved")
+  @DisplayName("Architectural Invariant: Exactly 5 @Query annotations are preserved")
   void testQueryAnnotationCountInvariant() throws IOException {
     Path srcMain = Paths.get("src/main/java");
     if (!Files.exists(srcMain)) {
@@ -199,7 +199,7 @@ class OperationalErrorCodeContractTest {
     }
 
     assertThat(queryAnnotationCount)
-        .as("Phase 28.1 invariant: Exactly 2 @Query annotations must be preserved")
-        .isEqualTo(2L);
+        .as("Architectural invariant: Exactly 5 production @Query annotations must be preserved (2 baseline + 3 concurrency lock/count queries)")
+        .isEqualTo(5L);
   }
 }

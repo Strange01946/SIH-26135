@@ -991,21 +991,14 @@ public class WorkflowSecurityScopeValidator {
     }
 
     // 4. User-initiated caller:
-    // Resolve caller user and verify target trainee existence
+    // Resolve caller user
     User authUser = resolveAuthenticatedUser()
         .orElseThrow(() -> new BadRequestException(
             "Authenticated user cannot be resolved for scope validation",
             "AUTHENTICATED_USER_UNRESOLVED"
         ));
 
-    if (!traineeRepository.existsById(targetTraineeId)) {
-      throw new BadRequestException(
-          "Target trainee record not found for scope validation",
-          "TRAINEE_NOT_FOUND"
-      );
-    }
-
-    // A. Trainee Persona: Strict 1:1 self-service matching
+    // A. Trainee Persona: Strict 1:1 self-service matching (evaluated first to prevent user enumeration)
     if (isTraineeCaller() || traineeRepository.findByUserId(authUser.getId()).isPresent()) {
       Trainee authTrainee = resolveAuthenticatedTrainee()
           .orElseThrow(() -> new BadRequestException(
@@ -1021,6 +1014,14 @@ public class WorkflowSecurityScopeValidator {
         );
       }
       return;
+    }
+
+    // Verify target trainee existence for non-trainee callers
+    if (!traineeRepository.existsById(targetTraineeId)) {
+      throw new BadRequestException(
+          "Target trainee record not found for scope validation",
+          "TRAINEE_NOT_FOUND"
+      );
     }
 
     // B. Training Provider Persona: Trainee must be enrolled with caller provider

@@ -7,11 +7,13 @@ import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.repository.TraineeRepository;
 import in.gov.sih.sih26135.response.ApiResponse;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Positive;
 import java.util.List;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
  * REST controller for discovering, inspecting, and preview-rendering
  * standardized outbound notification templates.
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/communication/templates")
 @PreAuthorize("hasAnyAuthority('communication.manage', 'survey.manage', 'system.manage')")
@@ -68,7 +71,7 @@ public class CommunicationTemplateController {
   @PostMapping("/{templateCode}/render")
   public ResponseEntity<ApiResponse<CommunicationTemplateRegistry.RenderedTemplate>> renderTemplate(
       @PathVariable @NotBlank String templateCode,
-      @RequestParam(name = "traineeId", required = false) Long traineeId,
+      @RequestParam(name = "traineeId", required = false) @Positive Long traineeId,
       @RequestBody(required = false) Map<String, String> parameters) {
 
     Trainee trainee = null;
