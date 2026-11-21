@@ -155,12 +155,28 @@ export function resolveEffectiveConsent(
   const isCurrentlyGranted =
     isGrantedStatus && notRevoked && notExpired && alreadyGranted;
 
+  let resolvedStatusName =
+    authoritative.consentStatusName ||
+    authoritative.consentStatusCode ||
+    'Revoked';
+
+  if (isCurrentlyGranted) {
+    resolvedStatusName = 'Granted';
+  } else if (!notRevoked) {
+    resolvedStatusName =
+      authoritative.consentStatusCode?.toUpperCase() === 'GRANTED'
+        ? 'Revoked'
+        : (authoritative.consentStatusName || authoritative.consentStatusCode || 'Revoked');
+  } else if (!notExpired) {
+    resolvedStatusName = 'Expired';
+  } else if (!alreadyGranted) {
+    resolvedStatusName = 'Pending Effective Date';
+  }
+
   return {
     authoritativeConsent: authoritative,
     isCurrentlyGranted,
-    statusName: isCurrentlyGranted
-      ? 'Granted'
-      : (authoritative.consentStatusName || authoritative.consentStatusCode || 'Revoked'),
+    statusName: resolvedStatusName,
     revokedAt: authoritative.revokedAt,
     grantedAt: authoritative.grantedAt,
   };
@@ -288,31 +304,20 @@ export const TraineeConsentPage: React.FC = () => {
       return;
     }
 
-    const { authoritativeConsent } = resolveEffectiveConsent(
-      existingConsents,
-      typeConfig.code,
-      typeConfig.id,
-    );
-
-    if (authoritativeConsent) {
-      // Re-grant existing record (statusId: 1 for GRANTED per ref_consent_status)
-      updateConsentMutation.mutate({
-        consentId: authoritativeConsent.id,
-        statusId: 1, // GRANTED
-        revokedAt: null,
-      });
-    } else {
-      // Create new consent record
-      createConsentMutation.mutate({
-        traineeId: traineeId!,
-        consentTypeId: typeConfig.id,
-        consentStatusId: 1, // GRANTED
-        purpose: typeConfig.defaultPurpose,
-        policyVersion: 'v1.0',
-        grantedAt: new Date().toISOString(),
-        capturedChannel: 'WEB_PORTAL',
-      });
-    }
+    // Creating a fresh consent record ensures an immutable, clean consent grant
+    // with statusId: 1 (GRANTED), grantedAt = now, and revokedAt = null.
+    // In accordance with DPDP statutory multi-record audit trail and backend
+    // hasActiveConsent() semantics, a new record has a newer timestamp and higher ID,
+    // becoming the authoritative active record and avoiding stale revocation timestamps.
+    createConsentMutation.mutate({
+      traineeId: traineeId!,
+      consentTypeId: typeConfig.id,
+      consentStatusId: 1, // GRANTED per ref_consent_status
+      purpose: typeConfig.defaultPurpose,
+      policyVersion: 'v1.0',
+      grantedAt: new Date().toISOString(),
+      capturedChannel: 'WEB_PORTAL',
+    });
   };
 
   // Handle Revoke action
@@ -361,9 +366,9 @@ export const TraineeConsentPage: React.FC = () => {
               Under Section 6 of the DPDP Act, personal data is processed solely for the specified purposes of skill qualification, certification verification, and employment outcome analytics. You have the statutory right to give, manage, or withdraw consent at any time without punitive consequences, except where processing is mandated by law for educational qualification records.
             </p>
             <div className="text-xs text-gov-neutral-500 pt-1 flex flex-wrap gap-x-6 gap-y-1">
-              <span><strong>Data Fiduciary:</strong> National Council for Vocational Education and Training (NCVET)</span>
-              <span><strong>Data Protection Officer:</strong> dpo@skills.gov.in</span>
-              <span><strong>Policy Version:</strong> v1.0 (Statutory 2024 Revision)</span>
+              <span><strong>Data Fiduciary:</strong> Skill India Training &amp; Placement Platform</span>
+              <span><strong>Data Privacy Support:</strong> privacy@skillindia.gov.in (Portal Compliance Desk)</span>
+              <span><strong>Policy Version:</strong> v1.0 (Standard DPDP Consent Form)</span>
             </div>
           </div>
         </div>

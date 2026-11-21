@@ -80,7 +80,9 @@ describe('TraineeConsentPage Component', () => {
     });
 
     expect(screen.getByText(/Data Fiduciary:/i)).toBeInTheDocument();
-    expect(screen.getByText(/dpo@skills.gov.in/i)).toBeInTheDocument();
+    expect(screen.getByText(/Skill India Training & Placement Platform/i)).toBeInTheDocument();
+    expect(screen.getByText(/privacy@skillindia.gov.in/i)).toBeInTheDocument();
+    expect(screen.getByText(/Standard DPDP Consent Form/i)).toBeInTheDocument();
 
     // Audit log table
     expect(screen.getByText('Statutory Consent Register')).toBeInTheDocument();
@@ -131,12 +133,19 @@ describe('TraineeConsentPage Component', () => {
     });
   });
 
-  it('granting a revoked consent calls updateTraineeConsentStatus with statusId 1', async () => {
+  it('granting a revoked consent creates a new clean record via createTraineeConsent avoiding stale revocation timestamps', async () => {
     vi.spyOn(traineeApi, 'getTraineeConsents').mockResolvedValueOnce(mockConsents);
-    const updateSpy = vi.spyOn(traineeApi, 'updateTraineeConsentStatus').mockResolvedValueOnce({
-      ...mockConsents[1],
+    const createSpy = vi.spyOn(traineeApi, 'createTraineeConsent').mockResolvedValueOnce({
+      id: 303,
+      traineeId: 42,
+      consentTypeId: 5,
+      consentTypeCode: 'COMMUNICATION_SMS',
+      consentTypeName: 'SMS communication',
       consentStatusId: 1,
       consentStatusCode: 'GRANTED',
+      consentStatusName: 'Granted',
+      purpose: 'Send operational SMS messages',
+      policyVersion: 'v1.0',
     });
 
     renderConsentWithContext({ traineeId: 42, isUnlinked: false, isLoading: false });
@@ -153,11 +162,11 @@ describe('TraineeConsentPage Component', () => {
     fireEvent.click(grantButton);
 
     await waitFor(() => {
-      expect(updateSpy).toHaveBeenCalledWith(
-        302,
+      expect(createSpy).toHaveBeenCalledWith(
         expect.objectContaining({
+          traineeId: 42,
+          consentTypeId: 5,
           consentStatusId: 1,
-          revokedAt: null,
         }),
       );
     });
@@ -521,6 +530,194 @@ describe('TraineeConsentPage Component', () => {
       expect(result.isCurrentlyGranted).toBe(false);
       expect(result.statusName).toBe('Not Granted');
       expect(result.authoritativeConsent).toBeUndefined();
+    });
+  });
+
+  describe('Consent Full Lifecycle: Grant → Revoke → Re-Grant & Backend Semantics Integration', () => {
+    const fixedNow = new Date('2026-11-20T12:00:00Z');
+
+    it('demonstrates why re-granting via record update fails due to backend ignoring null revokedAt', () => {
+      // Backend TraineeConsentServiceImpl.updateConsentStatus() only updates revokedAt when non-null:
+      // if (request.getRevokedAt() != null) { consent.setRevokedAt(request.getRevokedAt()); }
+      // If an update is performed setting status = GRANTED while revokedAt remains the past revocation date:
+      const flawedUpdatedRecord: TraineeConsent = {
+        id: 101,
+        traineeId: 42,
+        consentTypeId: 1,
+        consentTypeCode: 'DATA_PROCESSING',
+        consentTypeName: 'Data processing',
+        consentStatusId: 1,
+        consentStatusCode: 'GRANTED',
+        consentStatusName: 'Granted',
+        purpose: 'Process registration and training records',
+        grantedAt: '2026-09-01T08:00:00Z',
+        revokedAt: '2026-10-01T10:00:00Z', // Stale timestamp left uncleared
+        updatedAt: '2026-11-01T12:00:00Z',
+      };
+
+      const result = resolveEffectiveConsent([flawedUpdatedRecord], 'DATA_PROCESSING', 1, fixedNow);
+      // Because revokedAt is in the past, both backend hasActiveConsent() and frontend resolveEffectiveConsent()
+      // evaluate notRevoked to false, rendering the re-grant ineffective!
+      expect(result.isCurrentlyGranted).toBe(false);
+      expect(result.statusName).toBe('Revoked');
+    });
+
+    it('proves that creating a fresh consent record cleanly supersedes the revoked record and returns active granted state', () => {
+      // In contrast, creating a new record via POST /api/v1/trainee-consents creates a new entity
+      // with revokedAt: null and a newer timestamp/higher ID.
+      const multiRecordAuditTrail: TraineeConsent[] = [
+        {
+          id: 101,
+          traineeId: 42,
+          consentTypeId: 1,
+          consentTypeCode: 'DATA_PROCESSING',
+          consentTypeName: 'Data processing',
+          consentStatusId: 2,
+          consentStatusCode: 'REVOKED',
+          consentStatusName: 'Revoked',
+          purpose: 'Process registration and training records',
+          grantedAt: '2026-09-01T08:00:00Z',
+          revokedAt: '2026-10-01T10:00:00Z',
+          updatedAt: '2026-10-01T10:00:00Z',
+        },
+        {
+          id: 102,
+          traineeId: 42,
+          consentTypeId: 1,
+          consentTypeCode: 'DATA_PROCESSING',
+          consentTypeName: 'Data processing',
+          consentStatusId: 1,
+          consentStatusCode: 'GRANTED',
+          consentStatusName: 'Granted',
+          purpose: 'Process registration and training records',
+          grantedAt: '2026-11-01T12:00:00Z',
+          revokedAt: null, // Clean null
+          updatedAt: '2026-11-01T12:00:00Z',
+        },
+      ];
+
+      const result = resolveEffectiveConsent(multiRecordAuditTrail, 'DATA_PROCESSING', 1, fixedNow);
+      expect(result.authoritativeConsent?.id).toBe(102);
+      expect(result.isCurrentlyGranted).toBe(true);
+      expect(result.statusName).toBe('Granted');
+      expect(result.revokedAt).toBeNull();
+    });
+
+    it('executes full UI lifecycle flow: grant (create) -> revoke (update) -> re-grant (create clean record)', async () => {
+      // 1. Initial empty state
+      let currentRecords: TraineeConsent[] = [];
+      const getSpy = vi.spyOn(traineeApi, 'getTraineeConsents').mockImplementation(async () => currentRecords);
+
+      const createSpy = vi.spyOn(traineeApi, 'createTraineeConsent').mockImplementation(async (payload) => {
+        const newRecord: TraineeConsent = {
+          id: currentRecords.length === 0 ? 201 : 202,
+          traineeId: payload.traineeId,
+          consentTypeId: payload.consentTypeId,
+          consentTypeCode: 'DATA_PROCESSING',
+          consentTypeName: 'Data processing',
+          consentStatusId: payload.consentStatusId,
+          consentStatusCode: payload.consentStatusId === 1 ? 'GRANTED' : 'REVOKED',
+          consentStatusName: payload.consentStatusId === 1 ? 'Granted' : 'Revoked',
+          purpose: payload.purpose,
+          policyVersion: payload.policyVersion || 'v1.0',
+          grantedAt: payload.grantedAt || new Date().toISOString(),
+          revokedAt: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        currentRecords = [newRecord, ...currentRecords];
+        return newRecord;
+      });
+
+      const updateSpy = vi.spyOn(traineeApi, 'updateTraineeConsentStatus').mockImplementation(async (id, payload) => {
+        currentRecords = currentRecords.map((r) => {
+          if (r.id === id) {
+            return {
+              ...r,
+              consentStatusId: payload.consentStatusId,
+              consentStatusCode: payload.consentStatusId === 2 ? 'REVOKED' : 'GRANTED',
+              consentStatusName: payload.consentStatusId === 2 ? 'Revoked' : 'Granted',
+              revokedAt: payload.revokedAt || r.revokedAt,
+              updatedAt: new Date().toISOString(),
+            };
+          }
+          return r;
+        });
+        return currentRecords.find((r) => r.id === id)!;
+      });
+
+      renderConsentWithContext({ traineeId: 42, isUnlinked: false, isLoading: false });
+
+      // Step 1: Initial grant
+      await waitFor(() => {
+        expect(screen.getByText('Core Scheme Data Processing')).toBeInTheDocument();
+      });
+
+      const coreCard = screen.getByText('Core Scheme Data Processing').closest('div[class*="rounded-lg"]')!;
+      let button = coreCard.querySelector('button')!;
+      expect(button).toHaveTextContent('Grant Consent');
+
+      fireEvent.click(button);
+
+      await waitFor(() => {
+        expect(createSpy).toHaveBeenCalledTimes(1);
+        expect(createSpy).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            traineeId: 42,
+            consentTypeId: 1,
+            consentStatusId: 1,
+          }),
+        );
+      });
+
+      // Step 2: Now granted -> revoke it
+      await waitFor(() => {
+        button = coreCard.querySelector('button')!;
+        expect(button).toHaveTextContent('Revoke Consent');
+      });
+
+      fireEvent.click(button);
+
+      await waitFor(() => {
+        expect(updateSpy).toHaveBeenCalledTimes(1);
+        expect(updateSpy).toHaveBeenLastCalledWith(
+          201,
+          expect.objectContaining({
+            consentStatusId: 2,
+            revokedAt: expect.any(String),
+          }),
+        );
+      });
+
+      // Step 3: Now revoked -> re-grant it
+      await waitFor(() => {
+        button = coreCard.querySelector('button')!;
+        expect(button).toHaveTextContent('Grant Consent');
+      });
+
+      fireEvent.click(button);
+
+      await waitFor(() => {
+        // Must call createTraineeConsent again, NOT updateTraineeConsentStatus
+        expect(createSpy).toHaveBeenCalledTimes(2);
+        expect(createSpy).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            traineeId: 42,
+            consentTypeId: 1,
+            consentStatusId: 1,
+          }),
+        );
+        // updateSpy was NOT called for re-grant
+        expect(updateSpy).toHaveBeenCalledTimes(1);
+      });
+
+      // Final state: both records exist in audit register, and category shows Granted
+      await waitFor(() => {
+        button = coreCard.querySelector('button')!;
+        expect(button).toHaveTextContent('Revoke Consent');
+      });
+
+      expect(getSpy).toHaveBeenCalled();
     });
   });
 });
