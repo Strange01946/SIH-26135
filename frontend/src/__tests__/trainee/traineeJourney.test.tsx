@@ -147,45 +147,55 @@ describe('TraineeJourneyPage Component', () => {
     });
   });
 
-  it('submits post-training feedback survey questionnaire successfully', async () => {
+  it('renders honest campaign-required notice for surveys and shows empty past responses', async () => {
     vi.spyOn(traineeApi, 'getTraineeOutcomeSummary').mockResolvedValue(mockOutcome);
     vi.spyOn(traineeApi, 'getTraineeSkillGapProfile').mockResolvedValue({ traineeId: 42, hasAssessment: false });
     vi.spyOn(traineeApi, 'getTraineeSurveyResponses').mockResolvedValue(emptySurveyPaged);
-
-    const submitHeaderSpy = vi.spyOn(traineeApi, 'submitSurveyResponse').mockResolvedValueOnce({
-      id: 888,
-      surveyId: 1,
-      traineeId: 42,
-      attemptNumber: 1,
-    });
-    const submitAnswerSpy = vi.spyOn(traineeApi, 'submitSurveyResponseAnswer').mockResolvedValueOnce({
-      id: 9991,
-    });
 
     renderJourneyWithContext({ traineeId: 42, isUnlinked: false, isLoading: false });
 
     await waitFor(() => {
       expect(screen.getByText('Post-Training Feedback & Verification Survey')).toBeInTheDocument();
+      expect(
+        screen.getByText(/No previous survey responses recorded for your profile/i),
+      ).toBeInTheDocument();
     });
 
-    // Enter feedback textarea
-    const textarea = screen.getByPlaceholderText(/Share any comments regarding training quality/i);
-    fireEvent.change(textarea, { target: { value: 'Excellent practical lab equipment.' } });
+    expect(screen.getByText('Campaign-Assigned System')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Feedback Surveys Require an Active Campaign Invitation/i),
+    ).toBeInTheDocument();
+  });
 
-    // Click Submit
-    const submitBtn = screen.getByRole('button', { name: /Submit Feedback Survey/i });
-    fireEvent.click(submitBtn);
+  it('renders completed survey responses history when records exist', async () => {
+    const mockPastSurveys: PagedResponse<SurveyResponse> = {
+      content: [
+        {
+          id: 555,
+          surveyId: 10,
+          traineeId: 42,
+          attemptNumber: 1,
+          submittedAt: '2026-10-25T14:30:00Z',
+        },
+      ],
+      page: 0,
+      size: 20,
+      totalElements: 1,
+      totalPages: 1,
+      first: true,
+      last: true,
+      hasNext: false,
+      hasPrevious: false,
+    };
+
+    vi.spyOn(traineeApi, 'getTraineeOutcomeSummary').mockResolvedValue(mockOutcome);
+    vi.spyOn(traineeApi, 'getTraineeSkillGapProfile').mockResolvedValue({ traineeId: 42, hasAssessment: false });
+    vi.spyOn(traineeApi, 'getTraineeSurveyResponses').mockResolvedValue(mockPastSurveys);
+
+    renderJourneyWithContext({ traineeId: 42, isUnlinked: false, isLoading: false });
 
     await waitFor(() => {
-      expect(screen.getByRole('status')).toBeInTheDocument();
+      expect(screen.getByText(/Survey Response #555 \(Attempt 1\)/i)).toBeInTheDocument();
     });
-    expect(screen.getByText(/Your post-training feedback has been recorded/i)).toBeInTheDocument();
-    expect(submitHeaderSpy).toHaveBeenCalledWith(expect.objectContaining({ traineeId: 42 }));
-    expect(submitAnswerSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        surveyResponseId: 888,
-        answerText: 'Excellent practical lab equipment.',
-      }),
-    );
   });
 });

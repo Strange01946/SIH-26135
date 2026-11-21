@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { TraineeTrainingPage } from '@/pages/trainee/TraineeTrainingPage';
+import {
+  TraineeTrainingPage,
+  calculateAttendanceStats,
+} from '@/pages/trainee/TraineeTrainingPage';
 import * as traineeApi from '@/api/traineeApi';
 import type { TrainingEnrollment, AttendanceRecord } from '@/types/trainee';
 import type { PagedResponse } from '@/api/types';
@@ -170,7 +173,7 @@ describe('TraineeTrainingPage Component', () => {
     expect(screen.getByText('3')).toBeInTheDocument();
     expect(screen.getByText('2')).toBeInTheDocument();
     expect(screen.getByText('1')).toBeInTheDocument();
-    expect(screen.getByText('⚠ Below 70% Benchmark')).toBeInTheDocument();
+    expect(screen.getByText('Recorded Attendance Rate')).toBeInTheDocument();
   });
 
   it('filters attendance rows when clicking batch filter and restores on clear filter', async () => {
@@ -203,7 +206,7 @@ describe('TraineeTrainingPage Component', () => {
     await waitFor(() => {
       expect(screen.getByText('100%')).toBeInTheDocument();
     });
-    expect(screen.getByText('✓ Eligible for Certification')).toBeInTheDocument();
+    expect(screen.getByText('Recorded Attendance Rate')).toBeInTheDocument();
 
     // Click Clear Batch Filter
     const clearButton = screen.getByRole('button', { name: /Clear Batch Filter/i });
@@ -225,6 +228,42 @@ describe('TraineeTrainingPage Component', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Attendance records are restricted to verified biometric/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('calculateAttendanceStats() unit tests', () => {
+    it('returns empty stats with null rate when records array is empty', () => {
+      const stats = calculateAttendanceStats([]);
+      expect(stats.totalSessions).toBe(0);
+      expect(stats.presentCount).toBe(0);
+      expect(stats.absentCount).toBe(0);
+      expect(stats.attendanceRate).toBeNull();
+    });
+
+    it('calculates accurate session counts and percentage based on countsAsPresent', () => {
+      const records = [
+        { id: 1, countsAsPresent: true, attendanceStatusCode: 'PRESENT' },
+        { id: 2, countsAsPresent: true, attendanceStatusCode: 'PRESENT' },
+        { id: 3, countsAsPresent: true, attendanceStatusCode: 'LATE' },
+        { id: 4, countsAsPresent: false, attendanceStatusCode: 'ABSENT' },
+      ] as AttendanceRecord[];
+
+      const stats = calculateAttendanceStats(records);
+      expect(stats.totalSessions).toBe(4);
+      expect(stats.presentCount).toBe(3);
+      expect(stats.absentCount).toBe(1);
+      expect(stats.attendanceRate).toBe(75);
+    });
+
+    it('correctly rounds percentage to nearest whole integer', () => {
+      const records = [
+        { id: 1, countsAsPresent: true },
+        { id: 2, countsAsPresent: true },
+        { id: 3, countsAsPresent: false },
+      ] as AttendanceRecord[]; // 2 / 3 = 66.666...% -> 67%
+
+      const stats = calculateAttendanceStats(records);
+      expect(stats.attendanceRate).toBe(67);
     });
   });
 });

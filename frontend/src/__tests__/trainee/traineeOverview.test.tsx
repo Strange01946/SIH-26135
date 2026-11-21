@@ -128,7 +128,7 @@ describe('TraineeOverviewPage Component', () => {
     expect(screen.getByText(/SOLAR-2026-B1/)).toBeInTheDocument();
   });
 
-  it('calculates attendance percentage standing accurately against NCVET benchmark', async () => {
+  it('calculates factual attendance rate and session counts accurately', async () => {
     const mockAttendance: AttendanceRecord[] = [
       { id: 1, enrollmentId: 101, traineeId: 42, batchId: 5, sessionDate: '2026-11-01', attendanceStatusCode: 'PRESENT', attendanceStatusName: 'Present', countsAsPresent: true },
       { id: 2, enrollmentId: 101, traineeId: 42, batchId: 5, sessionDate: '2026-11-02', attendanceStatusCode: 'PRESENT', attendanceStatusName: 'Present', countsAsPresent: true },
@@ -151,7 +151,60 @@ describe('TraineeOverviewPage Component', () => {
     await waitFor(() => {
       expect(screen.getByText('75%')).toBeInTheDocument();
     });
-    expect(screen.getByText('(3/4 sessions)')).toBeInTheDocument();
+    expect(screen.getByText('(3/4 sessions attended)')).toBeInTheDocument();
+    expect(screen.getByText('Recorded Sessions')).toBeInTheDocument();
+  });
+
+  it('calculates active DPDP consents accurately using effective consent resolution', async () => {
+    const mockConsents = [
+      // DATA_PROCESSING: Granted
+      {
+        id: 1,
+        traineeId: 42,
+        consentTypeId: 1,
+        consentTypeCode: 'DATA_PROCESSING',
+        consentStatusCode: 'GRANTED',
+        grantedAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+      // COMMUNICATION_SMS: Had an older grant, then REVOKED
+      {
+        id: 2,
+        traineeId: 42,
+        consentTypeId: 5,
+        consentTypeCode: 'COMMUNICATION_SMS',
+        consentStatusCode: 'GRANTED',
+        grantedAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 3,
+        traineeId: 42,
+        consentTypeId: 5,
+        consentTypeCode: 'COMMUNICATION_SMS',
+        consentStatusCode: 'REVOKED',
+        revokedAt: '2026-06-01T00:00:00Z',
+        updatedAt: '2026-06-01T00:00:00Z',
+      },
+    ];
+
+    vi.spyOn(traineeApi, 'getTraineeEnrollments').mockResolvedValueOnce(emptyEnrollmentPaged);
+    vi.spyOn(traineeApi, 'getTraineeAttendance').mockResolvedValueOnce([]);
+    vi.spyOn(traineeApi, 'getTraineeConsents').mockResolvedValueOnce(mockConsents as any);
+    vi.spyOn(traineeApi, 'getTraineeOutcomeSummary').mockResolvedValueOnce({ traineeId: 42 });
+
+    renderOverviewWithContext({
+      trainee: mockTrainee,
+      traineeId: 42,
+      isUnlinked: false,
+      isLoading: false,
+    });
+
+    await waitFor(() => {
+      // Only 1 is active (DATA_PROCESSING), because COMMUNICATION_SMS was revoked
+      expect(screen.getByText('1')).toBeInTheDocument();
+      expect(screen.getByText('Active Consents')).toBeInTheDocument();
+    });
   });
 
   it('renders longitudinal placement outcome when candidate is employed', async () => {

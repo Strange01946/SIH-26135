@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import type { TraineeProfile, Certification } from '@/types/trainee';
+import type { TraineeProfile, Certification, AssessmentResult } from '@/types/trainee';
 import {
   getTraineeAssessments,
   getTraineeCertifications,
@@ -9,6 +9,111 @@ import {
 } from '@/api/traineeApi';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { EmptyState } from '@/components/feedback/EmptyState';
+
+export type AssessmentOutcomeVerdict =
+  | 'PASS'
+  | 'FAIL'
+  | 'PENDING'
+  | 'WITHHELD'
+  | 'ABSENT'
+  | 'INCOMPLETE'
+  | 'UNKNOWN';
+
+export interface AssessmentOutcomeDisplay {
+  verdict: AssessmentOutcomeVerdict;
+  isPass: boolean;
+  label: string;
+  badgeClass: string;
+}
+
+/**
+ * Resolves assessment outcome authoritatively from backend DTO fields.
+ * Strict conformance: Never infers PASS from a score percentage alone.
+ */
+export function resolveAssessmentOutcome(
+  result: AssessmentResult,
+): AssessmentOutcomeDisplay {
+  const code = (
+    result.assessmentOutcomeCode ||
+    result.outcomeCode ||
+    ''
+  )
+    .trim()
+    .toUpperCase();
+
+  const isExplicitPass = result.isPassFlag === true || code === 'PASS';
+  const isExplicitFail = result.isPassFlag === false || code === 'FAIL';
+
+  if (isExplicitPass && code !== 'FAIL') {
+    return {
+      verdict: 'PASS',
+      isPass: true,
+      label: result.assessmentOutcomeName || result.outcomeName || 'PASS',
+      badgeClass: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    };
+  }
+
+  if (code === 'FAIL' || isExplicitFail) {
+    return {
+      verdict: 'FAIL',
+      isPass: false,
+      label: result.assessmentOutcomeName || result.outcomeName || 'FAIL',
+      badgeClass: 'bg-red-50 text-red-700 border border-red-200',
+    };
+  }
+
+  if (code === 'PENDING') {
+    return {
+      verdict: 'PENDING',
+      isPass: false,
+      label:
+        result.assessmentOutcomeName ||
+        result.outcomeName ||
+        'PENDING EVALUATION',
+      badgeClass: 'bg-blue-50 text-blue-700 border border-blue-200',
+    };
+  }
+
+  if (code === 'WITHHELD') {
+    return {
+      verdict: 'WITHHELD',
+      isPass: false,
+      label: result.assessmentOutcomeName || result.outcomeName || 'WITHHELD',
+      badgeClass: 'bg-amber-50 text-amber-700 border border-amber-200',
+    };
+  }
+
+  if (code === 'ABSENT') {
+    return {
+      verdict: 'ABSENT',
+      isPass: false,
+      label: result.assessmentOutcomeName || result.outcomeName || 'ABSENT',
+      badgeClass: 'bg-gov-neutral-100 text-gov-neutral-600 border border-gov-neutral-300',
+    };
+  }
+
+  if (code === 'INCOMPLETE') {
+    return {
+      verdict: 'INCOMPLETE',
+      isPass: false,
+      label:
+        result.assessmentOutcomeName ||
+        result.outcomeName ||
+        'INCOMPLETE',
+      badgeClass: 'bg-amber-50 text-amber-700 border border-amber-200',
+    };
+  }
+
+  return {
+    verdict: 'UNKNOWN',
+    isPass: false,
+    label:
+      result.assessmentOutcomeName ||
+      result.outcomeName ||
+      'AWAITING EVALUATION',
+    badgeClass: 'bg-gov-neutral-100 text-gov-neutral-700 border border-gov-neutral-300',
+  };
+}
 
 interface TraineeContextType {
   trainee: TraineeProfile | null;
@@ -344,9 +449,11 @@ export const TraineeAssessmentsPage: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-gov-neutral-200 font-sans">
                 {assessmentResults.map((result) => {
-                  const isPass =
-                    result.outcomeCode === 'PASS' ||
-                    (result.percentage !== null && result.percentage !== undefined && result.percentage >= 50);
+                  const outcome = resolveAssessmentOutcome(result);
+                  const obtained = result.obtainedScore ?? result.totalScore ?? '—';
+                  const maximum = result.maximumScore ?? result.maxScore ?? '—';
+                  const pct = result.scorePercentage ?? result.percentage;
+                  const dateStr = result.resultDeclaredAt || result.assessedAt;
 
                   return (
                     <tr key={result.id} className="hover:bg-gov-neutral-50 transition-colors">
@@ -354,26 +461,22 @@ export const TraineeAssessmentsPage: React.FC = () => {
                         {result.assessmentName || `Assessment #${result.assessmentId || result.id}`}
                       </td>
                       <td className="px-6 py-3.5 text-gov-neutral-600 whitespace-nowrap">
-                        {result.assessedAt ? new Date(result.assessedAt).toLocaleDateString() : '—'}
+                        {dateStr ? new Date(dateStr).toLocaleDateString() : '—'}
                       </td>
                       <td className="px-6 py-3.5 font-mono text-gov-neutral-800 whitespace-nowrap">
-                        {result.totalScore ?? '—'} / {result.maxScore ?? '—'}
+                        {obtained} / {maximum}
                       </td>
                       <td className="px-6 py-3.5 font-bold text-gov-neutral-900 whitespace-nowrap font-mono">
-                        {result.percentage !== null && result.percentage !== undefined ? `${result.percentage}%` : '—'}
+                        {pct !== null && pct !== undefined ? `${pct}%` : '—'}
                       </td>
                       <td className="px-6 py-3.5 font-semibold text-gov-neutral-700 whitespace-nowrap">
                         {result.grade || '—'}
                       </td>
                       <td className="px-6 py-3.5 whitespace-nowrap">
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${
-                            isPass
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : 'bg-red-50 text-red-700 border border-red-200'
-                          }`}
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${outcome.badgeClass}`}
                         >
-                          {result.outcomeName || (isPass ? 'PASS' : 'FAIL')}
+                          {outcome.label}
                         </span>
                       </td>
                     </tr>

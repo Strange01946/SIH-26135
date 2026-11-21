@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import type { TraineeProfile, TrainingEnrollment } from '@/types/trainee';
+import type {
+  TraineeProfile,
+  TrainingEnrollment,
+  AttendanceRecord,
+} from '@/types/trainee';
 import { getTraineeEnrollments, getTraineeAttendance } from '@/api/traineeApi';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { EmptyState } from '@/components/feedback/EmptyState';
@@ -11,6 +15,39 @@ interface TraineeContextType {
   traineeId?: number;
   isUnlinked: boolean;
   isLoading: boolean;
+}
+
+export interface AttendanceStats {
+  totalSessions: number;
+  presentCount: number;
+  absentCount: number;
+  attendanceRate: number | null;
+}
+
+export function calculateAttendanceStats(
+  records: AttendanceRecord[],
+): AttendanceStats {
+  if (!records || records.length === 0) {
+    return {
+      totalSessions: 0,
+      presentCount: 0,
+      absentCount: 0,
+      attendanceRate: null,
+    };
+  }
+
+  const totalSessions = records.length;
+  const presentCount = records.filter((r) => Boolean(r.countsAsPresent)).length;
+  const absentCount = totalSessions - presentCount;
+  const attendanceRate =
+    totalSessions > 0 ? Math.round((presentCount / totalSessions) * 100) : null;
+
+  return {
+    totalSessions,
+    presentCount,
+    absentCount,
+    attendanceRate,
+  };
 }
 
 export const TraineeTrainingPage: React.FC = () => {
@@ -63,41 +100,32 @@ export const TraineeTrainingPage: React.FC = () => {
       ? attendanceRecords
       : attendanceRecords.filter((r) => r.enrollmentId === selectedEnrollmentId);
 
-  // Calculate statistics
-  const totalSessions = filteredAttendance.length;
-  const presentCount = filteredAttendance.filter((r) => r.countsAsPresent).length;
-  const absentCount = totalSessions - presentCount;
-  const attendancePercent =
-    totalSessions > 0 ? Math.round((presentCount / totalSessions) * 100) : null;
+  // Calculate factual attendance statistics
+  const { totalSessions, presentCount, absentCount, attendanceRate } =
+    calculateAttendanceStats(filteredAttendance);
 
   return (
     <div className="space-y-6">
-      {/* Attendance & Compliance Calculator Header */}
+      {/* Attendance Metrics Header */}
       <section
-        aria-labelledby="attendance-calculator-heading"
+        aria-labelledby="attendance-summary-heading"
         className="bg-white rounded-lg shadow-sm border border-gov-neutral-200 p-6"
       >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-gov-neutral-200 gap-4">
           <div>
             <h2
-              id="attendance-calculator-heading"
+              id="attendance-summary-heading"
               className="text-lg font-bold text-gov-neutral-900"
             >
-              Training Attendance &amp; Compliance Standing
+              Training Attendance Records
             </h2>
             <p className="text-xs text-gov-neutral-500">
-              NCVET guideline requires minimum 70% authenticated session attendance for assessment qualification.
+              Verified daily session records logged by authorized training center instructors.
             </p>
           </div>
-          {attendancePercent !== null && (
-            <span
-              className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                attendancePercent >= 70
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                  : 'bg-amber-50 text-amber-800 border-amber-300'
-              }`}
-            >
-              {attendancePercent >= 70 ? '✓ Eligible for Certification' : '⚠ Below 70% Benchmark'}
+          {attendanceRate !== null && (
+            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-gov-neutral-100 text-gov-neutral-800 border border-gov-neutral-300">
+              Recorded Rate: {attendanceRate}%
             </span>
           )}
         </div>
@@ -130,16 +158,10 @@ export const TraineeTrainingPage: React.FC = () => {
           </div>
           <div className="bg-gov-neutral-50 p-4 rounded-lg border border-gov-neutral-200">
             <span className="text-xs font-semibold uppercase text-gov-neutral-500">
-              Calculated Standing
+              Recorded Attendance Rate
             </span>
-            <p
-              className={`text-2xl font-extrabold mt-1 font-mono ${
-                attendancePercent !== null && attendancePercent >= 70
-                  ? 'text-emerald-700'
-                  : 'text-amber-700'
-              }`}
-            >
-              {attendancePercent !== null ? `${attendancePercent}%` : '—'}
+            <p className="text-2xl font-extrabold mt-1 font-mono text-gov-neutral-900">
+              {attendanceRate !== null ? `${attendanceRate}%` : '—'}
             </p>
           </div>
         </div>

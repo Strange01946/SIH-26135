@@ -22,7 +22,7 @@ interface TraineeContextType {
   isLoading: boolean;
 }
 
-interface ConsentTypeConfig {
+export interface ConsentTypeConfig {
   code: ConsentTypeCode;
   id: number;
   name: string;
@@ -31,7 +31,7 @@ interface ConsentTypeConfig {
   defaultPurpose: string;
 }
 
-const CONSENT_TYPES_CATALOG: ConsentTypeConfig[] = [
+export const CONSENT_TYPES_CATALOG: ConsentTypeConfig[] = [
   {
     code: 'DATA_PROCESSING',
     id: 1,
@@ -78,6 +78,93 @@ const CONSENT_TYPES_CATALOG: ConsentTypeConfig[] = [
     defaultPurpose: 'Send operational WhatsApp messages',
   },
 ];
+
+export interface EffectiveConsentResolution {
+  authoritativeConsent?: TraineeConsent;
+  isCurrentlyGranted: boolean;
+  statusName: string;
+  revokedAt?: string | null;
+  grantedAt?: string | null;
+}
+
+/**
+ * Resolves the authoritative effective consent record and its active grant status
+ * in strict alignment with Spring Boot TraineeConsentServiceImpl.hasActiveConsent().
+ *
+ * Algorithm (matches lines 182-203 of TraineeConsentServiceImpl.java):
+ * 1. Filter matching records by consentTypeCode or consentTypeId.
+ * 2. If no records exist -> not granted, no authoritative record.
+ * 3. Sort matching records by:
+ *    - updatedAt (or createdAt if updatedAt is null), descending
+ *    - id (tiebreaker), descending
+ *    The top record [0] is the authoritative consent record.
+ * 4. Determine isCurrentlyGranted:
+ *    - authoritative.consentStatusCode === 'GRANTED'
+ *    - AND (authoritative.revokedAt is null OR new Date(authoritative.revokedAt) > now)
+ *    - AND (authoritative.expiresAt is null OR new Date(authoritative.expiresAt) > now)
+ *    - AND (authoritative.grantedAt is null OR new Date(authoritative.grantedAt) <= now)
+ */
+export function resolveEffectiveConsent(
+  consents: TraineeConsent[],
+  typeCode: string,
+  typeId?: number,
+  now: Date = new Date(),
+): EffectiveConsentResolution {
+  const matching = (consents || []).filter(
+    (c) =>
+      c.consentTypeCode === typeCode ||
+      (typeId !== undefined && c.consentTypeId === typeId),
+  );
+
+  if (matching.length === 0) {
+    return {
+      authoritativeConsent: undefined,
+      isCurrentlyGranted: false,
+      statusName: 'Not Granted',
+    };
+  }
+
+  // Sort by updatedAt/createdAt descending, then ID descending
+  const sorted = [...matching].sort((a, b) => {
+    const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+    const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+    if (timeB !== timeA) {
+      return timeB - timeA;
+    }
+    return (b.id || 0) - (a.id || 0);
+  });
+
+  const authoritative = sorted[0];
+  const nowMs = now.getTime();
+
+  const isGrantedStatus =
+    authoritative.consentStatusCode?.toUpperCase() === 'GRANTED';
+
+  const notRevoked =
+    !authoritative.revokedAt ||
+    new Date(authoritative.revokedAt).getTime() > nowMs;
+
+  const notExpired =
+    !authoritative.expiresAt ||
+    new Date(authoritative.expiresAt).getTime() > nowMs;
+
+  const alreadyGranted =
+    !authoritative.grantedAt ||
+    new Date(authoritative.grantedAt).getTime() <= nowMs;
+
+  const isCurrentlyGranted =
+    isGrantedStatus && notRevoked && notExpired && alreadyGranted;
+
+  return {
+    authoritativeConsent: authoritative,
+    isCurrentlyGranted,
+    statusName: isCurrentlyGranted
+      ? 'Granted'
+      : (authoritative.consentStatusName || authoritative.consentStatusCode || 'Revoked'),
+    revokedAt: authoritative.revokedAt,
+    grantedAt: authoritative.grantedAt,
+  };
+}
 
 export const TraineeConsentPage: React.FC = () => {
   const { traineeId, isUnlinked, isLoading: isIdentityLoading } =
@@ -153,31 +240,19 @@ export const TraineeConsentPage: React.FC = () => {
 
   const existingConsents = consentsQuery.data ?? [];
 
-  // Helper to find authoritative active or latest consent for a given type code
-  function getLatestConsentForType(typeCode: string): TraineeConsent | undefined {
-    const matching = existingConsents.filter(
-      (c) => c.consentTypeCode === typeCode || c.consentTypeId === getTypeIdForCode(typeCode),
-    );
-    if (matching.length === 0) return undefined;
-    // Prefer GRANTED if present, otherwise newest ID
-    const granted = matching.find((c) => c.consentStatusCode === 'GRANTED');
-    if (granted) return granted;
-    return matching[matching.length - 1];
-  }
-
-  function getTypeIdForCode(typeCode: string): number {
-    const found = CONSENT_TYPES_CATALOG.find((c) => c.code === typeCode);
-    return found ? found.id : 1;
-  }
-
   // Handle Grant action
   const handleGrant = (typeConfig: ConsentTypeConfig) => {
     setActionError(null);
-    const existing = getLatestConsentForType(typeConfig.code);
-    if (existing) {
-      // Re-grant existing record (statusId: 1 for GRANTED)
+    const { authoritativeConsent } = resolveEffectiveConsent(
+      existingConsents,
+      typeConfig.code,
+      typeConfig.id,
+    );
+
+    if (authoritativeConsent) {
+      // Re-grant existing record (statusId: 1 for GRANTED per ref_consent_status)
       updateConsentMutation.mutate({
-        consentId: existing.id,
+        consentId: authoritativeConsent.id,
         statusId: 1, // GRANTED
         revokedAt: null,
       });
@@ -200,7 +275,7 @@ export const TraineeConsentPage: React.FC = () => {
     setActionError(null);
     updateConsentMutation.mutate({
       consentId: consent.id,
-      statusId: 2, // REVOKED
+      statusId: 2, // REVOKED per ref_consent_status
       revokedAt: new Date().toISOString(),
     });
   };
@@ -286,8 +361,16 @@ export const TraineeConsentPage: React.FC = () => {
         ) : (
           <div className="grid grid-cols-1 gap-4">
             {CONSENT_TYPES_CATALOG.map((typeConfig) => {
-              const consent = getLatestConsentForType(typeConfig.code);
-              const isGranted = consent?.consentStatusCode === 'GRANTED';
+              const {
+                authoritativeConsent,
+                isCurrentlyGranted,
+                statusName,
+                grantedAt,
+              } = resolveEffectiveConsent(
+                existingConsents,
+                typeConfig.code,
+                typeConfig.id,
+              );
 
               return (
                 <div
@@ -306,30 +389,30 @@ export const TraineeConsentPage: React.FC = () => {
                       )}
                       <span
                         className={`text-xs font-semibold px-2 py-0.5 rounded ${
-                          isGranted
+                          isCurrentlyGranted
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             : 'bg-gov-neutral-100 text-gov-neutral-600 border border-gov-neutral-300'
                         }`}
                       >
-                        {isGranted ? '● Granted' : '○ Not Granted'}
+                        {isCurrentlyGranted ? '● Granted' : `○ ${statusName}`}
                       </span>
                     </div>
                     <p className="text-xs text-gov-neutral-600 leading-normal">
                       {typeConfig.description}
                     </p>
-                    {consent && isGranted && (
+                    {authoritativeConsent && isCurrentlyGranted && (
                       <p className="text-[11px] text-gov-neutral-400 font-mono">
-                        Active consent recorded on: {consent.grantedAt ? new Date(consent.grantedAt).toLocaleString() : 'System Default'}
+                        Active consent recorded on: {grantedAt ? new Date(grantedAt).toLocaleString() : 'System Default'}
                       </p>
                     )}
                   </div>
 
                   <div className="flex items-center gap-3 shrink-0">
-                    {isGranted ? (
+                    {isCurrentlyGranted ? (
                       <button
                         type="button"
                         disabled={isMutating}
-                        onClick={() => handleRevoke(consent!)}
+                        onClick={() => handleRevoke(authoritativeConsent!)}
                         className="px-4 py-2 text-xs font-bold rounded border border-red-300 bg-white text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 transition-colors"
                       >
                         {isMutating ? 'Updating...' : 'Revoke Consent'}

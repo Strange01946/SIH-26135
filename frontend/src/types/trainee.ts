@@ -149,15 +149,23 @@ export interface AssessmentResult {
   assessmentId?: number | null;
   assessmentName?: string | null;
   assessmentOutcomeId?: number | null;
+  assessmentOutcomeCode?: string | null;
+  assessmentOutcomeName?: string | null;
   outcomeCode?: string | null;
   outcomeName?: string | null;
+  isPassFlag?: boolean | null;
+  obtainedScore?: number | null;
+  maximumScore?: number | null;
+  scorePercentage?: number | null;
   totalScore?: number | null;
   maxScore?: number | null;
   percentage?: number | null;
   grade?: string | null;
   assessedAt?: string | null;
+  resultDeclaredAt?: string | null;
   remarks?: string | null;
   createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 export interface Certification {

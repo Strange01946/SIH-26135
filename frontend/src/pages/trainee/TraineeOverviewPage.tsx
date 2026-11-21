@@ -10,6 +10,11 @@ import {
 } from '@/api/traineeApi';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { EmptyState } from '@/components/feedback/EmptyState';
+import { calculateAttendanceStats } from './TraineeTrainingPage';
+import {
+  resolveEffectiveConsent,
+  CONSENT_TYPES_CATALOG,
+} from './TraineeConsentPage';
 
 interface TraineeContextType {
   trainee: TraineeProfile | null;
@@ -82,10 +87,8 @@ export const TraineeOverviewPage: React.FC = () => {
 
   // Calculate attendance statistics if records are available
   const attendanceList = attendanceQuery.data ?? [];
-  const totalSessions = attendanceList.length;
-  const presentSessions = attendanceList.filter((r) => r.countsAsPresent).length;
-  const attendancePct =
-    totalSessions > 0 ? Math.round((presentSessions / totalSessions) * 100) : null;
+  const { totalSessions, presentCount, attendanceRate } =
+    calculateAttendanceStats(attendanceList);
 
   // Active enrollments
   const enrollments = enrollmentsQuery.data?.content ?? [];
@@ -93,9 +96,11 @@ export const TraineeOverviewPage: React.FC = () => {
     (e) => !e.isTerminal && !e.isCompletedFlag,
   ) ?? enrollments[0];
 
-  // Consents statistics
+  // Consents statistics using authoritative resolution
   const consents = consentsQuery.data ?? [];
-  const grantedConsents = consents.filter((c) => c.consentStatusCode === 'GRANTED');
+  const activeConsentsCount = CONSENT_TYPES_CATALOG.filter(
+    (c) => resolveEffectiveConsent(consents, c.code, c.id).isCurrentlyGranted,
+  ).length;
 
   // Outcome
   const outcome = outcomesQuery.data;
@@ -215,8 +220,8 @@ export const TraineeOverviewPage: React.FC = () => {
               <span className="text-xs font-bold uppercase tracking-wider text-gov-neutral-500">
                 Attendance Standing
               </span>
-              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
-                NCVET Benchmark: 70%
+              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                Recorded Sessions
               </span>
             </div>
             {attendanceQuery.isLoading ? (
@@ -225,26 +230,20 @@ export const TraineeOverviewPage: React.FC = () => {
               <div className="text-xs text-amber-700 bg-amber-50 p-2.5 rounded border border-amber-200">
                 <span>Attendance view restricted to authorized training center staff.</span>
               </div>
-            ) : attendancePct !== null ? (
+            ) : attendanceRate !== null ? (
               <div>
                 <div className="flex items-baseline gap-2">
-                  <span
-                    className={`text-3xl font-extrabold ${
-                      attendancePct >= 70 ? 'text-emerald-600' : 'text-amber-600'
-                    }`}
-                  >
-                    {attendancePct}%
+                  <span className="text-3xl font-extrabold text-gov-neutral-900">
+                    {attendanceRate}%
                   </span>
                   <span className="text-xs text-gov-neutral-500">
-                    ({presentSessions}/{totalSessions} sessions)
+                    ({presentCount}/{totalSessions} sessions attended)
                   </span>
                 </div>
                 <div className="w-full bg-gov-neutral-100 rounded-full h-2 mt-3 overflow-hidden">
                   <div
-                    className={`h-2 rounded-full ${
-                      attendancePct >= 70 ? 'bg-emerald-500' : 'bg-amber-500'
-                    }`}
-                    style={{ width: `${Math.min(attendancePct, 100)}%` }}
+                    className="h-2 rounded-full bg-gov-navy"
+                    style={{ width: `${Math.min(attendanceRate, 100)}%` }}
                   />
                 </div>
               </div>
@@ -282,7 +281,7 @@ export const TraineeOverviewPage: React.FC = () => {
             ) : (
               <div className="space-y-1">
                 <p className="text-2xl font-extrabold text-gov-neutral-900">
-                  {grantedConsents.length}{' '}
+                  {activeConsentsCount}{' '}
                   <span className="text-sm font-normal text-gov-neutral-500">
                     Active Consents
                   </span>

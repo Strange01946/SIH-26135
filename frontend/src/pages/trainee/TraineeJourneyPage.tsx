@@ -8,8 +8,6 @@ import {
   acceptSkillGapRecommendation,
   rejectSkillGapRecommendation,
   getTraineeSurveyResponses,
-  submitSurveyResponse,
-  submitSurveyResponseAnswer,
 } from '@/api/traineeApi';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { EmptyState } from '@/components/feedback/EmptyState';
@@ -25,13 +23,6 @@ export const TraineeJourneyPage: React.FC = () => {
   const { traineeId, isUnlinked, isLoading: isIdentityLoading } =
     useOutletContext<TraineeContextType>();
   const queryClient = useQueryClient();
-
-  // Feedback form state
-  const [courseSatisfaction, setCourseSatisfaction] = useState<number>(5);
-  const [currentEmployment, setCurrentEmployment] = useState<string>('EMPLOYED');
-  const [feedbackRemarks, setFeedbackRemarks] = useState<string>('');
-  const [surveySubmitSuccess, setSurveySubmitSuccess] = useState<string | null>(null);
-  const [surveySubmitError, setSurveySubmitError] = useState<string | null>(null);
 
   // Skill gap rejection modal/input state
   const [rejectingRecId, setRejectingRecId] = useState<number | null>(null);
@@ -93,43 +84,6 @@ export const TraineeJourneyPage: React.FC = () => {
     },
     onError: (err: any) => {
       setRemediationActionError(err?.message || 'Failed to submit rejection.');
-    },
-  });
-
-  // Submit Survey Mutation
-  const surveyMutation = useMutation({
-    mutationFn: async () => {
-      // Create response header
-      const responseHeader = await submitSurveyResponse({
-        surveyId: 1, // Standard Post-Training Employment Survey
-        traineeId: traineeId!,
-        attemptNumber: 1,
-        statusId: 1,
-      });
-
-      // Submit feedback answer
-      if (responseHeader?.id) {
-        await submitSurveyResponseAnswer({
-          surveyResponseId: responseHeader.id,
-          surveyQuestionId: 1,
-          answerText: feedbackRemarks,
-          numericRating: courseSatisfaction,
-        });
-      }
-      return responseHeader;
-    },
-    onSuccess: () => {
-      setSurveySubmitSuccess('Thank you! Your post-training feedback has been recorded.');
-      setSurveySubmitError(null);
-      setFeedbackRemarks('');
-      queryClient.invalidateQueries({ queryKey: ['trainee', 'surveys', traineeId] });
-    },
-    onError: (err: any) => {
-      setSurveySubmitError(
-        err?.message ||
-          'Survey submission is restricted or requires an active campaign invitation.',
-      );
-      setSurveySubmitSuccess(null);
     },
   });
 
@@ -361,162 +315,69 @@ export const TraineeJourneyPage: React.FC = () => {
         )}
       </section>
 
-      {/* Post-Training Survey & Feedback Section */}
+      {/* Post-Training Survey & Longitudinal Feedback Section */}
       <section
         aria-labelledby="survey-feedback-heading"
         className="bg-white rounded-lg shadow-sm border border-gov-neutral-200 p-6"
       >
-        <div className="pb-4 border-b border-gov-neutral-200 mb-6">
-          <h3
-            id="survey-feedback-heading"
-            className="text-base font-bold text-gov-neutral-900"
-          >
-            Post-Training Feedback &amp; Verification Survey
-          </h3>
-          <p className="text-xs text-gov-neutral-500">
-            Share your experience to help enhance national training quality and verify employment outcomes.
-          </p>
+        <div className="pb-4 border-b border-gov-neutral-200 mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h3
+              id="survey-feedback-heading"
+              className="text-base font-bold text-gov-neutral-900"
+            >
+              Post-Training Feedback &amp; Verification Survey
+            </h3>
+            <p className="text-xs text-gov-neutral-500">
+              National Vocational Tracking Framework longitudinal impact evaluation and feedback campaigns.
+            </p>
+          </div>
+          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-800 border border-blue-200 w-fit">
+            Campaign-Assigned System
+          </span>
         </div>
 
-        {surveySubmitSuccess && (
-          <div
-            role="status"
-            className="bg-emerald-50 border border-emerald-200 p-4 rounded-lg text-emerald-900 text-sm mb-6 flex items-center justify-between"
-          >
-            <span>{surveySubmitSuccess}</span>
-            <button
-              type="button"
-              onClick={() => setSurveySubmitSuccess(null)}
-              className="text-xs font-bold underline"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
-
-        {surveySubmitError && (
-          <div
-            role="alert"
-            className="bg-amber-50 border border-amber-200 p-4 rounded-lg text-amber-900 text-sm mb-6 flex items-center justify-between"
-          >
-            <span>{surveySubmitError}</span>
-            <button
-              type="button"
-              onClick={() => setSurveySubmitError(null)}
-              className="text-xs font-bold underline"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
-
-        {/* Dynamic Questionnaire Form */}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            surveyMutation.mutate();
-          }}
-          className="space-y-6 max-w-xl"
-        >
-          {/* Question 1: Current Employment Situation */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-gov-neutral-700 mb-2">
-              1. What is your current employment status?
-            </label>
-            <div className="space-y-2">
-              {[
-                { id: 'WAGE_EMPLOYED', label: 'Employed in a company / organization (Wage Employed)' },
-                { id: 'SELF_EMPLOYED', label: 'Self-employed / Entrepreneur' },
-                { id: 'IN_EDUCATION', label: 'Pursuing higher education / further training' },
-                { id: 'UNEMPLOYED', label: 'Currently looking for a job' },
-              ].map((opt) => (
-                <label
-                  key={opt.id}
-                  className="flex items-center gap-3 text-xs md:text-sm text-gov-neutral-800 cursor-pointer"
-                >
-                  <input
-                    type="radio"
-                    name="employmentStatus"
-                    value={opt.id}
-                    checked={currentEmployment === opt.id}
-                    onChange={(e) => setCurrentEmployment(e.target.value)}
-                    className="h-4 w-4 text-gov-navy border-gov-neutral-300 focus:ring-gov-navy"
-                  />
-                  <span>{opt.label}</span>
-                </label>
-              ))}
+        {/* Campaign Required State */}
+        <div className="bg-gov-neutral-50 border border-gov-neutral-200 rounded-lg p-5">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 mt-0.5">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            </div>
+            <div className="space-y-1">
+              <h4 className="text-sm font-bold text-gov-neutral-900">
+                Feedback Surveys Require an Active Campaign Invitation
+              </h4>
+              <p className="text-xs text-gov-neutral-600 leading-relaxed">
+                Post-training quality feedback and employment verification surveys are issued systematically through scheduled NCVET monitoring campaigns. Candidate self-initiated questionnaire submissions without an active campaign assignment are not supported by the central survey register.
+              </p>
+              <p className="text-xs text-gov-neutral-500 pt-1">
+                When your cohort is selected for an evaluation round, an invitation with your unique campaign access key will appear here and be dispatched via your consented communication channels.
+              </p>
             </div>
           </div>
-
-          {/* Question 2: Course Content Relevance Rating */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-gov-neutral-700 mb-2">
-              2. How relevant was your training program to current industry requirements?
-            </label>
-            <div className="flex items-center gap-2">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button
-                  key={star}
-                  type="button"
-                  onClick={() => setCourseSatisfaction(star)}
-                  className={`w-10 h-10 rounded border text-sm font-bold transition-all focus:outline-none focus:ring-2 focus:ring-gov-navy ${
-                    courseSatisfaction >= star
-                      ? 'bg-gov-navy text-white border-gov-navy shadow-sm'
-                      : 'bg-white text-gov-neutral-600 border-gov-neutral-300 hover:bg-gov-neutral-50'
-                  }`}
-                  aria-label={`Rate ${star} out of 5 stars`}
-                >
-                  {star}★
-                </button>
-              ))}
-              <span className="text-xs text-gov-neutral-500 ml-2">
-                ({courseSatisfaction} out of 5)
-              </span>
-            </div>
-          </div>
-
-          {/* Question 3: Qualitative Feedback */}
-          <div>
-            <label
-              htmlFor="feedbackRemarks"
-              className="block text-xs font-bold uppercase tracking-wider text-gov-neutral-700 mb-2"
-            >
-              3. Suggestions or feedback for program coordinators:
-            </label>
-            <textarea
-              id="feedbackRemarks"
-              rows={3}
-              value={feedbackRemarks}
-              onChange={(e) => setFeedbackRemarks(e.target.value)}
-              placeholder="Share any comments regarding training quality, center equipment, or placement support..."
-              className="w-full text-xs md:text-sm border border-gov-neutral-300 rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-gov-navy"
-            />
-          </div>
-
-          <div>
-            <button
-              type="submit"
-              disabled={surveyMutation.isPending}
-              className="px-5 py-2.5 text-xs md:text-sm font-bold rounded bg-gov-navy text-white hover:bg-gov-navy-light focus:outline-none focus:ring-2 focus:ring-gov-navy focus:ring-offset-2 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
-            >
-              {surveyMutation.isPending ? (
-                <>
-                  <LoadingSpinner size="sm" />
-                  <span>Submitting Survey...</span>
-                </>
-              ) : (
-                <span>Submit Feedback Survey</span>
-              )}
-            </button>
-          </div>
-        </form>
+        </div>
 
         {/* Survey History Section */}
-        {pastSurveys.length > 0 && (
-          <div className="mt-8 pt-6 border-t border-gov-neutral-200">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-gov-neutral-500 mb-3">
-              Previously Submitted Surveys
-            </h4>
+        <div className="mt-6 pt-6 border-t border-gov-neutral-200">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-gov-neutral-500 mb-3">
+            Completed Survey Records
+          </h4>
+          {surveyResponsesQuery.isLoading ? (
+            <div className="py-4 flex justify-center">
+              <LoadingSpinner size="sm" />
+            </div>
+          ) : surveyResponsesQuery.isError ? (
+            <p className="text-xs text-gov-neutral-500 italic">
+              Survey response records are accessible during active verification campaigns.
+            </p>
+          ) : pastSurveys.length > 0 ? (
             <div className="space-y-2">
               {pastSurveys.map((resp) => (
                 <div
@@ -532,8 +393,12 @@ export const TraineeJourneyPage: React.FC = () => {
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <p className="text-xs text-gov-neutral-500 italic">
+              No previous survey responses recorded for your profile.
+            </p>
+          )}
+        </div>
       </section>
     </div>
   );

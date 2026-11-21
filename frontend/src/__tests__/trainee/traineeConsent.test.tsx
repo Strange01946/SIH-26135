@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { TraineeConsentPage } from '@/pages/trainee/TraineeConsentPage';
+import {
+  TraineeConsentPage,
+  resolveEffectiveConsent,
+} from '@/pages/trainee/TraineeConsentPage';
 import * as traineeApi from '@/api/traineeApi';
 import type { TraineeConsent } from '@/types/trainee';
 
@@ -214,5 +217,161 @@ describe('TraineeConsentPage Component', () => {
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });
     expect(screen.getByText(/Consent modification not permitted/i)).toBeInTheDocument();
+  });
+
+  describe('resolveEffectiveConsent() authoritative resolution tests', () => {
+    const fixedNow = new Date('2026-11-20T12:00:00Z');
+
+    it('resolves to granted when a single valid active grant exists', () => {
+      const consents = [
+        {
+          id: 10,
+          traineeId: 1,
+          consentTypeId: 1,
+          consentTypeCode: 'DATA_PROCESSING',
+          consentStatusId: 1,
+          consentStatusCode: 'GRANTED',
+          grantedAt: '2026-01-01T00:00:00Z',
+          createdAt: '2026-01-01T00:00:00Z',
+        },
+      ] as TraineeConsent[];
+
+      const result = resolveEffectiveConsent(consents, 'DATA_PROCESSING', 1, fixedNow);
+      expect(result.isCurrentlyGranted).toBe(true);
+      expect(result.statusName).toBe('Granted');
+      expect(result.authoritativeConsent?.id).toBe(10);
+    });
+
+    it('resolves to revoked when grant was later revoked (even if unordered)', () => {
+      // Historical grant comes second in array to simulate random order
+      const consents = [
+        {
+          id: 11,
+          traineeId: 1,
+          consentTypeId: 1,
+          consentTypeCode: 'DATA_PROCESSING',
+          consentStatusId: 2,
+          consentStatusCode: 'REVOKED',
+          grantedAt: '2026-01-01T00:00:00Z',
+          revokedAt: '2026-06-01T00:00:00Z',
+          updatedAt: '2026-06-01T00:00:00Z',
+        },
+        {
+          id: 10,
+          traineeId: 1,
+          consentTypeId: 1,
+          consentTypeCode: 'DATA_PROCESSING',
+          consentStatusId: 1,
+          consentStatusCode: 'GRANTED',
+          grantedAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+        },
+      ] as TraineeConsent[];
+
+      const result = resolveEffectiveConsent(consents, 'DATA_PROCESSING', 1, fixedNow);
+      expect(result.isCurrentlyGranted).toBe(false);
+      expect(result.authoritativeConsent?.id).toBe(11);
+      expect(result.statusName).toBe('REVOKED');
+    });
+
+    it('resolves to granted when consent is re-granted after prior revocation', () => {
+      const consents = [
+        {
+          id: 10,
+          traineeId: 1,
+          consentTypeId: 2,
+          consentTypeCode: 'EMPLOYMENT_FOLLOW_UP',
+          consentStatusId: 2,
+          consentStatusCode: 'REVOKED',
+          updatedAt: '2026-05-01T00:00:00Z',
+        },
+        {
+          id: 12,
+          traineeId: 1,
+          consentTypeId: 2,
+          consentTypeCode: 'EMPLOYMENT_FOLLOW_UP',
+          consentStatusId: 1,
+          consentStatusCode: 'GRANTED',
+          grantedAt: '2026-09-01T00:00:00Z',
+          updatedAt: '2026-09-01T00:00:00Z',
+        },
+      ] as TraineeConsent[];
+
+      const result = resolveEffectiveConsent(consents, 'EMPLOYMENT_FOLLOW_UP', 2, fixedNow);
+      expect(result.isCurrentlyGranted).toBe(true);
+      expect(result.statusName).toBe('Granted');
+      expect(result.authoritativeConsent?.id).toBe(12);
+    });
+
+    it('resolves to not granted when consent has an expired date in past', () => {
+      const consents = [
+        {
+          id: 15,
+          traineeId: 1,
+          consentTypeId: 5,
+          consentTypeCode: 'COMMUNICATION_SMS',
+          consentStatusId: 1,
+          consentStatusCode: 'GRANTED',
+          grantedAt: '2026-01-01T00:00:00Z',
+          expiresAt: '2026-06-01T00:00:00Z', // Expired before fixedNow
+          updatedAt: '2026-01-01T00:00:00Z',
+        },
+      ] as TraineeConsent[];
+
+      const result = resolveEffectiveConsent(consents, 'COMMUNICATION_SMS', 5, fixedNow);
+      expect(result.isCurrentlyGranted).toBe(false);
+    });
+
+    it('resolves to not granted when grantedAt is in future', () => {
+      const consents = [
+        {
+          id: 16,
+          traineeId: 1,
+          consentTypeId: 6,
+          consentTypeCode: 'COMMUNICATION_WHATSAPP',
+          consentStatusId: 1,
+          consentStatusCode: 'GRANTED',
+          grantedAt: '2026-12-01T00:00:00Z', // Future grant
+          updatedAt: '2026-11-01T00:00:00Z',
+        },
+      ] as TraineeConsent[];
+
+      const result = resolveEffectiveConsent(consents, 'COMMUNICATION_WHATSAPP', 6, fixedNow);
+      expect(result.isCurrentlyGranted).toBe(false);
+    });
+
+    it('breaks ties using higher ID when timestamps are equal', () => {
+      const consents = [
+        {
+          id: 20,
+          traineeId: 1,
+          consentTypeId: 7,
+          consentTypeCode: 'COMMUNICATION_EMAIL',
+          consentStatusId: 1,
+          consentStatusCode: 'GRANTED',
+          updatedAt: '2026-08-01T00:00:00Z',
+        },
+        {
+          id: 25,
+          traineeId: 1,
+          consentTypeId: 7,
+          consentTypeCode: 'COMMUNICATION_EMAIL',
+          consentStatusId: 2,
+          consentStatusCode: 'REVOKED',
+          updatedAt: '2026-08-01T00:00:00Z',
+        },
+      ] as TraineeConsent[];
+
+      const result = resolveEffectiveConsent(consents, 'COMMUNICATION_EMAIL', 7, fixedNow);
+      expect(result.authoritativeConsent?.id).toBe(25);
+      expect(result.isCurrentlyGranted).toBe(false);
+    });
+
+    it('resolves to not granted when no records match type', () => {
+      const result = resolveEffectiveConsent([], 'DATA_PROCESSING', 1, fixedNow);
+      expect(result.isCurrentlyGranted).toBe(false);
+      expect(result.statusName).toBe('Not Granted');
+      expect(result.authoritativeConsent).toBeUndefined();
+    });
   });
 });

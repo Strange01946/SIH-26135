@@ -244,7 +244,7 @@ export async function rejectSkillGapRecommendation(
 /**
  * Retrieves survey responses for a trainee.
  * Backend route: GET /api/v1/survey-responses?traineeId={traineeId}
- * Requires authority: survey.manage
+ * Requires administrative authority: survey.manage (HTTP 403 for candidate ROLE_trainee).
  */
 export async function getTraineeSurveyResponses(
   traineeId: number,
@@ -259,7 +259,7 @@ export async function getTraineeSurveyResponses(
 /**
  * Submits a survey response header.
  * Backend route: POST /api/v1/survey-responses
- * Requires authority: survey.manage
+ * Requires administrative authority: survey.manage (HTTP 403 for candidate ROLE_trainee).
  */
 export async function submitSurveyResponse(
   payload: CreateSurveyResponsePayload,
@@ -273,7 +273,7 @@ export async function submitSurveyResponse(
 /**
  * Submits an individual question answer for a survey response.
  * Backend route: POST /api/v1/survey-response-answers
- * Requires authority: survey.manage
+ * Requires administrative authority: survey.manage (HTTP 403 for candidate ROLE_trainee).
  */
 export async function submitSurveyResponseAnswer(
   payload: CreateSurveyResponseAnswerPayload,
