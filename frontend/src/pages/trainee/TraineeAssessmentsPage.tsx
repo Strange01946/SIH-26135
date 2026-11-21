@@ -41,27 +41,7 @@ export function resolveAssessmentOutcome(
     .trim()
     .toUpperCase();
 
-  const isExplicitPass = result.isPassFlag === true || code === 'PASS';
-  const isExplicitFail = result.isPassFlag === false || code === 'FAIL';
-
-  if (isExplicitPass && code !== 'FAIL') {
-    return {
-      verdict: 'PASS',
-      isPass: true,
-      label: result.assessmentOutcomeName || result.outcomeName || 'PASS',
-      badgeClass: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-    };
-  }
-
-  if (code === 'FAIL' || isExplicitFail) {
-    return {
-      verdict: 'FAIL',
-      isPass: false,
-      label: result.assessmentOutcomeName || result.outcomeName || 'FAIL',
-      badgeClass: 'bg-red-50 text-red-700 border border-red-200',
-    };
-  }
-
+  // 1. Authoritative non-passing status codes take absolute precedence over isPassFlag
   if (code === 'PENDING') {
     return {
       verdict: 'PENDING',
@@ -104,6 +84,31 @@ export function resolveAssessmentOutcome(
     };
   }
 
+  // 2. Explicit failure: outcome code FAIL or isPassFlag === false
+  // If code === 'PASS' but isPassFlag === false, isPassFlag=false denies pass.
+  if (code === 'FAIL' || result.isPassFlag === false) {
+    return {
+      verdict: 'FAIL',
+      isPass: false,
+      label:
+        (code !== 'PASS' && (result.assessmentOutcomeName || result.outcomeName)) ||
+        'FAIL',
+      badgeClass: 'bg-red-50 text-red-700 border border-red-200',
+    };
+  }
+
+  // 3. Passing outcome: requires code === 'PASS' or isPassFlag === true
+  // (with isPassFlag not being false and code not being a non-pass code)
+  if (code === 'PASS' || result.isPassFlag === true) {
+    return {
+      verdict: 'PASS',
+      isPass: true,
+      label: result.assessmentOutcomeName || result.outcomeName || 'PASS',
+      badgeClass: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    };
+  }
+
+  // 4. Incomplete or unknown DTO (never infer PASS from percentage)
   return {
     verdict: 'UNKNOWN',
     isPass: false,

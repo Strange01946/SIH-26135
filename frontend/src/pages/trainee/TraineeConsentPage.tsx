@@ -166,6 +166,44 @@ export function resolveEffectiveConsent(
   };
 }
 
+/**
+ * Normalizes API and network error states into clear, safe user-facing notices
+ * without leaking backend internal technical details, SQL messages, or stack traces.
+ */
+export function getConsentErrorMessage(error: any): string {
+  if (!error) {
+    return 'Unable to retrieve consent records from the Central Privacy Register.';
+  }
+
+  const status = error?.status || error?.response?.status;
+  const code = error?.code;
+
+  if (status === 401 || status === 403) {
+    return 'Access restricted. You do not have authorization to view or update DPDP statutory consent records.';
+  }
+
+  if (status === 404) {
+    return 'Candidate consent profile not found in the Central Privacy Register.';
+  }
+
+  if (typeof status === 'number' && status >= 500 && status < 600) {
+    return 'The Central Privacy Register is temporarily unavailable. Please retry shortly.';
+  }
+
+  const msg = typeof error?.message === 'string' ? error.message.toLowerCase() : '';
+  if (
+    code === 'ERR_NETWORK' ||
+    code === 'NETWORK_ERROR' ||
+    msg.includes('network') ||
+    msg.includes('failed to fetch') ||
+    msg.includes('connection refused')
+  ) {
+    return 'Network communication failure. Please verify your network connection and retry.';
+  }
+
+  return 'Unable to synchronize consent records with the Central Privacy Register. Please retry.';
+}
+
 export const TraineeConsentPage: React.FC = () => {
   const { traineeId, isUnlinked, isLoading: isIdentityLoading } =
     useOutletContext<TraineeContextType>();
@@ -243,6 +281,13 @@ export const TraineeConsentPage: React.FC = () => {
   // Handle Grant action
   const handleGrant = (typeConfig: ConsentTypeConfig) => {
     setActionError(null);
+    if (!consentsQuery.isSuccess || consentsQuery.isLoading || consentsQuery.isError) {
+      setActionError(
+        'Consent state is unavailable. Please retry loading consent records before updating preferences.',
+      );
+      return;
+    }
+
     const { authoritativeConsent } = resolveEffectiveConsent(
       existingConsents,
       typeConfig.code,
@@ -273,6 +318,13 @@ export const TraineeConsentPage: React.FC = () => {
   // Handle Revoke action
   const handleRevoke = (consent: TraineeConsent) => {
     setActionError(null);
+    if (!consentsQuery.isSuccess || consentsQuery.isLoading || consentsQuery.isError) {
+      setActionError(
+        'Consent state is unavailable. Please retry loading consent records before updating preferences.',
+      );
+      return;
+    }
+
     updateConsentMutation.mutate({
       consentId: consent.id,
       statusId: 2, // REVOKED per ref_consent_status
@@ -358,6 +410,39 @@ export const TraineeConsentPage: React.FC = () => {
           <div className="py-12 bg-white rounded-lg border border-gov-neutral-200 flex justify-center">
             <LoadingSpinner size="md" />
           </div>
+        ) : consentsQuery.isError ? (
+          <div
+            role="alert"
+            className="bg-white rounded-lg border border-red-200 p-8 text-center space-y-4 shadow-sm"
+          >
+            <div className="w-12 h-12 mx-auto rounded-full bg-red-100 flex items-center justify-center text-red-600">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
+              </svg>
+            </div>
+            <div>
+              <h4 className="text-base font-bold text-gov-neutral-900">
+                Unable to Load Consent Records
+              </h4>
+              <p className="text-xs md:text-sm text-gov-neutral-600 mt-1 max-w-lg mx-auto">
+                {getConsentErrorMessage(consentsQuery.error)}
+              </p>
+            </div>
+            <div>
+              <button
+                type="button"
+                onClick={() => consentsQuery.refetch()}
+                className="px-4 py-2 text-xs font-bold rounded bg-gov-navy text-white hover:bg-gov-navy-light focus:outline-none focus:ring-2 focus:ring-gov-navy focus:ring-offset-2 transition-colors"
+              >
+                Retry Loading Consents
+              </button>
+            </div>
+          </div>
         ) : (
           <div className="grid grid-cols-1 gap-4">
             {CONSENT_TYPES_CATALOG.map((typeConfig) => {
@@ -435,7 +520,7 @@ export const TraineeConsentPage: React.FC = () => {
         )}
       </section>
 
-      {/* Statutory Consent Audit Trail */}
+      {/* Statutory Consent Register */}
       <section
         aria-labelledby="consent-audit-heading"
         className="bg-white rounded-lg shadow-sm border border-gov-neutral-200 overflow-hidden"
@@ -445,14 +530,27 @@ export const TraineeConsentPage: React.FC = () => {
             id="consent-audit-heading"
             className="text-base font-bold text-gov-neutral-900"
           >
-            Statutory Consent Audit Log
+            Statutory Consent Register
           </h3>
           <p className="text-xs text-gov-neutral-500">
-            Immutable legal history of consent grants and revocations under the DPDP Act.
+            Registered consent preferences and current status captured under Section 6 of the DPDP Act.
           </p>
         </div>
 
-        {existingConsents.length === 0 ? (
+        {consentsQuery.isLoading ? (
+          <div className="p-8 flex justify-center">
+            <LoadingSpinner size="md" />
+          </div>
+        ) : consentsQuery.isError ? (
+          <div className="p-8 text-center text-xs text-gov-neutral-600">
+            <p className="font-semibold text-gov-neutral-800">
+              Consent records are currently unavailable.
+            </p>
+            <p className="mt-1 text-gov-neutral-500">
+              Register records could not be synchronized with the Central Privacy Register.
+            </p>
+          </div>
+        ) : existingConsents.length === 0 ? (
           <div className="p-8">
             <EmptyState
               title="No Consent Records Found"

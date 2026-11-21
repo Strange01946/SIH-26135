@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   TraineeConsentPage,
   resolveEffectiveConsent,
+  getConsentErrorMessage,
 } from '@/pages/trainee/TraineeConsentPage';
 import * as traineeApi from '@/api/traineeApi';
 import type { TraineeConsent } from '@/types/trainee';
@@ -82,7 +83,7 @@ describe('TraineeConsentPage Component', () => {
     expect(screen.getByText(/dpo@skills.gov.in/i)).toBeInTheDocument();
 
     // Audit log table
-    expect(screen.getByText('Statutory Consent Audit Log')).toBeInTheDocument();
+    expect(screen.getByText('Statutory Consent Register')).toBeInTheDocument();
     expect(screen.getByText('Send operational SMS messages')).toBeInTheDocument();
   });
 
@@ -217,6 +218,154 @@ describe('TraineeConsentPage Component', () => {
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });
     expect(screen.getByText(/Consent modification not permitted/i)).toBeInTheDocument();
+  });
+
+  describe('Consent API Failure Handling & Resilience', () => {
+    it('handles HTTP 403 Forbidden: renders authorization alert, never displays "Not Granted" or "No Consent Records Found", and offers retry', async () => {
+      vi.spyOn(traineeApi, 'getTraineeConsents').mockRejectedValueOnce({
+        status: 403,
+        message: 'Access Denied',
+      });
+
+      renderConsentWithContext({ traineeId: 42, isUnlinked: false, isLoading: false });
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toBeInTheDocument();
+      });
+
+      expect(
+        screen.getByText(/Access restricted. You do not have authorization to view or update DPDP statutory consent records/i),
+      ).toBeInTheDocument();
+
+      // Must NEVER display "Not Granted" when query failed
+      expect(screen.queryByText(/○ Not Granted/i)).not.toBeInTheDocument();
+
+      // Must NEVER display "No Consent Records Found" when query failed
+      expect(screen.queryByText(/No Consent Records Found/i)).not.toBeInTheDocument();
+
+      // Grant/Revoke action buttons must NOT be accessible while state is unknown
+      expect(screen.queryByRole('button', { name: /Grant Consent/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Revoke Consent/i })).not.toBeInTheDocument();
+
+      // Accessible Retry action must be provided
+      expect(screen.getByRole('button', { name: /Retry Loading Consents/i })).toBeInTheDocument();
+    });
+
+    it('handles HTTP 500 Internal Server Error without leaking internal technical details', async () => {
+      vi.spyOn(traineeApi, 'getTraineeConsents').mockRejectedValueOnce({
+        status: 500,
+        message: 'java.sql.SQLSyntaxErrorException: Table sih26135.trainee_consent does not exist',
+      });
+
+      renderConsentWithContext({ traineeId: 42, isUnlinked: false, isLoading: false });
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toBeInTheDocument();
+      });
+
+      // User-friendly safe message
+      expect(
+        screen.getByText(/The Central Privacy Register is temporarily unavailable. Please retry shortly/i),
+      ).toBeInTheDocument();
+
+      // Never leak backend internal technical details
+      expect(screen.queryByText(/SQLSyntaxErrorException/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/sih26135\.trainee_consent/i)).not.toBeInTheDocument();
+
+      expect(screen.getByRole('button', { name: /Retry Loading Consents/i })).toBeInTheDocument();
+    });
+
+    it('handles network failure with clear communication advice', async () => {
+      vi.spyOn(traineeApi, 'getTraineeConsents').mockRejectedValueOnce({
+        code: 'ERR_NETWORK',
+        message: 'Network Error: connection refused',
+      });
+
+      renderConsentWithContext({ traineeId: 42, isUnlinked: false, isLoading: false });
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toBeInTheDocument();
+      });
+
+      expect(
+        screen.getByText(/Network communication failure. Please verify your network connection and retry/i),
+      ).toBeInTheDocument();
+
+      expect(screen.queryByText(/○ Not Granted/i)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Retry Loading Consents/i })).toBeInTheDocument();
+    });
+
+    it('handles successful empty response: renders authoritative "Not Granted" with enabled "Grant Consent" and empty register', async () => {
+      vi.spyOn(traineeApi, 'getTraineeConsents').mockResolvedValueOnce([]);
+
+      renderConsentWithContext({ traineeId: 42, isUnlinked: false, isLoading: false });
+
+      await waitFor(() => {
+        expect(screen.getByText('Core Scheme Data Processing')).toBeInTheDocument();
+      });
+
+      // On successful empty, no error alert is rendered
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+      // Categories correctly show "Not Granted" because backend authoritatively returned 0 records
+      const notGrantedBadges = screen.getAllByText(/○ Not Granted/i);
+      expect(notGrantedBadges.length).toBeGreaterThan(0);
+
+      // Grant buttons are enabled and available
+      const grantButtons = screen.getAllByRole('button', { name: /Grant Consent/i });
+      expect(grantButtons.length).toBeGreaterThan(0);
+
+      // Empty register notice is shown because retrieval was successful
+      expect(screen.getByText('No Consent Records Found')).toBeInTheDocument();
+    });
+
+    it('clicking Retry Loading Consents invokes refetch and loads data', async () => {
+      const getSpy = vi
+        .spyOn(traineeApi, 'getTraineeConsents')
+        .mockRejectedValueOnce({ status: 503, message: 'Service Unavailable' })
+        .mockResolvedValueOnce(mockConsents);
+
+      renderConsentWithContext({ traineeId: 42, isUnlinked: false, isLoading: false });
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /Retry Loading Consents/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /Retry Loading Consents/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Core Scheme Data Processing')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Revoke Consent/i })).toBeInTheDocument();
+      });
+
+      expect(getSpy).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('getConsentErrorMessage() unit tests', () => {
+    it('returns authorization message on 401 and 403', () => {
+      expect(getConsentErrorMessage({ status: 403 })).toContain('Access restricted');
+      expect(getConsentErrorMessage({ response: { status: 401 } })).toContain('Access restricted');
+    });
+
+    it('returns not found message on 404', () => {
+      expect(getConsentErrorMessage({ status: 404 })).toContain('profile not found');
+    });
+
+    it('returns temporary unavailable message on 5xx', () => {
+      expect(getConsentErrorMessage({ status: 500 })).toContain('temporarily unavailable');
+      expect(getConsentErrorMessage({ status: 503 })).toContain('temporarily unavailable');
+    });
+
+    it('returns network message on network failures', () => {
+      expect(getConsentErrorMessage({ code: 'ERR_NETWORK' })).toContain('Network communication failure');
+      expect(getConsentErrorMessage({ message: 'Failed to fetch' })).toContain('Network communication failure');
+    });
+
+    it('returns fallback message when error is undefined or unknown', () => {
+      expect(getConsentErrorMessage(null)).toContain('Unable to retrieve consent records');
+      expect(getConsentErrorMessage({})).toContain('Unable to synchronize consent records');
+    });
   });
 
   describe('resolveEffectiveConsent() authoritative resolution tests', () => {

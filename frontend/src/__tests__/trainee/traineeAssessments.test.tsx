@@ -258,5 +258,114 @@ describe('TraineeAssessmentsPage Component', () => {
       expect(outcome.isPass).toBe(false);
       expect(outcome.label).toBe('AWAITING EVALUATION');
     });
+
+    it('resolves contradictory combination: isPassFlag: true with PENDING code to PENDING (isPass: false)', () => {
+      const assessment: AssessmentResult = {
+        id: 7,
+        traineeId: 42,
+        isPassFlag: true,
+        assessmentOutcomeCode: 'PENDING',
+        outcomeName: 'Evaluation In Progress',
+      };
+
+      const outcome = resolveAssessmentOutcome(assessment);
+      expect(outcome.isPass).toBe(false);
+      expect(outcome.verdict).toBe('PENDING');
+      expect(outcome.label).toBe('Evaluation In Progress');
+      expect(outcome.badgeClass).toContain('text-blue-700');
+    });
+
+    it('resolves contradictory combination: isPassFlag: true with WITHHELD code to WITHHELD (isPass: false)', () => {
+      const assessment: AssessmentResult = {
+        id: 8,
+        traineeId: 42,
+        isPassFlag: true,
+        assessmentOutcomeCode: 'WITHHELD',
+      };
+
+      const outcome = resolveAssessmentOutcome(assessment);
+      expect(outcome.isPass).toBe(false);
+      expect(outcome.verdict).toBe('WITHHELD');
+      expect(outcome.badgeClass).toContain('text-amber-700');
+    });
+
+    it('resolves contradictory combination: isPassFlag: true with ABSENT code to ABSENT (isPass: false)', () => {
+      const assessment: AssessmentResult = {
+        id: 9,
+        traineeId: 42,
+        isPassFlag: true,
+        assessmentOutcomeCode: 'ABSENT',
+      };
+
+      const outcome = resolveAssessmentOutcome(assessment);
+      expect(outcome.isPass).toBe(false);
+      expect(outcome.verdict).toBe('ABSENT');
+    });
+
+    it('resolves contradictory combination: isPassFlag: true with INCOMPLETE code to INCOMPLETE (isPass: false)', () => {
+      const assessment: AssessmentResult = {
+        id: 10,
+        traineeId: 42,
+        isPassFlag: true,
+        assessmentOutcomeCode: 'INCOMPLETE',
+      };
+
+      const outcome = resolveAssessmentOutcome(assessment);
+      expect(outcome.isPass).toBe(false);
+      expect(outcome.verdict).toBe('INCOMPLETE');
+    });
+
+    it('resolves contradictory combination: isPassFlag: false with PASS code to FAIL (isPass: false)', () => {
+      const assessment: AssessmentResult = {
+        id: 11,
+        traineeId: 42,
+        isPassFlag: false,
+        assessmentOutcomeCode: 'PASS',
+      };
+
+      const outcome = resolveAssessmentOutcome(assessment);
+      expect(outcome.isPass).toBe(false);
+      expect(outcome.verdict).toBe('FAIL');
+      expect(outcome.label).toBe('FAIL');
+      expect(outcome.badgeClass).toContain('text-red-700');
+    });
+
+    it('resolves incomplete DTO: isPassFlag: true with missing code to PASS (isPass: true)', () => {
+      const assessment: AssessmentResult = {
+        id: 12,
+        traineeId: 42,
+        isPassFlag: true,
+      };
+
+      const outcome = resolveAssessmentOutcome(assessment);
+      expect(outcome.isPass).toBe(true);
+      expect(outcome.verdict).toBe('PASS');
+    });
+
+    it('resolves incomplete DTO: isPassFlag: false with missing code to FAIL (isPass: false)', () => {
+      const assessment: AssessmentResult = {
+        id: 13,
+        traineeId: 42,
+        isPassFlag: false,
+      };
+
+      const outcome = resolveAssessmentOutcome(assessment);
+      expect(outcome.isPass).toBe(false);
+      expect(outcome.verdict).toBe('FAIL');
+    });
+
+    it('never infers PASS from a high percentage (95%) when outcome code and isPassFlag are absent', () => {
+      const assessment: AssessmentResult = {
+        id: 14,
+        traineeId: 42,
+        percentage: 95,
+        scorePercentage: 95,
+      };
+
+      const outcome = resolveAssessmentOutcome(assessment);
+      expect(outcome.isPass).toBe(false);
+      expect(outcome.verdict).toBe('UNKNOWN');
+      expect(outcome.label).toBe('AWAITING EVALUATION');
+    });
   });
 });
