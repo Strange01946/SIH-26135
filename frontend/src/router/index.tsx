@@ -13,8 +13,13 @@ import {
   ProviderDashboard,
   AssessorDashboard,
   EmployerDashboard,
-  TraineeDashboard,
 } from '@/pages/personas/PersonaDashboards';
+import { TraineePortalLayout } from '@/pages/trainee/TraineePortalLayout';
+import { TraineeOverviewPage } from '@/pages/trainee/TraineeOverviewPage';
+import { TraineeTrainingPage } from '@/pages/trainee/TraineeTrainingPage';
+import { TraineeConsentPage } from '@/pages/trainee/TraineeConsentPage';
+import { TraineeAssessmentsPage } from '@/pages/trainee/TraineeAssessmentsPage';
+import { TraineeJourneyPage } from '@/pages/trainee/TraineeJourneyPage';
 import { useAuth } from '@/context/AuthContext';
 
 function RootRedirect(): React.JSX.Element {
@@ -92,8 +97,14 @@ export function AppRouter(): React.JSX.Element {
             path="/trainee"
             element={<RoleGuard allowedPersonas={['TRAINEE']} />}
           >
-            <Route path="dashboard" element={<TraineeDashboard />} />
-            <Route index element={<Navigate to="dashboard" replace />} />
+            <Route element={<TraineePortalLayout />}>
+              <Route path="dashboard" element={<TraineeOverviewPage />} />
+              <Route path="training" element={<TraineeTrainingPage />} />
+              <Route path="consent" element={<TraineeConsentPage />} />
+              <Route path="assessments" element={<TraineeAssessmentsPage />} />
+              <Route path="journey" element={<TraineeJourneyPage />} />
+              <Route index element={<Navigate to="dashboard" replace />} />
+            </Route>
           </Route>
 
           {/* Operational Domain Routes Guarded by Persona */}

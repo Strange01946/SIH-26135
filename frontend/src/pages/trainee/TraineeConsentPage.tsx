@@ -1,0 +1,444 @@
+import React, { useState } from 'react';
+import { useOutletContext } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type {
+  TraineeProfile,
+  TraineeConsent,
+  ConsentTypeCode,
+  CreateTraineeConsentPayload,
+} from '@/types/trainee';
+import {
+  getTraineeConsents,
+  createTraineeConsent,
+  updateTraineeConsentStatus,
+} from '@/api/traineeApi';
+import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
+import { EmptyState } from '@/components/feedback/EmptyState';
+
+interface TraineeContextType {
+  trainee: TraineeProfile | null;
+  traineeId?: number;
+  isUnlinked: boolean;
+  isLoading: boolean;
+}
+
+interface ConsentTypeConfig {
+  code: ConsentTypeCode;
+  id: number;
+  name: string;
+  description: string;
+  isRequired: boolean;
+  defaultPurpose: string;
+}
+
+const CONSENT_TYPES_CATALOG: ConsentTypeConfig[] = [
+  {
+    code: 'DATA_PROCESSING',
+    id: 1,
+    name: 'Core Scheme Data Processing',
+    description:
+      'Processing of candidate demographics, educational history, biometric attendance, and qualification outcomes in accordance with National Skill Development Scheme rules.',
+    isRequired: true,
+    defaultPurpose: 'Process registration and training records',
+  },
+  {
+    code: 'EMPLOYMENT_FOLLOW_UP',
+    id: 2,
+    name: 'Employment Outcome Follow-Up & Verification',
+    description:
+      'Permission to follow up regarding post-training job placement, apprenticeship opportunities, employer verification, and career tracking.',
+    isRequired: false,
+    defaultPurpose: 'Contact the trainee about employment outcomes over time',
+  },
+  {
+    code: 'COMMUNICATION_SMS',
+    id: 5,
+    name: 'Transactional SMS Communication',
+    description:
+      'Delivery of mandatory operational alerts, batch schedule reminders, examination hall tickets, and authentication OTPs via SMS.',
+    isRequired: false,
+    defaultPurpose: 'Send operational SMS messages',
+  },
+  {
+    code: 'COMMUNICATION_EMAIL',
+    id: 7,
+    name: 'Official Email Communications',
+    description:
+      'Transmission of digitally signed course completion certificates, survey invitations, and circular notices via email.',
+    isRequired: false,
+    defaultPurpose: 'Send operational email messages',
+  },
+  {
+    code: 'COMMUNICATION_WHATSAPP',
+    id: 6,
+    name: 'WhatsApp Operational Messaging',
+    description:
+      'Optional channel for receiving automated timetable updates, skill assessment tips, and interview schedules on WhatsApp.',
+    isRequired: false,
+    defaultPurpose: 'Send operational WhatsApp messages',
+  },
+];
+
+export const TraineeConsentPage: React.FC = () => {
+  const { traineeId, isUnlinked, isLoading: isIdentityLoading } =
+    useOutletContext<TraineeContextType>();
+  const queryClient = useQueryClient();
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // Query consents
+  const consentsQuery = useQuery({
+    queryKey: ['trainee', 'consents', traineeId],
+    queryFn: () => getTraineeConsents(traineeId!),
+    enabled: Boolean(traineeId),
+    retry: false,
+  });
+
+  // Mutation to create new consent
+  const createConsentMutation = useMutation({
+    mutationFn: (payload: CreateTraineeConsentPayload) => createTraineeConsent(payload),
+    onSuccess: () => {
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey: ['trainee', 'consents', traineeId] });
+    },
+    onError: (err: any) => {
+      setActionError(err?.message || 'Failed to record consent. Please try again.');
+    },
+  });
+
+  // Mutation to update existing consent status
+  const updateConsentMutation = useMutation({
+    mutationFn: ({
+      consentId,
+      statusId,
+      revokedAt,
+    }: {
+      consentId: number;
+      statusId: number;
+      revokedAt?: string | null;
+    }) =>
+      updateTraineeConsentStatus(consentId, {
+        consentStatusId: statusId,
+        revokedAt: revokedAt ?? null,
+      }),
+    onSuccess: () => {
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey: ['trainee', 'consents', traineeId] });
+    },
+    onError: (err: any) => {
+      setActionError(err?.message || 'Failed to update consent status. Please try again.');
+    },
+  });
+
+  const isMutating =
+    createConsentMutation.isPending || updateConsentMutation.isPending;
+
+  if (isIdentityLoading) {
+    return (
+      <div className="bg-white rounded-lg p-12 border border-gov-neutral-200 flex justify-center">
+        <LoadingSpinner size="md" />
+      </div>
+    );
+  }
+
+  if (isUnlinked || !traineeId) {
+    return (
+      <div className="bg-white rounded-lg p-8 border border-gov-neutral-200">
+        <EmptyState
+          title="Candidate Profile Not Linked"
+          description="A linked candidate identification record is required to manage DPDP Act statutory consents."
+        />
+      </div>
+    );
+  }
+
+  const existingConsents = consentsQuery.data ?? [];
+
+  // Helper to find authoritative active or latest consent for a given type code
+  function getLatestConsentForType(typeCode: string): TraineeConsent | undefined {
+    const matching = existingConsents.filter(
+      (c) => c.consentTypeCode === typeCode || c.consentTypeId === getTypeIdForCode(typeCode),
+    );
+    if (matching.length === 0) return undefined;
+    // Prefer GRANTED if present, otherwise newest ID
+    const granted = matching.find((c) => c.consentStatusCode === 'GRANTED');
+    if (granted) return granted;
+    return matching[matching.length - 1];
+  }
+
+  function getTypeIdForCode(typeCode: string): number {
+    const found = CONSENT_TYPES_CATALOG.find((c) => c.code === typeCode);
+    return found ? found.id : 1;
+  }
+
+  // Handle Grant action
+  const handleGrant = (typeConfig: ConsentTypeConfig) => {
+    setActionError(null);
+    const existing = getLatestConsentForType(typeConfig.code);
+    if (existing) {
+      // Re-grant existing record (statusId: 1 for GRANTED)
+      updateConsentMutation.mutate({
+        consentId: existing.id,
+        statusId: 1, // GRANTED
+        revokedAt: null,
+      });
+    } else {
+      // Create new consent record
+      createConsentMutation.mutate({
+        traineeId: traineeId!,
+        consentTypeId: typeConfig.id,
+        consentStatusId: 1, // GRANTED
+        purpose: typeConfig.defaultPurpose,
+        policyVersion: 'v1.0',
+        grantedAt: new Date().toISOString(),
+        capturedChannel: 'WEB_PORTAL',
+      });
+    }
+  };
+
+  // Handle Revoke action
+  const handleRevoke = (consent: TraineeConsent) => {
+    setActionError(null);
+    updateConsentMutation.mutate({
+      consentId: consent.id,
+      statusId: 2, // REVOKED
+      revokedAt: new Date().toISOString(),
+    });
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Statutory DPDP Act Section 6 Notice */}
+      <section
+        aria-labelledby="dpdp-statutory-notice-heading"
+        className="bg-gov-neutral-50 rounded-lg border border-gov-neutral-200 p-6"
+      >
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-full bg-gov-navy/10 flex items-center justify-center shrink-0 text-gov-navy">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+              />
+            </svg>
+          </div>
+          <div className="space-y-2">
+            <h2
+              id="dpdp-statutory-notice-heading"
+              className="text-base font-bold text-gov-neutral-900"
+            >
+              Statutory Privacy &amp; Data Consent Notice (Digital Personal Data Protection Act, 2023 § 6)
+            </h2>
+            <p className="text-xs md:text-sm text-gov-neutral-700 leading-relaxed">
+              Under Section 6 of the DPDP Act, personal data is processed solely for the specified purposes of skill qualification, certification verification, and employment outcome analytics. You have the statutory right to give, manage, or withdraw consent at any time without punitive consequences, except where processing is mandated by law for educational qualification records.
+            </p>
+            <div className="text-xs text-gov-neutral-500 pt-1 flex flex-wrap gap-x-6 gap-y-1">
+              <span><strong>Data Fiduciary:</strong> National Council for Vocational Education and Training (NCVET)</span>
+              <span><strong>Data Protection Officer:</strong> dpo@skills.gov.in</span>
+              <span><strong>Policy Version:</strong> v1.0 (Statutory 2024 Revision)</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Mutation Error Notification */}
+      {actionError && (
+        <div
+          role="alert"
+          className="bg-red-50 border border-red-200 p-4 rounded-lg text-red-900 text-sm flex items-center justify-between"
+        >
+          <span>{actionError}</span>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            className="text-xs font-bold text-red-700 hover:underline ml-4"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Consent Categories Management Cards */}
+      <section
+        aria-labelledby="consent-management-heading"
+        className="space-y-4"
+      >
+        <div className="flex items-center justify-between">
+          <h3
+            id="consent-management-heading"
+            className="text-base font-bold text-gov-neutral-900"
+          >
+            Consent Preferences &amp; Permissions
+          </h3>
+          {isMutating && (
+            <div className="flex items-center gap-2 text-xs text-gov-navy font-semibold">
+              <LoadingSpinner size="sm" />
+              <span>Updating Central Privacy Register...</span>
+            </div>
+          )}
+        </div>
+
+        {consentsQuery.isLoading ? (
+          <div className="py-12 bg-white rounded-lg border border-gov-neutral-200 flex justify-center">
+            <LoadingSpinner size="md" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4">
+            {CONSENT_TYPES_CATALOG.map((typeConfig) => {
+              const consent = getLatestConsentForType(typeConfig.code);
+              const isGranted = consent?.consentStatusCode === 'GRANTED';
+
+              return (
+                <div
+                  key={typeConfig.code}
+                  className="bg-white rounded-lg border border-gov-neutral-200 p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4"
+                >
+                  <div className="space-y-1 max-w-2xl">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-bold text-gov-neutral-900">
+                        {typeConfig.name}
+                      </h4>
+                      {typeConfig.isRequired && (
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-gov-neutral-100 text-gov-neutral-700 border border-gov-neutral-300">
+                          Mandatory
+                        </span>
+                      )}
+                      <span
+                        className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                          isGranted
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-gov-neutral-100 text-gov-neutral-600 border border-gov-neutral-300'
+                        }`}
+                      >
+                        {isGranted ? '● Granted' : '○ Not Granted'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gov-neutral-600 leading-normal">
+                      {typeConfig.description}
+                    </p>
+                    {consent && isGranted && (
+                      <p className="text-[11px] text-gov-neutral-400 font-mono">
+                        Active consent recorded on: {consent.grantedAt ? new Date(consent.grantedAt).toLocaleString() : 'System Default'}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    {isGranted ? (
+                      <button
+                        type="button"
+                        disabled={isMutating}
+                        onClick={() => handleRevoke(consent!)}
+                        className="px-4 py-2 text-xs font-bold rounded border border-red-300 bg-white text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 transition-colors"
+                      >
+                        {isMutating ? 'Updating...' : 'Revoke Consent'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={isMutating}
+                        onClick={() => handleGrant(typeConfig)}
+                        className="px-4 py-2 text-xs font-bold rounded bg-gov-navy text-white hover:bg-gov-navy-light focus:outline-none focus:ring-2 focus:ring-gov-navy focus:ring-offset-2 disabled:opacity-50 transition-colors"
+                      >
+                        {isMutating ? 'Recording...' : 'Grant Consent'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* Statutory Consent Audit Trail */}
+      <section
+        aria-labelledby="consent-audit-heading"
+        className="bg-white rounded-lg shadow-sm border border-gov-neutral-200 overflow-hidden"
+      >
+        <div className="p-6 border-b border-gov-neutral-200">
+          <h3
+            id="consent-audit-heading"
+            className="text-base font-bold text-gov-neutral-900"
+          >
+            Statutory Consent Audit Log
+          </h3>
+          <p className="text-xs text-gov-neutral-500">
+            Immutable legal history of consent grants and revocations under the DPDP Act.
+          </p>
+        </div>
+
+        {existingConsents.length === 0 ? (
+          <div className="p-8">
+            <EmptyState
+              title="No Consent Records Found"
+              description="No historical consent records exist in the database for this candidate."
+            />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead className="bg-gov-neutral-50 border-b border-gov-neutral-200 text-gov-neutral-700 uppercase tracking-wider">
+                <tr>
+                  <th scope="col" className="px-6 py-3 font-semibold">
+                    Consent Type
+                  </th>
+                  <th scope="col" className="px-6 py-3 font-semibold">
+                    Status
+                  </th>
+                  <th scope="col" className="px-6 py-3 font-semibold">
+                    Purpose
+                  </th>
+                  <th scope="col" className="px-6 py-3 font-semibold">
+                    Granted At
+                  </th>
+                  <th scope="col" className="px-6 py-3 font-semibold">
+                    Revoked At
+                  </th>
+                  <th scope="col" className="px-6 py-3 font-semibold">
+                    Channel / Version
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gov-neutral-200 font-sans">
+                {existingConsents.map((item) => (
+                  <tr key={item.id} className="hover:bg-gov-neutral-50 transition-colors">
+                    <td className="px-6 py-3.5 font-bold text-gov-neutral-900 whitespace-nowrap">
+                      {item.consentTypeName || item.consentTypeCode}
+                    </td>
+                    <td className="px-6 py-3.5 whitespace-nowrap">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${
+                          item.consentStatusCode === 'GRANTED'
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-red-50 text-red-700'
+                        }`}
+                      >
+                        {item.consentStatusCode}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3.5 text-gov-neutral-600 max-w-xs truncate">
+                      {item.purpose}
+                    </td>
+                    <td className="px-6 py-3.5 text-gov-neutral-700 whitespace-nowrap">
+                      {item.grantedAt ? new Date(item.grantedAt).toLocaleString() : '—'}
+                    </td>
+                    <td className="px-6 py-3.5 text-gov-neutral-500 whitespace-nowrap">
+                      {item.revokedAt ? new Date(item.revokedAt).toLocaleString() : '—'}
+                    </td>
+                    <td className="px-6 py-3.5 text-gov-neutral-500 whitespace-nowrap font-mono">
+                      {item.capturedChannel || 'WEB'} ({item.policyVersion || 'v1.0'})
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+};
+
+export default TraineeConsentPage;

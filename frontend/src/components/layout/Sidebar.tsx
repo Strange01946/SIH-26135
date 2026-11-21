@@ -50,6 +50,34 @@ const NAV_ITEMS: NavItem[] = [
     personas: ['TRAINEE'],
     roles: ['ROLE_TRAINEE', 'ROLE_trainee'],
   },
+  {
+    label: 'My Training & Attendance',
+    to: '/trainee/training',
+    icon: '📖',
+    personas: ['TRAINEE'],
+    roles: ['ROLE_TRAINEE', 'ROLE_trainee'],
+  },
+  {
+    label: 'DPDP Privacy & Consent',
+    to: '/trainee/consent',
+    icon: '🔒',
+    personas: ['TRAINEE'],
+    roles: ['ROLE_TRAINEE', 'ROLE_trainee'],
+  },
+  {
+    label: 'Assessments & Certificates',
+    to: '/trainee/assessments',
+    icon: '📜',
+    personas: ['TRAINEE'],
+    roles: ['ROLE_TRAINEE', 'ROLE_trainee'],
+  },
+  {
+    label: 'Career Journey & Surveys',
+    to: '/trainee/journey',
+    icon: '🚀',
+    personas: ['TRAINEE'],
+    roles: ['ROLE_TRAINEE', 'ROLE_trainee'],
+  },
 
   // Operational Sections
   {
