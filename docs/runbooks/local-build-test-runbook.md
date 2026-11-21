@@ -74,8 +74,10 @@ $env:SIH_TEST_DB_NAME = "SIH26135_TEST"
 $env:SIH_TEST_DB_USERNAME = "root"
 $env:SIH_TEST_DB_PASSWORD = $env:DB_PASSWORD
 
-# JWT Secret Key (HMAC-SHA256: Must be >= 32 bytes / 256 bits)
-$env:JWT_SECRET = "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970"
+# JWT Secret Key (HMAC-SHA256: Must be >= 32 bytes / 256 bits). Prompt interactively or load from secure environment:
+$env:JWT_SECRET = Read-Host "Enter JWT Secret (minimum 32 characters / 256 bits)"
+# Or generate a random 256-bit secret for local testing:
+# $env:JWT_SECRET = [System.Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Minimum 0 -Maximum 256 }))
 
 # Optional: Enable local demo documentation (Swagger UI & OpenAPI)
 $env:SWAGGER_UI_ENABLED = "true"

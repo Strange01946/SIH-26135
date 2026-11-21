@@ -66,9 +66,12 @@ This runbook establishes structured triage workflows for diagnosing and resolvin
 ### 3.2 Missing or Weak JWT Secret
 - **Symptom**: `IllegalStateException: JWT secret is not configured. Environment variable JWT_SECRET must be provided with at least 32 bytes (256 bits)`
 - **Triage**: Inspect `$env:JWT_SECRET` in the active shell session.
-- **Remediation**: Set a cryptographically secure 256-bit secret (32+ UTF-8 characters):
+- **Remediation**: Set a cryptographically secure 256-bit secret (minimum 32 UTF-8 characters) by prompting interactively or generating via PowerShell:
   ```powershell
-  $env:JWT_SECRET = "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970"
+  # Prompt interactively:
+  $env:JWT_SECRET = Read-Host "Enter JWT Secret (minimum 32 characters / 256 bits)"
+  # Or generate a cryptographically random 256-bit secret for local session:
+  # $env:JWT_SECRET = [System.Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Minimum 0 -Maximum 256 }))
   ```
 
 ### 3.3 Database Connectivity Failure
