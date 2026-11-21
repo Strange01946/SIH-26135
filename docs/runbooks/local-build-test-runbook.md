@@ -59,19 +59,20 @@ The application uses standard 12-Factor externalized configuration. Sensitive cr
 Set environment variables in your current PowerShell session:
 
 ```powershell
-# Database credentials (Target local MySQL instance)
+# Database connection parameters (Target local MySQL instance)
 $env:DB_HOST = "localhost"
 $env:DB_PORT = "3306"
 $env:DB_NAME = "SIH26135"
 $env:DB_USERNAME = "root"
-$env:DB_PASSWORD = "YourSecureLocalPassword"
+# Set database password securely from prompt or session (never commit credentials):
+$env:DB_PASSWORD = Read-Host "Enter DB password" # Prompt interactively without hardcoding in scripts
 
-# Test Database credentials (for automated test battery)
+# Test Database connection parameters (for automated test battery)
 $env:SIH_TEST_DB_HOST = "localhost"
 $env:SIH_TEST_DB_PORT = "3306"
 $env:SIH_TEST_DB_NAME = "SIH26135_TEST"
 $env:SIH_TEST_DB_USERNAME = "root"
-$env:SIH_TEST_DB_PASSWORD = "YourSecureLocalPassword"
+$env:SIH_TEST_DB_PASSWORD = $env:DB_PASSWORD
 
 # JWT Secret Key (HMAC-SHA256: Must be >= 32 bytes / 256 bits)
 $env:JWT_SECRET = "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970"
@@ -143,8 +144,8 @@ mvn -f backend/pom.xml test "-Dtest=*UnitTest,*Test" "-Dtest=!*IntegrationTest,!
 Ensure `SIH26135_TEST` is accessible, then execute focused integration tests:
 
 ```powershell
-# Set test database password
-$env:SIH_TEST_DB_PASSWORD = "YourSecureLocalPassword"
+# Set test database password (from session or prompt)
+$env:SIH_TEST_DB_PASSWORD = Read-Host "Enter test DB password"
 
 # Run targeted Actuator, Security, and Metrics integration tests
 mvn -f backend/pom.xml test "-Dtest=ActuatorSecurityAndHealthTest,CustomObservabilityMetricsTest,WorkflowAopIntegrationTest,StructuredLoggingTest,DocumentationAccessControlTest"

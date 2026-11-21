@@ -3,7 +3,7 @@
 **Document**: Local Disaster Recovery Operational Runbook  
 **Target Environment**: Windows 11 / Host Workstation (Local-PC Execution)  
 **Applicability**: Backend Engineers, Evaluators, Technical Leads  
-**Last Verified**: November 2026 (Phase 29.14)
+**Last Verified**: November 2026 (Phase 29.14 — Targeted Corrections)
 
 ---
 
@@ -24,7 +24,7 @@ This runbook establishes a clear, step-by-step recovery procedure for realistic 
 
 ---
 
-## 2. Master 10-Step Local Disaster Recovery Sequence
+## 2. Master Local Disaster Recovery Sequence
 
 ```
 +---------------------------------------------------------------------------------------------------+
@@ -35,15 +35,17 @@ This runbook establishes a clear, step-by-step recovery procedure for realistic 
 |      (Stop-Process)                     (Logs & Crash Dumps)              (DB, JVM, Files, Env)   |
 |                                                                                   |               |
 |  [Step 6] Restore Config   <---   [Step 5] Restart MySQL     <---   [Step 4] Verify Git Source    |
-|      (Env & Properties)                 (Restart-Service)                 (git status / diff)     |
+|      (Protected Options File)           (Restart-Service)                 (git status / diff)     |
 |         |                                                                                         |
 |         v                                                                                         |
-|  [Step 7] Scratch DB Restore  ->  [Step 8] Invariant Checks   ->  [Step 9] Restart Backend        |
-|      (sih26135_scratch_verify)          (168 tables, trainee 1005143)    (mvn / java -jar)        |
+|  [Step 7] Scratch DB Restore  ->  [Step 8] Scratch Invariant Check -> [ROUTINE DRILL STOPS HERE]  |
+|      (Unique name, non-destr.)          (168 tables, trainee 1005143)    (SIH26135 Untouched)     |
 |                                                                                   |               |
-|                                                                                   v               |
-|                                                                      [Step 10] Health & API Audit |
-|                                                                          (Liveness, Readiness, me)|
+|  .................................................................................|.............. |
+|  : ONLY IN EMERGENCY (Data Loss in SIH26135):                                     v               :
+|  : [Step 9] Exceptional Primary Recovery  --->  [Step 10] Rebuild & Restart  --->  [Step 11]     :
+|  :   (Snapshot, Auth Token, Overwrite)            (clean compile / run)             Audit Health  :
+|  :................................................................................................:
 +---------------------------------------------------------------------------------------------------+
 ```
 
@@ -92,7 +94,7 @@ Write-Host "Diagnostic evidence preserved in: $recoveryDir"
 Determine which subsystem failed:
 - **Database Layer**: Can `mysqladmin ping` reach MySQL? Is `MySQL80` running?
 - **Build / Source Layer**: Are files missing or uncommitted? Did Maven compilation fail?
-- **Configuration Layer**: Are required environment variables (`JWT_SECRET`, `DB_PASSWORD`) set?
+- **Configuration Layer**: Are required environment variables (`JWT_SECRET`, database options) available?
 - **Staging / Storage Layer**: Is disk space exhausted?
 
 ---
@@ -107,9 +109,6 @@ git status
 
 # Verify zero whitespace defects or conflict markers
 git diff --check
-
-# If untracked garbage files accumulated, clean them cautiously:
-# git clean -nd  (Dry run to preview)
 ```
 
 ---
@@ -132,77 +131,141 @@ Get-Service -Name "MySQL80"
 
 ---
 
-### Step 6: Restore Application Configuration & Environment
+### Step 6: Set Up Protected Authentication & Configuration
 
-Re-establish necessary environment variables in your active PowerShell session:
+Obtain credentials interactively and configure a protected temporary option file (or use `mysql_config_editor`):
 
 ```powershell
+$mysqlBin = "C:\Program Files\MySQL\MySQL Server 8.0\bin"
+$securePassword = Read-Host -Prompt "Enter MySQL root password" -AsSecureString
+
+$tempCnf = [System.IO.Path]::GetTempFileName()
+$bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
+$plainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+[System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+
+Set-Content -Path $tempCnf -Value "[client]`nuser=root`npassword=$plainPassword`nhost=localhost`nport=3306`ndefault-character-set=utf8mb4"
+$plainPassword = $null
+
+# Set application environment variables
 $env:DB_HOST = "localhost"
 $env:DB_PORT = "3306"
 $env:DB_NAME = "SIH26135"
 $env:DB_USERNAME = "root"
-$env:DB_PASSWORD = "YourSecureLocalPassword"
-
 $env:JWT_SECRET = "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970"
 $env:COMMUNICATION_PROVIDER_MODE = "MOCK"
 ```
 
 ---
 
-### Step 7: Restore Database into Isolated Scratch Catalog First
+### Step 7: Restore Database into Unique Scratch Catalog First (Non-Destructive)
 
 > [!CAUTION]
-> Never restore directly into the primary application database (`SIH26135`). Always import into a scratch database first.
+> **NEVER RESTORE DIRECTLY OVER `SIH26135` DURING ROUTINE DRILLS.**
+> Always create a unique scratch database and verify dump integrity first. Do not use blind `DROP DATABASE IF EXISTS`.
 
 ```powershell
-$scratchDb = "sih26135_scratch_verify"
+$uniqueId = (Get-Date -Format "yyyyMMdd_HHmmss") + "_" + ([System.Guid]::NewGuid().ToString("N").Substring(0, 8))
+$scratchDb = "sih26135_scratch_" + $uniqueId
+$sessionCreatedScratch = $null
+
 $latestBackup = (Get-ChildItem -Path "database\backups\*.sql" | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
 
 if (!$latestBackup) {
-    Write-Warning "No backup dump found in database\backups. Using schema initialization scripts in database/..."
-    # Re-run schema initialization scripts if no backup dump is available
-} else {
-    Write-Host "Restoring from: $latestBackup into $scratchDb"
-    $mysqlExe = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
-    
-    $env:MYSQL_PWD = $env:DB_PASSWORD
-    & $mysqlExe -u root -e "DROP DATABASE IF EXISTS $scratchDb; CREATE DATABASE $scratchDb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-    cmd.exe /c "set ""MYSQL_PWD=$env:MYSQL_PWD"" && ""$mysqlExe"" -u root $scratchDb < ""$latestBackup"""
+    throw "No backup dump found in database\backups to restore!"
+}
+
+try {
+    # 1. Existence check: fail-closed if collision occurs
+    $exists = & "$mysqlBin\mysql.exe" --defaults-extra-file="$tempCnf" -N -B -e "SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = '$scratchDb';"
+    if ([int]$exists -ne 0) {
+        throw "Safety Violation: Database '$scratchDb' already exists! Aborting."
+    }
+
+    # 2. Non-destructive create
+    & "$mysqlBin\mysql.exe" --defaults-extra-file="$tempCnf" -e "CREATE DATABASE $scratchDb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+    $sessionCreatedScratch = $scratchDb
+    Write-Host "Created unique scratch database: $sessionCreatedScratch" -ForegroundColor Cyan
+
+    # 3. Restore dump into scratch database
+    $mysqlExe = "$mysqlBin\mysql.exe"
+    cmd.exe /c """$mysqlExe"" --defaults-extra-file=""$tempCnf"" $scratchDb < ""$latestBackup"""
+    if ($LASTEXITCODE -ne 0) {
+        throw "Scratch database restoration failed with exit code $LASTEXITCODE"
+    }
+
+} catch {
+    Write-Error "Scratch restore failed: $_"
+    throw
 }
 ```
 
 ---
 
-### Step 8: Verify Database Invariants in Scratch Catalog
+### Step 8: Verify Invariants in Scratch Catalog & Clean Up
 
-Execute invariant assertion queries against the scratch database:
-
-```powershell
-& "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root $scratchDb -e "
-    SELECT count(*) AS total_tables FROM information_schema.tables WHERE table_schema='$scratchDb';
-    SELECT trainee_id, first_name, last_name, registration_number FROM trainees WHERE trainee_id=1005143;
-    SELECT count(*) AS dpdp_consents_count FROM trainee_consents WHERE trainee_id=1005143;
-    SELECT user_id, username, email FROM users WHERE user_id=1;
-"
-```
-
-Confirm:
-- `total_tables`: **168**
-- Authoritative trainee `1005143`: Present (`Authorized Tester`)
-- DPDP consents: **5** granted records
-- Root admin user `1`: Present (`admin`)
-
-Once confirmed, apply the dump to the primary database `SIH26135` and drop the scratch database:
+Assert expected baseline invariants in the scratch database:
 
 ```powershell
-# Promote to primary database
-cmd.exe /c "set ""MYSQL_PWD=$env:MYSQL_PWD"" && ""$mysqlExe"" -u root SIH26135 < ""$latestBackup"""
-& $mysqlExe -u root -e "DROP DATABASE IF EXISTS $scratchDb;"
+try {
+    & "$mysqlBin\mysql.exe" --defaults-extra-file="$tempCnf" $scratchDb -e "
+        SELECT count(*) AS total_tables FROM information_schema.tables WHERE table_schema='$scratchDb';
+        SELECT trainee_id, first_name, last_name, registration_number FROM trainees WHERE trainee_id=1005143;
+        SELECT count(*) AS dpdp_consents_count FROM trainee_consents WHERE trainee_id=1005143;
+        SELECT user_id, username, email FROM users WHERE user_id=1;
+    "
+
+    Write-Host "Scratch verification passed. 168 tables, trainee 1005143, 5 consents, admin user present." -ForegroundColor Green
+
+} finally {
+    # Safe owned cleanup
+    if ($sessionCreatedScratch -and ($sessionCreatedScratch -eq $scratchDb)) {
+        & "$mysqlBin\mysql.exe" --defaults-extra-file="$tempCnf" -e "DROP DATABASE $sessionCreatedScratch;"
+        Write-Host "Cleaned up owned scratch database: $sessionCreatedScratch" -ForegroundColor Gray
+        $sessionCreatedScratch = $null
+    }
+}
+
+Write-Host "Routine verification drill COMPLETE. Primary database SIH26135 was NOT modified." -ForegroundColor Green
 ```
+
+> [!IMPORTANT]
+> **STOP HERE FOR ROUTINE DISASTER RECOVERY DRILLS.**
+> The backup dump is verified. Step 9 below is reserved solely for real disaster scenarios where `SIH26135` has suffered catastrophic corruption.
 
 ---
 
-### Step 9: Rebuild & Restart Spring Boot Backend
+### Step 9: Exceptional Primary Database Restoration (Workflow B — Emergency Operator Procedure Only)
+
+Execute this step **ONLY** if the primary database `SIH26135` has experienced verified data corruption:
+
+1. **Pre-Recovery Snapshot**:
+   ```powershell
+   $preRecoveryFile = "E:\project\database\backups\pre_recovery_snapshot_$(Get-Date -Format 'yyyyMMdd_HHmmss').sql"
+   & "$mysqlBin\mysqldump.exe" --defaults-extra-file="$tempCnf" --single-transaction --quick --result-file="$preRecoveryFile" SIH26135
+   Write-Host "Pre-recovery snapshot preserved at: $preRecoveryFile"
+   ```
+2. **Explicit Operator Authorization Gate**:
+   ```powershell
+   $confirmToken = Read-Host "DANGER: You are about to overwrite primary database SIH26135. Type 'RESTORE_SIH26135_CONFIRMED' to proceed"
+   if ($confirmToken -ne "RESTORE_SIH26135_CONFIRMED") {
+       Write-Host "Primary restoration aborted by operator. SIH26135 was NOT modified." -ForegroundColor Yellow
+       exit 1
+   }
+
+   # Execute primary database overwrite
+   $mysqlExe = "$mysqlBin\mysql.exe"
+   cmd.exe /c """$mysqlExe"" --defaults-extra-file=""$tempCnf"" SIH26135 < ""$latestBackup"""
+   if ($LASTEXITCODE -ne 0) {
+       Write-Error "Primary restoration failed! Investigate or restore pre-recovery snapshot: $preRecoveryFile"
+       exit 1
+   }
+   Write-Host "Primary database SIH26135 restored successfully." -ForegroundColor Green
+   ```
+
+---
+
+### Step 10: Rebuild & Restart Spring Boot Backend
 
 Perform a clean build to eliminate any corrupted class files or build artifacts:
 
@@ -216,7 +279,7 @@ mvn -f backend/pom.xml spring-boot:run "-Dspring-boot.run.profiles=local-demo"
 
 ---
 
-### Step 10: Operational Health & API Verification
+### Step 11: Operational Health & API Verification
 
 Perform final post-recovery checks:
 
@@ -237,6 +300,12 @@ $token = $authResponse.data.accessToken
 # 4. Verify Authoritative Trainee Endpoint
 $trainee = Invoke-RestMethod -Uri "http://localhost:8080/api/v1/trainees/1005143" -Method Get -Headers @{Authorization="Bearer $token"}
 Write-Host "Verified Trainee: $($trainee.data.firstName) $($trainee.data.lastName)" -ForegroundColor Green
+
+# 5. Clean up temporary option file
+if (Test-Path $tempCnf) {
+    Set-Content -Path $tempCnf -Value ""
+    Remove-Item -Path $tempCnf -Force
+}
 ```
 
-System recovery is complete. All application and database invariants are restored.
+System disaster recovery verification is complete.

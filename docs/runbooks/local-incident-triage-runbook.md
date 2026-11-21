@@ -137,9 +137,10 @@ curl -H "Authorization: Bearer $token" http://localhost:8080/actuator/prometheus
 > Do NOT arbitrarily increase pool size beyond 10 without investigating slow queries. Raising pool size merely shifts contention to the MySQL engine.
 
 1. **Inspect Active MySQL Queries**:
+   Connect using your configured login-path or prompt securely for credentials without echoing to shell history:
    ```powershell
-   $env:MYSQL_PWD = "YourSecureLocalPassword"
-   & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -e "SHOW FULL PROCESSLIST;"
+   # Prompt securely or use login path
+   & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -p -e "SHOW FULL PROCESSLIST;"
    ```
 2. **Identify Long-Running Transactions**: Look for queries in `Sending data` or `Locked` state for > 5 seconds.
 3. **Verify Open-in-View**: Ensure `spring.jpa.open-in-view=false` ([application.properties:12](file:///e:/project/backend/src/main/resources/application.properties#L12)) to prevent connections being held open across the entire MVC view render cycle.
