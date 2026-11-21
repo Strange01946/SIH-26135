@@ -7,29 +7,49 @@ import { AppLayout } from '@/components/layout/AppLayout';
 
 describe('Header', () => {
   it('renders portal title', () => {
-    render(<Header />);
+    render(
+      <MemoryRouter>
+        <Header />
+      </MemoryRouter>,
+    );
     expect(screen.getByText(/National Skill.*Placement Tracking/i)).toBeInTheDocument();
   });
 
   it('renders SIH-26135 identifier', () => {
-    render(<Header />);
+    render(
+      <MemoryRouter>
+        <Header />
+      </MemoryRouter>,
+    );
     expect(screen.getByText(/SIH-26135/i)).toBeInTheDocument();
   });
 
   it('renders username when provided', () => {
-    render(<Header username="admin" role="Administrator" />);
+    render(
+      <MemoryRouter>
+        <Header username="admin" role="Administrator" />
+      </MemoryRouter>,
+    );
     expect(screen.getByText('admin')).toBeInTheDocument();
     expect(screen.getByText('Administrator')).toBeInTheDocument();
   });
 
   it('does not render user info without username', () => {
-    render(<Header />);
+    render(
+      <MemoryRouter>
+        <Header />
+      </MemoryRouter>,
+    );
     expect(screen.queryByText('admin')).toBeNull();
   });
 
   it('renders mobile menu button and calls handler on click', () => {
     const handleToggle = vi.fn();
-    render(<Header onToggleMobileMenu={handleToggle} isMobileMenuOpen={false} />);
+    render(
+      <MemoryRouter>
+        <Header onToggleMobileMenu={handleToggle} isMobileMenuOpen={false} />
+      </MemoryRouter>,
+    );
     const button = screen.getByRole('button', { name: 'Open navigation menu' });
     expect(button).toBeInTheDocument();
     fireEvent.click(button);

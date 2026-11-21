@@ -6,6 +6,13 @@ import axios, {
   InternalAxiosRequestConfig,
 } from 'axios';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  getAccessToken as getSessionAccessToken,
+  setTokens,
+  clearSession,
+  refreshAccessToken,
+  hasSession,
+} from '@/lib/sessionManager';
 import type {
   ApiResponse,
   ApiError,
@@ -40,8 +47,8 @@ apiClient.interceptors.request.use(
       delete config.headers['Content-Type'];
     }
 
-    // Attach Bearer token if stored (Phase 30.2 will populate this)
-    const token = getAccessToken();
+    // Attach Bearer token from session manager if present
+    const token = getSessionAccessToken();
     if (token && !config.headers['Authorization']) {
       config.headers['Authorization'] = `Bearer ${token}`;
     }
@@ -51,7 +58,7 @@ apiClient.interceptors.request.use(
   (error: unknown) => Promise.reject(error),
 );
 
-/** Response interceptor: unwrap ApiResponse<T>.data or normalize errors */
+/** Response interceptor: unwrap ApiResponse<T>.data, normalize errors, and handle 401 token refresh */
 apiClient.interceptors.response.use(
   (response: AxiosResponse): AxiosResponse => {
     // For streaming/binary responses, pass through unchanged
@@ -74,8 +81,12 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error: unknown) => {
-    // If the error response was received as a Blob (e.g. from failed apiDownload), parse JSON text
     const axiosError = error as AxiosError<unknown>;
+    const originalRequest = axiosError.config as
+      | (InternalAxiosRequestConfig & { _retry?: boolean })
+      | undefined;
+
+    // If the error response was received as a Blob (e.g. from failed apiDownload), parse JSON text
     if (
       axiosError.response?.data instanceof Blob &&
       (axiosError.response.data.type?.includes('application/json') ||
@@ -88,25 +99,50 @@ apiClient.interceptors.response.use(
         // Fall back if blob text cannot be parsed as JSON
       }
     }
+
+    // 401 Unauthorized handling with single-flight silent refresh
+    if (
+      axiosError.response?.status === 401 &&
+      originalRequest &&
+      !originalRequest._retry
+    ) {
+      const url = originalRequest.url ?? '';
+      const isAuthEndpoint =
+        url.includes('/api/v1/auth/login') ||
+        url.includes('/api/v1/auth/refresh');
+
+      // Do not attempt refresh for auth endpoints themselves to prevent loops
+      if (!isAuthEndpoint && hasSession()) {
+        originalRequest._retry = true;
+        try {
+          const newAccessToken = await refreshAccessToken();
+          originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
+          return apiClient(originalRequest);
+        } catch {
+          clearSession();
+          return Promise.reject(normalizeAxiosError(axiosError));
+        }
+      }
+    }
+
     return Promise.reject(normalizeAxiosError(axiosError));
   },
 );
 
 // ---------------------------------------------------------------------------
-// Token storage (Phase 30.2 will implement the full auth store)
+// Token storage compatibility helpers
 // ---------------------------------------------------------------------------
 
 export function getAccessToken(): string | null {
-  return sessionStorage.getItem('sih_access_token');
+  return getSessionAccessToken();
 }
 
 export function setAccessToken(token: string): void {
-  sessionStorage.setItem('sih_access_token', token);
+  setTokens(token);
 }
 
 export function clearTokens(): void {
-  sessionStorage.removeItem('sih_access_token');
-  sessionStorage.removeItem('sih_refresh_token');
+  clearSession();
 }
 
 // ---------------------------------------------------------------------------
@@ -210,7 +246,7 @@ function getDefaultStatusMessage(status: number): string {
     403: 'You do not have permission to perform this action.',
     404: 'The requested resource was not found.',
     409: 'A conflict occurred. The resource may already exist.',
-    423: 'Your account has been temporarily locked. Please try again later.',
+    423: 'Your account has been temporarily locked due to consecutive failed login attempts. Please contact your system administrator or try again later.',
     429: 'Too many requests. Please slow down.',
     500: 'An internal server error occurred. Please try again later.',
     503: 'The service is temporarily unavailable. Please try again.',

@@ -1,31 +1,131 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import type { UserRole } from '@/api/types';
+import { useAuth } from '@/context/AuthContext';
+import type { UserPersona, UserRole } from '@/api/types';
 
 interface NavItem {
   label: string;
   to: string;
   icon: string;
-  roles: UserRole[];
+  personas?: UserPersona[];
+  roles?: UserRole[];
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard', to: '/dashboard', icon: '🏠', roles: ['ROLE_ADMIN', 'ROLE_TRAINING_PROVIDER', 'ROLE_ASSESSOR', 'ROLE_EMPLOYER', 'ROLE_TRAINEE'] },
-  { label: 'Trainees', to: '/trainees', icon: '👥', roles: ['ROLE_ADMIN', 'ROLE_TRAINING_PROVIDER', 'ROLE_ASSESSOR'] },
-  { label: 'Training Batches', to: '/batches', icon: '📚', roles: ['ROLE_ADMIN', 'ROLE_TRAINING_PROVIDER'] },
-  { label: 'Assessments', to: '/assessments', icon: '📝', roles: ['ROLE_ADMIN', 'ROLE_ASSESSOR'] },
-  { label: 'Placements', to: '/placements', icon: '💼', roles: ['ROLE_ADMIN', 'ROLE_EMPLOYER', 'ROLE_TRAINING_PROVIDER'] },
-  { label: 'Employment', to: '/employment', icon: '🏢', roles: ['ROLE_ADMIN', 'ROLE_EMPLOYER'] },
-  { label: 'Analytics', to: '/analytics', icon: '📊', roles: ['ROLE_ADMIN'] },
-  { label: 'Data Quality', to: '/data-quality', icon: '🔍', roles: ['ROLE_ADMIN'] },
-  { label: 'Bulk Import', to: '/import', icon: '📤', roles: ['ROLE_ADMIN', 'ROLE_TRAINING_PROVIDER'] },
-  { label: 'Audit Log', to: '/audit', icon: '📋', roles: ['ROLE_ADMIN'] },
-  { label: 'User Management', to: '/users', icon: '⚙️', roles: ['ROLE_ADMIN'] },
+  // General / Persona Dashboards
+  { label: 'Dashboard', to: '/dashboard', icon: '🏠' },
+  {
+    label: 'Admin Console',
+    to: '/admin/dashboard',
+    icon: '🛡️',
+    personas: ['ADMIN'],
+    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin'],
+  },
+  {
+    label: 'Provider Console',
+    to: '/provider/dashboard',
+    icon: '🏫',
+    personas: ['TRAINING_PROVIDER'],
+    roles: ['ROLE_TRAINING_PROVIDER', 'ROLE_training_provider'],
+  },
+  {
+    label: 'Assessor Console',
+    to: '/assessor/dashboard',
+    icon: '⚖️',
+    personas: ['ASSESSOR'],
+    roles: ['ROLE_ASSESSOR', 'ROLE_verifier'],
+  },
+  {
+    label: 'Employer Console',
+    to: '/employer/dashboard',
+    icon: '💼',
+    personas: ['EMPLOYER'],
+    roles: ['ROLE_EMPLOYER', 'ROLE_employer'],
+  },
+  {
+    label: 'Trainee Portal',
+    to: '/trainee/dashboard',
+    icon: '🎓',
+    personas: ['TRAINEE'],
+    roles: ['ROLE_TRAINEE', 'ROLE_trainee'],
+  },
+
+  // Operational Sections
+  {
+    label: 'Trainees',
+    to: '/trainees',
+    icon: '👥',
+    personas: ['ADMIN', 'TRAINING_PROVIDER', 'ASSESSOR'],
+    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin', 'ROLE_TRAINING_PROVIDER', 'ROLE_training_provider', 'ROLE_ASSESSOR', 'ROLE_verifier'],
+  },
+  {
+    label: 'Training Batches',
+    to: '/batches',
+    icon: '📚',
+    personas: ['ADMIN', 'TRAINING_PROVIDER'],
+    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin', 'ROLE_TRAINING_PROVIDER', 'ROLE_training_provider'],
+  },
+  {
+    label: 'Assessments',
+    to: '/assessments',
+    icon: '📝',
+    personas: ['ADMIN', 'ASSESSOR'],
+    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin', 'ROLE_ASSESSOR', 'ROLE_verifier'],
+  },
+  {
+    label: 'Placements',
+    to: '/placements',
+    icon: '🤝',
+    personas: ['ADMIN', 'EMPLOYER', 'TRAINING_PROVIDER'],
+    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin', 'ROLE_EMPLOYER', 'ROLE_employer', 'ROLE_TRAINING_PROVIDER', 'ROLE_training_provider'],
+  },
+  {
+    label: 'Employment',
+    to: '/employment',
+    icon: '🏢',
+    personas: ['ADMIN', 'EMPLOYER'],
+    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin', 'ROLE_EMPLOYER', 'ROLE_employer'],
+  },
+  {
+    label: 'Analytics',
+    to: '/analytics',
+    icon: '📊',
+    personas: ['ADMIN'],
+    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin'],
+  },
+  {
+    label: 'Data Quality',
+    to: '/data-quality',
+    icon: '🔍',
+    personas: ['ADMIN'],
+    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin'],
+  },
+  {
+    label: 'Bulk Import',
+    to: '/import',
+    icon: '📤',
+    personas: ['ADMIN', 'TRAINING_PROVIDER'],
+    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin', 'ROLE_TRAINING_PROVIDER', 'ROLE_training_provider'],
+  },
+  {
+    label: 'Audit Log',
+    to: '/audit',
+    icon: '📋',
+    personas: ['ADMIN'],
+    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin'],
+  },
+  {
+    label: 'User Management',
+    to: '/users',
+    icon: '⚙️',
+    personas: ['ADMIN'],
+    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin'],
+  },
 ];
 
 interface SidebarProps {
-  currentRole?: UserRole;
+  currentRole?: UserRole | string;
   isCollapsed?: boolean;
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
@@ -37,9 +137,54 @@ export function Sidebar({
   isMobileOpen = false,
   onCloseMobile,
 }: SidebarProps): React.JSX.Element {
-  const visibleItems = currentRole
-    ? NAV_ITEMS.filter((item) => item.roles.includes(currentRole))
-    : NAV_ITEMS;
+  const { user, personas } = useAuth();
+
+  // Handle ESC key to close mobile drawer
+  useEffect(() => {
+    if (!isMobileOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onCloseMobile?.();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isMobileOpen, onCloseMobile]);
+
+  // Determine item visibility
+  const visibleItems = NAV_ITEMS.filter((item) => {
+    // Prop override for isolated testing
+    if (currentRole) {
+      if (!item.roles && !item.personas) return true;
+      const roleStr = currentRole.toUpperCase();
+      if (roleStr === 'ROLE_TRAINEE' || roleStr === 'TRAINEE') {
+        return item.personas?.includes('TRAINEE') || item.to === '/dashboard';
+      }
+      if (roleStr === 'ROLE_ADMIN' || roleStr === 'ADMIN') {
+        return true;
+      }
+      const personaFromRole = roleStr.replace(/^ROLE_/, '');
+      return (
+        item.roles?.some((r) => r.toUpperCase() === roleStr) ||
+        item.personas?.some((p) => p === currentRole || p === personaFromRole)
+      );
+    }
+
+    // If authenticated, check user's actual personas and authorities
+    if (user) {
+      if (!item.personas && !item.roles) return true;
+      const matchesPersona = item.personas?.some((p) => personas.includes(p));
+      const matchesRole = item.roles?.some((r) =>
+        user.authorities.some((a) => a.toLowerCase() === r.toLowerCase()),
+      );
+      return Boolean(matchesPersona || matchesRole);
+    }
+
+    // Standalone / unauthenticated test view: show all items
+    return true;
+  });
 
   const navList = (
     <ul className="flex-1 py-4 space-y-0.5 overflow-y-auto" role="list">
@@ -110,7 +255,7 @@ export function Sidebar({
                 type="button"
                 onClick={onCloseMobile}
                 aria-label="Close menu"
-                className="p-1 rounded text-white hover:bg-navy-800"
+                className="p-1 rounded text-white hover:bg-navy-800 focus:outline-none focus:ring-2 focus:ring-white"
               >
                 ✕
               </button>

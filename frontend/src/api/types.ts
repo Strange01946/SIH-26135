@@ -86,10 +86,134 @@ export interface AuthResponse {
   accessToken: string;
   refreshToken: string;
   tokenType: string; // "Bearer"
-  expiresIn: number; // milliseconds
+  expiresIn: number; // seconds
   userId: number;
   username: string;
   authorities: string[];
+}
+
+/**
+ * Authenticated user profile matching AuthenticatedUserResponse.java from GET /api/v1/auth/me
+ */
+export interface AuthenticatedUserResponse {
+  id: number;
+  username: string;
+  email?: string;
+  authorities: string[];
+  organizationId?: number | null;
+  departmentId?: number | null;
+  stateId?: number | null;
+  districtId?: number | null;
+  trainingProviderId?: number | null;
+  employerId?: number | null;
+}
+
+/**
+ * High-level persona categories matching the 5 authorized user groups.
+ */
+export type UserPersona =
+  | 'ADMIN'
+  | 'TRAINING_PROVIDER'
+  | 'ASSESSOR'
+  | 'EMPLOYER'
+  | 'TRAINEE';
+
+/**
+ * Helper to compute high-level personas from backend authority strings.
+ * Supports both role names (ROLE_*) and granular permission codes.
+ */
+export function getUserPersonas(authorities: string[]): UserPersona[] {
+  if (!Array.isArray(authorities) || authorities.length === 0) {
+    return [];
+  }
+  const personas: UserPersona[] = [];
+  const lowerAuth = authorities.map((a) => a.toLowerCase().trim());
+
+  // Government Administrator
+  if (
+    lowerAuth.some((a) =>
+      [
+        'role_admin',
+        'role_super_admin',
+        'role_government_admin',
+        'role_government_officer',
+        'role_district_officer',
+        'system.manage',
+        'audit.read',
+      ].includes(a),
+    )
+  ) {
+    personas.push('ADMIN');
+  }
+
+  // Training Provider
+  if (
+    lowerAuth.some((a) =>
+      [
+        'role_training_provider',
+        'role_tp',
+        'course.manage',
+        'enrollment.manage',
+        'batch.manage',
+      ].includes(a),
+    )
+  ) {
+    personas.push('TRAINING_PROVIDER');
+  }
+
+  // Assessor / Verifier
+  if (
+    lowerAuth.some((a) =>
+      [
+        'role_assessor',
+        'role_verifier',
+        'assessment.manage',
+        'verification.manage',
+      ].includes(a),
+    )
+  ) {
+    personas.push('ASSESSOR');
+  }
+
+  // Employer
+  if (
+    lowerAuth.some((a) =>
+      [
+        'role_employer',
+        'placement.manage',
+        'employment.manage',
+      ].includes(a),
+    )
+  ) {
+    personas.push('EMPLOYER');
+  }
+
+  // Trainee
+  if (
+    lowerAuth.some((a) =>
+      [
+        'role_trainee',
+        'trainee.read',
+      ].includes(a),
+    )
+  ) {
+    personas.push('TRAINEE');
+  }
+
+  return personas;
+}
+
+/**
+ * Returns the default dashboard route for a user based on granted authorities.
+ */
+export function getDefaultLandingRoute(authorities: string[]): string {
+  const personas = getUserPersonas(authorities);
+  if (personas.includes('ADMIN')) return '/admin/dashboard';
+  if (personas.includes('TRAINING_PROVIDER')) return '/provider/dashboard';
+  if (personas.includes('ASSESSOR')) return '/assessor/dashboard';
+  if (personas.includes('EMPLOYER')) return '/employer/dashboard';
+  if (personas.includes('TRAINEE')) return '/trainee/dashboard';
+  return '/dashboard';
 }
 
 /**
@@ -97,10 +221,16 @@ export interface AuthResponse {
  */
 export type UserRole =
   | 'ROLE_ADMIN'
+  | 'ROLE_super_admin'
+  | 'ROLE_government_admin'
   | 'ROLE_TRAINING_PROVIDER'
+  | 'ROLE_training_provider'
   | 'ROLE_ASSESSOR'
+  | 'ROLE_verifier'
   | 'ROLE_EMPLOYER'
-  | 'ROLE_TRAINEE';
+  | 'ROLE_employer'
+  | 'ROLE_TRAINEE'
+  | 'ROLE_trainee';
 
 /**
  * Error codes returned by the backend GlobalExceptionHandler.
@@ -108,10 +238,12 @@ export type UserRole =
 export type ApiErrorCode =
   | 'ARGUMENT_INVALID'
   | 'VALIDATION_ERROR'
+  | 'INVALID_CREDENTIALS'
   | 'RESOURCE_NOT_FOUND'
   | 'AUTH_ACCOUNT_LOCKED'
+  | 'ACCOUNT_LOCKED'
   | 'MALFORMED_INPUT'
   | 'CONSENT_WITHDRAWN'
   | 'CONSENT_NOT_GRANTED'
   | 'OPERATION_SUCCESS'
-  | string; // allow forward compatibility
+  | string;

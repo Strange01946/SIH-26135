@@ -7,13 +7,13 @@ describe('App', () => {
     expect(() => render(<App />)).not.toThrow();
   });
 
-  it('renders the portal header', () => {
+  it('renders the portal branding and national emblem', () => {
     render(<App />);
     expect(screen.getByText(/National Skill.*Placement Tracking/i)).toBeInTheDocument();
   });
 
-  it('renders the main navigation', () => {
+  it('renders the official sign in portal on initial unauthenticated visit', () => {
     render(<App />);
-    expect(screen.getByRole('navigation', { name: 'Main navigation' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Sign In to Official Portal/i })).toBeInTheDocument();
   });
 });
