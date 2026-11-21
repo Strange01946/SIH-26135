@@ -128,4 +128,84 @@ describe('Session Manager (lib/sessionManager)', () => {
     expect(getRefreshToken()).toBeNull();
     expect(hasSession()).toBe(false);
   });
+
+  it('prevents race conditions: in-flight refresh resolving after logout (clearSession) does not restore tokens', async () => {
+    setRefreshToken('refresh-token-session-1');
+
+    let resolveRefresh: (val: unknown) => void;
+    const pendingPromise = new Promise((resolve) => {
+      resolveRefresh = resolve;
+    });
+
+    vi.mocked(axios.post).mockReturnValueOnce(pendingPromise as never);
+
+    // Refresh begins while user is authenticated in Session 1
+    const refreshCall = refreshAccessToken();
+
+    // User logs out while refresh request is in-flight
+    clearSession();
+    expect(getAccessToken()).toBeNull();
+    expect(getRefreshToken()).toBeNull();
+    expect(hasSession()).toBe(false);
+
+    // Old refresh request resolves now
+    resolveRefresh!({
+      data: {
+        success: true,
+        data: {
+          accessToken: 'stale-access-token-session-1',
+          refreshToken: 'stale-refresh-token-session-1',
+          userId: 1,
+          username: 'user1',
+        },
+      },
+    });
+
+    // The refresh promise should reject due to session invalidation
+    await expect(refreshCall).rejects.toThrow('Session invalidated during token refresh');
+
+    // Crucial invariant: state must remain completely cleared, not revived
+    expect(getAccessToken()).toBeNull();
+    expect(getRefreshToken()).toBeNull();
+    expect(hasSession()).toBe(false);
+  });
+
+  it('prevents race conditions: in-flight refresh for Session 1 resolving after Session 2 login does not overwrite new tokens', async () => {
+    setRefreshToken('refresh-token-user-1');
+
+    let resolveRefreshUser1: (val: unknown) => void;
+    const pendingPromise = new Promise((resolve) => {
+      resolveRefreshUser1 = resolve;
+    });
+
+    vi.mocked(axios.post).mockReturnValueOnce(pendingPromise as never);
+
+    // User 1 refresh begins
+    const refreshCallUser1 = refreshAccessToken();
+
+    // User 2 logs in while User 1 refresh is in-flight
+    setTokens('fresh-access-token-user-2', 'fresh-refresh-token-user-2');
+    expect(getAccessToken()).toBe('fresh-access-token-user-2');
+    expect(getRefreshToken()).toBe('fresh-refresh-token-user-2');
+
+    // Old User 1 refresh request resolves
+    resolveRefreshUser1!({
+      data: {
+        success: true,
+        data: {
+          accessToken: 'stale-access-token-user-1',
+          refreshToken: 'stale-refresh-token-user-1',
+          userId: 1,
+          username: 'user1',
+        },
+      },
+    });
+
+    // User 1 refresh call rejects
+    await expect(refreshCallUser1).rejects.toThrow('Session invalidated during token refresh');
+
+    // Crucial invariant: User 2 tokens must remain intact and NOT be overwritten by User 1
+    expect(getAccessToken()).toBe('fresh-access-token-user-2');
+    expect(getRefreshToken()).toBe('fresh-refresh-token-user-2');
+  });
 });

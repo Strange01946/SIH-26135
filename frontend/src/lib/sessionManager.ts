@@ -7,6 +7,17 @@ const REFRESH_TOKEN_STORAGE_KEY = 'sih_refresh_token';
 // In-memory access token storage (never exposed to window or localStorage)
 let memoryAccessToken: string | null = null;
 
+// Monotonically increasing session generation counter to invalidate in-flight async operations
+let sessionGeneration = 0;
+
+/**
+ * Returns the current session generation counter.
+ * Incremented whenever a session is created, replaced, or terminated.
+ */
+export function getSessionGeneration(): number {
+  return sessionGeneration;
+}
+
 // Single-flight refresh token promise to coalesce concurrent 401s
 let inFlightRefreshPromise: Promise<string | null> | null = null;
 
@@ -65,6 +76,7 @@ export function hasSession(): boolean {
  * Atomically stores newly received access and refresh tokens.
  */
 export function setTokens(accessToken: string, refreshToken?: string): void {
+  sessionGeneration++;
   memoryAccessToken = accessToken;
   if (refreshToken) {
     setRefreshToken(refreshToken);
@@ -74,12 +86,14 @@ export function setTokens(accessToken: string, refreshToken?: string): void {
 
 /**
  * Fully terminates the current session:
- * 1. Clears in-memory access token.
- * 2. Clears sessionStorage refresh token.
- * 3. Clears TanStack Query cache to prevent data leakage across users.
- * 4. Notifies listeners of unauthenticated state.
+ * 1. Increments session generation to invalidate any in-flight requests.
+ * 2. Clears in-memory access token.
+ * 3. Clears sessionStorage refresh token.
+ * 4. Clears TanStack Query cache to prevent data leakage across users.
+ * 5. Notifies listeners of unauthenticated state.
  */
 export function clearSession(): void {
+  sessionGeneration++;
   memoryAccessToken = null;
   setRefreshToken(null);
   inFlightRefreshPromise = null;
@@ -97,6 +111,7 @@ export function clearSession(): void {
 /**
  * Executes token refresh using POST /api/v1/auth/refresh.
  * Coalesces concurrent calls so only one HTTP refresh request is dispatched.
+ * Protected against race conditions via session generation validation.
  */
 export async function refreshAccessToken(): Promise<string> {
   // If a refresh is already in-flight, return the existing promise
@@ -113,6 +128,8 @@ export async function refreshAccessToken(): Promise<string> {
     clearSession();
     throw new Error('No refresh token available');
   }
+
+  const requestGeneration = sessionGeneration;
 
   // Create single-flight promise
   inFlightRefreshPromise = (async () => {
@@ -131,6 +148,11 @@ export async function refreshAccessToken(): Promise<string> {
         },
       );
 
+      // Invalidation check: verify session was not logged out or replaced while network call was in-flight
+      if (sessionGeneration !== requestGeneration || !getRefreshToken()) {
+        throw new Error('Session invalidated during token refresh');
+      }
+
       const authData = response.data?.data;
       if (!authData?.accessToken) {
         throw new Error('Malformed token refresh response');
@@ -144,11 +166,15 @@ export async function refreshAccessToken(): Promise<string> {
 
       return authData.accessToken;
     } catch (err) {
-      // Invalidate session on refresh failure
-      clearSession();
+      // Invalidate session on failure only if session hasn't already been superseded
+      if (sessionGeneration === requestGeneration) {
+        clearSession();
+      }
       throw err;
     } finally {
-      inFlightRefreshPromise = null;
+      if (sessionGeneration === requestGeneration) {
+        inFlightRefreshPromise = null;
+      }
     }
   })();
 

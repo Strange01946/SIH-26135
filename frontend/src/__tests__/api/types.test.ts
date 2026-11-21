@@ -6,6 +6,11 @@ import type {
   AuthResponse,
   BackendErrorResponse,
 } from '@/api/types';
+import {
+  getUserPersonas,
+  getDefaultLandingRoute,
+  isRouteAuthorizedForAuthorities,
+} from '@/api/types';
 
 describe('ApiResponse type contract', () => {
   it('should accept a valid success ApiResponse', () => {
@@ -96,5 +101,51 @@ describe('ApiResponse type contract', () => {
     };
     expect(backendError.status).toBe(423);
     expect(backendError.code).toBe('AUTH_ACCOUNT_LOCKED');
+  });
+
+  describe('Persona mapping and Route Authorization', () => {
+    it('maps all five personas accurately from role and authority strings', () => {
+      expect(getUserPersonas(['ROLE_ADMIN'])).toContain('ADMIN');
+      expect(getUserPersonas(['system.manage'])).toContain('ADMIN');
+      expect(getUserPersonas(['ROLE_TRAINING_PROVIDER'])).toContain('TRAINING_PROVIDER');
+      expect(getUserPersonas(['course.manage'])).toContain('TRAINING_PROVIDER');
+      expect(getUserPersonas(['ROLE_ASSESSOR'])).toContain('ASSESSOR');
+      expect(getUserPersonas(['ROLE_EMPLOYER'])).toContain('EMPLOYER');
+      expect(getUserPersonas(['ROLE_TRAINEE'])).toContain('TRAINEE');
+      expect(getUserPersonas(['trainee.read'])).toContain('TRAINEE');
+    });
+
+    it('computes default landing route following government hierarchy', () => {
+      expect(getDefaultLandingRoute(['ROLE_ADMIN'])).toBe('/admin/dashboard');
+      expect(getDefaultLandingRoute(['ROLE_TRAINING_PROVIDER'])).toBe('/provider/dashboard');
+      expect(getDefaultLandingRoute(['ROLE_ASSESSOR'])).toBe('/assessor/dashboard');
+      expect(getDefaultLandingRoute(['ROLE_EMPLOYER'])).toBe('/employer/dashboard');
+      expect(getDefaultLandingRoute(['ROLE_TRAINEE'])).toBe('/trainee/dashboard');
+      expect(getDefaultLandingRoute([])).toBe('/dashboard');
+    });
+
+    it('validates whether a route is authorized for given authorities', () => {
+      // General routes
+      expect(isRouteAuthorizedForAuthorities('/dashboard', [])).toBe(true);
+      expect(isRouteAuthorizedForAuthorities('/login', [])).toBe(true);
+
+      // Admin routes
+      expect(isRouteAuthorizedForAuthorities('/admin/dashboard', ['ROLE_ADMIN'])).toBe(true);
+      expect(isRouteAuthorizedForAuthorities('/admin/dashboard', ['ROLE_TRAINEE'])).toBe(false);
+
+      // Provider routes
+      expect(isRouteAuthorizedForAuthorities('/provider/dashboard', ['ROLE_TRAINING_PROVIDER'])).toBe(true);
+      expect(isRouteAuthorizedForAuthorities('/provider/dashboard', ['ROLE_EMPLOYER'])).toBe(false);
+
+      // Trainee routes
+      expect(isRouteAuthorizedForAuthorities('/trainee/dashboard', ['ROLE_TRAINEE'])).toBe(true);
+      expect(isRouteAuthorizedForAuthorities('/trainee/dashboard', ['ROLE_ADMIN'])).toBe(false);
+
+      // Domain routes
+      expect(isRouteAuthorizedForAuthorities('/batches', ['ROLE_TRAINING_PROVIDER'])).toBe(true);
+      expect(isRouteAuthorizedForAuthorities('/batches', ['ROLE_TRAINEE'])).toBe(false);
+      expect(isRouteAuthorizedForAuthorities('/analytics', ['ROLE_ADMIN'])).toBe(true);
+      expect(isRouteAuthorizedForAuthorities('/analytics', ['ROLE_TRAINING_PROVIDER'])).toBe(false);
+    });
   });
 });

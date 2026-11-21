@@ -37,6 +37,11 @@ describe('LoginPage Component', () => {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/admin/dashboard" element={<div>Admin Dashboard Target</div>} />
+          <Route path="/provider/dashboard" element={<div>Provider Dashboard Target</div>} />
+          <Route path="/assessor/dashboard" element={<div>Assessor Dashboard Target</div>} />
+          <Route path="/employer/dashboard" element={<div>Employer Dashboard Target</div>} />
+          <Route path="/trainee/dashboard" element={<div>Trainee Dashboard Target</div>} />
+          <Route path="/batches" element={<div>Batches Management Target</div>} />
           <Route path="/target-dest" element={<div>Target Destination</div>} />
         </Routes>
       </MemoryRouter>,
@@ -206,9 +211,176 @@ describe('LoginPage Component', () => {
   it('automatically redirects authenticated user away from /login to default landing route', async () => {
     renderLoginPage(['/login'], {
       isAuthenticated: true,
-      defaultLandingRoute: '/admin/dashboard',
+      user: {
+        id: 1,
+        username: 'admin',
+        authorities: ['ROLE_ADMIN'],
+      },
     });
 
     expect(await screen.findByText('Admin Dashboard Target')).toBeInTheDocument();
+  });
+
+  describe('Post-Login Dynamic Destination & Authority Validation', () => {
+    const rolesToTest = [
+      { role: 'ROLE_ADMIN', expected: 'Admin Dashboard Target' },
+      { role: 'ROLE_TRAINING_PROVIDER', expected: 'Provider Dashboard Target' },
+      { role: 'ROLE_ASSESSOR', expected: 'Assessor Dashboard Target' },
+      { role: 'ROLE_EMPLOYER', expected: 'Employer Dashboard Target' },
+      { role: 'ROLE_TRAINEE', expected: 'Trainee Dashboard Target' },
+    ];
+
+    rolesToTest.forEach(({ role, expected }) => {
+      it(`calculates post-login landing route freshly for ${role} -> ${expected}`, async () => {
+        const user = userEvent.setup();
+        mockLogin.mockResolvedValueOnce({
+          accessToken: 'token',
+          refreshToken: 'refresh',
+          tokenType: 'Bearer',
+          expiresIn: 3600,
+          userId: 1,
+          username: 'test_user',
+          authorities: [role],
+        });
+
+        renderLoginPage();
+
+        await user.type(screen.getByLabelText(/Username or Official Email/i), 'user');
+        await user.type(screen.getByPlaceholderText(/Enter your password/i), 'pass123');
+        await user.click(screen.getByRole('button', { name: /^Sign In$/i }));
+
+        expect(await screen.findByText(expected)).toBeInTheDocument();
+      });
+    });
+
+    it('calculates destination for multi-role user with both ADMIN and TRAINING_PROVIDER', async () => {
+      const user = userEvent.setup();
+      mockLogin.mockResolvedValueOnce({
+        accessToken: 'token',
+        refreshToken: 'refresh',
+        tokenType: 'Bearer',
+        expiresIn: 3600,
+        userId: 1,
+        username: 'multi_user',
+        authorities: ['ROLE_ADMIN', 'ROLE_TRAINING_PROVIDER'],
+      });
+
+      renderLoginPage();
+
+      await user.type(screen.getByLabelText(/Username or Official Email/i), 'admin_tp');
+      await user.type(screen.getByPlaceholderText(/Enter your password/i), 'pass123');
+      await user.click(screen.getByRole('button', { name: /^Sign In$/i }));
+
+      // ADMIN takes precedence
+      expect(await screen.findByText('Admin Dashboard Target')).toBeInTheDocument();
+    });
+
+    it('preserves from destination when authorized: Admin logging in with from=/admin/dashboard', async () => {
+      const user = userEvent.setup();
+      mockLogin.mockResolvedValueOnce({
+        accessToken: 'token',
+        refreshToken: 'refresh',
+        tokenType: 'Bearer',
+        expiresIn: 3600,
+        userId: 1,
+        username: 'admin_officer',
+        authorities: ['ROLE_ADMIN'],
+      });
+
+      renderLoginPage([
+        {
+          pathname: '/login',
+          state: { from: { pathname: '/admin/dashboard' } },
+        } as unknown as string,
+      ]);
+
+      await user.type(screen.getByLabelText(/Username or Official Email/i), 'admin');
+      await user.type(screen.getByPlaceholderText(/Enter your password/i), 'pass');
+      await user.click(screen.getByRole('button', { name: /^Sign In$/i }));
+
+      expect(await screen.findByText('Admin Dashboard Target')).toBeInTheDocument();
+    });
+
+    it('prevents 403 trap: Trainee logging in with from=/admin/dashboard is safely redirected to /trainee/dashboard', async () => {
+      const user = userEvent.setup();
+      mockLogin.mockResolvedValueOnce({
+        accessToken: 'token',
+        refreshToken: 'refresh',
+        tokenType: 'Bearer',
+        expiresIn: 3600,
+        userId: 1,
+        username: 'trainee_learner',
+        authorities: ['ROLE_TRAINEE'],
+      });
+
+      renderLoginPage([
+        {
+          pathname: '/login',
+          state: { from: { pathname: '/admin/dashboard' } },
+        } as unknown as string,
+      ]);
+
+      await user.type(screen.getByLabelText(/Username or Official Email/i), 'trainee');
+      await user.type(screen.getByPlaceholderText(/Enter your password/i), 'pass');
+      await user.click(screen.getByRole('button', { name: /^Sign In$/i }));
+
+      // MUST NOT land on Admin Dashboard or 403; must land safely on Trainee Dashboard!
+      expect(await screen.findByText('Trainee Dashboard Target')).toBeInTheDocument();
+      expect(screen.queryByText('Admin Dashboard Target')).toBeNull();
+    });
+
+    it('preserves from destination when authorized: Training Provider logging in with from=/batches', async () => {
+      const user = userEvent.setup();
+      mockLogin.mockResolvedValueOnce({
+        accessToken: 'token',
+        refreshToken: 'refresh',
+        tokenType: 'Bearer',
+        expiresIn: 3600,
+        userId: 1,
+        username: 'provider_manager',
+        authorities: ['ROLE_TRAINING_PROVIDER'],
+      });
+
+      renderLoginPage([
+        {
+          pathname: '/login',
+          state: { from: { pathname: '/batches' } },
+        } as unknown as string,
+      ]);
+
+      await user.type(screen.getByLabelText(/Username or Official Email/i), 'tp');
+      await user.type(screen.getByPlaceholderText(/Enter your password/i), 'pass');
+      await user.click(screen.getByRole('button', { name: /^Sign In$/i }));
+
+      expect(await screen.findByText('Batches Management Target')).toBeInTheDocument();
+    });
+
+    it('redirects to role landing route when from destination is unauthorized: Trainee logging in with from=/batches', async () => {
+      const user = userEvent.setup();
+      mockLogin.mockResolvedValueOnce({
+        accessToken: 'token',
+        refreshToken: 'refresh',
+        tokenType: 'Bearer',
+        expiresIn: 3600,
+        userId: 1,
+        username: 'trainee_user',
+        authorities: ['ROLE_TRAINEE'],
+      });
+
+      renderLoginPage([
+        {
+          pathname: '/login',
+          state: { from: { pathname: '/batches' } },
+        } as unknown as string,
+      ]);
+
+      await user.type(screen.getByLabelText(/Username or Official Email/i), 'trainee');
+      await user.type(screen.getByPlaceholderText(/Enter your password/i), 'pass');
+      await user.click(screen.getByRole('button', { name: /^Sign In$/i }));
+
+      // Trainee cannot access /batches, so safely redirected to Trainee Dashboard
+      expect(await screen.findByText('Trainee Dashboard Target')).toBeInTheDocument();
+      expect(screen.queryByText('Batches Management Target')).toBeNull();
+    });
   });
 });

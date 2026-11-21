@@ -114,12 +114,27 @@ apiClient.interceptors.response.use(
       // Do not attempt refresh for auth endpoints themselves to prevent loops
       if (!isAuthEndpoint && hasSession()) {
         originalRequest._retry = true;
-        try {
-          const newAccessToken = await refreshAccessToken();
-          originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
-          return apiClient(originalRequest);
-        } catch {
-          clearSession();
+
+        const method = (originalRequest.method ?? 'get').toLowerCase();
+        const isSafeMethod = ['get', 'head', 'options'].includes(method);
+        const isExplicitlyIdempotent = originalRequest.headers?.['X-Idempotent'] === 'true';
+
+        // Restrict automatic replay to demonstrably safe (read) requests or requests
+        // with explicit idempotency support to prevent duplicate business operations
+        if (isSafeMethod || isExplicitlyIdempotent) {
+          try {
+            const newAccessToken = await refreshAccessToken();
+            originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
+            return apiClient(originalRequest);
+          } catch {
+            clearSession();
+            return Promise.reject(normalizeAxiosError(axiosError));
+          }
+        } else {
+          // For non-idempotent mutation requests (POST, PATCH, PUT, DELETE):
+          // Do NOT automatically replay to prevent duplicate transactions or state corruptions.
+          // Trigger background refresh so user's active session is restored for subsequent actions.
+          refreshAccessToken().catch(() => clearSession());
           return Promise.reject(normalizeAxiosError(axiosError));
         }
       }

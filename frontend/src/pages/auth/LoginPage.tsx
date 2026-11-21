@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/context/AuthContext';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
-import type { ApiError } from '@/api/types';
+import { type ApiError, getDefaultLandingRoute, isRouteAuthorizedForAuthorities } from '@/api/types';
 
 const loginSchema = z.object({
   usernameOrEmail: z
@@ -21,7 +21,7 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 
 export function LoginPage(): React.JSX.Element {
-  const { login, isAuthenticated, defaultLandingRoute } = useAuth();
+  const { login, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -46,20 +46,33 @@ export function LoginPage(): React.JSX.Element {
 
   // Redirect if already authenticated
   React.useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && user) {
       const from = (location.state as { from?: { pathname?: string } })?.from?.pathname;
-      navigate(from || defaultLandingRoute, { replace: true });
+      const destination =
+        from && isRouteAuthorizedForAuthorities(from, user.authorities)
+          ? from
+          : getDefaultLandingRoute(user.authorities);
+      navigate(destination, { replace: true });
     }
-  }, [isAuthenticated, defaultLandingRoute, location.state, navigate]);
+  }, [isAuthenticated, user, location.state, navigate]);
 
   const onSubmit = async (data: LoginFormData) => {
     setErrorMessage(null);
     setIsLocked(false);
 
     try {
-      await login(data);
+      const authResponse = await login(data);
+      const authorities = authResponse.authorities ?? [];
       const from = (location.state as { from?: { pathname?: string } })?.from?.pathname;
-      navigate(from || defaultLandingRoute, { replace: true });
+
+      // Calculate destination freshly from newly verified authorities
+      // Only preserve 'from' destination if user is authorized for that page
+      const destination =
+        from && isRouteAuthorizedForAuthorities(from, authorities)
+          ? from
+          : getDefaultLandingRoute(authorities);
+
+      navigate(destination, { replace: true });
     } catch (err) {
       const apiError = err as ApiError;
 

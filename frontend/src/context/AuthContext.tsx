@@ -13,6 +13,7 @@ import {
   setTokens,
   clearSession,
   subscribeToSession,
+  getSessionGeneration,
 } from '@/lib/sessionManager';
 import {
   type AuthenticatedUserResponse,
@@ -75,12 +76,16 @@ export function AuthProvider({
     return unsubscribe;
   }, []);
 
-  // Fetch verified profile from GET /api/v1/auth/me
+  // Fetch verified profile from GET /api/v1/auth/me (protected against race conditions)
   const fetchProfile = useCallback(async (): Promise<AuthenticatedUserResponse | null> => {
+    const generation = getSessionGeneration();
     try {
       const profile = await apiGet<AuthenticatedUserResponse>('/api/v1/auth/me');
-      setUser(profile);
-      return profile;
+      if (getSessionGeneration() === generation) {
+        setUser(profile);
+        return profile;
+      }
+      return null;
     } catch {
       return null;
     }
@@ -98,18 +103,20 @@ export function AuthProvider({
         return;
       }
 
+      const generation = getSessionGeneration();
+
       try {
         // Attempt silent refresh using stored refresh token
         await refreshAccessToken();
-        if (isMounted) {
+        if (isMounted && getSessionGeneration() === generation) {
           const profile = await fetchProfile();
-          if (!profile) {
+          if (!profile && getSessionGeneration() === generation) {
             clearSession();
             setUser(null);
           }
         }
       } catch {
-        if (isMounted) {
+        if (isMounted && getSessionGeneration() === generation) {
           clearSession();
           setUser(null);
         }
@@ -127,7 +134,7 @@ export function AuthProvider({
     };
   }, [fetchProfile]);
 
-  // Login handler
+  // Login handler (protected against race conditions)
   const login = useCallback(
     async (credentials: LoginRequest): Promise<AuthResponse> => {
       const response = await apiPost<LoginRequest, AuthResponse>(
@@ -135,8 +142,9 @@ export function AuthProvider({
         credentials,
       );
 
-      // Store in-memory access token and persistent refresh token
+      // Store in-memory access token and persistent refresh token (increments sessionGeneration)
       setTokens(response.accessToken, response.refreshToken);
+      const loginGeneration = getSessionGeneration();
 
       // Populate user profile immediately from response
       const immediateUser: AuthenticatedUserResponse = {
@@ -146,15 +154,16 @@ export function AuthProvider({
       };
       setUser(immediateUser);
 
-      // Asynchronously fetch full tenancy profile from /me if possible
-      try {
-        const fullProfile = await apiGet<AuthenticatedUserResponse>('/api/v1/auth/me');
-        if (fullProfile) {
-          setUser(fullProfile);
-        }
-      } catch {
-        // Fall back to immediateUser if /me fails
-      }
+      // Asynchronously fetch full tenancy profile from /me without blocking login completion
+      apiGet<AuthenticatedUserResponse>('/api/v1/auth/me')
+        .then((fullProfile) => {
+          if (fullProfile && getSessionGeneration() === loginGeneration) {
+            setUser(fullProfile);
+          }
+        })
+        .catch(() => {
+          // Fall back to immediateUser if /me fails
+        });
 
       return response;
     },
