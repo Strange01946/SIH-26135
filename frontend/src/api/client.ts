@@ -140,16 +140,9 @@ apiClient.interceptors.response.use(
         // Restrict automatic replay to demonstrably safe (read) requests or requests
         // with explicit idempotency support to prevent duplicate business operations
         if (isSafeMethod || isExplicitlyIdempotent) {
+          let newAccessToken: string;
           try {
-            const newAccessToken = await refreshAccessToken();
-
-            // Verify session was not logged out or replaced while refresh was in-flight
-            if (getSessionGeneration() !== currentGeneration) {
-              return Promise.reject(normalizeAxiosError(axiosError));
-            }
-
-            originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
-            return apiClient(originalRequest);
+            newAccessToken = await refreshAccessToken();
           } catch {
             // Only clear session if session has not already been superseded by another login/logout
             if (getSessionGeneration() === currentGeneration) {
@@ -157,6 +150,14 @@ apiClient.interceptors.response.use(
             }
             return Promise.reject(normalizeAxiosError(axiosError));
           }
+
+          // Verify session was not logged out or replaced while refresh was in-flight
+          if (getSessionGeneration() !== currentGeneration) {
+            return Promise.reject(normalizeAxiosError(axiosError));
+          }
+
+          originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
+          return apiClient(originalRequest);
         } else {
           // For non-idempotent mutation requests (POST, PATCH, PUT, DELETE):
           // Do NOT automatically replay to prevent duplicate transactions or state corruptions.

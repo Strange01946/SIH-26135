@@ -434,5 +434,31 @@ describe('API Client Auth Interceptors & Refresh Loop Protection', () => {
       expect(refreshSpy).not.toHaveBeenCalled();
       expect(clearSessionSpy).not.toHaveBeenCalled();
     });
+
+    it('confirms that an unrelated failure (e.g. 500 or 404) of a replayed GET request does not trigger session clearance', async () => {
+      sessionManager.setTokens('valid-token', 'valid-refresh');
+
+      const clearSessionSpy = vi.spyOn(sessionManager, 'clearSession');
+      vi.spyOn(sessionManager, 'refreshAccessToken').mockResolvedValue('new-access-token');
+
+      // First call fails with 401 (triggers refresh), replayed call fails with 500 (server error)
+      mock
+        .onGet('/api/v1/service-endpoint')
+        .replyOnce(401, { success: false, code: 'TOKEN_EXPIRED' })
+        .onGet('/api/v1/service-endpoint')
+        .replyOnce(500, { success: false, code: 'INTERNAL_SERVER_ERROR', message: 'Database query timeout' });
+
+      const requestPromise = apiGet('/api/v1/service-endpoint');
+
+      await expect(requestPromise).rejects.toMatchObject({
+        status: 500,
+      });
+
+      // Crucial Invariant: clearSession must NOT be called for an unrelated 500 on the replayed request!
+      expect(clearSessionSpy).not.toHaveBeenCalled();
+      expect(sessionManager.hasSession()).toBe(true);
+      expect(mock.history.get.length).toBe(2);
+      expect(mock.history.get[1].headers?.Authorization).toBe('Bearer new-access-token');
+    });
   });
 });
