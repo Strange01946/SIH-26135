@@ -272,4 +272,167 @@ describe('API Client Auth Interceptors & Refresh Loop Protection', () => {
       expect(refreshSpy).toHaveBeenCalledTimes(2);
     });
   });
+
+  describe('Race Conditions: Stale 401s, Cross-Session Replay Prevention & Logout Invalidation', () => {
+    it('prevents cross-session replay: request from older session is NOT replayed with newly authenticated user token', async () => {
+      // User 1 logs in
+      sessionManager.setTokens('user1-access-token', 'user1-refresh-token');
+
+      let resolveReplyUser1: (response: [number, unknown]) => void;
+      const pendingReply = new Promise<[number, unknown]>((resolve) => {
+        resolveReplyUser1 = resolve;
+      });
+
+      mock.onGet('/api/v1/user1-resource').reply(() => pendingReply);
+
+      // User 1 dispatches request (stamped with User 1 session generation)
+      const user1Request = apiGet('/api/v1/user1-resource');
+      await Promise.resolve();
+
+      // User 1 logs out and User 2 logs in with distinct tokens
+      sessionManager.clearSession();
+      sessionManager.setTokens('user2-access-token', 'user2-refresh-token');
+
+      const refreshSpy = vi.spyOn(sessionManager, 'refreshAccessToken');
+
+      // Now User 1's delayed request receives 401
+      resolveReplyUser1!([
+        401,
+        {
+          success: false,
+          code: 'UNAUTHORIZED',
+          message: 'User 1 token expired',
+        },
+      ]);
+
+      // The request should reject immediately
+      await expect(user1Request).rejects.toMatchObject({
+        status: 401,
+      });
+
+      // INVARIANT 1: User 1 request must NOT trigger refreshAccessToken
+      expect(refreshSpy).not.toHaveBeenCalled();
+
+      // INVARIANT 2: User 1 request must NOT be replayed with User 2's token (only 1 outgoing get)
+      expect(mock.history.get.length).toBe(1);
+      expect(mock.history.get[0].headers?.['Authorization']).toBe('Bearer user1-access-token');
+
+      // INVARIANT 3: User 2's session must remain 100% active and untouched
+      expect(sessionManager.getAccessToken()).toBe('user2-access-token');
+      expect(sessionManager.getRefreshToken()).toBe('user2-refresh-token');
+      expect(sessionManager.hasSession()).toBe(true);
+    });
+
+    it('prevents stale refresh failure from calling clearSession on a newer session', async () => {
+      // User 1 is active
+      sessionManager.setTokens('user1-access-token', 'user1-refresh-token');
+
+      let rejectRefresh: (err: Error) => void;
+      const pendingRefresh = new Promise<string>((_resolve, reject) => {
+        rejectRefresh = reject;
+      });
+      pendingRefresh.catch(() => {}); // Prevent unhandled rejection event in test runner
+
+      // Spy on refreshAccessToken returning the pending promise
+      vi.spyOn(sessionManager, 'refreshAccessToken').mockReturnValue(pendingRefresh);
+
+      // User 1 sends request that gets 401
+      mock.onGet('/api/v1/stale-request').reply(401, {
+        success: false,
+        code: 'UNAUTHORIZED',
+      });
+
+      const requestPromise = apiGet('/api/v1/stale-request');
+      // Wait for request interceptor to dispatch and 401 to trigger refreshAccessToken
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // While refresh is pending on the network, User 1 logs out and User 2 logs in
+      sessionManager.clearSession();
+      sessionManager.setTokens('user2-fresh-token', 'user2-fresh-refresh');
+
+      const clearSessionSpy = vi.spyOn(sessionManager, 'clearSession');
+
+      // Now the old refresh failure completes/rejects
+      rejectRefresh!(new Error('User 1 refresh token revoked'));
+
+      await expect(requestPromise).rejects.toMatchObject({
+        status: 401,
+      });
+
+      // INVARIANT: clearSession must NOT be called on User 2's active session!
+      expect(clearSessionSpy).not.toHaveBeenCalled();
+      expect(sessionManager.getAccessToken()).toBe('user2-fresh-token');
+      expect(sessionManager.getRefreshToken()).toBe('user2-fresh-refresh');
+      expect(sessionManager.hasSession()).toBe(true);
+    });
+
+    it('aborts request replay if user logs out while token refresh is in flight', async () => {
+      sessionManager.setTokens('user1-token', 'user1-refresh');
+
+      let resolveRefresh: (token: string) => void;
+      const pendingRefresh = new Promise<string>((resolve) => {
+        resolveRefresh = resolve;
+      });
+
+      vi.spyOn(sessionManager, 'refreshAccessToken').mockReturnValue(pendingRefresh);
+
+      mock
+        .onGet('/api/v1/data')
+        .replyOnce(401, { success: false, code: 'UNAUTHORIZED' })
+        .onGet('/api/v1/data')
+        .replyOnce(200, { success: true, data: 'secret' });
+
+      const req = apiGet('/api/v1/data');
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // User logs out while refresh is in flight
+      sessionManager.clearSession();
+
+      // Refresh completes
+      resolveRefresh!('renewed-token');
+
+      // Request must reject, and MUST NOT replay to the network
+      await expect(req).rejects.toMatchObject({
+        status: 401,
+      });
+
+      // Exactly 1 GET request made (initial 401), replay was aborted!
+      expect(mock.history.get.length).toBe(1);
+      expect(sessionManager.getAccessToken()).toBeNull();
+      expect(sessionManager.hasSession()).toBe(false);
+    });
+
+    it('rejects delayed 401 arriving after logout without triggering refresh or redundant session clearance', async () => {
+      sessionManager.setTokens('initial-token', 'initial-refresh');
+
+      let resolve401: (val: [number, unknown]) => void;
+      const delayedReply = new Promise<[number, unknown]>((resolve) => {
+        resolve401 = resolve;
+      });
+
+      mock.onGet('/api/v1/delayed-endpoint').reply(() => delayedReply);
+
+      const requestPromise = apiGet('/api/v1/delayed-endpoint');
+      await Promise.resolve();
+
+      // User logs out before server responds
+      sessionManager.clearSession();
+
+      const refreshSpy = vi.spyOn(sessionManager, 'refreshAccessToken');
+      const clearSessionSpy = vi.spyOn(sessionManager, 'clearSession');
+
+      // Server finally responds with 401
+      resolve401!([401, { success: false, code: 'UNAUTHORIZED' }]);
+
+      await expect(requestPromise).rejects.toMatchObject({
+        status: 401,
+      });
+
+      // Stale 401 must not trigger refresh or redundant clearSession
+      expect(refreshSpy).not.toHaveBeenCalled();
+      expect(clearSessionSpy).not.toHaveBeenCalled();
+    });
+  });
 });

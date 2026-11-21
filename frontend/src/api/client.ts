@@ -12,6 +12,7 @@ import {
   clearSession,
   refreshAccessToken,
   hasSession,
+  getSessionGeneration,
 } from '@/lib/sessionManager';
 import type {
   ApiResponse,
@@ -51,6 +52,12 @@ apiClient.interceptors.request.use(
     const token = getSessionAccessToken();
     if (token && !config.headers['Authorization']) {
       config.headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    // Record session generation at dispatch time to prevent cross-session replay or stale invalidation
+    const requestWithGen = config as InternalAxiosRequestConfig & { _sessionGeneration?: number };
+    if (requestWithGen._sessionGeneration === undefined) {
+      requestWithGen._sessionGeneration = getSessionGeneration();
     }
 
     return config;
@@ -111,6 +118,17 @@ apiClient.interceptors.response.use(
         url.includes('/api/v1/auth/login') ||
         url.includes('/api/v1/auth/refresh');
 
+      const currentGeneration = getSessionGeneration();
+      const requestGeneration = (originalRequest as InternalAxiosRequestConfig & { _sessionGeneration?: number })
+        ?._sessionGeneration;
+
+      // Invariant: If request originated from an older session generation, do NOT replay or refresh.
+      // An outdated request from a previous session must NEVER be replayed with a newer user's token,
+      // and must NEVER trigger session clearing on a newer session.
+      if (requestGeneration !== undefined && requestGeneration !== currentGeneration) {
+        return Promise.reject(normalizeAxiosError(axiosError));
+      }
+
       // Do not attempt refresh for auth endpoints themselves to prevent loops
       if (!isAuthEndpoint && hasSession()) {
         originalRequest._retry = true;
@@ -124,17 +142,30 @@ apiClient.interceptors.response.use(
         if (isSafeMethod || isExplicitlyIdempotent) {
           try {
             const newAccessToken = await refreshAccessToken();
+
+            // Verify session was not logged out or replaced while refresh was in-flight
+            if (getSessionGeneration() !== currentGeneration) {
+              return Promise.reject(normalizeAxiosError(axiosError));
+            }
+
             originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
             return apiClient(originalRequest);
           } catch {
-            clearSession();
+            // Only clear session if session has not already been superseded by another login/logout
+            if (getSessionGeneration() === currentGeneration) {
+              clearSession();
+            }
             return Promise.reject(normalizeAxiosError(axiosError));
           }
         } else {
           // For non-idempotent mutation requests (POST, PATCH, PUT, DELETE):
           // Do NOT automatically replay to prevent duplicate transactions or state corruptions.
           // Trigger background refresh so user's active session is restored for subsequent actions.
-          refreshAccessToken().catch(() => clearSession());
+          refreshAccessToken().catch(() => {
+            if (getSessionGeneration() === currentGeneration) {
+              clearSession();
+            }
+          });
           return Promise.reject(normalizeAxiosError(axiosError));
         }
       }
