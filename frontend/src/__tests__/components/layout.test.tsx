@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { Header } from '@/components/layout/Header';
 import { Sidebar } from '@/components/layout/Sidebar';
+import { AppLayout } from '@/components/layout/AppLayout';
 
 describe('Header', () => {
   it('renders portal title', () => {
@@ -24,6 +25,15 @@ describe('Header', () => {
   it('does not render user info without username', () => {
     render(<Header />);
     expect(screen.queryByText('admin')).toBeNull();
+  });
+
+  it('renders mobile menu button and calls handler on click', () => {
+    const handleToggle = vi.fn();
+    render(<Header onToggleMobileMenu={handleToggle} isMobileMenuOpen={false} />);
+    const button = screen.getByRole('button', { name: 'Open navigation menu' });
+    expect(button).toBeInTheDocument();
+    fireEvent.click(button);
+    expect(handleToggle).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -67,5 +77,31 @@ describe('Sidebar', () => {
     expect(screen.getByText('User Management')).toBeInTheDocument();
     expect(screen.getByText('Audit Log')).toBeInTheDocument();
     expect(screen.getByText('Analytics')).toBeInTheDocument();
+  });
+
+  it('renders mobile drawer when isMobileOpen is true', () => {
+    const handleClose = vi.fn();
+    render(
+      <MemoryRouter>
+        <Sidebar isMobileOpen={true} onCloseMobile={handleClose} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('navigation', { name: 'Mobile navigation' })).toBeInTheDocument();
+    const closeBtn = screen.getByRole('button', { name: 'Close menu' });
+    fireEvent.click(closeBtn);
+    expect(handleClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('AppLayout', () => {
+  it('renders skip to main content link for accessibility', () => {
+    render(
+      <MemoryRouter>
+        <AppLayout />
+      </MemoryRouter>,
+    );
+    const skipLink = screen.getByText('Skip to main content');
+    expect(skipLink).toBeInTheDocument();
+    expect(skipLink).toHaveAttribute('href', '#main-content');
   });
 });

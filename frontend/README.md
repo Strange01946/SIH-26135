@@ -1,6 +1,6 @@
 # SIH-26135 Frontend — National Skill & Placement Tracking Platform
 
-React 18 + TypeScript strict frontend foundation for the Smart India Hackathon (SIH-26135) National Skill & Placement Tracking Platform.
+React 19 + TypeScript strict frontend foundation for the Smart India Hackathon (SIH-26135) National Skill & Placement Tracking Platform.
 
 ## Prerequisites
 
@@ -34,7 +34,7 @@ All backend requests to `/api` and `/actuator` are automatically proxied to `htt
 
 ## Architecture & Tech Stack
 
-- **Framework**: React 18 + Vite
+- **Framework**: React 19 + Vite
 - **Language**: TypeScript 5.8 (Strict mode enabled)
 - **Routing**: React Router v7 (`react-router-dom`)
 - **Server State**: TanStack Query v5 (`@tanstack/react-query`)

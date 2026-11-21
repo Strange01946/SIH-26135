@@ -27,56 +27,103 @@ const NAV_ITEMS: NavItem[] = [
 interface SidebarProps {
   currentRole?: UserRole;
   isCollapsed?: boolean;
+  isMobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 export function Sidebar({
   currentRole,
   isCollapsed = false,
+  isMobileOpen = false,
+  onCloseMobile,
 }: SidebarProps): React.JSX.Element {
   const visibleItems = currentRole
     ? NAV_ITEMS.filter((item) => item.roles.includes(currentRole))
-    : NAV_ITEMS; // Show all when no role (placeholder mode)
+    : NAV_ITEMS;
+
+  const navList = (
+    <ul className="flex-1 py-4 space-y-0.5 overflow-y-auto" role="list">
+      {visibleItems.map((item) => (
+        <li key={item.to}>
+          <NavLink
+            to={item.to}
+            onClick={() => onCloseMobile?.()}
+            className={({ isActive }) =>
+              cn(
+                'flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors',
+                'hover:bg-navy-50 hover:text-navy focus:outline-none focus:ring-2 focus:ring-inset focus:ring-navy',
+                isActive
+                  ? 'bg-navy-50 text-navy border-l-4 border-navy font-semibold'
+                  : 'text-gray-700 border-l-4 border-transparent',
+              )
+            }
+          >
+            <span aria-hidden="true" className="text-base flex-shrink-0">
+              {item.icon}
+            </span>
+            {(!isCollapsed || isMobileOpen) && <span>{item.label}</span>}
+          </NavLink>
+        </li>
+      ))}
+    </ul>
+  );
 
   return (
-    <nav
-      aria-label="Main navigation"
-      className={cn(
-        'bg-white border-r border-gray-200 flex flex-col h-full transition-all duration-200',
-        isCollapsed ? 'w-16' : 'w-56',
-      )}
-    >
-      <ul className="flex-1 py-4 space-y-0.5 overflow-y-auto" role="list">
-        {visibleItems.map((item) => (
-          <li key={item.to}>
-            <NavLink
-              to={item.to}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors',
-                  'hover:bg-navy-50 hover:text-navy focus:outline-none focus:ring-2 focus:ring-inset focus:ring-navy',
-                  isActive
-                    ? 'bg-navy-50 text-navy border-l-4 border-navy font-semibold'
-                    : 'text-gray-700 border-l-4 border-transparent',
-                )
-              }
-            >
-              <span aria-hidden="true" className="text-base flex-shrink-0">
-                {item.icon}
-              </span>
-              {!isCollapsed && <span>{item.label}</span>}
-            </NavLink>
-          </li>
-        ))}
-      </ul>
+    <>
+      {/* Desktop sidebar */}
+      <nav
+        id="main-sidebar"
+        aria-label="Main navigation"
+        className={cn(
+          'hidden md:flex bg-white border-r border-gray-200 flex-col h-full transition-all duration-200 flex-shrink-0',
+          isCollapsed ? 'w-16' : 'w-56',
+        )}
+      >
+        {navList}
+        {!isCollapsed && (
+          <div className="p-4 border-t border-gray-100">
+            <p className="text-xs text-gray-400 text-center">
+              SIH-26135 · v1.0.0
+            </p>
+          </div>
+        )}
+      </nav>
 
-      {/* Footer */}
-      {!isCollapsed && (
-        <div className="p-4 border-t border-gray-100">
-          <p className="text-xs text-gray-400 text-center">
-            SIH-26135 · v1.0.0
-          </p>
+      {/* Mobile drawer & backdrop */}
+      {isMobileOpen && (
+        <div className="md:hidden fixed inset-0 z-30 flex">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/40 transition-opacity"
+            onClick={onCloseMobile}
+            aria-hidden="true"
+          />
+
+          {/* Drawer content */}
+          <nav
+            aria-label="Mobile navigation"
+            className="relative flex flex-col w-64 max-w-[80vw] bg-white h-full shadow-xl z-40"
+          >
+            <div className="p-4 bg-navy text-white flex items-center justify-between">
+              <span className="font-semibold text-sm">Navigation Menu</span>
+              <button
+                type="button"
+                onClick={onCloseMobile}
+                aria-label="Close menu"
+                className="p-1 rounded text-white hover:bg-navy-800"
+              >
+                ✕
+              </button>
+            </div>
+            {navList}
+            <div className="p-4 border-t border-gray-100">
+              <p className="text-xs text-gray-400 text-center">
+                SIH-26135 · v1.0.0
+              </p>
+            </div>
+          </nav>
         </div>
       )}
-    </nav>
+    </>
   );
 }

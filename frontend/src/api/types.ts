@@ -29,6 +29,21 @@ export interface PagedResponse<T> {
 }
 
 /**
+ * Backend error response body matching ErrorResponse.java in Spring Boot backend.
+ */
+export interface BackendErrorResponse {
+  status?: number;
+  error?: string;
+  code?: string;
+  message?: string;
+  path?: string;
+  details?: string[];
+  correlationId?: string;
+  timestamp?: string;
+  type?: string;
+}
+
+/**
  * Normalized API error for frontend error handling.
  */
 export interface ApiError {
@@ -38,6 +53,10 @@ export interface ApiError {
   path?: string;
   correlationId?: string;
   fieldErrors?: FieldError[];
+  details?: string[];
+  isNetworkError?: boolean;
+  isTimeout?: boolean;
+  isCanceled?: boolean;
 }
 
 export interface FieldError {
@@ -88,6 +107,7 @@ export type UserRole =
  */
 export type ApiErrorCode =
   | 'ARGUMENT_INVALID'
+  | 'VALIDATION_ERROR'
   | 'RESOURCE_NOT_FOUND'
   | 'AUTH_ACCOUNT_LOCKED'
   | 'MALFORMED_INPUT'

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import type { ApiResponse, PagedResponse, ApiError, AuthResponse } from '@/api/types';
+import type {
+  ApiResponse,
+  PagedResponse,
+  ApiError,
+  AuthResponse,
+  BackendErrorResponse,
+} from '@/api/types';
 
 describe('ApiResponse type contract', () => {
   it('should accept a valid success ApiResponse', () => {
@@ -62,13 +68,33 @@ describe('ApiResponse type contract', () => {
     expect(auth.authorities).toContain('ROLE_ADMIN');
   });
 
-  it('ApiError should have required fields', () => {
+  it('ApiError should support validation fieldErrors and operational metadata', () => {
     const error: ApiError = {
-      code: 'AUTH_ACCOUNT_LOCKED',
-      message: 'Your account has been temporarily locked.',
-      status: 423,
+      code: 'VALIDATION_ERROR',
+      message: 'Request validation failed',
+      status: 400,
+      path: '/api/v1/trainees',
+      correlationId: 'c8f9b2a1-0000-4000-a000-000000000001',
+      details: ['aadhaarNumber: Aadhaar is invalid'],
+      fieldErrors: [{ field: 'aadhaarNumber', message: 'Aadhaar is invalid' }],
     };
-    expect(error.status).toBe(423);
-    expect(error.code).toBe('AUTH_ACCOUNT_LOCKED');
+    expect(error.status).toBe(400);
+    expect(error.code).toBe('VALIDATION_ERROR');
+    expect(error.fieldErrors).toHaveLength(1);
+    expect(error.fieldErrors?.[0].field).toBe('aadhaarNumber');
+  });
+
+  it('BackendErrorResponse should match Spring Boot ErrorResponse.java structure', () => {
+    const backendError: BackendErrorResponse = {
+      status: 423,
+      error: 'Locked',
+      code: 'AUTH_ACCOUNT_LOCKED',
+      message: 'Account locked due to failed attempts',
+      path: '/api/v1/auth/login',
+      correlationId: 'c8f9b2a1-0000-4000-a000-000000000001',
+      timestamp: '2026-11-21T18:00:00',
+    };
+    expect(backendError.status).toBe(423);
+    expect(backendError.code).toBe('AUTH_ACCOUNT_LOCKED');
   });
 });

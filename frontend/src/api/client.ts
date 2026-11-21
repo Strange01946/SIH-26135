@@ -6,7 +6,13 @@ import axios, {
   InternalAxiosRequestConfig,
 } from 'axios';
 import { v4 as uuidv4 } from 'uuid';
-import type { ApiResponse, ApiError, PagedResponse } from './types';
+import type {
+  ApiResponse,
+  ApiError,
+  PagedResponse,
+  FieldError,
+  BackendErrorResponse,
+} from './types';
 
 /** Base URL — empty means Vite dev proxy routes /api to localhost:8080 */
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
@@ -24,12 +30,19 @@ export const apiClient: AxiosInstance = axios.create({
 /** Request interceptor: attach X-Correlation-ID and Authorization */
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig): InternalAxiosRequestConfig => {
-    // Always attach a fresh correlation ID per request
-    config.headers['X-Correlation-ID'] = uuidv4();
+    // Attach fresh correlation ID per request if not explicitly provided
+    if (!config.headers['X-Correlation-ID']) {
+      config.headers['X-Correlation-ID'] = uuidv4();
+    }
+
+    // For FormData uploads, remove default application/json so browser generates multipart boundary
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+    }
 
     // Attach Bearer token if stored (Phase 30.2 will populate this)
     const token = getAccessToken();
-    if (token) {
+    if (token && !config.headers['Authorization']) {
       config.headers['Authorization'] = `Bearer ${token}`;
     }
 
@@ -40,7 +53,7 @@ apiClient.interceptors.request.use(
 
 /** Response interceptor: unwrap ApiResponse<T>.data or normalize errors */
 apiClient.interceptors.response.use(
-  (response: AxiosResponse<ApiResponse<unknown>>): AxiosResponse => {
+  (response: AxiosResponse): AxiosResponse => {
     // For streaming/binary responses, pass through unchanged
     if (
       response.config.responseType === 'blob' ||
@@ -60,8 +73,22 @@ apiClient.interceptors.response.use(
 
     return response;
   },
-  (error: AxiosError<ApiResponse<null>>) => {
-    return Promise.reject(normalizeAxiosError(error));
+  async (error: unknown) => {
+    // If the error response was received as a Blob (e.g. from failed apiDownload), parse JSON text
+    const axiosError = error as AxiosError<unknown>;
+    if (
+      axiosError.response?.data instanceof Blob &&
+      (axiosError.response.data.type?.includes('application/json') ||
+        axiosError.response.status >= 400)
+    ) {
+      try {
+        const text = await axiosError.response.data.text();
+        axiosError.response.data = JSON.parse(text);
+      } catch {
+        // Fall back if blob text cannot be parsed as JSON
+      }
+    }
+    return Promise.reject(normalizeAxiosError(axiosError));
   },
 );
 
@@ -86,28 +113,97 @@ export function clearTokens(): void {
 // Error normalization
 // ---------------------------------------------------------------------------
 
-function normalizeApiError(
-  body: ApiResponse<unknown>,
+export function normalizeApiError(
+  body: ApiResponse<unknown> | BackendErrorResponse,
   status: number,
 ): ApiError {
+  const code = body.code ?? (status === 423 ? 'AUTH_ACCOUNT_LOCKED' : `HTTP_${status}`);
+  const message = body.message ?? getDefaultStatusMessage(status);
+  const path = body.path;
+  const correlationId = body.correlationId;
+
+  // Parse field-level validation errors from Spring Boot ErrorResponse details
+  const fieldErrors: FieldError[] = [];
+  const details = (body as BackendErrorResponse).details;
+
+  if (Array.isArray(details)) {
+    for (const item of details) {
+      if (typeof item === 'string') {
+        const colonIndex = item.indexOf(':');
+        if (colonIndex > 0) {
+          fieldErrors.push({
+            field: item.substring(0, colonIndex).trim(),
+            message: item.substring(colonIndex + 1).trim(),
+          });
+        }
+      }
+    }
+  }
+
   return {
-    code: body.code ?? 'UNKNOWN_ERROR',
-    message: body.message ?? 'An unexpected error occurred.',
+    code,
+    message,
     status,
-    path: body.path,
-    correlationId: body.correlationId,
+    path,
+    correlationId,
+    details: Array.isArray(details) ? details : undefined,
+    fieldErrors: fieldErrors.length > 0 ? fieldErrors : undefined,
   };
 }
 
-function normalizeAxiosError(error: AxiosError<ApiResponse<null>>): ApiError {
+export function normalizeAxiosError(error: AxiosError<unknown>): ApiError {
+  // Handle request cancellation
+  if (axios.isCancel(error)) {
+    return {
+      code: 'REQUEST_CANCELED',
+      message: 'Request was canceled.',
+      status: 0,
+      isCanceled: true,
+    };
+  }
+
+  // Handle timeout errors
+  if (error.code === 'ECONNABORTED' || error.message?.toLowerCase().includes('timeout')) {
+    return {
+      code: 'REQUEST_TIMEOUT',
+      message: 'The request timed out. Please try again.',
+      status: 408,
+      isTimeout: true,
+    };
+  }
+
+  // Handle network failure (no response received from server or Network Error)
+  if (
+    error.code === 'ERR_NETWORK' ||
+    error.message === 'Network Error' ||
+    !error.response
+  ) {
+    return {
+      code: 'NETWORK_ERROR',
+      message: 'Unable to connect to server. Please check your network connection.',
+      status: 0,
+      isNetworkError: true,
+    };
+  }
+
   const status = error.response?.status ?? 0;
   const body = error.response?.data;
 
-  if (body && typeof body === 'object' && 'message' in body) {
-    return normalizeApiError(body as ApiResponse<unknown>, status);
+  if (body && typeof body === 'object') {
+    const errorBody = body as BackendErrorResponse;
+    if (errorBody.message || errorBody.code || errorBody.details) {
+      return normalizeApiError(errorBody, status);
+    }
   }
 
-  // Network error or non-JSON error body
+  return {
+    code: status === 423 ? 'AUTH_ACCOUNT_LOCKED' : `HTTP_${status}`,
+    message: getDefaultStatusMessage(status) ?? error.message ?? 'An unexpected error occurred.',
+    status,
+  };
+}
+
+function getDefaultStatusMessage(status: number): string {
   const fallbackMessages: Record<number, string> = {
     400: 'Invalid request. Please check your input.',
     401: 'Authentication required. Please log in.',
@@ -119,20 +215,14 @@ function normalizeAxiosError(error: AxiosError<ApiResponse<null>>): ApiError {
     500: 'An internal server error occurred. Please try again later.',
     503: 'The service is temporarily unavailable. Please try again.',
   };
-
-  return {
-    code: status === 423 ? 'AUTH_ACCOUNT_LOCKED' : `HTTP_${status}`,
-    message:
-      fallbackMessages[status] ?? error.message ?? 'An unexpected error occurred.',
-    status,
-  };
+  return fallbackMessages[status] ?? 'An unexpected error occurred.';
 }
 
 // ---------------------------------------------------------------------------
-// Typed helper methods
+// Typed helper methods — Unwrapped data (convenient for components)
 // ---------------------------------------------------------------------------
 
-/** Fetch a single resource. Returns the unwrapped data. */
+/** Fetch a single resource. Returns the unwrapped data payload. */
 export async function apiGet<T>(
   url: string,
   config?: AxiosRequestConfig,
@@ -153,7 +243,7 @@ export async function apiGetPaged<T>(
   return response.data.data as PagedResponse<T>;
 }
 
-/** POST a resource. Returns the unwrapped data. */
+/** POST a resource. Returns the unwrapped data payload. */
 export async function apiPost<TBody, TResponse>(
   url: string,
   body: TBody,
@@ -167,7 +257,7 @@ export async function apiPost<TBody, TResponse>(
   return response.data.data as TResponse;
 }
 
-/** PUT a resource. Returns the unwrapped data. */
+/** PUT a resource. Returns the unwrapped data payload. */
 export async function apiPut<TBody, TResponse>(
   url: string,
   body: TBody,
@@ -181,7 +271,7 @@ export async function apiPut<TBody, TResponse>(
   return response.data.data as TResponse;
 }
 
-/** PATCH a resource. Returns the unwrapped data. */
+/** PATCH a resource. Returns the unwrapped data payload. */
 export async function apiPatch<TBody, TResponse>(
   url: string,
   body: TBody,
@@ -203,30 +293,129 @@ export async function apiDelete(
   await apiClient.delete(url, config);
 }
 
-/** Download a streaming/binary file (CSV or JSON export). Returns Blob. */
+/**
+ * Download a file as a binary Blob (CSV or JSON export).
+ * 
+ * NOTE: In-browser Blob downloads buffer the entire response payload in browser
+ * memory before returning the Blob. For huge multi-gigabyte datasets, true
+ * progressive streaming directly to disk requires the File System Access API
+ * or direct stream consumption, which is planned for the dedicated export integration phase.
+ */
 export async function apiDownload(
   url: string,
   config?: AxiosRequestConfig,
 ): Promise<Blob> {
-  const response = await apiClient.get(url, {
+  const response = await apiClient.get<Blob>(url, {
     ...config,
     responseType: 'blob',
   });
-  return response.data as Blob;
+  return response.data;
 }
 
-/** Upload multipart form data. Returns the unwrapped data. */
+/**
+ * Upload multipart form data. Returns the unwrapped data payload.
+ * Automatically ensures Content-Type is omitted so the browser sets the boundary.
+ */
 export async function apiUpload<TResponse>(
   url: string,
   formData: FormData,
   config?: AxiosRequestConfig,
 ): Promise<TResponse> {
+  const headers = { ...config?.headers };
+  delete (headers as Record<string, unknown>)['Content-Type'];
+
   const response = await apiClient.post<ApiResponse<TResponse>>(url, formData, {
     ...config,
     headers: {
-      // Let browser/axios set Content-Type with boundary for multipart
-      ...config?.headers,
+      ...headers,
+      'Content-Type': undefined,
     },
   });
   return response.data.data as TResponse;
+}
+
+// ---------------------------------------------------------------------------
+// Typed helper methods — Full envelope (preserves metadata, codes, correlationId)
+// ---------------------------------------------------------------------------
+
+/** Fetch a single resource and return the complete ApiResponse<T> envelope. */
+export async function apiGetEnvelope<T>(
+  url: string,
+  config?: AxiosRequestConfig,
+): Promise<ApiResponse<T>> {
+  const response = await apiClient.get<ApiResponse<T>>(url, config);
+  return response.data;
+}
+
+/** Fetch a paginated list and return the complete ApiResponse<PagedResponse<T>> envelope. */
+export async function apiGetPagedEnvelope<T>(
+  url: string,
+  config?: AxiosRequestConfig,
+): Promise<ApiResponse<PagedResponse<T>>> {
+  const response = await apiClient.get<ApiResponse<PagedResponse<T>>>(
+    url,
+    config,
+  );
+  return response.data;
+}
+
+/** POST a resource and return the complete ApiResponse<TResponse> envelope. */
+export async function apiPostEnvelope<TBody, TResponse>(
+  url: string,
+  body: TBody,
+  config?: AxiosRequestConfig,
+): Promise<ApiResponse<TResponse>> {
+  const response = await apiClient.post<ApiResponse<TResponse>>(
+    url,
+    body,
+    config,
+  );
+  return response.data;
+}
+
+/** PUT a resource and return the complete ApiResponse<TResponse> envelope. */
+export async function apiPutEnvelope<TBody, TResponse>(
+  url: string,
+  body: TBody,
+  config?: AxiosRequestConfig,
+): Promise<ApiResponse<TResponse>> {
+  const response = await apiClient.put<ApiResponse<TResponse>>(
+    url,
+    body,
+    config,
+  );
+  return response.data;
+}
+
+/** PATCH a resource and return the complete ApiResponse<TResponse> envelope. */
+export async function apiPatchEnvelope<TBody, TResponse>(
+  url: string,
+  body: TBody,
+  config?: AxiosRequestConfig,
+): Promise<ApiResponse<TResponse>> {
+  const response = await apiClient.patch<ApiResponse<TResponse>>(
+    url,
+    body,
+    config,
+  );
+  return response.data;
+}
+
+/** Upload multipart form data and return the complete ApiResponse<TResponse> envelope. */
+export async function apiUploadEnvelope<TResponse>(
+  url: string,
+  formData: FormData,
+  config?: AxiosRequestConfig,
+): Promise<ApiResponse<TResponse>> {
+  const headers = { ...config?.headers };
+  delete (headers as Record<string, unknown>)['Content-Type'];
+
+  const response = await apiClient.post<ApiResponse<TResponse>>(url, formData, {
+    ...config,
+    headers: {
+      ...headers,
+      'Content-Type': undefined,
+    },
+  });
+  return response.data;
 }
