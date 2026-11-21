@@ -17,7 +17,7 @@ The SIH-26135 backend relies on a local MySQL 8.0 instance running on `localhost
 > 2. Always verify backups in a **unique, isolated scratch database** (`sih26135_scratch_<timestamp>_<uuid>`) first to verify table integrity and record counts.
 > 3. **Non-Destructive Scratch Creation**: Never execute blind `DROP DATABASE IF EXISTS` commands against fixed database names. Always check existence and fail closed on collision.
 > 4. **Strict Separation of Workflows**: Routine validation concludes after scratch verification (**Workflow A**). Primary database restoration (**Workflow B**) is an emergency-only procedure requiring explicit operator confirmation and a pre-recovery snapshot.
-> 5. **Supported Authentication**: Passwords must never appear as plaintext command-line arguments or in logged shell history. Always use MySQL option files (`--defaults-extra-file`) with proper escaping or MySQL login paths (`mysql_config_editor`).
+> 5. **Supported Authentication**: Passwords must never appear as plaintext command-line arguments or in logged shell history. Always use MySQL option files (`--defaults-extra-file`) with restricted Windows permissions and proper escaping, or MySQL login paths (`mysql_config_editor`).
 
 ### 1.1 Windows Environment Variable & Process Exposure Limitations
 - **`MYSQL_PWD` Limitations**: Setting `$env:MYSQL_PWD` does not provide complete secret isolation. The variable is visible to any process running under the same user token (via Task Manager, Process Explorer, or `Get-CimInstance Win32_Process`) and is automatically inherited by child processes.
@@ -70,20 +70,32 @@ $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $targetDb = "SIH26135"  # Or "SIH26135_TEST"
 $backupFile = "$backupDir\${targetDb}_backup_${timestamp}.sql"
 
-# 2. Prompt securely for password (not displayed and not saved to shell history)
-$securePassword = Read-Host -Prompt "Enter MySQL root password" -AsSecureString
+$tempCnf = $null
 
-# 3. Create protected temporary options file in %TEMP%
-$tempCnf = [System.IO.Path]::GetTempFileName()
-$bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
-$plainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-[System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+try {
+    # 2. Prompt securely for password (not displayed and not saved to shell history)
+    $securePassword = Read-Host -Prompt "Enter MySQL root password" -AsSecureString
 
-# Escape backslashes and double quotes for MySQL option-file syntax
-$escapedPassword = $plainPassword.Replace('\', '\\').Replace('"', '\"')
-$plainPassword = $null
+    # 3. Create protected temporary options file in %TEMP%
+    $tempCnf = [System.IO.Path]::GetTempFileName()
 
-Set-Content -Path $tempCnf -Value @"
+    # Restrict permissions on Windows so only the current user has access
+    $acl = Get-Acl $tempCnf
+    $acl.SetAccessRuleProtection($true, $false)
+    $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($currentUser, "FullControl", "Allow")
+    $acl.AddAccessRule($rule)
+    Set-Acl -Path $tempCnf -AclObject $acl
+
+    $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
+    $plainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+
+    # Escape backslashes and double quotes for MySQL option-file syntax
+    $escapedPassword = $plainPassword.Replace('\', '\\').Replace('"', '\"')
+    $plainPassword = $null
+
+    Set-Content -Path $tempCnf -Value @"
 [client]
 user=root
 password="$escapedPassword"
@@ -91,9 +103,8 @@ host=localhost
 port=3306
 default-character-set=utf8mb4
 "@
-$escapedPassword = $null
+    $escapedPassword = $null
 
-try {
     # 4. Execute mysqldump with atomic consistency flags
     & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqldump.exe" `
         --defaults-extra-file="$tempCnf" `
@@ -119,11 +130,13 @@ try {
     }
 
     Write-Host "Backup completed successfully ($($fileItem.Length) bytes): $backupFile" -ForegroundColor Green
+
 } finally {
-    # 5. Clean up temporary credentials file reliably
-    if (Test-Path $tempCnf) {
+    # 5. Clean up temporary credentials file reliably, guaranteed even on failure
+    if ($tempCnf -and (Test-Path $tempCnf)) {
         Set-Content -Path $tempCnf -Value ""
         Remove-Item -Path $tempCnf -Force
+        $tempCnf = $null
     }
 }
 ```
@@ -213,18 +226,28 @@ $mysqlBin = "C:\Program Files\MySQL\MySQL Server 8.0\bin"
 $uniqueId = (Get-Date -Format "yyyyMMdd_HHmmss") + "_" + ([System.Guid]::NewGuid().ToString("N").Substring(0, 8))
 $scratchDb = "sih26135_scratch_" + $uniqueId
 $sessionCreatedScratch = $null
+$tempCnf = $null
 
-# Set up protected temporary options file
-$securePassword = Read-Host -Prompt "Enter MySQL root password" -AsSecureString
-$tempCnf = [System.IO.Path]::GetTempFileName()
-$bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
-$plainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-[System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+try {
+    # Set up protected temporary options file with restricted ACLs
+    $securePassword = Read-Host -Prompt "Enter MySQL root password" -AsSecureString
+    $tempCnf = [System.IO.Path]::GetTempFileName()
 
-$escapedPassword = $plainPassword.Replace('\', '\\').Replace('"', '\"')
-$plainPassword = $null
+    $acl = Get-Acl $tempCnf
+    $acl.SetAccessRuleProtection($true, $false)
+    $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($currentUser, "FullControl", "Allow")
+    $acl.AddAccessRule($rule)
+    Set-Acl -Path $tempCnf -AclObject $acl
 
-Set-Content -Path $tempCnf -Value @"
+    $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
+    $plainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+
+    $escapedPassword = $plainPassword.Replace('\', '\\').Replace('"', '\"')
+    $plainPassword = $null
+
+    Set-Content -Path $tempCnf -Value @"
 [client]
 user=root
 password="$escapedPassword"
@@ -232,9 +255,8 @@ host=localhost
 port=3306
 default-character-set=utf8mb4
 "@
-$escapedPassword = $null
+    $escapedPassword = $null
 
-try {
     # 1. Existence check: fail-closed if name collision occurs
     $exists = & "$mysqlBin\mysql.exe" --defaults-extra-file="$tempCnf" -N -B -e "SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = '$scratchDb';"
     if ($LASTEXITCODE -ne 0) {
@@ -284,21 +306,26 @@ try {
     Write-Host "Scratch verification passed. Invariants verified: $totalTables tables, trainee 1005143, 5 DPDP consents, user 1 admin." -ForegroundColor Green
 
 } finally {
-    # 6. Strict owned cleanup: only drop the exact database created in this session
+    # 6. Scratch database cleanup executes FIRST while credentials remain available
     if ($sessionCreatedScratch -and ($sessionCreatedScratch -eq $scratchDb)) {
-        & "$mysqlBin\mysql.exe" --defaults-extra-file="$tempCnf" -e "DROP DATABASE $sessionCreatedScratch;"
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "Cleaned up owned scratch database: $sessionCreatedScratch" -ForegroundColor Gray
-            $sessionCreatedScratch = $null
+        if ($tempCnf -and (Test-Path $tempCnf)) {
+            & "$mysqlBin\mysql.exe" --defaults-extra-file="$tempCnf" -e "DROP DATABASE $sessionCreatedScratch;"
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "Cleaned up owned scratch database: $sessionCreatedScratch" -ForegroundColor Gray
+                $sessionCreatedScratch = $null
+            } else {
+                Write-Warning "CRITICAL: Cleanup failed for scratch database '$sessionCreatedScratch'. Manual DROP required."
+            }
         } else {
-            Write-Warning "CRITICAL: Cleanup failed for scratch database '$sessionCreatedScratch'. Manual DROP required."
+            Write-Warning "CRITICAL: Credentials unavailable to drop scratch database '$sessionCreatedScratch'. Manual DROP required."
         }
     }
 
-    # Clean up temporary option file
-    if (Test-Path $tempCnf) {
+    # 7. Credential-file deletion executes AFTER scratch cleanup, guaranteed on all failure paths
+    if ($tempCnf -and (Test-Path $tempCnf)) {
         Set-Content -Path $tempCnf -Value ""
         Remove-Item -Path $tempCnf -Force
+        $tempCnf = $null
     }
 }
 
@@ -323,52 +350,84 @@ Write-Host "Workflow A Complete: Backup verified successfully. Primary database 
        Stop-Process -Id $backendPid -Force
    }
    ```
-3. **Mandatory Pre-Recovery Snapshot**: Take a backup of the current database state (even if corrupted) before restoring:
-   ```powershell
-   $preRecoveryFile = "E:\project\database\backups\pre_recovery_snapshot_$(Get-Date -Format 'yyyyMMdd_HHmmss').sql"
-   & "$mysqlBin\mysqldump.exe" --defaults-extra-file="$tempCnf" --single-transaction --quick --result-file="$preRecoveryFile" SIH26135
-   if ($LASTEXITCODE -ne 0 -or !(Test-Path $preRecoveryFile) -or (Get-Item $preRecoveryFile).Length -lt 10000) {
-       throw "CRITICAL: Pre-recovery snapshot failed! Aborting primary restoration to prevent unrecoverable data loss."
-   }
-   Write-Host "Pre-recovery snapshot preserved: $preRecoveryFile" -ForegroundColor Green
-   ```
-4. **Data Loss Window Acknowledgment**: Any transactions executed between the backup timestamp and the incident will be permanently replaced.
-5. **Warning on In-Place Restoration**:
+3. **Data Loss Window Acknowledgment**: Any transactions executed between the backup timestamp and the incident will be permanently replaced.
+4. **Warning on In-Place Restoration**:
    > [!CAUTION]
    > Importing a SQL dump into an existing database does not remove extraneous tables, columns, or triggers created after the backup was taken. For a clean restoration, verify that the dump includes `DROP TABLE IF EXISTS` (standard in `mysqldump`), or confirm dropping and recreating the empty database catalog before restore.
 
 ### 6.2 Executing Primary Restoration with Explicit Authorization Gate
 ```powershell
-# Confirm target database explicitly
-$confirmTarget = Read-Host "Enter the exact name of the target database to restore"
-if ($confirmTarget -ne "SIH26135") {
-    throw "Target database mismatch ('$confirmTarget' != 'SIH26135'). Restoration aborted."
+$emergencyCnf = $null
+
+try {
+    # Create protected temporary options file with restricted ACLs
+    $securePassword = Read-Host -Prompt "Enter MySQL root password for emergency primary recovery" -AsSecureString
+    $emergencyCnf = [System.IO.Path]::GetTempFileName()
+
+    $acl = Get-Acl $emergencyCnf
+    $acl.SetAccessRuleProtection($true, $false)
+    $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($currentUser, "FullControl", "Allow")
+    $acl.AddAccessRule($rule)
+    Set-Acl -Path $emergencyCnf -AclObject $acl
+
+    $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
+    $plainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+
+    $escapedPassword = $plainPassword.Replace('\', '\\').Replace('"', '\"')
+    $plainPassword = $null
+
+    Set-Content -Path $emergencyCnf -Value "[client]`nuser=root`npassword=""$escapedPassword""`nhost=localhost`nport=3306`ndefault-character-set=utf8mb4"
+    $escapedPassword = $null
+
+    # Mandatory Pre-Recovery Snapshot
+    $preRecoveryFile = "E:\project\database\backups\pre_recovery_snapshot_$(Get-Date -Format 'yyyyMMdd_HHmmss').sql"
+    & "$mysqlBin\mysqldump.exe" --defaults-extra-file="$emergencyCnf" --single-transaction --quick --result-file="$preRecoveryFile" SIH26135
+    if ($LASTEXITCODE -ne 0 -or !(Test-Path $preRecoveryFile) -or (Get-Item $preRecoveryFile).Length -lt 10000) {
+        throw "CRITICAL: Pre-recovery snapshot failed! Aborting primary restoration to prevent unrecoverable data loss."
+    }
+    Write-Host "Pre-recovery snapshot preserved: $preRecoveryFile" -ForegroundColor Green
+
+    # Confirm target database explicitly
+    $confirmTarget = Read-Host "Enter the exact name of the target database to restore"
+    if ($confirmTarget -ne "SIH26135") {
+        throw "Target database mismatch ('$confirmTarget' != 'SIH26135'). Restoration aborted."
+    }
+
+    # Explicit interactive confirmation: requires exact token match
+    $confirmToken = Read-Host "DANGER: You are about to overwrite primary database SIH26135. Type 'RESTORE_SIH26135_CONFIRMED' to proceed"
+    if ($confirmToken -ne "RESTORE_SIH26135_CONFIRMED") {
+        Write-Host "Restoration aborted by operator. Primary database SIH26135 was NOT modified." -ForegroundColor Yellow
+        exit 1
+    }
+
+    # Execute restoration to primary database
+    $mysqlExe = "$mysqlBin\mysql.exe"
+    cmd.exe /c """$mysqlExe"" --defaults-extra-file=""$emergencyCnf"" SIH26135 < ""$backupFile"""
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Primary restoration failed! Immediately halt and restore pre-recovery snapshot from: $preRecoveryFile"
+        exit 1
+    }
+
+    # Post-recovery invariant verification
+    & "$mysqlBin\mysql.exe" --defaults-extra-file="$emergencyCnf" SIH26135 -e "
+        SELECT count(*) AS total_tables FROM information_schema.tables WHERE table_schema='SIH26135';
+        SELECT trainee_id, first_name, last_name, registration_number FROM trainees WHERE trainee_id=1005143;
+        SELECT count(*) AS dpdp_consents_count FROM trainee_consents WHERE trainee_id=1005143;
+        SELECT user_id, username, email FROM users WHERE user_id=1;
+    "
+    Write-Host "Primary recovery completed and verified." -ForegroundColor Green
+
+} finally {
+    # Guaranteed cleanup of emergency credentials file
+    if ($emergencyCnf -and (Test-Path $emergencyCnf)) {
+        Set-Content -Path $emergencyCnf -Value ""
+        Remove-Item -Path $emergencyCnf -Force
+        $emergencyCnf = $null
+    }
 }
-
-# Explicit interactive confirmation: requires exact token match
-$confirmToken = Read-Host "DANGER: You are about to overwrite primary database SIH26135. Type 'RESTORE_SIH26135_CONFIRMED' to proceed"
-if ($confirmToken -ne "RESTORE_SIH26135_CONFIRMED") {
-    Write-Host "Restoration aborted by operator. Primary database SIH26135 was NOT modified." -ForegroundColor Yellow
-    exit 1
-}
-
-# Execute restoration to primary database
-$mysqlExe = "$mysqlBin\mysql.exe"
-cmd.exe /c """$mysqlExe"" --defaults-extra-file=""$tempCnf"" SIH26135 < ""$backupFile"""
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Primary restoration failed! Immediately halt and restore pre-recovery snapshot from: $preRecoveryFile"
-    exit 1
-}
-
-# Post-recovery invariant verification
-& "$mysqlBin\mysql.exe" --defaults-extra-file="$tempCnf" SIH26135 -e "
-    SELECT count(*) AS total_tables FROM information_schema.tables WHERE table_schema='SIH26135';
-    SELECT trainee_id, first_name, last_name, registration_number FROM trainees WHERE trainee_id=1005143;
-    SELECT count(*) AS dpdp_consents_count FROM trainee_consents WHERE trainee_id=1005143;
-    SELECT user_id, username, email FROM users WHERE user_id=1;
-"
-Write-Host "Primary recovery completed and verified." -ForegroundColor Green
 ```
 
 ---
