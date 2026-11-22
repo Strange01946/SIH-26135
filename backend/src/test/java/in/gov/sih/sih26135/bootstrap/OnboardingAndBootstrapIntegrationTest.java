@@ -20,8 +20,11 @@ import in.gov.sih.sih26135.entity.OnboardingApplication;
 import in.gov.sih.sih26135.entity.Trainee;
 import in.gov.sih.sih26135.entity.TrainingProvider;
 import in.gov.sih.sih26135.entity.User;
+import in.gov.sih.sih26135.entity.UserRole;
+import in.gov.sih.sih26135.entity.UserRoleId;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ConflictException;
+import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.repository.EmployerRepository;
 import in.gov.sih.sih26135.repository.OnboardingApplicationRepository;
 import in.gov.sih.sih26135.repository.TraineeRepository;
@@ -34,6 +37,11 @@ import in.gov.sih.sih26135.service.UserService;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -76,6 +84,9 @@ class OnboardingAndBootstrapIntegrationTest {
 
   @Autowired
   private EmployerRepository employerRepository;
+
+  @Autowired
+  private jakarta.persistence.EntityManager entityManager;
 
   @BeforeEach
   void setUpSecurity() {
@@ -371,5 +382,262 @@ class OnboardingAndBootstrapIntegrationTest {
     );
 
     assertThrows(AccessDeniedException.class, () -> onboardingAdminService.approveApplication(9999L, 1L));
+  }
+
+  @Test
+  @Transactional
+  @DisplayName("13. Approval rolls back and throws ResourceNotFoundException if user does not exist")
+  void testApproveApplicationFailsWhenUserMissing() {
+    String suffix = randomSuffix();
+    RegisterTrainingProviderRequest req = new RegisterTrainingProviderRequest();
+    req.setUsername("tp_delusr_" + suffix);
+    req.setEmail("tp_delusr_" + suffix + "@example.com");
+    req.setPassword("ValidPassword123!");
+    req.setProviderName("DelUser Academy " + suffix);
+    req.setRegistrationNumber("TP-DELUSR-" + suffix);
+    req.setContactPersonName("Sunita Rao");
+    req.setContactEmail("tp_delusr_" + suffix + "@example.com");
+    req.setStateId(101L);
+    req.setDistrictId(1001L);
+
+    OnboardingApplicationResponse appResp = registrationService.registerTrainingProvider(req);
+    Long appId = appResp.getApplicationId();
+    Long userId = appResp.getUserId();
+
+    entityManager.flush();
+    entityManager.clear();
+    entityManager.createNativeQuery("SET FOREIGN_KEY_CHECKS=0").executeUpdate();
+    entityManager.createNativeQuery("DELETE FROM user_roles WHERE user_id = :uid").setParameter("uid", userId).executeUpdate();
+    entityManager.createNativeQuery("DELETE FROM users WHERE user_id = :uid").setParameter("uid", userId).executeUpdate();
+    entityManager.createNativeQuery("SET FOREIGN_KEY_CHECKS=1").executeUpdate();
+
+    assertThrows(ResourceNotFoundException.class, () -> onboardingAdminService.approveApplication(appId, 1L));
+
+    OnboardingApplication fresh = onboardingApplicationRepository.findById(appId).orElseThrow();
+    assertThat(fresh.getStatus()).isEqualTo("PENDING");
+  }
+
+  @Test
+  @Transactional
+  @DisplayName("13b. Approval rolls back and throws IllegalStateException if user is soft-deleted")
+  void testApproveApplicationFailsWhenUserSoftDeleted() {
+    String suffix = randomSuffix();
+    RegisterTrainingProviderRequest req = new RegisterTrainingProviderRequest();
+    req.setUsername("tp_softdel_" + suffix);
+    req.setEmail("tp_softdel_" + suffix + "@example.com");
+    req.setPassword("ValidPassword123!");
+    req.setProviderName("SoftDel Academy " + suffix);
+    req.setRegistrationNumber("TP-SOFTDEL-" + suffix);
+    req.setContactPersonName("Sunita Rao");
+    req.setContactEmail("tp_softdel_" + suffix + "@example.com");
+    req.setStateId(101L);
+    req.setDistrictId(1001L);
+
+    OnboardingApplicationResponse appResp = registrationService.registerTrainingProvider(req);
+    Long appId = appResp.getApplicationId();
+    Long userId = appResp.getUserId();
+
+    User user = userRepository.findById(userId).orElseThrow();
+    user.setDeletedAt(java.time.LocalDateTime.now());
+    userRepository.save(user);
+
+    IllegalStateException ex = assertThrows(IllegalStateException.class,
+        () -> onboardingAdminService.approveApplication(appId, 1L));
+    assertThat(ex.getMessage()).contains("deleted");
+
+    OnboardingApplication fresh = onboardingApplicationRepository.findById(appId).orElseThrow();
+    assertThat(fresh.getStatus()).isEqualTo("PENDING");
+  }
+
+  @Test
+  @Transactional
+  @DisplayName("14. Approval rolls back and throws ResourceNotFoundException if organization entity does not exist")
+  void testApproveApplicationFailsWhenEntityMissing() {
+    String suffix = randomSuffix();
+    User user = new User();
+    user.setUsername("u_noent_" + suffix);
+    user.setEmail("u_noent_" + suffix + "@example.com");
+    user.setPasswordHash("hash");
+    user.setUserStatusId(1L); // PENDING
+    user.setStateId(101L);
+    user.setDistrictId(1001L);
+    user.setCreatedAt(java.time.LocalDateTime.now());
+    user.setUpdatedAt(java.time.LocalDateTime.now());
+    user = userRepository.save(user);
+
+    UserRole role = new UserRole(user.getId(), 5L, 1L);
+    role.setAssignedAt(java.time.LocalDateTime.now());
+    userRoleRepository.save(role);
+
+    OnboardingApplication app = new OnboardingApplication();
+    app.setApplicationNumber("APP-TEST-NOENT-" + suffix);
+    app.setApplicantType("TRAINING_PROVIDER");
+    app.setUserId(user.getId());
+    app.setEntityType("TRAINING_PROVIDER");
+    app.setEntityId(9999999L);
+    app.setOrganizationName("Phantom Academy");
+    app.setContactPerson("Phantom");
+    app.setContactEmail("phantom@example.com");
+    app.setStatus("PENDING");
+    app = onboardingApplicationRepository.save(app);
+
+    Long appId = app.getId();
+    assertThrows(ResourceNotFoundException.class, () -> onboardingAdminService.approveApplication(appId, 1L));
+
+    User freshUser = userRepository.findById(user.getId()).orElseThrow();
+    assertThat(freshUser.getUserStatusId()).isEqualTo(1L); // Still PENDING
+  }
+
+  @Test
+  @Transactional
+  @DisplayName("15. Approval rolls back and throws IllegalStateException if required role is missing")
+  void testApproveApplicationFailsWhenRoleAssignmentMissing() {
+    String suffix = randomSuffix();
+    RegisterTrainingProviderRequest req = new RegisterTrainingProviderRequest();
+    req.setUsername("tp_norole_" + suffix);
+    req.setEmail("tp_norole_" + suffix + "@example.com");
+    req.setPassword("ValidPassword123!");
+    req.setProviderName("No Role Academy " + suffix);
+    req.setRegistrationNumber("TP-NOROLE-" + suffix);
+    req.setContactPersonName("Sunita Rao");
+    req.setContactEmail("tp_norole_" + suffix + "@example.com");
+    req.setStateId(101L);
+    req.setDistrictId(1001L);
+
+    OnboardingApplicationResponse appResp = registrationService.registerTrainingProvider(req);
+    userRoleRepository.deleteById(new UserRoleId(appResp.getUserId(), 5L));
+
+    assertThrows(IllegalStateException.class, () -> onboardingAdminService.approveApplication(appResp.getApplicationId(), 1L));
+
+    User freshUser = userRepository.findById(appResp.getUserId()).orElseThrow();
+    assertThat(freshUser.getUserStatusId()).isEqualTo(1L); // Still PENDING
+  }
+
+  @Test
+  @Transactional
+  @DisplayName("16. Re-decision on already processed application is rejected with BadRequestException")
+  void testAlreadyProcessedDecisionFails() {
+    String suffix = randomSuffix();
+    RegisterTrainingProviderRequest req = new RegisterTrainingProviderRequest();
+    req.setUsername("tp_proc_" + suffix);
+    req.setEmail("tp_proc_" + suffix + "@example.com");
+    req.setPassword("ValidPassword123!");
+    req.setProviderName("Processed Academy " + suffix);
+    req.setRegistrationNumber("TP-PROC-" + suffix);
+    req.setContactPersonName("Sunita Rao");
+    req.setContactEmail("tp_proc_" + suffix + "@example.com");
+    req.setStateId(101L);
+    req.setDistrictId(1001L);
+
+    OnboardingApplicationResponse appResp = registrationService.registerTrainingProvider(req);
+    onboardingAdminService.approveApplication(appResp.getApplicationId(), 1L);
+
+    BadRequestException ex1 = assertThrows(BadRequestException.class,
+        () -> onboardingAdminService.approveApplication(appResp.getApplicationId(), 1L));
+    assertThat(ex1.getErrorCode()).isEqualTo("APPLICATION_ALREADY_PROCESSED");
+
+    BadRequestException ex2 = assertThrows(BadRequestException.class,
+        () -> onboardingAdminService.rejectApplication(appResp.getApplicationId(), "Too late", 1L));
+    assertThat(ex2.getErrorCode()).isEqualTo("APPLICATION_ALREADY_PROCESSED");
+  }
+
+  @Test
+  @Transactional
+  @DisplayName("17. Rejection rolls back and throws ResourceNotFoundException if user does not exist")
+  void testRejectApplicationFailsWhenUserMissing() {
+    String suffix = randomSuffix();
+    RegisterTrainingProviderRequest req = new RegisterTrainingProviderRequest();
+    req.setUsername("tp_rejdel_" + suffix);
+    req.setEmail("tp_rejdel_" + suffix + "@example.com");
+    req.setPassword("ValidPassword123!");
+    req.setProviderName("RejDel Academy " + suffix);
+    req.setRegistrationNumber("TP-REJDEL-" + suffix);
+    req.setContactPersonName("Sunita Rao");
+    req.setContactEmail("tp_rejdel_" + suffix + "@example.com");
+    req.setStateId(101L);
+    req.setDistrictId(1001L);
+
+    OnboardingApplicationResponse appResp = registrationService.registerTrainingProvider(req);
+    Long appId = appResp.getApplicationId();
+    Long userId = appResp.getUserId();
+
+    entityManager.flush();
+    entityManager.clear();
+    entityManager.createNativeQuery("SET FOREIGN_KEY_CHECKS=0").executeUpdate();
+    entityManager.createNativeQuery("DELETE FROM user_roles WHERE user_id = :uid").setParameter("uid", userId).executeUpdate();
+    entityManager.createNativeQuery("DELETE FROM users WHERE user_id = :uid").setParameter("uid", userId).executeUpdate();
+    entityManager.createNativeQuery("SET FOREIGN_KEY_CHECKS=1").executeUpdate();
+
+    assertThrows(ResourceNotFoundException.class, () -> onboardingAdminService.rejectApplication(appId, "Invalid", 1L));
+
+    OnboardingApplication fresh = onboardingApplicationRepository.findById(appId).orElseThrow();
+    assertThat(fresh.getStatus()).isEqualTo("PENDING");
+  }
+
+  @Test
+  @DisplayName("18. Concurrent approval and rejection races are prevented by pessimistic locking")
+  void testConcurrentDecisionsPreventDoubleProcessing() throws Exception {
+    String suffix = randomSuffix();
+    RegisterTrainingProviderRequest req = new RegisterTrainingProviderRequest();
+    req.setUsername("tp_race_" + suffix);
+    req.setEmail("tp_race_" + suffix + "@example.com");
+    req.setPassword("ValidPassword123!");
+    req.setProviderName("Race Academy " + suffix);
+    req.setRegistrationNumber("TP-RACE-" + suffix);
+    req.setContactPersonName("Sunita Rao");
+    req.setContactEmail("tp_race_" + suffix + "@example.com");
+    req.setStateId(101L);
+    req.setDistrictId(1001L);
+
+    OnboardingApplicationResponse appResp = registrationService.registerTrainingProvider(req);
+    Long appId = appResp.getApplicationId();
+
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    CountDownLatch startLatch = new CountDownLatch(1);
+
+    AtomicInteger successCount = new AtomicInteger(0);
+    AtomicInteger failureCount = new AtomicInteger(0);
+
+    Callable<Void> approveTask = () -> {
+      SecurityContextHolder.getContext().setAuthentication(
+          new UsernamePasswordAuthenticationToken("admin_user", null, List.of(new SimpleGrantedAuthority("ROLE_super_admin")))
+      );
+      try {
+        startLatch.await();
+        onboardingAdminService.approveApplication(appId, 1L);
+        successCount.incrementAndGet();
+      } catch (Exception e) {
+        failureCount.incrementAndGet();
+      }
+      return null;
+    };
+
+    Callable<Void> rejectTask = () -> {
+      SecurityContextHolder.getContext().setAuthentication(
+          new UsernamePasswordAuthenticationToken("admin_user", null, List.of(new SimpleGrantedAuthority("ROLE_super_admin")))
+      );
+      try {
+        startLatch.await();
+        onboardingAdminService.rejectApplication(appId, "Race rejection", 1L);
+        successCount.incrementAndGet();
+      } catch (Exception e) {
+        failureCount.incrementAndGet();
+      }
+      return null;
+    };
+
+    var future1 = executor.submit(approveTask);
+    var future2 = executor.submit(rejectTask);
+
+    startLatch.countDown();
+    future1.get();
+    future2.get();
+    executor.shutdown();
+
+    assertThat(successCount.get()).isEqualTo(1);
+    assertThat(failureCount.get()).isEqualTo(1);
+
+    OnboardingApplication finalApp = onboardingApplicationRepository.findById(appId).orElseThrow();
+    assertThat(finalApp.getStatus()).isIn("APPROVED", "REJECTED");
   }
 }

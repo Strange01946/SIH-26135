@@ -393,4 +393,114 @@ describe('AuthContext & AuthProvider', () => {
     // Invariant: User 2 state must NOT be overwritten by User 1
     expect(screen.getByText('User: second_user')).toBeInTheDocument();
   });
+
+  it('clears session when /api/v1/auth/me rejects with HTTP 401 or HTTP 403 on establishSession', async () => {
+    const authResponse: AuthResponse = {
+      accessToken: 'token-revoked',
+      refreshToken: 'refresh-revoked',
+      tokenType: 'Bearer',
+      expiresIn: 3600,
+      userId: 55,
+      username: 'deactivated_user',
+      authorities: ['ROLE_TRAINEE'],
+    };
+
+    vi.spyOn(apiClient, 'apiPost').mockResolvedValue(authResponse);
+    vi.spyOn(apiClient, 'apiGet').mockImplementation(async (url: string) => {
+      if (url === '/api/v1/auth/me') {
+        const err = new Error('Unauthorized');
+        (err as unknown as { status: number }).status = 401;
+        throw err;
+      }
+      throw new Error(`Unexpected GET: ${url}`);
+    });
+
+    let authContextInstance: AuthContextType | undefined;
+    function CaptureConsumer() {
+      authContextInstance = useAuth();
+      return (
+        <div>
+          <div data-testid="auth-status">{String(authContextInstance.isAuthenticated)}</div>
+          <div data-testid="auth-user">{authContextInstance.user?.username ?? 'none'}</div>
+        </div>
+      );
+    }
+
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <CaptureConsumer />
+        </AuthProvider>,
+      );
+    });
+
+    await act(async () => {
+      await authContextInstance!.login({
+        usernameOrEmail: 'deactivated_user',
+        password: 'password123',
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('auth-status').textContent).toBe('false');
+      expect(screen.getByTestId('auth-user').textContent).toBe('none');
+    });
+
+    expect(sessionManager.getAccessToken()).toBeNull();
+  });
+
+  it('retains immediateUser when /api/v1/auth/me rejects with network/500 error on establishSession', async () => {
+    const authResponse: AuthResponse = {
+      accessToken: 'token-valid',
+      refreshToken: 'refresh-valid',
+      tokenType: 'Bearer',
+      expiresIn: 3600,
+      userId: 77,
+      username: 'active_user',
+      authorities: ['ROLE_TRAINEE'],
+    };
+
+    vi.spyOn(apiClient, 'apiPost').mockResolvedValue(authResponse);
+    vi.spyOn(apiClient, 'apiGet').mockImplementation(async (url: string) => {
+      if (url === '/api/v1/auth/me') {
+        const err = new Error('Server Error');
+        (err as unknown as { status: number }).status = 503;
+        throw err;
+      }
+      throw new Error(`Unexpected GET: ${url}`);
+    });
+
+    let authContextInstance: AuthContextType | undefined;
+    function CaptureConsumer() {
+      authContextInstance = useAuth();
+      return (
+        <div>
+          <div data-testid="auth-status">{String(authContextInstance.isAuthenticated)}</div>
+          <div data-testid="auth-user">{authContextInstance.user?.username ?? 'none'}</div>
+        </div>
+      );
+    }
+
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <CaptureConsumer />
+        </AuthProvider>,
+      );
+    });
+
+    await act(async () => {
+      await authContextInstance!.login({
+        usernameOrEmail: 'active_user',
+        password: 'password123',
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('auth-status').textContent).toBe('true');
+      expect(screen.getByTestId('auth-user').textContent).toBe('active_user');
+    });
+
+    expect(sessionManager.getAccessToken()).toBe('token-valid');
+  });
 });

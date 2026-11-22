@@ -88,7 +88,14 @@ export function AuthProvider({
         return profile;
       }
       return null;
-    } catch {
+    } catch (err: unknown) {
+      const apiErr = err as { status?: number };
+      if (apiErr?.status === 401 || apiErr?.status === 403) {
+        if (getSessionGeneration() === generation) {
+          clearSession();
+          setUser(null);
+        }
+      }
       return null;
     }
   }, []);
@@ -157,8 +164,17 @@ export function AuthProvider({
           setUser(fullProfile);
         }
       })
-      .catch(() => {
-        // Fall back to immediateUser if /me fails
+      .catch((err: unknown) => {
+        const apiErr = err as { status?: number };
+        // If /me explicitly fails due to authentication or authorization rejection (401/403),
+        // clear the session to prevent an invalid, deactivated, or revoked account from remaining authenticated.
+        if (apiErr?.status === 401 || apiErr?.status === 403) {
+          if (getSessionGeneration() === sessionGen) {
+            clearSession();
+            setUser(null);
+          }
+        }
+        // For temporary network errors (status 0, status >= 500), retain immediateUser so the UI is resilient.
       });
   }, []);
 

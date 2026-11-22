@@ -1,6 +1,5 @@
 package in.gov.sih.sih26135.security.config;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
@@ -31,14 +30,7 @@ public class CorsConfig {
 
     List<String> origins = corsProperties.getAllowedOrigins();
     if (!origins.isEmpty()) {
-      List<String> expanded = new ArrayList<>();
-      for (String o : origins) {
-        expanded.add(o);
-        if (!o.endsWith("/")) {
-          expanded.add(o + "/");
-        }
-      }
-      configuration.setAllowedOrigins(expanded);
+      configuration.setAllowedOrigins(origins);
     } else {
       // Explicitly register empty list so no cross-origin requests are permitted by default
       configuration.setAllowedOrigins(Collections.emptyList());

@@ -42,6 +42,8 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
   private static final Logger log = LoggerFactory.getLogger(OnboardingAdminServiceImpl.class);
 
   private static final Long ROLE_ID_SUPER_ADMIN = 1L;
+  private static final Long ROLE_ID_TRAINING_PROVIDER = 5L;
+  private static final Long ROLE_ID_EMPLOYER = 6L;
   private static final Long ROLE_ID_ASSESSOR = 10L;
   private static final Long STATUS_ACTIVE_ID = 2L;
   private static final Long STATUS_DISABLED_ID = 4L;
@@ -108,11 +110,39 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
   @Override
   @Transactional
   public OnboardingApplicationResponse approveApplication(Long id, Long reviewerUserId) {
-    OnboardingApplication app = onboardingApplicationRepository.findById(id)
+    // Acquire pessimistic row lock to prevent concurrent approval/rejection races
+    OnboardingApplication app = onboardingApplicationRepository.findByIdForUpdate(id)
         .orElseThrow(() -> new ResourceNotFoundException("OnboardingApplication", "id"));
 
     if (!"PENDING".equalsIgnoreCase(app.getStatus())) {
       throw new BadRequestException("Only PENDING applications can be approved", "APPLICATION_ALREADY_PROCESSED");
+    }
+
+    // Explicitly validate associated user exists and is not soft-deleted
+    User user = userRepository.findById(app.getUserId())
+        .orElseThrow(() -> new ResourceNotFoundException("User", "userId=" + app.getUserId()));
+
+    if (user.getDeletedAt() != null) {
+      throw new IllegalStateException("Associated user account is deleted and cannot be approved");
+    }
+
+    // Explicitly validate associated organization entity and expected role assignment
+    if ("TRAINING_PROVIDER".equalsIgnoreCase(app.getApplicantType())) {
+      if (!trainingProviderRepository.existsById(app.getEntityId())) {
+        throw new ResourceNotFoundException("TrainingProvider", "providerId=" + app.getEntityId());
+      }
+      if (!userRoleRepository.existsByUserIdAndRoleId(user.getId(), ROLE_ID_TRAINING_PROVIDER)) {
+        throw new IllegalStateException("Associated user does not hold required training_provider role");
+      }
+    } else if ("EMPLOYER".equalsIgnoreCase(app.getApplicantType())) {
+      if (!employerRepository.existsById(app.getEntityId())) {
+        throw new ResourceNotFoundException("Employer", "employerId=" + app.getEntityId());
+      }
+      if (!userRoleRepository.existsByUserIdAndRoleId(user.getId(), ROLE_ID_EMPLOYER)) {
+        throw new IllegalStateException("Associated user does not hold required employer role");
+      }
+    } else {
+      throw new BadRequestException("Unknown applicant type: " + app.getApplicantType(), "INVALID_APPLICANT_TYPE");
     }
 
     LocalDateTime now = LocalDateTime.now();
@@ -122,16 +152,13 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
     app.setUpdatedAt(now);
     OnboardingApplication savedApp = onboardingApplicationRepository.save(app);
 
-    // Activate the associated user account so they can authenticate to the portal
-    userRepository.findById(app.getUserId()).ifPresent(user -> {
-      user.setUserStatusId(STATUS_ACTIVE_ID);
-      user.setUpdatedAt(now);
-      userRepository.save(user);
-    });
+    // Explicitly activate the associated user account
+    user.setUserStatusId(STATUS_ACTIVE_ID);
+    user.setUpdatedAt(now);
+    userRepository.save(user);
 
     // Note: Portal onboarding approval activates the user account, but does NOT unilaterally
     // confer statutory institutional accreditation or employer verification, preserving independent lifecycle checks.
-
     log.info("Application approved: appId={}, type={}, entityId={}, reviewerId={}",
         id, app.getApplicantType(), app.getEntityId(), reviewerUserId);
 
@@ -143,11 +170,27 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
   @Override
   @Transactional
   public OnboardingApplicationResponse rejectApplication(Long id, String reason, Long reviewerUserId) {
-    OnboardingApplication app = onboardingApplicationRepository.findById(id)
+    // Acquire pessimistic row lock to prevent concurrent approval/rejection races
+    OnboardingApplication app = onboardingApplicationRepository.findByIdForUpdate(id)
         .orElseThrow(() -> new ResourceNotFoundException("OnboardingApplication", "id"));
 
     if (!"PENDING".equalsIgnoreCase(app.getStatus())) {
       throw new BadRequestException("Only PENDING applications can be rejected", "APPLICATION_ALREADY_PROCESSED");
+    }
+
+    // Explicitly validate associated user exists
+    User user = userRepository.findById(app.getUserId())
+        .orElseThrow(() -> new ResourceNotFoundException("User", "userId=" + app.getUserId()));
+
+    // Explicitly validate associated entity exists
+    if ("TRAINING_PROVIDER".equalsIgnoreCase(app.getApplicantType())) {
+      if (!trainingProviderRepository.existsById(app.getEntityId())) {
+        throw new ResourceNotFoundException("TrainingProvider", "providerId=" + app.getEntityId());
+      }
+    } else if ("EMPLOYER".equalsIgnoreCase(app.getApplicantType())) {
+      if (!employerRepository.existsById(app.getEntityId())) {
+        throw new ResourceNotFoundException("Employer", "employerId=" + app.getEntityId());
+      }
     }
 
     LocalDateTime now = LocalDateTime.now();
@@ -158,12 +201,10 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
     app.setUpdatedAt(now);
     OnboardingApplication savedApp = onboardingApplicationRepository.save(app);
 
-    // Disable the associated user
-    userRepository.findById(app.getUserId()).ifPresent(user -> {
-      user.setUserStatusId(STATUS_DISABLED_ID);
-      user.setUpdatedAt(now);
-      userRepository.save(user);
-    });
+    // Explicitly disable the associated user account
+    user.setUserStatusId(STATUS_DISABLED_ID);
+    user.setUpdatedAt(now);
+    userRepository.save(user);
 
     log.info("Application rejected: appId={}, reviewerId={}, reason={}", id, reviewerUserId, app.getRejectionReason());
 
