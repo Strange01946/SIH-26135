@@ -17,10 +17,12 @@ import in.gov.sih.sih26135.entity.RefAssessmentOutcome;
 import in.gov.sih.sih26135.entity.RefCertificateStatus;
 import in.gov.sih.sih26135.entity.RefCertificateVerificationStatus;
 import in.gov.sih.sih26135.entity.RefEnrollmentStatus;
+import in.gov.sih.sih26135.entity.Organization;
 import in.gov.sih.sih26135.entity.Trainee;
 import in.gov.sih.sih26135.entity.TraineeAssessment;
 import in.gov.sih.sih26135.entity.TrainingBatch;
 import in.gov.sih.sih26135.entity.TrainingEnrollment;
+import in.gov.sih.sih26135.entity.TrainingProvider;
 import in.gov.sih.sih26135.entity.User;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
@@ -28,6 +30,7 @@ import in.gov.sih.sih26135.repository.AssessmentRepository;
 import in.gov.sih.sih26135.repository.AssessmentResultRepository;
 import in.gov.sih.sih26135.repository.CertificationRepository;
 import in.gov.sih.sih26135.repository.CourseRepository;
+import in.gov.sih.sih26135.repository.OrganizationRepository;
 import in.gov.sih.sih26135.repository.ProgramRepository;
 import in.gov.sih.sih26135.repository.RefAssessmentOutcomeRepository;
 import in.gov.sih.sih26135.repository.RefCertificateStatusRepository;
@@ -49,12 +52,15 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -80,7 +86,14 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
   public static final Long OUTCOME_ABSENT_ID = 4L;
 
   public static final Long CERT_STATUS_ISSUED_ID = 1L;
+  public static final Long CERT_STATUS_SUPERSEDED_ID = 2L;
+  public static final Long CERT_STATUS_REVOKED_ID = 3L;
+  public static final Long CERT_STATUS_EXPIRED_ID = 4L;
+
+  public static final Long CERT_VERIF_STATUS_UNVERIFIED_ID = 1L;
+  public static final Long CERT_VERIF_STATUS_PENDING_ID = 2L;
   public static final Long CERT_VERIF_STATUS_VERIFIED_ID = 3L;
+  public static final Long CERT_VERIF_STATUS_REJECTED_ID = 4L;
   public static final Long ENROLLMENT_STATUS_COMPLETED_ID = 3L;
 
   private final AssessmentRepository assessmentRepository;
@@ -97,6 +110,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
   private final RefCertificateStatusRepository refCertificateStatusRepository;
   private final RefCertificateVerificationStatusRepository refCertificateVerificationStatusRepository;
   private final RefEnrollmentStatusRepository refEnrollmentStatusRepository;
+  private final OrganizationRepository organizationRepository;
   private final JdbcTemplate jdbcTemplate;
   private final ObjectMapper objectMapper;
 
@@ -115,6 +129,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       RefCertificateStatusRepository refCertificateStatusRepository,
       RefCertificateVerificationStatusRepository refCertificateVerificationStatusRepository,
       RefEnrollmentStatusRepository refEnrollmentStatusRepository,
+      OrganizationRepository organizationRepository,
       JdbcTemplate jdbcTemplate,
       ObjectMapper objectMapper) {
     this.assessmentRepository = assessmentRepository;
@@ -131,8 +146,70 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
     this.refCertificateStatusRepository = refCertificateStatusRepository;
     this.refCertificateVerificationStatusRepository = refCertificateVerificationStatusRepository;
     this.refEnrollmentStatusRepository = refEnrollmentStatusRepository;
+    this.organizationRepository = organizationRepository;
     this.jdbcTemplate = jdbcTemplate;
     this.objectMapper = objectMapper;
+  }
+
+  @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+  public static class AssessmentComponentScoresJson {
+    private BigDecimal theory;
+    private BigDecimal practical;
+    private BigDecimal viva;
+    private String status;
+    private String note;
+
+    public AssessmentComponentScoresJson() {}
+
+    public AssessmentComponentScoresJson(BigDecimal theory, BigDecimal practical, BigDecimal viva, String status, String note) {
+      this.theory = theory;
+      this.practical = practical;
+      this.viva = viva;
+      this.status = status;
+      this.note = note;
+    }
+
+    public BigDecimal getTheory() { return theory; }
+    public void setTheory(BigDecimal theory) { this.theory = theory; }
+    public BigDecimal getPractical() { return practical; }
+    public void setPractical(BigDecimal practical) { this.practical = practical; }
+    public BigDecimal getViva() { return viva; }
+    public void setViva(BigDecimal viva) { this.viva = viva; }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+    public String getNote() { return note; }
+    public void setNote(String note) { this.note = note; }
+  }
+
+  private AssessmentComponentScoresJson parseComponentScores(String remarks) {
+    if (remarks == null || remarks.isBlank()) {
+      return null;
+    }
+    try {
+      return objectMapper.readValue(remarks, AssessmentComponentScoresJson.class);
+    } catch (Exception e) {
+      log.debug("Could not parse JSON remarks: {}", e.getMessage());
+      return null;
+    }
+  }
+
+  private String resolveAuthoritativeIssuingBody(Assessment assessment) {
+    if (assessment.getTrainingBatch() != null && assessment.getTrainingBatch().getTrainingProvider() != null) {
+      TrainingProvider provider = assessment.getTrainingBatch().getTrainingProvider();
+      if (provider.getOrganizationId() != null && organizationRepository != null) {
+        Optional<Organization> org = organizationRepository.findById(provider.getOrganizationId());
+        if (org.isPresent() && org.get().getOrganizationName() != null && !org.get().getOrganizationName().isBlank()) {
+          return org.get().getOrganizationName();
+        }
+      }
+      if (provider.getProviderName() != null && !provider.getProviderName().isBlank()) {
+        return provider.getProviderName();
+      }
+    }
+    if (assessment.getProgram() != null && assessment.getProgram().getProgramName() != null && !assessment.getProgram().getProgramName().isBlank()) {
+      return assessment.getProgram().getProgramName();
+    }
+    return "Authorized Assessment & Certification Body";
   }
 
   @Override
@@ -327,6 +404,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
         LEFT JOIN ref_gender rg ON t.gender_id = rg.gender_id
         LEFT JOIN ref_enrollment_status res ON te.enrollment_status_id = res.enrollment_status_id
         WHERE te.batch_id = ? AND te.deleted_at IS NULL AND t.deleted_at IS NULL
+          AND (te.enrollment_status_id IS NULL OR te.enrollment_status_id NOT IN (4, 7))
         ORDER BY t.first_name, t.last_name, t.trainee_id
         """;
 
@@ -401,7 +479,15 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
         remarks = res.getRemarks();
 
         // Parse breakdown from JSON in remarks if present
-        if (remarks != null && remarks.contains("\"theory\"")) {
+        AssessmentComponentScoresJson parsedScores = parseComponentScores(remarks);
+        if (parsedScores != null) {
+          theory = parsedScores.getTheory();
+          practical = parsedScores.getPractical();
+          viva = parsedScores.getViva();
+          if (parsedScores.getStatus() != null) {
+            isFinalized = "FINALIZED".equalsIgnoreCase(parsedScores.getStatus());
+          }
+        } else if (remarks != null && remarks.contains("\"theory\"")) {
           try {
             JsonNode root = objectMapper.readTree(remarks);
             if (root.has("theory") && !root.get("theory").isNull()) {
@@ -485,7 +571,8 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       throw new BadRequestException("Candidate scoring payload cannot be empty");
     }
 
-    Assessment assessment = assessmentRepository.findById(assessmentId)
+    // Pessimistic write lock on assessment row to guarantee serial execution and prevent race conditions
+    Assessment assessment = assessmentRepository.findByIdForUpdate(assessmentId)
         .orElseThrow(() -> new ResourceNotFoundException("Assessment", "id=" + assessmentId));
 
     User caller = resolveAuthenticatedCaller();
@@ -493,13 +580,131 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       throw new AccessDeniedException("Assessment does not belong to authenticated assessor scope");
     }
 
-    // Check if assessment is already finalized
-    if (assessment.getLifecycleStatusId() != null && assessment.getLifecycleStatusId().equals(LIFECYCLE_FINALIZED_ID)) {
+    Long batchId = assessment.getTrainingBatch() != null ? assessment.getTrainingBatch().getId() : null;
+
+    // Load authoritative eligible batch roster from database
+    List<TrainingEnrollment> batchEnrollments = batchId != null
+        ? trainingEnrollmentRepository.findByTrainingBatchIdAndDeletedAtIsNull(batchId)
+        : Collections.emptyList();
+
+    Map<Long, TrainingEnrollment> eligibleEnrollmentsByTraineeId = batchEnrollments.stream()
+        .filter(e -> e.getDeletedAt() == null && e.getTrainee() != null && e.getTrainee().getDeletedAt() == null)
+        .filter(e -> e.getEnrollmentStatus() == null || (e.getEnrollmentStatus().getId() != 4L && e.getEnrollmentStatus().getId() != 7L)) // exclude DROPPED (4) & CANCELLED (7)
+        .collect(Collectors.toMap(e -> e.getTrainee().getId(), e -> e, (a, b) -> a));
+
+    // Reject finalization if eligible roster is empty
+    if (!request.isDraft() && eligibleEnrollmentsByTraineeId.isEmpty()) {
+      throw new BadRequestException("Cannot finalize assessment with an empty eligible roster", "EMPTY_ROSTER");
+    }
+
+    // Candidate payload validation: detect duplicates and foreign / mismatched candidates
+    Set<Long> inputTraineeIds = new HashSet<>();
+    Set<Long> inputEnrollmentIds = new HashSet<>();
+    for (CandidateScoreInput input : request.getCandidates()) {
+      if (input.getTraineeId() == null) {
+        throw new BadRequestException("Trainee ID is required in candidate scoring input", "INVALID_CANDIDATE");
+      }
+      if (!inputTraineeIds.add(input.getTraineeId())) {
+        throw new BadRequestException("Duplicate candidate ID " + input.getTraineeId() + " detected in scoring payload", "DUPLICATE_CANDIDATE");
+      }
+      if (input.getEnrollmentId() != null && !inputEnrollmentIds.add(input.getEnrollmentId())) {
+        throw new BadRequestException("Duplicate enrollment ID " + input.getEnrollmentId() + " detected in scoring payload", "DUPLICATE_CANDIDATE");
+      }
+      if (!eligibleEnrollmentsByTraineeId.containsKey(input.getTraineeId())) {
+        throw new BadRequestException("Candidate #" + input.getTraineeId() + " is not an eligible candidate for assessment batch #" + batchId, "INVALID_CANDIDATE");
+      }
+      TrainingEnrollment expectedEnrollment = eligibleEnrollmentsByTraineeId.get(input.getTraineeId());
+      if (input.getEnrollmentId() != null && !input.getEnrollmentId().equals(expectedEnrollment.getId())) {
+        throw new BadRequestException("Enrollment trainee mismatch for candidate #" + input.getTraineeId(), "TRAINEE_ENROLLMENT_MISMATCH");
+      }
+    }
+
+    // On finalization: MUST cover the entire eligible roster
+    if (!request.isDraft()) {
+      for (Long eligibleTraineeId : eligibleEnrollmentsByTraineeId.keySet()) {
+        if (!inputTraineeIds.contains(eligibleTraineeId)) {
+          throw new BadRequestException("Assessment finalization requires scores for the complete eligible roster. Missing trainee #" + eligibleTraineeId, "INCOMPLETE_ROSTER");
+        }
+      }
+    }
+
+    // Check if assessment is already finalized (Immutability & Idempotency)
+    boolean alreadyFinalized = assessment.getLifecycleStatusId() != null && assessment.getLifecycleStatusId().equals(LIFECYCLE_FINALIZED_ID);
+    if (alreadyFinalized) {
       if (request.isDraft()) {
         throw new BadRequestException("Cannot save draft on an already finalized assessment", "ASSESSMENT_ALREADY_FINALIZED");
       }
-      // If finalizing again, check if already completed
-      log.info("Assessment {} is already finalized. Verifying idempotent response.", assessmentId);
+      // Check if re-finalization payload is identical
+      boolean isIdentical = true;
+      if (request.getCandidates().size() != eligibleEnrollmentsByTraineeId.size()) {
+        isIdentical = false;
+      } else {
+        for (CandidateScoreInput input : request.getCandidates()) {
+          Long tId = input.getTraineeId();
+          Optional<TraineeAssessment> existingTaOpt = traineeAssessmentRepository.findByAssessmentIdAndTraineeId(assessmentId, tId);
+          if (existingTaOpt.isEmpty()) {
+            isIdentical = false;
+            break;
+          }
+          TraineeAssessment existingTa = existingTaOpt.get();
+          boolean expectedAppeared = input.getAppeared() != null ? input.getAppeared() : true;
+          if (Boolean.TRUE.equals(existingTa.getAppearedFlag()) != expectedAppeared) {
+            isIdentical = false;
+            break;
+          }
+          Optional<AssessmentResult> existingResOpt = assessmentResultRepository.findByTraineeAssessmentId(existingTa.getId());
+          if (existingResOpt.isEmpty()) {
+            isIdentical = false;
+            break;
+          }
+          AssessmentResult existingRes = existingResOpt.get();
+          if (expectedAppeared) {
+            BigDecimal inTheory = input.getTheoryScore();
+            BigDecimal inPractical = input.getPracticalScore();
+            BigDecimal inViva = input.getVivaScore();
+            BigDecimal inTotal = (inTheory != null ? inTheory : BigDecimal.ZERO)
+                .add(inPractical != null ? inPractical : BigDecimal.ZERO)
+                .add(inViva != null ? inViva : BigDecimal.ZERO);
+            if (existingRes.getObtainedScore() == null || existingRes.getObtainedScore().compareTo(inTotal) != 0) {
+              isIdentical = false;
+              break;
+            }
+          } else {
+            if (existingRes.getObtainedScore() != null && existingRes.getObtainedScore().compareTo(BigDecimal.ZERO) != 0) {
+              isIdentical = false;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!isIdentical) {
+        throw new BadRequestException("Assessment is already finalized with different marks or outcomes and cannot be modified", "ASSESSMENT_ALREADY_FINALIZED");
+      }
+
+      // Idempotent return without database mutations
+      log.info("Assessment {} is already finalized and identical payload received. Returning idempotent read-only response.", assessmentId);
+      AssessorRosterResponse currentRoster = getAssessmentRoster(assessmentId);
+      int passed = 0;
+      int failed = 0;
+      int absent = 0;
+      int certs = 0;
+      for (AssessorCandidateRosterItemResponse c : currentRoster.candidates()) {
+        if (Boolean.TRUE.equals(c.isPassFlag())) passed++;
+        else if ("ABSENT".equalsIgnoreCase(c.assessmentOutcomeCode())) absent++;
+        else failed++;
+        if (c.certificateId() != null) certs++;
+      }
+      return new SaveAssessmentScoresResponse(
+          assessmentId,
+          true,
+          currentRoster.candidates().size(),
+          passed,
+          failed,
+          absent,
+          certs,
+          currentRoster.candidates()
+      );
     }
 
     BigDecimal maxTotal = assessment.getMaximumScore() != null ? assessment.getMaximumScore() : BigDecimal.valueOf(100.00);
@@ -509,8 +714,6 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
     BigDecimal passScore = assessment.getPassScore() != null
         ? assessment.getPassScore()
         : maxTotal.multiply(BigDecimal.valueOf(0.50)).setScale(2, RoundingMode.HALF_UP);
-
-    Long batchId = assessment.getTrainingBatch() != null ? assessment.getTrainingBatch().getId() : null;
 
     int totalProcessed = 0;
     int passedCount = 0;
@@ -532,25 +735,13 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
 
     RefCertificateStatus statusIssued = refCertificateStatusRepository.findById(CERT_STATUS_ISSUED_ID)
         .orElseThrow(() -> new ResourceNotFoundException("RefCertificateStatus", "id=" + CERT_STATUS_ISSUED_ID));
-    RefCertificateVerificationStatus verifStatusVerified = refCertificateVerificationStatusRepository.findById(CERT_VERIF_STATUS_VERIFIED_ID)
-        .orElseThrow(() -> new ResourceNotFoundException("RefCertificateVerificationStatus", "id=" + CERT_VERIF_STATUS_VERIFIED_ID));
+    RefCertificateVerificationStatus verifStatusPending = refCertificateVerificationStatusRepository.findById(CERT_VERIF_STATUS_PENDING_ID)
+        .orElseThrow(() -> new ResourceNotFoundException("RefCertificateVerificationStatus", "id=" + CERT_VERIF_STATUS_PENDING_ID));
     RefEnrollmentStatus statusCompleted = refEnrollmentStatusRepository.findById(ENROLLMENT_STATUS_COMPLETED_ID).orElse(null);
 
     for (CandidateScoreInput input : request.getCandidates()) {
       Long traineeId = input.getTraineeId();
-      Long enrollmentId = input.getEnrollmentId();
-
-      // Verify enrollment belongs to batch
-      TrainingEnrollment enrollment = trainingEnrollmentRepository.findById(enrollmentId)
-          .orElseThrow(() -> new ResourceNotFoundException("TrainingEnrollment", "id=" + enrollmentId));
-
-      if (batchId != null && (enrollment.getTrainingBatch() == null || !enrollment.getTrainingBatch().getId().equals(batchId))) {
-        throw new BadRequestException("Trainee #" + traineeId + " enrollment #" + enrollmentId + " does not belong to assessment batch #" + batchId, "INVALID_CANDIDATE");
-      }
-      if (enrollment.getTrainee() == null || !enrollment.getTrainee().getId().equals(traineeId)) {
-        throw new BadRequestException("Enrollment trainee mismatch for candidate #" + traineeId, "TRAINEE_ENROLLMENT_MISMATCH");
-      }
-
+      TrainingEnrollment enrollment = eligibleEnrollmentsByTraineeId.get(traineeId);
       Trainee trainee = enrollment.getTrainee();
 
       // Find or create TraineeAssessment
@@ -651,17 +842,21 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
         }
       }
 
-      // JSON remarks for component storage
-      String jsonRemarks = String.format(Locale.ROOT,
-          "{\"theory\":%s,\"practical\":%s,\"viva\":%s,\"status\":\"%s\"%s}",
-          theory != null ? theory.toPlainString() : "null",
-          practical != null ? practical.toPlainString() : "null",
-          viva != null ? viva.toPlainString() : "null",
+      // JSON remarks for component storage using typed DTO
+      AssessmentComponentScoresJson scoresJson = new AssessmentComponentScoresJson(
+          theory,
+          practical,
+          viva,
           statusStr,
-          input.getRemarks() != null && !input.getRemarks().isBlank()
-              ? ",\"note\":\"" + input.getRemarks().replace("\"", "\\\"") + "\""
-              : ""
+          input.getRemarks() != null ? input.getRemarks() : ""
       );
+      String jsonRemarks;
+      try {
+        jsonRemarks = objectMapper.writeValueAsString(scoresJson);
+      } catch (Exception e) {
+        log.warn("Failed to serialize component scores JSON: {}", e.getMessage());
+        jsonRemarks = "{}";
+      }
 
       // Persist AssessmentResult
       AssessmentResult result = assessmentResultRepository
@@ -700,6 +895,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
 
           String courseCode = course != null ? course.getCourseCode() : "CRS";
           String certNumber = "CERT-" + courseCode + "-" + traineeId + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT);
+          String issuingBody = resolveAuthoritativeIssuingBody(assessment);
 
           Certification cert = new Certification();
           cert.setCertificateNumber(certNumber);
@@ -708,26 +904,39 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
           cert.setCourse(course);
           cert.setProgram(program);
           cert.setAssessmentResult(savedResult);
-          cert.setIssuingBody("National Council for Vocational Education and Training (NCVET)");
+          cert.setIssuingBody(issuingBody);
           cert.setIssueDate(today);
           cert.setExpiryDate(today.plusYears(5));
           cert.setCertificateStatus(statusIssued);
-          cert.setCertificateVerificationStatus(verifStatusVerified);
-          cert.setVerifiedAt(now);
-          cert.setVerifiedByUserId(caller.getId());
+          cert.setCertificateVerificationStatus(verifStatusPending);
+          cert.setVerifiedAt(null);
+          cert.setVerifiedByUserId(null);
           cert.setCreatedAt(now);
           cert.setUpdatedAt(now);
 
           certificationRepository.save(cert);
           certsIssued++;
 
-          // Update training enrollment status to COMPLETED
-          if (statusCompleted != null) {
-            enrollment.setEnrollmentStatus(statusCompleted);
+          // Transition active training enrollments to COMPLETED
+          if (enrollment.getEnrollmentStatus() != null) {
+            Long curStatusId = enrollment.getEnrollmentStatus().getId();
+            if (curStatusId == 1L || curStatusId == 2L) { // Only active enrollments
+              if (statusCompleted != null) {
+                enrollment.setEnrollmentStatus(statusCompleted);
+              }
+              if (enrollment.getActualCompletionDate() == null) {
+                enrollment.setActualCompletionDate(today);
+              }
+              enrollment.setUpdatedAt(now);
+              trainingEnrollmentRepository.save(enrollment);
+            } else if (curStatusId == 3L) { // Already completed
+              if (enrollment.getActualCompletionDate() == null) {
+                enrollment.setActualCompletionDate(today);
+                enrollment.setUpdatedAt(now);
+                trainingEnrollmentRepository.save(enrollment);
+              }
+            }
           }
-          enrollment.setActualCompletionDate(today);
-          enrollment.setUpdatedAt(now);
-          trainingEnrollmentRepository.save(enrollment);
         }
       }
 
@@ -767,9 +976,35 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
     Certification cert = certificationRepository.findById(certificationId)
         .orElseThrow(() -> new ResourceNotFoundException("Certification", "id=" + certificationId));
 
+    // Access authorization check
+    User caller = resolveAuthenticatedCaller();
+    boolean isAdmin = isAdministrativeCaller();
+    if (!isAdmin) {
+      boolean isAssignedAssessor = false;
+      if (cert.getAssessmentResult() != null
+          && cert.getAssessmentResult().getTraineeAssessment() != null
+          && cert.getAssessmentResult().getTraineeAssessment().getAssessment() != null) {
+        Long evaluatorId = cert.getAssessmentResult().getTraineeAssessment().getAssessment().getEvaluatorUserId();
+        if (evaluatorId != null && evaluatorId.equals(caller.getId())) {
+          isAssignedAssessor = true;
+        }
+      }
+
+      boolean isOwnTrainee = false;
+      if (cert.getTrainee() != null && traineeRepository != null) {
+        Optional<Trainee> callerTrainee = traineeRepository.findByUserId(caller.getId());
+        if (callerTrainee.isPresent() && callerTrainee.get().getId().equals(cert.getTrainee().getId())) {
+          isOwnTrainee = true;
+        }
+      }
+
+      if (!isAssignedAssessor && !isOwnTrainee) {
+        throw new AccessDeniedException("Access denied: You are not authorized to view or download certificate #" + certificationId);
+      }
+    }
+
     Trainee trainee = cert.getTrainee();
     Course course = cert.getCourse();
-    TrainingEnrollment enrollment = cert.getTrainingEnrollment();
     AssessmentResult result = cert.getAssessmentResult();
 
     String traineeName = trainee != null ? (trainee.getFirstName() + " " + Objects.toString(trainee.getLastName(), "")).trim() : "Candidate";
@@ -778,15 +1013,44 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
     String courseCode = course != null ? course.getCourseCode() : "N/A";
     String certNumber = cert.getCertificateNumber();
     String issueDate = cert.getIssueDate() != null ? cert.getIssueDate().format(DateTimeFormatter.ofPattern("dd-MMM-yyyy")) : "N/A";
-    String issuingBody = cert.getIssuingBody() != null ? cert.getIssuingBody() : "National Council for Vocational Education and Training (NCVET)";
+    String issuingBody = cert.getIssuingBody() != null ? cert.getIssuingBody() : "National Skill Development Authority";
 
-    String scoreStr = "Grade: Distinction / Pass";
+    String assessmentTitle = "Standard Competency Evaluation";
+    if (result != null && result.getTraineeAssessment() != null && result.getTraineeAssessment().getAssessment() != null) {
+      Assessment asm = result.getTraineeAssessment().getAssessment();
+      if (asm.getAssessmentName() != null) {
+        assessmentTitle = asm.getAssessmentName() + " (" + asm.getAssessmentCode() + ")";
+      }
+    }
+
+    String scoreStr = "Grade: PASS";
     if (result != null && result.getScorePercentage() != null) {
       scoreStr = "Score Achieved: " + result.getScorePercentage().toPlainString() + "% (PASS)";
     }
 
-    // Construct valid PDF 1.4 document
-    return buildPdfDocument(traineeName, regNumber, courseName, courseCode, certNumber, issueDate, issuingBody, scoreStr);
+    String certStatusText = "Credential Status: ACTIVE / ISSUED";
+    if (cert.getCertificateStatus() != null) {
+      Long stId = cert.getCertificateStatus().getId();
+      if (Long.valueOf(CERT_STATUS_REVOKED_ID).equals(stId) || "REVOKED".equalsIgnoreCase(cert.getCertificateStatus().getStatusCode())) {
+        certStatusText = "Credential Status: REVOKED - INVALID CREDENTIAL";
+      } else if (Long.valueOf(CERT_STATUS_EXPIRED_ID).equals(stId) || "EXPIRED".equalsIgnoreCase(cert.getCertificateStatus().getStatusCode())) {
+        certStatusText = "Credential Status: EXPIRED - INVALID CREDENTIAL";
+      } else if (Long.valueOf(CERT_STATUS_SUPERSEDED_ID).equals(stId) || "SUPERSEDED".equalsIgnoreCase(cert.getCertificateStatus().getStatusCode())) {
+        certStatusText = "Credential Status: SUPERSEDED - PREVIOUS VERSION";
+      }
+    }
+
+    String verifStatusText = "Verification Status: PENDING VERIFICATION";
+    if (cert.getCertificateVerificationStatus() != null) {
+      Long vId = cert.getCertificateVerificationStatus().getId();
+      if (Long.valueOf(CERT_VERIF_STATUS_VERIFIED_ID).equals(vId) || "VERIFIED".equalsIgnoreCase(cert.getCertificateVerificationStatus().getStatusCode())) {
+        verifStatusText = "Verification Status: VERIFIED - OFFICIAL REGISTER";
+      } else if (Long.valueOf(CERT_VERIF_STATUS_REJECTED_ID).equals(vId) || "REJECTED".equalsIgnoreCase(cert.getCertificateVerificationStatus().getStatusCode())) {
+        verifStatusText = "Verification Status: REJECTED / INVALID";
+      }
+    }
+
+    return buildPdfDocument(traineeName, regNumber, courseName, courseCode, assessmentTitle, certNumber, issueDate, issuingBody, scoreStr, certStatusText, verifStatusText);
   }
 
   private byte[] buildPdfDocument(
@@ -794,103 +1058,104 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       String regNumber,
       String courseName,
       String courseCode,
+      String assessmentTitle,
       String certNumber,
       String issueDate,
       String issuingBody,
-      String scoreStr) {
+      String scoreStr,
+      String certStatusText,
+      String verifStatusText) {
 
     ByteArrayOutputStream out = new ByteArrayOutputStream();
     try {
-      // Content stream commands for PDF
       String textStream = String.format(Locale.ROOT,
           "BT\n" +
-          "/F1 20 Tf\n" +
-          "150 720 Td\n" +
-          "(GOVERNMENT OF INDIA) Tj\n" +
-          "/F1 14 Tf\n" +
-          "-40 -28 Td\n" +
-          "(MINISTRY OF SKILL DEVELOPMENT AND ENTREPRENEURSHIP) Tj\n" +
-          "/F2 11 Tf\n" +
-          "20 -20 Td\n" +
-          "(National Council for Vocational Education and Training - NCVET) Tj\n" +
-          "/F1 16 Tf\n" +
-          "30 -40 Td\n" +
+          "/F1 18 Tf\n" +
+          "130 730 Td\n" +
+          "(NATIONAL SKILL DEVELOPMENT SYSTEM) Tj\n" +
+          "/F2 12 Tf\n" +
+          "-20 -25 Td\n" +
+          "(Official Competency and Certification Register) Tj\n" +
+          "/F1 15 Tf\n" +
+          "20 -38 Td\n" +
           "(CERTIFICATE OF COMPETENCY) Tj\n" +
-          "/F2 12 Tf\n" +
-          "-120 -40 Td\n" +
+          "/F2 11 Tf\n" +
+          "-80 -35 Td\n" +
           "(This is to certify that) Tj\n" +
-          "/F1 16 Tf\n" +
-          "0 -24 Td\n" +
-          "(%s) Tj\n" +
-          "/F2 11 Tf\n" +
-          "0 -18 Td\n" +
-          "(Registration No: %s) Tj\n" +
-          "/F2 12 Tf\n" +
-          "0 -30 Td\n" +
-          "(has successfully completed the authorized national skill assessment in) Tj\n" +
-          "/F1 14 Tf\n" +
-          "0 -24 Td\n" +
-          "(%s [%s]) Tj\n" +
-          "/F2 11 Tf\n" +
-          "0 -24 Td\n" +
+          "/F1 15 Tf\n" +
+          "0 -22 Td\n" +
           "(%s) Tj\n" +
           "/F2 10 Tf\n" +
-          "0 -40 Td\n" +
+          "0 -16 Td\n" +
+          "(Registration No: %s) Tj\n" +
+          "/F2 11 Tf\n" +
+          "0 -28 Td\n" +
+          "(has successfully completed the authorized assessment in) Tj\n" +
+          "/F1 13 Tf\n" +
+          "0 -22 Td\n" +
+          "(%s [%s]) Tj\n" +
+          "/F2 10 Tf\n" +
+          "0 -18 Td\n" +
+          "(Assessment: %s) Tj\n" +
+          "/F2 10 Tf\n" +
+          "0 -18 Td\n" +
+          "(%s) Tj\n" +
+          "/F2 10 Tf\n" +
+          "0 -35 Td\n" +
           "(Certificate Number: %s) Tj\n" +
-          "0 -16 Td\n" +
+          "0 -15 Td\n" +
           "(Date of Issuance: %s) Tj\n" +
-          "0 -16 Td\n" +
+          "0 -15 Td\n" +
           "(Issuing Authority: %s) Tj\n" +
-          "0 -16 Td\n" +
-          "(Verification Status: DIGITALLY VERIFIED - NCVET NATIONAL PORTAL) Tj\n" +
+          "/F1 10 Tf\n" +
+          "0 -18 Td\n" +
+          "(%s) Tj\n" +
+          "/F2 10 Tf\n" +
+          "0 -15 Td\n" +
+          "(%s) Tj\n" +
           "ET\n",
           escapePdfText(traineeName),
           escapePdfText(regNumber),
           escapePdfText(courseName),
           escapePdfText(courseCode),
+          escapePdfText(assessmentTitle),
           escapePdfText(scoreStr),
           escapePdfText(certNumber),
           escapePdfText(issueDate),
-          escapePdfText(issuingBody)
+          escapePdfText(issuingBody),
+          escapePdfText(certStatusText),
+          escapePdfText(verifStatusText)
       );
 
       byte[] textBytes = textStream.getBytes(StandardCharsets.US_ASCII);
 
-      // Assemble PDF objects and calculate offsets
       List<Integer> offsets = new ArrayList<>();
-      offsets.add(0); // 0th object
+      offsets.add(0);
 
       StringBuilder sb = new StringBuilder();
       sb.append("%PDF-1.4\n");
-      sb.append("%\u00E2\u00E3\u00CF\u00D3\n"); // 4 binary bytes for proper PDF detection
+      sb.append("%\u00E2\u00E3\u00CF\u00D3\n");
 
-      // Object 1: Catalog
       offsets.add(sb.length());
       sb.append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
 
-      // Object 2: Pages
       offsets.add(sb.length());
       sb.append("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
 
-      // Object 3: Page
       offsets.add(sb.length());
       sb.append("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>\nendobj\n");
 
-      // Object 4: Contents
       offsets.add(sb.length());
       sb.append("4 0 obj\n<< /Length ").append(textBytes.length).append(" >>\nstream\n");
       sb.append(textStream);
       sb.append("\nendstream\nendobj\n");
 
-      // Object 5: Font F1 (Helvetica-Bold)
       offsets.add(sb.length());
       sb.append("5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n");
 
-      // Object 6: Font F2 (Helvetica)
       offsets.add(sb.length());
       sb.append("6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n");
 
-      // Xref table
       int xrefOffset = sb.length();
       sb.append("xref\n");
       sb.append("0 7\n");
@@ -899,7 +1164,6 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
         sb.append(String.format(Locale.ROOT, "%010d 00000 n \n", offsets.get(i)));
       }
 
-      // Trailer
       sb.append("trailer\n");
       sb.append("<< /Size 7 /Root 1 0 R >>\n");
       sb.append("startxref\n");
@@ -909,7 +1173,6 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       return sb.toString().getBytes(StandardCharsets.UTF_8);
     } catch (Exception e) {
       log.error("Failed to generate PDF: {}", e.getMessage(), e);
-      // Fallback valid minimal PDF
       String fallback = "%PDF-1.4\n1 0 obj<< /Type /Catalog /Pages 2 0 R >>endobj\n2 0 obj<< /Type /Pages /Kids [3 0 R] /Count 1 >>endobj\n3 0 obj<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>endobj\nxref\n0 4\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \ntrailer<< /Size 4 /Root 1 0 R >>\nstartxref\n185\n%%EOF\n";
       return fallback.getBytes(StandardCharsets.UTF_8);
     }
@@ -917,7 +1180,8 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
 
   private String escapePdfText(String text) {
     if (text == null) return "";
-    return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)");
+    String clean = text.replaceAll("[^\\x20-\\x7E]", " ");
+    return clean.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)");
   }
 
   private AssessorAssessmentSummaryResponse mapToSummary(Assessment asm) {

@@ -480,7 +480,7 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     Long certId = cert1Ids.get(0);
     trackedCertificationIds.add(certId);
 
-    // Verify certificate details: status = ISSUED (1), verification = VERIFIED (3)
+    // Verify certificate details: status = ISSUED (1), verification = PENDING (2), verified_at = null
     Integer certStatus = jdbcTemplate.queryForObject(
         "SELECT certificate_status_id FROM certifications WHERE certification_id = ?",
         Integer.class, certId);
@@ -489,7 +489,17 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     Integer certVerif = jdbcTemplate.queryForObject(
         "SELECT certificate_verification_status_id FROM certifications WHERE certification_id = ?",
         Integer.class, certId);
-    assertThat(certVerif).isEqualTo(3);
+    assertThat(certVerif).isEqualTo(2); // 2 = PENDING (pending verification)
+
+    Object verifiedAt = jdbcTemplate.queryForObject(
+        "SELECT verified_at FROM certifications WHERE certification_id = ?",
+        Object.class, certId);
+    assertThat(verifiedAt).isNull();
+
+    String issuingBody = jdbcTemplate.queryForObject(
+        "SELECT issuing_body FROM certifications WHERE certification_id = ?",
+        String.class, certId);
+    assertThat(issuingBody).isEqualTo("Skill Org " + runToken);
 
     // Verify candidate 1 enrollment status = 3 (COMPLETED)
     Integer enr1Status = jdbcTemplate.queryForObject(
@@ -532,7 +542,7 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     );
     assertThat(modResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 
-    // 8. Verify Authentic PDF Download
+    // 8. Verify Authentic PDF Download by Assigned Assessor
     ResponseEntity<byte[]> pdfResponse = restTemplate.exchange(
         getBaseUrl("/api/v1/certifications/" + certId + "/download"),
         HttpMethod.GET,
@@ -551,7 +561,361 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
   }
 
   @Test
-  @DisplayName("7. Endpoint aliases (/api/v1/assessments/results and /api/v1/certificates/issue) are functional")
+  @DisplayName("7. Incomplete roster finalization is rejected with INCOMPLETE_ROSTER")
+  void testIncompleteRosterFinalizationRejected() {
+    // Add 3rd eligible trainee to the batch
+    Long trainee3Id = insertAndGetId("""
+        INSERT INTO trainees (registration_number, first_name, last_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
+        VALUES (?, 'Amit', 'Kumar', 1, 101, 1001, 1, 1, NOW(), NOW())
+        """, "REG-AS3-" + runToken);
+    trackedTraineeIds.add(trainee3Id);
+
+    Long enrollment3Id = insertAndGetId("""
+        INSERT INTO training_enrollments (enrollment_number, trainee_id, course_id, provider_id, center_id, batch_id, program_id, enrollment_status_id, enrollment_date, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1, CURDATE(), NOW(), NOW())
+        """, "ENR-AS3-" + runToken, trainee3Id, fixtureCourseId, fixtureProviderId, fixtureCenterId, fixtureBatchId, fixtureProgramId);
+    trackedEnrollmentIds.add(enrollment3Id);
+
+    // Roster now has 3 eligible candidates. Sending 2 must fail on finalize
+    CandidateScoreInput c1 = new CandidateScoreInput();
+    c1.setTraineeId(trainee1Id);
+    c1.setEnrollmentId(enrollment1Id);
+    c1.setAppeared(true);
+    c1.setTheoryScore(new BigDecimal("20.00"));
+    c1.setPracticalScore(new BigDecimal("40.00"));
+    c1.setVivaScore(new BigDecimal("15.00"));
+
+    CandidateScoreInput c2 = new CandidateScoreInput();
+    c2.setTraineeId(trainee2Id);
+    c2.setEnrollmentId(enrollment2Id);
+    c2.setAppeared(true);
+    c2.setTheoryScore(new BigDecimal("22.00"));
+    c2.setPracticalScore(new BigDecimal("42.00"));
+    c2.setVivaScore(new BigDecimal("16.00"));
+
+    SaveAssessmentScoresRequest incompleteFinalizeReq = new SaveAssessmentScoresRequest();
+    incompleteFinalizeReq.setDraft(false);
+    incompleteFinalizeReq.setCandidates(List.of(c1, c2));
+
+    ResponseEntity<String> response = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/finalize"),
+        HttpMethod.POST,
+        new HttpEntity<>(incompleteFinalizeReq, assessor1Headers),
+        String.class
+    );
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(response.getBody()).contains("INCOMPLETE_ROSTER");
+  }
+
+  @Test
+  @DisplayName("8. Duplicate candidates in payload rejected with DUPLICATE_CANDIDATE")
+  void testDuplicateCandidatesRejected() {
+    CandidateScoreInput c1 = new CandidateScoreInput();
+    c1.setTraineeId(trainee1Id);
+    c1.setEnrollmentId(enrollment1Id);
+    c1.setAppeared(true);
+    c1.setTheoryScore(new BigDecimal("20.00"));
+    c1.setPracticalScore(new BigDecimal("40.00"));
+    c1.setVivaScore(new BigDecimal("15.00"));
+
+    CandidateScoreInput c1Duplicate = new CandidateScoreInput();
+    c1Duplicate.setTraineeId(trainee1Id);
+    c1Duplicate.setEnrollmentId(enrollment1Id);
+    c1Duplicate.setAppeared(true);
+    c1Duplicate.setTheoryScore(new BigDecimal("21.00"));
+    c1Duplicate.setPracticalScore(new BigDecimal("41.00"));
+    c1Duplicate.setVivaScore(new BigDecimal("16.00"));
+
+    SaveAssessmentScoresRequest dupReq = new SaveAssessmentScoresRequest();
+    dupReq.setDraft(true);
+    dupReq.setCandidates(List.of(c1, c1Duplicate));
+
+    ResponseEntity<String> response = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/draft"),
+        HttpMethod.POST,
+        new HttpEntity<>(dupReq, assessor1Headers),
+        String.class
+    );
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(response.getBody()).contains("DUPLICATE_CANDIDATE");
+  }
+
+  @Test
+  @DisplayName("9. Foreign candidates outside batch rejected with INVALID_CANDIDATE")
+  void testForeignCandidateRejected() {
+    // Create foreign trainee not in this batch
+    Long foreignTraineeId = insertAndGetId("""
+        INSERT INTO trainees (registration_number, first_name, last_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
+        VALUES (?, 'Foreign', 'User', 1, 101, 1001, 1, 1, NOW(), NOW())
+        """, "REG-FOR-" + runToken);
+    trackedTraineeIds.add(foreignTraineeId);
+
+    CandidateScoreInput foreignInput = new CandidateScoreInput();
+    foreignInput.setTraineeId(foreignTraineeId);
+    foreignInput.setEnrollmentId(99999L);
+    foreignInput.setAppeared(true);
+    foreignInput.setTheoryScore(new BigDecimal("20.00"));
+
+    SaveAssessmentScoresRequest foreignReq = new SaveAssessmentScoresRequest();
+    foreignReq.setDraft(true);
+    foreignReq.setCandidates(List.of(foreignInput));
+
+    ResponseEntity<String> response = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/draft"),
+        HttpMethod.POST,
+        new HttpEntity<>(foreignReq, assessor1Headers),
+        String.class
+    );
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(response.getBody()).contains("INVALID_CANDIDATE");
+  }
+
+  @Test
+  @DisplayName("10. Certificate access control: unassigned assessor gets 403, unauthenticated gets 401")
+  void testCertificateAccessControl() throws Exception {
+    // 1. Finalize assessment to produce a certificate
+    CandidateScoreInput passCandidate = new CandidateScoreInput();
+    passCandidate.setTraineeId(trainee1Id);
+    passCandidate.setEnrollmentId(enrollment1Id);
+    passCandidate.setAppeared(true);
+    passCandidate.setTheoryScore(new BigDecimal("25.00"));
+    passCandidate.setPracticalScore(new BigDecimal("45.00"));
+    passCandidate.setVivaScore(new BigDecimal("15.00"));
+
+    CandidateScoreInput absentCandidate = new CandidateScoreInput();
+    absentCandidate.setTraineeId(trainee2Id);
+    absentCandidate.setEnrollmentId(enrollment2Id);
+    absentCandidate.setAppeared(false);
+
+    SaveAssessmentScoresRequest finalizeReq = new SaveAssessmentScoresRequest();
+    finalizeReq.setDraft(false);
+    finalizeReq.setCandidates(List.of(passCandidate, absentCandidate));
+
+    ResponseEntity<String> finResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/finalize"),
+        HttpMethod.POST,
+        new HttpEntity<>(finalizeReq, assessor1Headers),
+        String.class
+    );
+    assertThat(finResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    Long certId = jdbcTemplate.queryForObject(
+        "SELECT certification_id FROM certifications WHERE trainee_id = ? AND enrollment_id = ?",
+        Long.class, trainee1Id, enrollment1Id);
+    assertThat(certId).isNotNull();
+    trackedCertificationIds.add(certId);
+
+    // 2. Assessor 1 (assigned) downloads -> 200 OK
+    ResponseEntity<byte[]> okResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/certifications/" + certId + "/download"),
+        HttpMethod.GET,
+        new HttpEntity<>(assessor1Headers),
+        byte[].class
+    );
+    assertThat(okResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    // 3. Assessor 2 (unassigned) downloads -> 403 Forbidden
+    ResponseEntity<byte[]> forbiddenResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/certifications/" + certId + "/download"),
+        HttpMethod.GET,
+        new HttpEntity<>(assessor2Headers),
+        byte[].class
+    );
+    assertThat(forbiddenResp.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+    // 4. Unauthenticated caller downloads -> 401 Unauthorized
+    ResponseEntity<byte[]> unauthResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/certifications/" + certId + "/download"),
+        HttpMethod.GET,
+        HttpEntity.EMPTY,
+        byte[].class
+    );
+    assertThat(unauthResp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+  }
+
+  @Test
+  @DisplayName("11. Idempotent re-finalization returns 200 without creating duplicate certs; modified marks rejected")
+  void testIdempotencyAndImmutability() {
+    CandidateScoreInput c1 = new CandidateScoreInput();
+    c1.setTraineeId(trainee1Id);
+    c1.setEnrollmentId(enrollment1Id);
+    c1.setAppeared(true);
+    c1.setTheoryScore(new BigDecimal("25.00"));
+    c1.setPracticalScore(new BigDecimal("45.00"));
+    c1.setVivaScore(new BigDecimal("15.00"));
+
+    CandidateScoreInput c2 = new CandidateScoreInput();
+    c2.setTraineeId(trainee2Id);
+    c2.setEnrollmentId(enrollment2Id);
+    c2.setAppeared(true);
+    c2.setTheoryScore(new BigDecimal("10.00"));
+    c2.setPracticalScore(new BigDecimal("15.00"));
+    c2.setVivaScore(new BigDecimal("5.00"));
+
+    SaveAssessmentScoresRequest finalizeReq = new SaveAssessmentScoresRequest();
+    finalizeReq.setDraft(false);
+    finalizeReq.setCandidates(List.of(c1, c2));
+
+    // First finalization
+    ResponseEntity<String> firstFin = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/finalize"),
+        HttpMethod.POST,
+        new HttpEntity<>(finalizeReq, assessor1Headers),
+        String.class
+    );
+    assertThat(firstFin.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    Integer certCount1 = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM certifications WHERE trainee_id = ? AND enrollment_id = ?",
+        Integer.class, trainee1Id, enrollment1Id);
+    assertThat(certCount1).isEqualTo(1);
+
+    // Identical second finalization (idempotent replay)
+    ResponseEntity<String> secondFin = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/finalize"),
+        HttpMethod.POST,
+        new HttpEntity<>(finalizeReq, assessor1Headers),
+        String.class
+    );
+    assertThat(secondFin.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    // Cert count must remain exactly 1 (no duplicate certs)
+    Integer certCount2 = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM certifications WHERE trainee_id = ? AND enrollment_id = ?",
+        Integer.class, trainee1Id, enrollment1Id);
+    assertThat(certCount2).isEqualTo(1);
+
+    // Different finalization payload (attempting to alter marks) must be rejected
+    c1.setTheoryScore(new BigDecimal("28.00")); // modified score
+    SaveAssessmentScoresRequest modifiedReq = new SaveAssessmentScoresRequest();
+    modifiedReq.setDraft(false);
+    modifiedReq.setCandidates(List.of(c1, c2));
+
+    ResponseEntity<String> alteredFin = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/finalize"),
+        HttpMethod.POST,
+        new HttpEntity<>(modifiedReq, assessor1Headers),
+        String.class
+    );
+    assertThat(alteredFin.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(alteredFin.getBody()).contains("ASSESSMENT_ALREADY_FINALIZED");
+  }
+
+  @Test
+  @DisplayName("12. Historical completion date preserved for already completed enrollments")
+  void testHistoricalCompletionDatePreserved() {
+    // Set enrollment 1 as already COMPLETED with a historical completion date in 2025
+    jdbcTemplate.update("""
+        UPDATE training_enrollments
+        SET enrollment_status_id = 3, actual_completion_date = '2025-04-10'
+        WHERE enrollment_id = ?
+        """, enrollment1Id);
+
+    CandidateScoreInput c1 = new CandidateScoreInput();
+    c1.setTraineeId(trainee1Id);
+    c1.setEnrollmentId(enrollment1Id);
+    c1.setAppeared(true);
+    c1.setTheoryScore(new BigDecimal("25.00"));
+    c1.setPracticalScore(new BigDecimal("45.00"));
+    c1.setVivaScore(new BigDecimal("15.00"));
+
+    CandidateScoreInput c2 = new CandidateScoreInput();
+    c2.setTraineeId(trainee2Id);
+    c2.setEnrollmentId(enrollment2Id);
+    c2.setAppeared(true);
+    c2.setTheoryScore(new BigDecimal("20.00"));
+    c2.setPracticalScore(new BigDecimal("35.00"));
+    c2.setVivaScore(new BigDecimal("10.00"));
+
+    SaveAssessmentScoresRequest finalizeReq = new SaveAssessmentScoresRequest();
+    finalizeReq.setDraft(false);
+    finalizeReq.setCandidates(List.of(c1, c2));
+
+    ResponseEntity<String> response = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/finalize"),
+        HttpMethod.POST,
+        new HttpEntity<>(finalizeReq, assessor1Headers),
+        String.class
+    );
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    // Verify actual_completion_date was NOT overwritten with today!
+    String completionDate = jdbcTemplate.queryForObject(
+        "SELECT actual_completion_date FROM training_enrollments WHERE enrollment_id = ?",
+        String.class, enrollment1Id);
+    assertThat(completionDate).isEqualTo("2025-04-10");
+  }
+
+  @Test
+  @DisplayName("13. Jackson remarks formatting handles quotes, backslashes, and newlines safely")
+  void testJacksonUnicodeRemarksFormatting() throws Exception {
+    String specialRemarks = "Assessor notes: \"Passed with Distinction\" \\ path: C:\\assessments\nStatus: In Review";
+
+    CandidateScoreInput c1 = new CandidateScoreInput();
+    c1.setTraineeId(trainee1Id);
+    c1.setEnrollmentId(enrollment1Id);
+    c1.setAppeared(true);
+    c1.setTheoryScore(new BigDecimal("25.00"));
+    c1.setPracticalScore(new BigDecimal("45.00"));
+    c1.setVivaScore(new BigDecimal("15.00"));
+    c1.setRemarks(specialRemarks);
+
+    CandidateScoreInput c2 = new CandidateScoreInput();
+    c2.setTraineeId(trainee2Id);
+    c2.setEnrollmentId(enrollment2Id);
+    c2.setAppeared(false);
+
+    SaveAssessmentScoresRequest draftReq = new SaveAssessmentScoresRequest();
+    draftReq.setDraft(true);
+    draftReq.setCandidates(List.of(c1, c2));
+
+    ResponseEntity<String> resp = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/draft"),
+        HttpMethod.POST,
+        new HttpEntity<>(draftReq, assessor1Headers),
+        String.class
+    );
+    assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    // Check remarks in database directly
+    String rawRemarks = jdbcTemplate.queryForObject("""
+        SELECT ar.remarks
+        FROM assessment_results ar
+        JOIN trainee_assessments ta ON ar.trainee_assessment_id = ta.trainee_assessment_id
+        WHERE ta.assessment_id = ? AND ta.trainee_id = ?
+        """, String.class, assignedAssessmentId, trainee1Id);
+    assertThat(rawRemarks).isNotNull();
+    assertThat(rawRemarks).contains("Assessor notes: \\\"Passed with Distinction\\\"");
+    assertThat(rawRemarks).contains("C:\\\\assessments");
+    assertThat(rawRemarks).contains("\\nStatus: In Review");
+
+    // Verify valid JSON deserialization back to exact string
+    JsonNode parsedNode = parseResponseJson(rawRemarks);
+    assertThat(parsedNode.get("note").asText()).isEqualTo(specialRemarks);
+
+    // Reopen roster
+    ResponseEntity<String> rosterResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/roster"),
+        HttpMethod.GET,
+        new HttpEntity<>(assessor1Headers),
+        String.class
+    );
+    assertThat(rosterResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    JsonNode rosterData = parseResponseJson(rosterResp.getBody()).get("data");
+    for (JsonNode cand : rosterData.get("candidates")) {
+      if (cand.get("traineeId").asLong() == trainee1Id) {
+        assertThat(cand.get("theoryScore").asDouble()).isEqualTo(25.00);
+        assertThat(cand.get("practicalScore").asDouble()).isEqualTo(45.00);
+        assertThat(cand.get("vivaScore").asDouble()).isEqualTo(15.00);
+      }
+    }
+  }
+
+  @Test
+  @DisplayName("14. Endpoint aliases (/api/v1/assessments/results and /api/v1/certificates/issue) are functional")
   void testEndpointAliases() {
     // Results alias endpoint
     ResponseEntity<String> resultsResp = restTemplate.exchange(

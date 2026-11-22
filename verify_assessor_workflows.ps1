@@ -76,7 +76,7 @@ function Invoke-SafeRequest {
 }
 
 Write-Host "=================================================================" -ForegroundColor Cyan
-Write-Host "SIH-26135 Phase 30.6 Assessor Workbench Verification" -ForegroundColor Cyan
+Write-Host "SIH-26135 Phase 30.6 Assessor Workbench Comprehensive Verification" -ForegroundColor Cyan
 Write-Host "Target: $baseUrl | Database: SIH26135_TEST" -ForegroundColor Cyan
 Write-Host "=================================================================`n" -ForegroundColor Cyan
 
@@ -111,7 +111,7 @@ function Invoke-MysqlQuery {
 }
 
 # -------------------------------------------------------------------------
-# Pre-Execution Safety Invariant: Check Trainee 1005143L and Consents
+# Scenario 1: Pre-Execution Safety Invariant: Check Trainee 1005143L and Consents
 # -------------------------------------------------------------------------
 $traineeCount = Invoke-MysqlQuery "SELECT COUNT(*) FROM trainees WHERE trainee_id = 1005143 AND deleted_at IS NULL;"
 $consentCount = Invoke-MysqlQuery "SELECT COUNT(*) FROM trainee_consents WHERE trainee_id = 1005143 AND consent_status_id = 1;"
@@ -150,6 +150,30 @@ $assessor2Id = (Invoke-MysqlQuery "SELECT user_id FROM users WHERE username = 'a
 Invoke-MysqlQuery @"
 INSERT INTO user_roles (user_id, role_id, assigned_at)
 SELECT $assessor2Id, role_id, NOW() FROM roles WHERE role_code = 'assessor' LIMIT 1;
+"@
+
+# Provision Trainee User 1 (For Trainee Self-Access)
+Invoke-MysqlQuery @"
+INSERT INTO users (username, email, password_hash, password_algo, user_status_id, created_at, updated_at)
+VALUES ('trainee_user1_$runToken', 'trainee1_$runToken@test.gov.in', '$argonHash', 'argon2id', 2, NOW(), NOW());
+"@
+$trainee1UserId = (Invoke-MysqlQuery "SELECT user_id FROM users WHERE username = 'trainee_user1_$runToken';").Trim()
+
+Invoke-MysqlQuery @"
+INSERT INTO user_roles (user_id, role_id, assigned_at)
+SELECT $trainee1UserId, role_id, NOW() FROM roles WHERE role_code = 'trainee' LIMIT 1;
+"@
+
+# Provision Trainee User 2 (For Cross-Trainee Access Rejection)
+Invoke-MysqlQuery @"
+INSERT INTO users (username, email, password_hash, password_algo, user_status_id, created_at, updated_at)
+VALUES ('trainee_user2_$runToken', 'trainee2_$runToken@test.gov.in', '$argonHash', 'argon2id', 2, NOW(), NOW());
+"@
+$trainee2UserId = (Invoke-MysqlQuery "SELECT user_id FROM users WHERE username = 'trainee_user2_$runToken';").Trim()
+
+Invoke-MysqlQuery @"
+INSERT INTO user_roles (user_id, role_id, assigned_at)
+SELECT $trainee2UserId, role_id, NOW() FROM roles WHERE role_code = 'trainee' LIMIT 1;
 "@
 
 # Domain Hierarchy
@@ -207,10 +231,10 @@ VALUES ('BAT-VER-$runToken', $courseId, $providerId, $centerId, $programId, '202
 "@
 $batchId = (Invoke-MysqlQuery "SELECT batch_id FROM training_batches WHERE batch_code = 'BAT-VER-$runToken';").Trim()
 
-# Trainee 1 (Will Pass)
+# Trainee 1 (Will Pass - Linked to trainee_user1)
 Invoke-MysqlQuery @"
-INSERT INTO trainees (registration_number, first_name, last_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
-VALUES ('REG-T1-$runToken', 'Ankit', 'Kumar', 1, 101, 1001, 1, 1, NOW(), NOW());
+INSERT INTO trainees (user_id, registration_number, first_name, last_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
+VALUES ($trainee1UserId, 'REG-T1-$runToken', 'Ankit', 'Kumar', 1, 101, 1001, 1, 1, NOW(), NOW());
 "@
 $trainee1Id = (Invoke-MysqlQuery "SELECT trainee_id FROM trainees WHERE registration_number = 'REG-T1-$runToken';").Trim()
 
@@ -220,10 +244,10 @@ VALUES ('ENR-T1-$runToken', $trainee1Id, $courseId, $providerId, $centerId, $bat
 "@
 $enrollment1Id = (Invoke-MysqlQuery "SELECT enrollment_id FROM training_enrollments WHERE enrollment_number = 'ENR-T1-$runToken';").Trim()
 
-# Trainee 2 (Will Fail)
+# Trainee 2 (Will Fail - Linked to trainee_user2)
 Invoke-MysqlQuery @"
-INSERT INTO trainees (registration_number, first_name, last_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
-VALUES ('REG-T2-$runToken', 'Sunita', 'Rani', 2, 101, 1001, 1, 1, NOW(), NOW());
+INSERT INTO trainees (user_id, registration_number, first_name, last_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
+VALUES ($trainee2UserId, 'REG-T2-$runToken', 'Sunita', 'Rani', 2, 101, 1001, 1, 1, NOW(), NOW());
 "@
 $trainee2Id = (Invoke-MysqlQuery "SELECT trainee_id FROM trainees WHERE registration_number = 'REG-T2-$runToken';").Trim()
 
@@ -232,6 +256,19 @@ INSERT INTO training_enrollments (enrollment_number, trainee_id, course_id, prov
 VALUES ('ENR-T2-$runToken', $trainee2Id, $courseId, $providerId, $centerId, $batchId, $programId, 1, CURDATE(), NOW(), NOW());
 "@
 $enrollment2Id = (Invoke-MysqlQuery "SELECT enrollment_id FROM training_enrollments WHERE enrollment_number = 'ENR-T2-$runToken';").Trim()
+
+# Trainee 3 (Will Be Absent)
+Invoke-MysqlQuery @"
+INSERT INTO trainees (registration_number, first_name, last_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
+VALUES ('REG-T3-$runToken', 'Manish', 'Tiwari', 1, 101, 1001, 1, 1, NOW(), NOW());
+"@
+$trainee3Id = (Invoke-MysqlQuery "SELECT trainee_id FROM trainees WHERE registration_number = 'REG-T3-$runToken';").Trim()
+
+Invoke-MysqlQuery @"
+INSERT INTO training_enrollments (enrollment_number, trainee_id, course_id, provider_id, center_id, batch_id, program_id, enrollment_status_id, enrollment_date, created_at, updated_at)
+VALUES ('ENR-T3-$runToken', $trainee3Id, $courseId, $providerId, $centerId, $batchId, $programId, 1, CURDATE(), NOW(), NOW());
+"@
+$enrollment3Id = (Invoke-MysqlQuery "SELECT enrollment_id FROM training_enrollments WHERE enrollment_number = 'ENR-T3-$runToken';").Trim()
 
 # Assessment assigned to Assessor 1
 Invoke-MysqlQuery @"
@@ -293,6 +330,45 @@ try {
 }
 
 # -------------------------------------------------------------------------
+# Trainee 1 & 2 Login for Direct Self-Access Testing
+# -------------------------------------------------------------------------
+$trainee1Token = $null
+$trainee1Headers = @{}
+try {
+    $t1LoginBody = @{
+        usernameOrEmail = "trainee_user1_$runToken"
+        password = "RawPassword123"
+    } | ConvertTo-Json
+    $res = Invoke-SafeRequest -Uri "$baseUrl/api/v1/auth/login" -Method "Post" -Body $t1LoginBody
+    if ($res.StatusCode -eq 200) {
+        $json = $res.Content | ConvertFrom-Json
+        $trainee1Token = $json.data.accessToken
+        $trainee1Headers = @{
+            "Authorization" = "Bearer $trainee1Token"
+            "Content-Type" = "application/json"
+        }
+    }
+} catch {}
+
+$trainee2Token = $null
+$trainee2Headers = @{}
+try {
+    $t2LoginBody = @{
+        usernameOrEmail = "trainee_user2_$runToken"
+        password = "RawPassword123"
+    } | ConvertTo-Json
+    $res = Invoke-SafeRequest -Uri "$baseUrl/api/v1/auth/login" -Method "Post" -Body $t2LoginBody
+    if ($res.StatusCode -eq 200) {
+        $json = $res.Content | ConvertFrom-Json
+        $trainee2Token = $json.data.accessToken
+        $trainee2Headers = @{
+            "Authorization" = "Bearer $trainee2Token"
+            "Content-Type" = "application/json"
+        }
+    }
+} catch {}
+
+# -------------------------------------------------------------------------
 # Scenario 4: Fetch Assigned Assessments for Assessor 1
 # -------------------------------------------------------------------------
 try {
@@ -303,10 +379,10 @@ try {
         foreach ($item in $json.data) {
             if ($item.id -eq [int64]$assessmentId) {
                 $found = $true
-                if ($item.assessmentCode -eq "ASM-VER-$runToken" -and $item.totalCandidates -eq 2 -and $item.maximumScore -eq 100.0) {
-                    Record-Result 4 "Assessor 1 Assigned Assessment Listing" $true "Assessment ASM-VER-$runToken found with 2 candidates and 100 max score"
+                if ($item.assessmentCode -eq "ASM-VER-$runToken" -and $item.totalCandidates -eq 3 -and $item.maximumScore -eq 100.0) {
+                    Record-Result 4 "Assessor 1 Assigned Assessment Listing" $true "Assessment ASM-VER-$runToken found with 3 candidates and 100 max score"
                 } else {
-                    Record-Result 4 "Assessor 1 Assigned Assessment Listing" $false "Assessment found but unexpected metadata"
+                    Record-Result 4 "Assessor 1 Assigned Assessment Listing" $false "Assessment found but unexpected metadata (totalCandidates=$($item.totalCandidates))"
                 }
             }
         }
@@ -367,10 +443,10 @@ try {
     if ($rosterRes.StatusCode -eq 200) {
         $json = $rosterRes.Content | ConvertFrom-Json
         $candidates = $json.data.candidates
-        if ($candidates.Count -eq 2) {
-            Record-Result 7 "Assessor Retrieves Candidate Roster" $true "Candidate roster retrieved with exactly 2 enrolled trainees"
+        if ($candidates.Count -eq 3) {
+            Record-Result 7 "Assessor Retrieves Candidate Roster" $true "Candidate roster retrieved with exactly 3 enrolled trainees"
         } else {
-            Record-Result 7 "Assessor Retrieves Candidate Roster" $false "Expected 2 candidates, got $($candidates.Count)"
+            Record-Result 7 "Assessor Retrieves Candidate Roster" $false "Expected 3 candidates, got $($candidates.Count)"
         }
     } else {
         Record-Result 7 "Assessor Retrieves Candidate Roster" $false "HTTP $($rosterRes.StatusCode): $($rosterRes.Content)"
@@ -435,8 +511,109 @@ try {
 }
 
 # -------------------------------------------------------------------------
-# Scenario 9: Save Draft Scores (Partial marks, no certificate)
+# Scenario 9: Duplicate Candidate ID & Mismatched Enrollment Rejection
 # -------------------------------------------------------------------------
+try {
+    $dupBody = @{
+        isDraft = $true
+        candidates = @(
+            @{
+                traineeId = [int64]$trainee1Id
+                enrollmentId = [int64]$enrollment1Id
+                appeared = $true
+                theoryScore = 20.0
+                practicalScore = 40.0
+                vivaScore = 15.0
+            },
+            @{
+                traineeId = [int64]$trainee1Id
+                enrollmentId = [int64]$enrollment1Id
+                appeared = $true
+                theoryScore = 22.0
+                practicalScore = 42.0
+                vivaScore = 16.0
+            }
+        )
+    } | ConvertTo-Json
+    $dupRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$assessmentId/draft" -Method "Post" -Body $dupBody -Headers $headers1
+
+    if ($dupRes.StatusCode -eq 400 -and $dupRes.Content -like "*DUPLICATE_CANDIDATE*") {
+        Record-Result 9 "Duplicate Candidate Payload Rejection" $true "Duplicate candidate IDs in payload rejected with HTTP 400 DUPLICATE_CANDIDATE"
+    } else {
+        Record-Result 9 "Duplicate Candidate Payload Rejection" $false "Expected HTTP 400 DUPLICATE_CANDIDATE, got $($dupRes.StatusCode): $($dupRes.Content)"
+    }
+} catch {
+    Record-Result 9 "Duplicate Candidate Payload Rejection" $false $_.Exception.Message
+}
+
+# -------------------------------------------------------------------------
+# Scenario 10: Foreign Candidate Injection Rejection
+# -------------------------------------------------------------------------
+try {
+    $foreignTraineeId = (Invoke-MysqlQuery "SELECT trainee_id FROM trainees LIMIT 1;").Trim()
+    $foreignBody = @{
+        isDraft = $true
+        candidates = @(
+            @{
+                traineeId = 999999
+                enrollmentId = 999999
+                appeared = $true
+                theoryScore = 20.0
+            }
+        )
+    } | ConvertTo-Json
+    $foreignRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$assessmentId/draft" -Method "Post" -Body $foreignBody -Headers $headers1
+
+    if ($foreignRes.StatusCode -eq 400 -and $foreignRes.Content -like "*INVALID_CANDIDATE*") {
+        Record-Result 10 "Foreign Candidate Injection Rejection" $true "Foreign candidate outside batch rejected with HTTP 400 INVALID_CANDIDATE"
+    } else {
+        Record-Result 10 "Foreign Candidate Injection Rejection" $false "Expected HTTP 400 INVALID_CANDIDATE, got $($foreignRes.StatusCode): $($foreignRes.Content)"
+    }
+} catch {
+    Record-Result 10 "Foreign Candidate Injection Rejection" $false $_.Exception.Message
+}
+
+# -------------------------------------------------------------------------
+# Scenario 11: Incomplete Roster Finalization Rejection (Batch has 3, payload has 2)
+# -------------------------------------------------------------------------
+try {
+    $incompleteBody = @{
+        isDraft = $false
+        candidates = @(
+            @{
+                traineeId = [int64]$trainee1Id
+                enrollmentId = [int64]$enrollment1Id
+                appeared = $true
+                theoryScore = 25.00
+                practicalScore = 45.00
+                vivaScore = 18.00
+            },
+            @{
+                traineeId = [int64]$trainee2Id
+                enrollmentId = [int64]$enrollment2Id
+                appeared = $true
+                theoryScore = 10.00
+                practicalScore = 15.00
+                vivaScore = 5.00
+            }
+        )
+    } | ConvertTo-Json
+
+    $incompRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$assessmentId/finalize" -Method "Post" -Body $incompleteBody -Headers $headers1
+
+    if ($incompRes.StatusCode -eq 400 -and $incompRes.Content -like "*INCOMPLETE_ROSTER*") {
+        Record-Result 11 "Incomplete Roster Finalization Rejection" $true "Finalization missing candidate Trainee #$trainee3Id correctly rejected with HTTP 400 INCOMPLETE_ROSTER"
+    } else {
+        Record-Result 11 "Incomplete Roster Finalization Rejection" $false "Expected HTTP 400 INCOMPLETE_ROSTER, got $($incompRes.StatusCode): $($incompRes.Content)"
+    }
+} catch {
+    Record-Result 11 "Incomplete Roster Finalization Rejection" $false $_.Exception.Message
+}
+
+# -------------------------------------------------------------------------
+# Scenario 12: Save Draft Scores (Partial marks, all candidates, no certificate)
+# -------------------------------------------------------------------------
+$specialRemarks = 'Assessor notes: "Passed with Distinction" \ path: C:\assessments' + [char]10 + 'Status: In Progress'
 $draftBody = @{
     isDraft = $true
     candidates = @(
@@ -447,7 +624,7 @@ $draftBody = @{
             theoryScore = 22.50
             practicalScore = 38.00
             vivaScore = $null
-            remarks = "Draft score observation"
+            remarks = $specialRemarks
         },
         @{
             traineeId = [int64]$trainee2Id
@@ -457,6 +634,12 @@ $draftBody = @{
             practicalScore = $null
             vivaScore = $null
             remarks = "Candidate partially evaluated"
+        },
+        @{
+            traineeId = [int64]$trainee3Id
+            enrollmentId = [int64]$enrollment3Id
+            appeared = $false
+            remarks = "Absent during draft evaluation"
         }
     )
 } | ConvertTo-Json
@@ -464,37 +647,129 @@ $draftBody = @{
 try {
     $draftRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$assessmentId/draft" -Method "Post" -Body $draftBody -Headers $headers1
     if ($draftRes.StatusCode -eq 200) {
-        $certCount = Invoke-MysqlQuery "SELECT COUNT(*) FROM certifications WHERE enrollment_id IN ($enrollment1Id, $enrollment2Id);"
+        $certCount = Invoke-MysqlQuery "SELECT COUNT(*) FROM certifications WHERE enrollment_id IN ($enrollment1Id, $enrollment2Id, $enrollment3Id);"
         $lifecycle = Invoke-MysqlQuery "SELECT lifecycle_status_id FROM assessments WHERE assessment_id = $assessmentId;"
 
         if ([int]$certCount.Trim() -eq 0 -and [int]$lifecycle.Trim() -eq 1) {
-            Record-Result 9 "Draft Score Persistence Without Certification" $true "Draft scores saved: 0 certificates issued, assessment lifecycle remains SCHEDULED (1)"
+            Record-Result 12 "Draft Score Persistence Without Certification" $true "Draft scores saved: 0 certificates issued, assessment lifecycle remains SCHEDULED (1)"
         } else {
-            Record-Result 9 "Draft Score Persistence Without Certification" $false "certCount=$certCount, lifecycle=$lifecycle"
+            Record-Result 12 "Draft Score Persistence Without Certification" $false "certCount=$certCount, lifecycle=$lifecycle"
         }
     } else {
-        Record-Result 9 "Draft Score Persistence Without Certification" $false "HTTP $($draftRes.StatusCode): $($draftRes.Content)"
+        Record-Result 12 "Draft Score Persistence Without Certification" $false "HTTP $($draftRes.StatusCode): $($draftRes.Content)"
     }
 } catch {
-    Record-Result 9 "Draft Score Persistence Without Certification" $false $_.Exception.Message
+    Record-Result 12 "Draft Score Persistence Without Certification" $false $_.Exception.Message
 }
 
 # -------------------------------------------------------------------------
-# Scenario 10: Finalize Assessment & Authoritative Certification Issuance
+# Scenario 13: Finalize Assessment & Authoritative Certification Issuance
 # -------------------------------------------------------------------------
 $certId = $null
+$fullFinalizeBody = @{
+    isDraft = $false
+    candidates = @(
+        @{
+            traineeId = [int64]$trainee1Id
+            enrollmentId = [int64]$enrollment1Id
+            appeared = $true
+            theoryScore = 25.00
+            practicalScore = 45.00
+            vivaScore = 18.00
+            remarks = "Outstanding performance in inverter wiring"
+        },
+        @{
+            traineeId = [int64]$trainee2Id
+            enrollmentId = [int64]$enrollment2Id
+            appeared = $true
+            theoryScore = 10.00
+            practicalScore = 15.00
+            vivaScore = 5.00
+            remarks = "Failed minimum safety threshold"
+        },
+        @{
+            traineeId = [int64]$trainee3Id
+            enrollmentId = [int64]$enrollment3Id
+            appeared = $false
+            remarks = "Absent during final assessment"
+        }
+    )
+} | ConvertTo-Json
+
 try {
-    $finalizeBody = @{
+    $finalizeRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$assessmentId/finalize" -Method "Post" -Body $fullFinalizeBody -Headers $headers1
+
+    if ($finalizeRes.StatusCode -eq 200) {
+        # Verify Database Outcomes
+        $t1Outcome = (Invoke-MysqlQuery "SELECT ar.assessment_outcome_id FROM assessment_results ar JOIN trainee_assessments ta ON ar.trainee_assessment_id = ta.trainee_assessment_id WHERE ta.assessment_id = $assessmentId AND ta.trainee_id = $trainee1Id;").Trim()
+        $t2Outcome = (Invoke-MysqlQuery "SELECT ar.assessment_outcome_id FROM assessment_results ar JOIN trainee_assessments ta ON ar.trainee_assessment_id = ta.trainee_assessment_id WHERE ta.assessment_id = $assessmentId AND ta.trainee_id = $trainee2Id;").Trim()
+        $t3Outcome = (Invoke-MysqlQuery "SELECT ar.assessment_outcome_id FROM assessment_results ar JOIN trainee_assessments ta ON ar.trainee_assessment_id = ta.trainee_assessment_id WHERE ta.assessment_id = $assessmentId AND ta.trainee_id = $trainee3Id;").Trim()
+
+        $t1CertId = (Invoke-MysqlQuery "SELECT certification_id FROM certifications WHERE trainee_id = $trainee1Id AND enrollment_id = $enrollment1Id;").Trim()
+        $t2CertCount = (Invoke-MysqlQuery "SELECT COUNT(*) FROM certifications WHERE trainee_id = $trainee2Id;").Trim()
+        $t3CertCount = (Invoke-MysqlQuery "SELECT COUNT(*) FROM certifications WHERE trainee_id = $trainee3Id;").Trim()
+
+        $t1EnrollmentStatus = (Invoke-MysqlQuery "SELECT enrollment_status_id FROM training_enrollments WHERE enrollment_id = $enrollment1Id;").Trim()
+        $t2EnrollmentStatus = (Invoke-MysqlQuery "SELECT enrollment_status_id FROM training_enrollments WHERE enrollment_id = $enrollment2Id;").Trim()
+        $t3EnrollmentStatus = (Invoke-MysqlQuery "SELECT enrollment_status_id FROM training_enrollments WHERE enrollment_id = $enrollment3Id;").Trim()
+
+        $asmLifecycle = (Invoke-MysqlQuery "SELECT lifecycle_status_id FROM assessments WHERE assessment_id = $assessmentId;").Trim()
+
+        # Certificate status and verification status check
+        $certStatus = (Invoke-MysqlQuery "SELECT certificate_status_id FROM certifications WHERE certification_id = $t1CertId;").Trim()
+        $certVerif = (Invoke-MysqlQuery "SELECT certificate_verification_status_id FROM certifications WHERE certification_id = $t1CertId;").Trim()
+        $verifiedAt = (Invoke-MysqlQuery "SELECT IFNULL(verified_at, 'NULL') FROM certifications WHERE certification_id = $t1CertId;").Trim()
+        $issuingBody = (Invoke-MysqlQuery "SELECT issuing_body FROM certifications WHERE certification_id = $t1CertId;").Trim()
+
+        $certId = $t1CertId
+
+        $validCert = ([int]$certStatus -eq 1 -and [int]$certVerif -eq 2 -and $verifiedAt -eq "NULL" -and $issuingBody -like "*Green Skills Council*")
+
+        if ([int]$t1Outcome -eq 2 -and [int]$t2Outcome -eq 3 -and [int]$t3Outcome -eq 4 -and [int]$t1CertId -gt 0 -and [int]$t2CertCount -eq 0 -and [int]$t3CertCount -eq 0 -and [int]$t1EnrollmentStatus -eq 3 -and [int]$t2EnrollmentStatus -eq 1 -and [int]$t3EnrollmentStatus -eq 1 -and [int]$asmLifecycle -eq 2 -and $validCert) {
+            Record-Result 13 "Finalize Assessment & Authoritative Certification" $true "Passing candidate certified with status=ISSUED (1), verif=PENDING (2), verified_at=NULL, issuing_body='$issuingBody'; failing/absent candidates 0 certs"
+        } else {
+            Record-Result 13 "Finalize Assessment & Authoritative Certification" $false "t1Out=$t1Outcome, t2Out=$t2Outcome, t3Out=$t3Outcome, certStatus=$certStatus, certVerif=$certVerif, verifiedAt=$verifiedAt, issuingBody=$issuingBody"
+        }
+    } else {
+        Record-Result 13 "Finalize Assessment & Authoritative Certification" $false "HTTP $($finalizeRes.StatusCode): $($finalizeRes.Content)"
+    }
+} catch {
+    Record-Result 13 "Finalize Assessment & Authoritative Certification" $false $_.Exception.Message
+}
+
+# -------------------------------------------------------------------------
+# Scenario 14: Idempotent Re-finalization Returns 200 With Zero Extra Certs
+# -------------------------------------------------------------------------
+try {
+    $reFinRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$assessmentId/finalize" -Method "Post" -Body $fullFinalizeBody -Headers $headers1
+    if ($reFinRes.StatusCode -eq 200) {
+        $certCountAfter = (Invoke-MysqlQuery "SELECT COUNT(*) FROM certifications WHERE trainee_id = $trainee1Id AND enrollment_id = $enrollment1Id;").Trim()
+        if ([int]$certCountAfter -eq 1) {
+            Record-Result 14 "Idempotent Re-finalization Safe Handling" $true "Identical finalization payload returned HTTP 200 read-only response with zero duplicate certs"
+        } else {
+            Record-Result 14 "Idempotent Re-finalization Safe Handling" $false "Duplicate certificates generated! Count=$certCountAfter"
+        }
+    } else {
+        Record-Result 14 "Idempotent Re-finalization Safe Handling" $false "Expected HTTP 200, got $($reFinRes.StatusCode): $($reFinRes.Content)"
+    }
+} catch {
+    Record-Result 14 "Idempotent Re-finalization Safe Handling" $false $_.Exception.Message
+}
+
+# -------------------------------------------------------------------------
+# Scenario 15: Modifying Marks on Finalized Assessment Rejected
+# -------------------------------------------------------------------------
+try {
+    $altFinalizeBody = @{
         isDraft = $false
         candidates = @(
             @{
                 traineeId = [int64]$trainee1Id
                 enrollmentId = [int64]$enrollment1Id
                 appeared = $true
-                theoryScore = 25.00
-                practicalScore = 45.00
-                vivaScore = 18.00
-                remarks = "Outstanding performance in inverter wiring"
+                theoryScore = 28.00  # Altered mark
+                practicalScore = 48.00
+                vivaScore = 19.00
             },
             @{
                 traineeId = [int64]$trainee2Id
@@ -503,104 +778,188 @@ try {
                 theoryScore = 10.00
                 practicalScore = 15.00
                 vivaScore = 5.00
-                remarks = "Failed minimum safety threshold"
+            },
+            @{
+                traineeId = [int64]$trainee3Id
+                enrollmentId = [int64]$enrollment3Id
+                appeared = $false
             }
         )
     } | ConvertTo-Json
 
-    $finalizeRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$assessmentId/finalize" -Method "Post" -Body $finalizeBody -Headers $headers1
+    $altFinRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$assessmentId/finalize" -Method "Post" -Body $altFinalizeBody -Headers $headers1
 
-    if ($finalizeRes.StatusCode -eq 200) {
-        # Verify Database Outcomes
-        $t1Outcome = (Invoke-MysqlQuery "SELECT ar.assessment_outcome_id FROM assessment_results ar JOIN trainee_assessments ta ON ar.trainee_assessment_id = ta.trainee_assessment_id WHERE ta.assessment_id = $assessmentId AND ta.trainee_id = $trainee1Id;").Trim()
-        $t2Outcome = (Invoke-MysqlQuery "SELECT ar.assessment_outcome_id FROM assessment_results ar JOIN trainee_assessments ta ON ar.trainee_assessment_id = ta.trainee_assessment_id WHERE ta.assessment_id = $assessmentId AND ta.trainee_id = $trainee2Id;").Trim()
-        
-        $t1CertId = (Invoke-MysqlQuery "SELECT certification_id FROM certifications WHERE trainee_id = $trainee1Id AND enrollment_id = $enrollment1Id;").Trim()
-        $t2CertCount = (Invoke-MysqlQuery "SELECT COUNT(*) FROM certifications WHERE trainee_id = $trainee2Id;").Trim()
-        
-        $t1EnrollmentStatus = (Invoke-MysqlQuery "SELECT enrollment_status_id FROM training_enrollments WHERE enrollment_id = $enrollment1Id;").Trim()
-        $t2EnrollmentStatus = (Invoke-MysqlQuery "SELECT enrollment_status_id FROM training_enrollments WHERE enrollment_id = $enrollment2Id;").Trim()
-        
-        $asmLifecycle = (Invoke-MysqlQuery "SELECT lifecycle_status_id FROM assessments WHERE assessment_id = $assessmentId;").Trim()
-
-        $certId = $t1CertId
-
-        if ([int]$t1Outcome -eq 2 -and [int]$t2Outcome -eq 3 -and [int]$t1CertId -gt 0 -and [int]$t2CertCount -eq 0 -and [int]$t1EnrollmentStatus -eq 3 -and [int]$t2EnrollmentStatus -eq 1 -and [int]$asmLifecycle -eq 2) {
-            Record-Result 10 "Finalize Assessment & Authoritative Evaluation" $true "Passing candidate certified & enrollment completed; failing candidate declared FAIL with 0 certs; assessment lifecycle = FINALIZED"
-        } else {
-            Record-Result 10 "Finalize Assessment & Authoritative Evaluation" $false "t1Outcome=$t1Outcome, t2Outcome=$t2Outcome, t1CertId=$t1CertId, t2Certs=$t2CertCount, t1Enr=$t1EnrollmentStatus, t2Enr=$t2EnrollmentStatus, asmLifecycle=$asmLifecycle"
-        }
+    if ($altFinRes.StatusCode -eq 400 -and $altFinRes.Content -like "*ASSESSMENT_ALREADY_FINALIZED*") {
+        Record-Result 15 "Altered Finalization Marks Rejection Guard" $true "Re-finalization with altered marks rejected with HTTP 400 ASSESSMENT_ALREADY_FINALIZED"
     } else {
-        Record-Result 10 "Finalize Assessment & Authoritative Evaluation" $false "HTTP $($finalizeRes.StatusCode): $($finalizeRes.Content)"
+        Record-Result 15 "Altered Finalization Marks Rejection Guard" $false "Expected HTTP 400 ASSESSMENT_ALREADY_FINALIZED, got $($altFinRes.StatusCode): $($altFinRes.Content)"
     }
 } catch {
-    Record-Result 10 "Finalize Assessment & Authoritative Evaluation" $false $_.Exception.Message
+    Record-Result 15 "Altered Finalization Marks Rejection Guard" $false $_.Exception.Message
 }
 
 # -------------------------------------------------------------------------
-# Scenario 11: Finalized Assessment Immutability Check
+# Scenario 16: Draft Submission on Finalized Assessment Rejected
 # -------------------------------------------------------------------------
 try {
     $editAttempt = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$assessmentId/draft" -Method "Post" -Body $draftBody -Headers $headers1
-    if ($editAttempt.StatusCode -eq 400) {
-        Record-Result 11 "Finalized Assessment Immutability Guard" $true "Subsequent modification rejected with HTTP 400 (ASSESSMENT_ALREADY_FINALIZED)"
+    if ($editAttempt.StatusCode -eq 400 -and $editAttempt.Content -like "*ASSESSMENT_ALREADY_FINALIZED*") {
+        Record-Result 16 "Draft Modification on Finalized Assessment Guard" $true "Draft submission rejected with HTTP 400 ASSESSMENT_ALREADY_FINALIZED"
     } else {
-        Record-Result 11 "Finalized Assessment Immutability Guard" $false "Expected HTTP 400 but got $($editAttempt.StatusCode)"
+        Record-Result 16 "Draft Modification on Finalized Assessment Guard" $false "Expected HTTP 400 but got $($editAttempt.StatusCode)"
     }
 } catch {
-    Record-Result 11 "Finalized Assessment Immutability Guard" $false $_.Exception.Message
+    Record-Result 16 "Draft Modification on Finalized Assessment Guard" $false $_.Exception.Message
 }
 
 # -------------------------------------------------------------------------
-# Scenario 12: Authentic PDF Certificate Download & Magic Byte Validation
+# Scenario 17: Historical Enrollment Completion Date Preservation
+# -------------------------------------------------------------------------
+try {
+    # Set Trainee 1 enrollment to historical completion date
+    Invoke-MysqlQuery "UPDATE training_enrollments SET actual_completion_date = '2025-05-10' WHERE enrollment_id = $enrollment1Id;"
+
+    # Re-trigger idempotent finalization
+    $resp = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$assessmentId/finalize" -Method "Post" -Body $fullFinalizeBody -Headers $headers1
+    $savedCompletionDate = (Invoke-MysqlQuery "SELECT actual_completion_date FROM training_enrollments WHERE enrollment_id = $enrollment1Id;").Trim()
+
+    if ($savedCompletionDate -eq "2025-05-10") {
+        Record-Result 17 "Historical Completion Date Preservation" $true "Historical completion date '2025-05-10' safely preserved without being overwritten"
+    } else {
+        Record-Result 17 "Historical Completion Date Preservation" $false "Expected '2025-05-10', found '$savedCompletionDate'"
+    }
+} catch {
+    Record-Result 17 "Historical Completion Date Preservation" $false $_.Exception.Message
+}
+
+# -------------------------------------------------------------------------
+# Scenario 18: Cross-Assessor & Unauthenticated Certificate Access Guard
+# -------------------------------------------------------------------------
+try {
+    if ($certId) {
+        # Assessor 1 (Assigned) -> 200 OK
+        $pdf1Res = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certifications/$certId/download" -Method "Get" -Headers $headers1
+        # Assessor 2 (Unassigned) -> 403 Forbidden
+        $pdf2Res = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certifications/$certId/download" -Method "Get" -Headers $headers2
+        # Unauthenticated -> 401 Unauthorized
+        $unauthPdfRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certifications/$certId/download" -Method "Get" -Headers @{}
+
+        if ($pdf1Res.StatusCode -eq 200 -and $pdf2Res.StatusCode -eq 403 -and $unauthPdfRes.StatusCode -eq 401) {
+            Record-Result 18 "Certificate Download Access Authorization Guard" $true "Assigned assessor: 200 OK; Unassigned assessor: 403 Forbidden; Unauthenticated: 401 Unauthorized"
+        } else {
+            Record-Result 18 "Certificate Download Access Authorization Guard" $false "Assessor1=$($pdf1Res.StatusCode), Assessor2=$($pdf2Res.StatusCode), Unauth=$($unauthPdfRes.StatusCode)"
+        }
+    } else {
+        Record-Result 18 "Certificate Download Access Authorization Guard" $false "No certId available"
+    }
+} catch {
+    Record-Result 18 "Certificate Download Access Authorization Guard" $false $_.Exception.Message
+}
+
+# -------------------------------------------------------------------------
+# Scenario 19: Trainee Tenancy Certificate Access (Owner allowed, Cross-Trainee denied)
+# -------------------------------------------------------------------------
+try {
+    if ($certId -and $trainee1Headers.Count -gt 0 -and $trainee2Headers.Count -gt 0) {
+        # Trainee 1 (Owner) -> 200 OK
+        $t1PdfRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certifications/$certId/download" -Method "Get" -Headers $trainee1Headers
+        # Trainee 2 (Non-owner) -> 403 Forbidden
+        $t2PdfRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certifications/$certId/download" -Method "Get" -Headers $trainee2Headers
+
+        if ($t1PdfRes.StatusCode -eq 200 -and $t2PdfRes.StatusCode -eq 403) {
+            Record-Result 19 "Trainee Tenancy Certificate Isolation Guard" $true "Certificate owner trainee: 200 OK; Cross-trainee: 403 Forbidden"
+        } else {
+            Record-Result 19 "Trainee Tenancy Certificate Isolation Guard" $false "Owner=$($t1PdfRes.StatusCode), Cross-Trainee=$($t2PdfRes.StatusCode)"
+        }
+    } else {
+        Record-Result 19 "Trainee Tenancy Certificate Isolation Guard" $false "Trainee tokens or certId unavailable"
+    }
+} catch {
+    Record-Result 19 "Trainee Tenancy Certificate Isolation Guard" $false $_.Exception.Message
+}
+
+# -------------------------------------------------------------------------
+# Scenario 20: Authentic PDF Generation & Content Stream Validation
 # -------------------------------------------------------------------------
 try {
     if ($certId) {
         $pdfRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certifications/$certId/download" -Method "Get" -Headers $headers1
-        $contentType = $pdfRes.Headers["Content-Type"]
-        $rawBytes = $pdfRes.Raw.RawContent
-        $contentStr = $pdfRes.Content
-
-        if ($pdfRes.StatusCode -eq 200 -and ($contentType -like "*application/pdf*" -or $contentStr.StartsWith("%PDF-"))) {
-            Record-Result 12 "Authentic PDF Certificate Download Stream" $true "Certificate downloaded with valid '%PDF-' header"
+        $contentStr = if ($pdfRes.Content -is [byte[]]) {
+            [System.Text.Encoding]::ASCII.GetString($pdfRes.Content)
+        } elseif ($pdfRes.Content -is [string]) {
+            $pdfRes.Content
         } else {
-            Record-Result 12 "Authentic PDF Certificate Download Stream" $false "StatusCode=$($pdfRes.StatusCode), ContentType=$contentType"
+            [System.Text.Encoding]::ASCII.GetString($pdfRes.Raw.RawContent)
+        }
+
+        $hasMagic = $contentStr.StartsWith("%PDF-1.4")
+        $hasEof = $contentStr.Contains("%%EOF")
+        $hasCourse = $contentStr.Contains("CRS-VER-$runToken")
+        $hasCertNum = $contentStr.Contains("CERT-CRS-VER-")
+        $hasStatus = $contentStr.Contains("Credential Status: ACTIVE / ISSUED")
+        $hasVerif = $contentStr.Contains("Verification Status: PENDING VERIFICATION")
+
+        if ($pdfRes.StatusCode -eq 200 -and $hasMagic -and $hasEof -and $hasCourse -and $hasCertNum -and $hasStatus -and $hasVerif) {
+            Record-Result 20 "Authentic PDF Content Stream & Status Integrity" $true "Valid PDF-1.4 with %%EOF, matching Course Code, Certificate Number, ACTIVE status, and PENDING verification banner"
+        } else {
+            Record-Result 20 "Authentic PDF Content Stream & Status Integrity" $false "Magic=$hasMagic, EOF=$hasEof, Course=$hasCourse, Cert=$hasCertNum, Status=$hasStatus, Verif=$hasVerif"
         }
     } else {
-        Record-Result 12 "Authentic PDF Certificate Download Stream" $false "No certId available from Scenario 10"
+        Record-Result 20 "Authentic PDF Content Stream & Status Integrity" $false "No certId available"
     }
 } catch {
-    Record-Result 12 "Authentic PDF Certificate Download Stream" $false $_.Exception.Message
+    Record-Result 20 "Authentic PDF Content Stream & Status Integrity" $false $_.Exception.Message
 }
 
 # -------------------------------------------------------------------------
-# Scenario 13: Target Endpoint Aliases Functional Check
+# Scenario 21: Jackson Remarks Special Characters & JSON Formatting Integrity
+# -------------------------------------------------------------------------
+try {
+    $rawRemarks = (Invoke-MysqlQuery "SELECT ar.remarks FROM assessment_results ar JOIN trainee_assessments ta ON ar.trainee_assessment_id = ta.trainee_assessment_id WHERE ta.assessment_id = $assessmentId AND ta.trainee_id = $trainee1Id;").Trim()
+    
+    $parsedRemarks = $rawRemarks | ConvertFrom-Json
+    $hasTheory = $parsedRemarks.theory -ne $null
+    $hasPractical = $parsedRemarks.practical -ne $null
+    $hasStatus = $parsedRemarks.status -eq "FINALIZED"
+    $hasNote = $parsedRemarks.note -like "*inverter wiring*"
+
+    if ($hasTheory -and $hasPractical -and $hasStatus -and $hasNote) {
+        Record-Result 21 "Jackson Remarks Serialization & Breakdown Storage" $true "Component breakdown safely stored as typed JSON without string concatenation or quote corruption"
+    } else {
+        Record-Result 21 "Jackson Remarks Serialization & Breakdown Storage" $false "Raw JSON: $rawRemarks"
+    }
+} catch {
+    Record-Result 21 "Jackson Remarks Serialization & Breakdown Storage" $false $_.Exception.Message
+}
+
+# -------------------------------------------------------------------------
+# Scenario 22: Target Endpoint Aliases Functional Check
 # -------------------------------------------------------------------------
 try {
     $resultsAlias = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessments/results" -Method "Get" -Headers $headers1
     $issueAlias = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certificates/issue" -Method "Post" -Body "{}" -Headers $headers1
 
     if ($resultsAlias.StatusCode -eq 200 -and $issueAlias.StatusCode -ne 404) {
-        Record-Result 13 "Target Endpoint Aliases Functionality" $true "Aliases /api/v1/assessments/results and /api/v1/certificates/issue are active"
+        Record-Result 22 "Target Endpoint Aliases Functionality" $true "Aliases /api/v1/assessments/results and /api/v1/certificates/issue are active"
     } else {
-        Record-Result 13 "Target Endpoint Aliases Functionality" $false "resultsAlias=$($resultsAlias.StatusCode), issueAlias=$($issueAlias.StatusCode)"
+        Record-Result 22 "Target Endpoint Aliases Functionality" $false "resultsAlias=$($resultsAlias.StatusCode), issueAlias=$($issueAlias.StatusCode)"
     }
 } catch {
-    Record-Result 13 "Target Endpoint Aliases Functionality" $false $_.Exception.Message
+    Record-Result 22 "Target Endpoint Aliases Functionality" $false $_.Exception.Message
 }
 
 # -------------------------------------------------------------------------
-# Scenario 14: Fixture Teardown and Cleanup
+# Scenario 23: Reverse-Dependency Database Teardown
 # -------------------------------------------------------------------------
 try {
     if ($certId) {
         Invoke-MysqlQuery "DELETE FROM certifications WHERE certification_id = $certId;"
     }
-    Invoke-MysqlQuery "DELETE FROM assessment_results WHERE trainee_id IN ($trainee1Id, $trainee2Id);"
+    Invoke-MysqlQuery "DELETE FROM assessment_results WHERE trainee_id IN ($trainee1Id, $trainee2Id, $trainee3Id);"
     Invoke-MysqlQuery "DELETE FROM trainee_assessments WHERE assessment_id = $assessmentId;"
     Invoke-MysqlQuery "DELETE FROM assessments WHERE assessment_id = $assessmentId;"
-    Invoke-MysqlQuery "DELETE FROM training_enrollments WHERE enrollment_id IN ($enrollment1Id, $enrollment2Id);"
-    Invoke-MysqlQuery "DELETE FROM trainees WHERE trainee_id IN ($trainee1Id, $trainee2Id);"
+    Invoke-MysqlQuery "DELETE FROM training_enrollments WHERE enrollment_id IN ($enrollment1Id, $enrollment2Id, $enrollment3Id);"
+    Invoke-MysqlQuery "DELETE FROM trainees WHERE trainee_id IN ($trainee1Id, $trainee2Id, $trainee3Id);"
     Invoke-MysqlQuery "DELETE FROM training_batches WHERE batch_id = $batchId;"
     Invoke-MysqlQuery "DELETE FROM training_centers WHERE center_id = $centerId;"
     Invoke-MysqlQuery "DELETE FROM training_providers WHERE provider_id = $providerId;"
@@ -610,24 +969,24 @@ try {
     Invoke-MysqlQuery "DELETE FROM organizations WHERE organization_id = $orgId;"
     Invoke-MysqlQuery "DELETE FROM courses WHERE course_id = $courseId;"
     Invoke-MysqlQuery "DELETE FROM sectors WHERE sector_id = $sectorId;"
-    Invoke-MysqlQuery "DELETE FROM user_roles WHERE user_id IN ($assessor1Id, $assessor2Id);"
-    Invoke-MysqlQuery "DELETE FROM users WHERE user_id IN ($assessor1Id, $assessor2Id);"
+    Invoke-MysqlQuery "DELETE FROM user_roles WHERE user_id IN ($assessor1Id, $assessor2Id, $trainee1UserId, $trainee2UserId);"
+    Invoke-MysqlQuery "DELETE FROM users WHERE user_id IN ($assessor1Id, $assessor2Id, $trainee1UserId, $trainee2UserId);"
 
-    Record-Result 14 "Reverse-Dependency Database Teardown" $true "All tracked test fixtures deleted cleanly from SIH26135_TEST"
+    Record-Result 23 "Reverse-Dependency Database Teardown" $true "All tracked test fixtures deleted cleanly from SIH26135_TEST"
 } catch {
-    Record-Result 14 "Reverse-Dependency Database Teardown" $false $_.Exception.Message
+    Record-Result 23 "Reverse-Dependency Database Teardown" $false $_.Exception.Message
 }
 
 # -------------------------------------------------------------------------
-# Scenario 15: Post-Test Authoritative Trainee 1005143L Invariant Check
+# Scenario 24: Post-Test Authoritative Trainee 1005143L Invariant Preservation
 # -------------------------------------------------------------------------
 $postTraineeCount = Invoke-MysqlQuery "SELECT COUNT(*) FROM trainees WHERE trainee_id = 1005143 AND deleted_at IS NULL;"
 $postConsentCount = Invoke-MysqlQuery "SELECT COUNT(*) FROM trainee_consents WHERE trainee_id = 1005143 AND consent_status_id = 1;"
 
 if ([int]$postTraineeCount.Trim() -eq 1 -and [int]$postConsentCount.Trim() -eq 5) {
-    Record-Result 15 "Post-Test Authoritative Trainee 1005143L Invariant Preservation" $true "Trainee 1005143L retained exactly 5 active granted DPDP consents."
+    Record-Result 24 "Post-Test Authoritative Trainee 1005143L Invariant Preservation" $true "Trainee 1005143L retained exactly 5 active granted DPDP consents."
 } else {
-    Record-Result 15 "Post-Test Authoritative Trainee 1005143L Invariant Preservation" $false "Invariant violated! Found trainee=$postTraineeCount, consents=$postConsentCount"
+    Record-Result 24 "Post-Test Authoritative Trainee 1005143L Invariant Preservation" $false "Invariant violated! Found trainee=$postTraineeCount, consents=$postConsentCount"
 }
 
 # -------------------------------------------------------------------------

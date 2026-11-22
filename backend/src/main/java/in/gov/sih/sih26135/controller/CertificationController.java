@@ -30,6 +30,17 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.security.access.prepost.PreAuthorize;
 
+import in.gov.sih.sih26135.entity.Certification;
+import in.gov.sih.sih26135.entity.Trainee;
+import in.gov.sih.sih26135.entity.User;
+import in.gov.sih.sih26135.repository.CertificationRepository;
+import in.gov.sih.sih26135.repository.TraineeRepository;
+import in.gov.sih.sih26135.repository.UserRepository;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import java.util.Optional;
+
 /**
  * REST controller for managing Certification credential domain resources.
  *
@@ -49,11 +60,88 @@ public class CertificationController {
   @org.springframework.beans.factory.annotation.Autowired(required = false)
   private in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator securityScopeValidator;
 
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  private CertificationRepository certificationRepository;
+
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  private UserRepository userRepository;
+
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  private TraineeRepository traineeRepository;
+
   public CertificationController(
       CertificationService certificationService,
       @org.springframework.beans.factory.annotation.Autowired(required = false) AssessorWorkbenchService assessorWorkbenchService) {
     this.certificationService = certificationService;
     this.assessorWorkbenchService = assessorWorkbenchService;
+  }
+
+  private void validateCertificateAccess(Long certificationId) {
+    if (certificationId == null || certificationRepository == null) return;
+    Certification cert = certificationRepository.findById(certificationId)
+        .orElseThrow(() -> new in.gov.sih.sih26135.exception.ResourceNotFoundException("Certification", "id=" + certificationId));
+    validateCertificateAccess(cert);
+  }
+
+  private void validateCertificateAccess(Certification cert) {
+    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+      throw new AccessDeniedException("Authentication required to access certificate");
+    }
+
+    boolean isAdmin = auth.getAuthorities().stream().anyMatch(a ->
+        "ROLE_super_admin".equalsIgnoreCase(a.getAuthority()) ||
+        "ROLE_admin".equalsIgnoreCase(a.getAuthority()) ||
+        "ROLE_government_admin".equalsIgnoreCase(a.getAuthority()) ||
+        "assessment.manage".equalsIgnoreCase(a.getAuthority())
+    );
+    if (isAdmin) {
+      return;
+    }
+
+    String username = auth.getName();
+    User caller = userRepository != null ? userRepository.findByUsername(username).orElse(null) : null;
+    if (caller == null) {
+      throw new AccessDeniedException("Authenticated user not found");
+    }
+
+    boolean isAssessor = auth.getAuthorities().stream().anyMatch(a ->
+        "ROLE_assessor".equalsIgnoreCase(a.getAuthority())
+    );
+    if (isAssessor) {
+      boolean isAssigned = false;
+      if (cert.getAssessmentResult() != null
+          && cert.getAssessmentResult().getTraineeAssessment() != null
+          && cert.getAssessmentResult().getTraineeAssessment().getAssessment() != null) {
+        Long evaluatorId = cert.getAssessmentResult().getTraineeAssessment().getAssessment().getEvaluatorUserId();
+        if (evaluatorId != null && evaluatorId.equals(caller.getId())) {
+          isAssigned = true;
+        }
+      }
+      if (!isAssigned) {
+        throw new AccessDeniedException("Access denied: You are not the assigned assessor for certificate #" + cert.getId());
+      }
+      return;
+    }
+
+    boolean isTrainee = auth.getAuthorities().stream().anyMatch(a ->
+        "ROLE_trainee".equalsIgnoreCase(a.getAuthority()) || "trainee.read".equalsIgnoreCase(a.getAuthority())
+    );
+    if (isTrainee) {
+      boolean isOwn = false;
+      if (cert.getTrainee() != null && traineeRepository != null) {
+        Optional<Trainee> callerTrainee = traineeRepository.findByUserId(caller.getId());
+        if (callerTrainee.isPresent() && callerTrainee.get().getId().equals(cert.getTrainee().getId())) {
+          isOwn = true;
+        }
+      }
+      if (!isOwn) {
+        throw new AccessDeniedException("Access denied: Trainee can only view their own certificate");
+      }
+      return;
+    }
+
+    throw new AccessDeniedException("Access denied: You do not have permission to access certificate #" + cert.getId());
   }
 
   /**
@@ -64,6 +152,7 @@ public class CertificationController {
    */
   @GetMapping("/{id}")
   public ResponseEntity<ApiResponse<CertificationResponse>> getById(@PathVariable @Positive Long id) {
+    validateCertificateAccess(id);
     CertificationResponse response = certificationService.getById(id);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -77,6 +166,11 @@ public class CertificationController {
   @GetMapping(params = "certificateNumber")
   public ResponseEntity<ApiResponse<CertificationResponse>> getByCertificateNumber(
       @RequestParam("certificateNumber") @NotBlank String certificateNumber) {
+    if (certificationRepository != null) {
+      Certification cert = certificationRepository.findByCertificateNumber(certificateNumber.trim())
+          .orElseThrow(() -> new in.gov.sih.sih26135.exception.ResourceNotFoundException("Certification", "certificateNumber=" + certificateNumber));
+      validateCertificateAccess(cert);
+    }
     CertificationResponse response = certificationService.getByCertificateNumber(certificateNumber);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
@@ -251,22 +345,7 @@ public class CertificationController {
   @GetMapping(value = "/{id}/download", produces = MediaType.APPLICATION_PDF_VALUE)
   @PreAuthorize("hasAnyAuthority('assessment.manage', 'trainee.read', 'ROLE_trainee', 'ROLE_assessor', 'ROLE_super_admin', 'ROLE_government_admin')")
   public ResponseEntity<byte[]> downloadCertificatePdf(@PathVariable @Positive Long id) {
-    if (securityScopeValidator != null) {
-      org.springframework.security.core.Authentication auth =
-          org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-      boolean isAssessorOrAdmin = auth != null && auth.getAuthorities().stream().anyMatch(a ->
-          "ROLE_assessor".equals(a.getAuthority()) ||
-          "assessment.manage".equals(a.getAuthority()) ||
-          "ROLE_super_admin".equals(a.getAuthority()) ||
-          "ROLE_government_admin".equals(a.getAuthority())
-      );
-      if (!isAssessorOrAdmin) {
-        CertificationResponse cert = certificationService.getById(id);
-        if (cert != null && cert.getTraineeId() != null) {
-          securityScopeValidator.validateTraineeScope(cert.getTraineeId());
-        }
-      }
-    }
+    validateCertificateAccess(id);
     if (assessorWorkbenchService == null) {
       throw new IllegalStateException("AssessorWorkbenchService is required for PDF certificate generation");
     }

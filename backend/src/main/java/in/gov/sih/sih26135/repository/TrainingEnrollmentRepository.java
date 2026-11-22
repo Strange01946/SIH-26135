@@ -34,6 +34,8 @@ public interface TrainingEnrollmentRepository extends JpaRepository<TrainingEnro
 
   List<TrainingEnrollment> findByTrainingBatchId(Long batchId);
 
+  List<TrainingEnrollment> findByTrainingBatchIdAndDeletedAtIsNull(Long batchId);
+
   List<TrainingEnrollment> findByProgramId(Long programId);
 
   List<TrainingEnrollment> findByCourseId(Long courseId);

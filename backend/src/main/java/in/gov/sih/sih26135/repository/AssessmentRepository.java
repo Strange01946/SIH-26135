@@ -29,4 +29,8 @@ public interface AssessmentRepository extends JpaRepository<Assessment, Long> {
   List<Assessment> findByEvaluatorUserId(Long evaluatorUserId);
 
   List<Assessment> findByEvaluatorUserIdAndDeletedAtIsNull(Long evaluatorUserId);
+
+  @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+  @org.springframework.data.jpa.repository.Query("SELECT a FROM Assessment a WHERE a.id = :id")
+  Optional<Assessment> findByIdForUpdate(@org.springframework.data.repository.query.Param("id") Long id);
 }
