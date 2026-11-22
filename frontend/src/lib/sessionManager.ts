@@ -81,6 +81,7 @@ export function setTokens(accessToken: string, refreshToken?: string): void {
   if (refreshToken) {
     setRefreshToken(refreshToken);
   }
+  inFlightRefreshPromise = null;
   notifyListeners(true);
 }
 
@@ -131,8 +132,9 @@ export async function refreshAccessToken(): Promise<string> {
 
   const requestGeneration = sessionGeneration;
 
-  // Create single-flight promise
-  inFlightRefreshPromise = (async () => {
+  // Create single-flight promise with promise-identity cleanup
+  let currentPromise: Promise<string> | null = null;
+  currentPromise = (async () => {
     try {
       const baseUrl = import.meta.env.VITE_API_BASE_URL ?? '';
       // Use direct axios call to bypass apiClient interceptors (prevents recursion)
@@ -184,11 +186,15 @@ export async function refreshAccessToken(): Promise<string> {
       }
       throw err;
     } finally {
-      if (sessionGeneration === requestGeneration) {
+      // Use promise identity to clear only this specific in-flight promise safely,
+      // ensuring stale rejected promises from superseded generations are not reused.
+      if (inFlightRefreshPromise === currentPromise) {
         inFlightRefreshPromise = null;
       }
     }
   })();
+
+  inFlightRefreshPromise = currentPromise;
 
   const newToken = await inFlightRefreshPromise;
   if (!newToken) {

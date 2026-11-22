@@ -221,4 +221,128 @@ describe('Session Manager (lib/sessionManager)', () => {
     expect(getAccessToken()).toBe('fresh-access-token-user-2');
     expect(getRefreshToken()).toBe('fresh-refresh-token-user-2');
   });
+
+  it('regression: refresh-in-flight -> new login clears in-flight promise and preserves new session', async () => {
+    setRefreshToken('user-1-refresh-token');
+
+    let resolveUser1: (val: unknown) => void;
+    const pendingUser1 = new Promise((resolve) => {
+      resolveUser1 = resolve;
+    });
+    vi.mocked(axios.post).mockReturnValueOnce(pendingUser1 as never);
+
+    // Refresh initiated for User 1
+    const user1Refresh = refreshAccessToken();
+
+    // New login occurs before User 1 refresh finishes
+    setTokens('user-2-access-token', 'user-2-refresh-token');
+
+    // User 1 refresh network call finishes with payload
+    resolveUser1!({
+      data: {
+        success: true,
+        data: {
+          accessToken: 'user-1-stale-access',
+          refreshToken: 'user-1-stale-refresh',
+        },
+      },
+    });
+
+    await expect(user1Refresh).rejects.toThrow('Session invalidated during token refresh');
+
+    // Verify session tokens strictly belong to User 2
+    expect(getAccessToken()).toBe('user-2-access-token');
+    expect(getRefreshToken()).toBe('user-2-refresh-token');
+  });
+
+  it('regression: refresh-in-flight -> logout clears in-flight promise and keeps session cleared', async () => {
+    setRefreshToken('active-refresh-token');
+
+    let resolveCall: (val: unknown) => void;
+    const pendingCall = new Promise((resolve) => {
+      resolveCall = resolve;
+    });
+    vi.mocked(axios.post).mockReturnValueOnce(pendingCall as never);
+
+    // Refresh initiated
+    const refreshPromise = refreshAccessToken();
+
+    // User logs out while refresh is in flight
+    clearSession();
+    expect(getAccessToken()).toBeNull();
+    expect(getRefreshToken()).toBeNull();
+    expect(hasSession()).toBe(false);
+
+    // Network call completes
+    resolveCall!({
+      data: {
+        success: true,
+        data: {
+          accessToken: 'should-not-be-stored',
+          refreshToken: 'should-not-be-stored',
+        },
+      },
+    });
+
+    await expect(refreshPromise).rejects.toThrow('Session invalidated during token refresh');
+
+    // Invariant: tokens remain cleared
+    expect(getAccessToken()).toBeNull();
+    expect(getRefreshToken()).toBeNull();
+    expect(hasSession()).toBe(false);
+  });
+
+  it('regression: retry after a failed stale refresh dispatches fresh request without reusing stale rejected promise', async () => {
+    setRefreshToken('refresh-token-session-1');
+
+    let resolveRefreshSession1: (val: unknown) => void;
+    const pendingPromiseSession1 = new Promise((resolve) => {
+      resolveRefreshSession1 = resolve;
+    });
+
+    vi.mocked(axios.post).mockReturnValueOnce(pendingPromiseSession1 as never);
+
+    // Refresh begins in Session 1
+    const refreshCallSession1 = refreshAccessToken();
+
+    // Session 2 replaces Session 1 via setTokens
+    setTokens('access-token-session-2', 'refresh-token-session-2');
+
+    // Stale Session 1 refresh resolves after session replacement
+    resolveRefreshSession1!({
+      data: {
+        success: true,
+        data: {
+          accessToken: 'stale-access-session-1',
+          refreshToken: 'stale-refresh-session-1',
+        },
+      },
+    });
+
+    // Session 1 refresh rejects due to generation mismatch
+    await expect(refreshCallSession1).rejects.toThrow('Session invalidated during token refresh');
+
+    // Invariant: inFlightRefreshPromise must NOT retain the rejected Session 1 promise.
+    // When Session 2 triggers refreshAccessToken(), it must dispatch a fresh network request.
+    vi.mocked(axios.post).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: {
+          accessToken: 'renewed-access-session-2',
+          refreshToken: 'rotated-refresh-session-2',
+        },
+      },
+    } as never);
+
+    const refreshCallSession2 = await refreshAccessToken();
+    expect(refreshCallSession2).toBe('renewed-access-session-2');
+    expect(getAccessToken()).toBe('renewed-access-session-2');
+    expect(getRefreshToken()).toBe('rotated-refresh-session-2');
+    expect(axios.post).toHaveBeenCalledTimes(2);
+    expect(axios.post).toHaveBeenLastCalledWith(
+      expect.stringContaining('/api/v1/auth/refresh'),
+      { refreshToken: 'refresh-token-session-2' },
+      expect.any(Object),
+    );
+  });
 });
