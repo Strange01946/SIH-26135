@@ -391,6 +391,10 @@ export async function apiDownload(
   const response = await apiClient.get<Blob>(url, {
     ...config,
     responseType: 'blob',
+    headers: {
+      Accept: 'text/csv, application/octet-stream, */*',
+      ...config?.headers,
+    },
   });
   return response.data;
 }

@@ -11,6 +11,8 @@ import type { ImportBatchItem } from '@/types/provider';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 
 const STORAGE_KEY_LAST_IMPORT = 'sih26135_last_import_batch_id';
+const MAX_POLL_COUNT = 60; // Max 60 poll cycles before pausing to protect network/CPU
+const MAX_CONSECUTIVE_FAILURES = 5;
 
 export function ProviderBulkImportPage(): React.JSX.Element {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -30,6 +32,22 @@ export function ProviderBulkImportPage(): React.JSX.Element {
     : null;
   const [activeBatchId, setActiveBatchId] = useState<number | null>(urlBatchId || savedBatchId || null);
 
+  // Bounded Polling & Resiliency state
+  const [isPollingPaused, setIsPollingPaused] = useState<boolean>(false);
+  const [isTimedOut, setIsTimedOut] = useState<boolean>(false);
+  const [lastNetworkError, setLastNetworkError] = useState<string | null>(null);
+  const pollCountRef = useRef<number>(0);
+  const consecutiveFailuresRef = useRef<number>(0);
+
+  // Reset polling counters whenever activeBatchId changes
+  const resetPollingBudget = () => {
+    pollCountRef.current = 0;
+    consecutiveFailuresRef.current = 0;
+    setIsPollingPaused(false);
+    setIsTimedOut(false);
+    setLastNetworkError(null);
+  };
+
   // Sync activeBatchId with URL and localStorage
   useEffect(() => {
     if (activeBatchId) {
@@ -46,6 +64,7 @@ export function ProviderBulkImportPage(): React.JSX.Element {
     onSuccess: (data: ImportBatchItem) => {
       toast.success(`Import batch ${data.batchCode} staged successfully!`);
       setActiveBatchId(data.id);
+      resetPollingBudget();
       setSelectedFile(null);
       setUploadError(null);
       queryClient.invalidateQueries({ queryKey: ['provider', 'importStatus', data.id] });
@@ -62,6 +81,7 @@ export function ProviderBulkImportPage(): React.JSX.Element {
     mutationFn: (batchId: number) => processImportBatch(batchId),
     onSuccess: () => {
       toast.success('Batch processing started');
+      resetPollingBudget();
       queryClient.invalidateQueries({ queryKey: ['provider', 'importStatus', activeBatchId] });
     },
     onError: (err: any) => {
@@ -70,21 +90,59 @@ export function ProviderBulkImportPage(): React.JSX.Element {
     },
   });
 
-  // Polling Status Query
+  // Bounded Polling Status Query with Exponential Backoff
   const statusQuery = useQuery({
     queryKey: ['provider', 'importStatus', activeBatchId],
-    queryFn: () => (activeBatchId ? getImportBatchStatus(activeBatchId) : null),
-    enabled: !!activeBatchId,
+    queryFn: async () => {
+      if (!activeBatchId) return null;
+      try {
+        const res = await getImportBatchStatus(activeBatchId);
+        consecutiveFailuresRef.current = 0;
+        setLastNetworkError(null);
+        return res;
+      } catch (err: unknown) {
+        consecutiveFailuresRef.current += 1;
+        const msg = (err as any)?.message || 'Failed to poll batch status';
+        setLastNetworkError(msg);
+        throw err;
+      }
+    },
+    enabled: !!activeBatchId && !isPollingPaused && !isTimedOut,
     refetchInterval: (query) => {
+      if (isPollingPaused || isTimedOut) return false;
       const data = query.state.data;
       if (!data) return 1500;
       // Stop polling when batch reaches terminal state
       if (data.isTerminal || ['COMPLETED', 'FAILED', 'PARTIALLY_COMPLETED'].includes(data.status)) {
         return false;
       }
+
+      // Check consecutive failure limit
+      if (consecutiveFailuresRef.current >= MAX_CONSECUTIVE_FAILURES) {
+        setIsPollingPaused(true);
+        return false;
+      }
+
+      // Check poll count budget
+      pollCountRef.current += 1;
+      if (pollCountRef.current >= MAX_POLL_COUNT) {
+        setIsTimedOut(true);
+        return false;
+      }
+
+      // Exponential backoff if there are network errors
+      if (consecutiveFailuresRef.current > 0) {
+        return Math.min(10000, 1500 * Math.pow(2, consecutiveFailuresRef.current));
+      }
+
       return 1500;
     },
   });
+
+  const handleResumePolling = () => {
+    resetPollingBudget();
+    statusQuery.refetch();
+  };
 
   // Drag and Drop Handlers
   const handleDragOver = (e: React.DragEvent) => {
@@ -113,8 +171,11 @@ export function ProviderBulkImportPage(): React.JSX.Element {
 
   const validateAndSetFile = (file: File) => {
     setUploadError(null);
-    if (!file.name.toLowerCase().endsWith('.csv')) {
-      setUploadError('Only CSV files are supported for bulk ingestion.');
+    const lowerName = file.name.toLowerCase();
+    const isCsv = lowerName.endsWith('.csv');
+    const isJson = lowerName.endsWith('.json') || lowerName.endsWith('.ndjson');
+    if (!isCsv && !isJson) {
+      setUploadError('Only CSV, JSON, and NDJSON files are supported for bulk ingestion.');
       return;
     }
     const maxBytes = 10 * 1024 * 1024; // 10MB
@@ -139,6 +200,7 @@ export function ProviderBulkImportPage(): React.JSX.Element {
     setActiveBatchId(null);
     localStorage.removeItem(STORAGE_KEY_LAST_IMPORT);
     setSearchParams({});
+    resetPollingBudget();
   };
 
   const statusData = statusQuery.data;
@@ -161,7 +223,7 @@ export function ProviderBulkImportPage(): React.JSX.Element {
             <span className="badge-info text-xs">Streaming Validator</span>
           </h1>
           <p className="text-sm text-gray-600 mt-1">
-            Upload and process high-volume trainee roster CSV datasets with RFC-4180 parsing,
+            Upload and process high-volume trainee roster CSV and JSON datasets with streaming validation,
             canonical identity deduplication, and automated quarantine persistence.
           </p>
         </div>
@@ -171,7 +233,7 @@ export function ProviderBulkImportPage(): React.JSX.Element {
         {/* Upload Panel */}
         <div className="card p-6 bg-white shadow-sm space-y-4">
           <div className="flex items-center justify-between pb-2 border-b border-gray-100">
-            <h2 className="text-base font-bold text-navy">1. Select &amp; Stage CSV File</h2>
+            <h2 className="text-base font-bold text-navy">1. Select &amp; Stage Dataset File (CSV / JSON)</h2>
             <div className="flex items-center gap-2">
               <label className="text-xs font-semibold text-gray-600">Entity:</label>
               <select
@@ -202,7 +264,7 @@ export function ProviderBulkImportPage(): React.JSX.Element {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".csv"
+              accept=".csv,.json,.ndjson"
               className="hidden"
               onChange={handleFileInputChange}
             />
@@ -214,7 +276,8 @@ export function ProviderBulkImportPage(): React.JSX.Element {
                 </span>
                 <p className="text-sm font-bold text-emerald-800">{selectedFile.name}</p>
                 <p className="text-xs text-gray-500">
-                  Size: {(selectedFile.size / 1024).toFixed(1)} KB &bull; Type: CSV
+                  Size: {(selectedFile.size / 1024).toFixed(1)} KB &bull; Type:{' '}
+                  {selectedFile.name.toLowerCase().endsWith('.csv') ? 'CSV' : 'JSON / NDJSON'}
                 </p>
                 <span className="text-xs text-navy font-semibold underline block pt-1">
                   Click to select a different file
@@ -226,10 +289,10 @@ export function ProviderBulkImportPage(): React.JSX.Element {
                   📥
                 </span>
                 <p className="text-sm font-semibold text-gray-700">
-                  Drag and drop your dataset CSV here, or <span className="text-navy underline">browse</span>
+                  Drag and drop your dataset (CSV or JSON) here, or <span className="text-navy underline">browse</span>
                 </p>
                 <p className="text-xs text-gray-400">
-                  Supported format: UTF-8 CSV with standard header row (max 10MB)
+                  Supported formats: UTF-8 CSV, JSON array ([&#123;...&#125;]), or NDJSON (max 10MB)
                 </p>
               </div>
             )}
@@ -292,6 +355,56 @@ export function ProviderBulkImportPage(): React.JSX.Element {
                   </span>
                 </div>
               </div>
+
+              {/* Polling Stalled / Timed Out Alerts */}
+              {isTimedOut && !isTerminal && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800 space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5">
+                    <span aria-hidden="true">⏱️</span>
+                    <span>Monitoring Budget Reached (Polling Paused)</span>
+                  </div>
+                  <p className="text-[11px] text-amber-700">
+                    Background worker is processing. Polling has been paused to protect bandwidth.
+                  </p>
+                  <div className="pt-1 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleResumePolling}
+                      className="btn-outline text-xs py-1 px-2.5 bg-white border-amber-300 text-amber-800 hover:bg-amber-100"
+                    >
+                      Resume Monitoring
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => statusQuery.refetch()}
+                      className="btn-outline text-xs py-1 px-2.5 bg-white border-gray-300 text-gray-700 hover:bg-gray-100"
+                    >
+                      Refresh Now
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {isPollingPaused && !isTimedOut && !isTerminal && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-800 space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5">
+                    <span aria-hidden="true">⚠️</span>
+                    <span>Monitoring Paused: Repeated Network Failures</span>
+                  </div>
+                  <p className="text-[11px] text-red-700">
+                    {lastNetworkError || 'Multiple requests failed. Check connectivity or server status.'}
+                  </p>
+                  <div className="pt-1 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleResumePolling}
+                      className="btn-outline text-xs py-1 px-2.5 bg-white border-red-300 text-red-800 hover:bg-red-100"
+                    >
+                      Retry / Resume
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Progress Bar */}
               <div className="space-y-1 text-xs">
@@ -368,7 +481,7 @@ export function ProviderBulkImportPage(): React.JSX.Element {
                 📊
               </span>
               <p className="font-medium text-gray-600">No Active Import Selected</p>
-              <p>Upload a CSV file on the left to begin staging and processing.</p>
+              <p>Upload a CSV or JSON file on the left to begin staging and processing.</p>
             </div>
           )}
         </div>

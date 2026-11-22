@@ -10,6 +10,7 @@ import {
   recordAttendance,
   getImportBatchStatus,
   getQuarantinedRecords,
+  downloadQuarantineExport,
 } from '@/api/providerPortalApi';
 
 vi.mock('@/api/client', () => ({
@@ -19,6 +20,7 @@ vi.mock('@/api/client', () => ({
   apiPut: vi.fn(),
   apiUpload: vi.fn(),
   apiDelete: vi.fn(),
+  apiDownload: vi.fn(),
 }));
 
 describe('providerPortalApi', () => {
@@ -200,5 +202,21 @@ describe('providerPortalApi', () => {
       },
     });
     expect(result).toEqual(mockPaged);
+  });
+
+  it('downloads authenticated quarantine error export as blob', async () => {
+    const mockBlob = new Blob(['source_row,error_code\n1,TEST_ERROR'], { type: 'text/csv' });
+    vi.mocked(client.apiDownload).mockResolvedValue(mockBlob);
+
+    const result = await downloadQuarantineExport(12, false);
+    expect(client.apiDownload).toHaveBeenCalledWith('/api/v1/import-batches/12/quarantine/export', {
+      params: {
+        includeDuplicates: false,
+      },
+      headers: {
+        Accept: 'text/csv, application/octet-stream, */*',
+      },
+    });
+    expect(result).toBe(mockBlob);
   });
 });

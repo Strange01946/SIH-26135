@@ -4,8 +4,9 @@ import { useSearchParams } from 'react-router-dom';
 import {
   getQuarantinedRecords,
   getImportBatchStatus,
-  getQuarantineExportUrl,
+  downloadQuarantineExport,
 } from '@/api/providerPortalApi';
+import type { ApiError } from '@/api/types';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 
 export function ProviderQuarantinePage(): React.JSX.Element {
@@ -19,6 +20,11 @@ export function ProviderQuarantinePage(): React.JSX.Element {
   const [page, setPage] = useState(0);
   const [size] = useState(15);
   const [includeDuplicates, setIncludeDuplicates] = useState(true);
+
+  // Authenticated export state
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloadSuccess, setDownloadSuccess] = useState<string | null>(null);
 
   // Batch Status / Header Query
   const batchStatusQuery = useQuery({
@@ -39,6 +45,44 @@ export function ProviderQuarantinePage(): React.JSX.Element {
     if (batchIdInput) {
       setSearchParams({ batchId: String(batchIdInput) });
       setPage(0);
+      setDownloadError(null);
+      setDownloadSuccess(null);
+    }
+  };
+
+  const handleDownloadExport = async () => {
+    if (!activeBatchId || isDownloading) return;
+    setIsDownloading(true);
+    setDownloadError(null);
+    setDownloadSuccess(null);
+    try {
+      const blob = await downloadQuarantineExport(activeBatchId, includeDuplicates);
+      if (!blob || blob.size === 0) {
+        setDownloadError('Exported CSV is empty or no quarantine records found to download.');
+        return;
+      }
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `import_batch_${activeBatchId}_quarantine.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      setDownloadSuccess('Quarantine CSV exported successfully.');
+    } catch (err: unknown) {
+      const apiErr = err as ApiError;
+      if (apiErr?.status === 401) {
+        setDownloadError('Authentication session expired. Please log in again to export.');
+      } else if (apiErr?.status === 403) {
+        setDownloadError('You do not have permission to export quarantine records for this batch.');
+      } else if (apiErr?.status === 404) {
+        setDownloadError('The requested import batch or quarantine dataset was not found.');
+      } else {
+        setDownloadError(apiErr?.message || 'Failed to download quarantine CSV export. Please try again.');
+      }
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -60,15 +104,61 @@ export function ProviderQuarantinePage(): React.JSX.Element {
         </div>
 
         {activeBatchId && (
-          <a
-            href={getQuarantineExportUrl(activeBatchId, includeDuplicates)}
-            download={`import_batch_${activeBatchId}_quarantine.csv`}
-            className="btn-primary py-2.5 px-4 text-xs font-semibold flex items-center gap-2 self-start sm:self-auto shadow-sm"
+          <button
+            type="button"
+            onClick={handleDownloadExport}
+            disabled={isDownloading}
+            className="btn-primary py-2.5 px-4 text-xs font-semibold flex items-center gap-2 self-start sm:self-auto shadow-sm disabled:opacity-50"
           >
-            <span aria-hidden="true">📥</span> Export Error CSV
-          </a>
+            {isDownloading ? (
+              <>
+                <LoadingSpinner size="sm" label="Exporting CSV" />
+                <span>Exporting CSV...</span>
+              </>
+            ) : (
+              <>
+                <span aria-hidden="true">📥</span>
+                <span>Export Error CSV</span>
+              </>
+            )}
+          </button>
         )}
       </div>
+
+      {/* Feedback Alerts */}
+      {downloadError && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-800 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span aria-hidden="true">⚠️</span>
+            <span>{downloadError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDownloadError(null)}
+            className="text-red-500 hover:text-red-700 font-bold ml-2 text-sm"
+            aria-label="Dismiss download error"
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
+      {downloadSuccess && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded text-xs text-emerald-800 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span aria-hidden="true">✓</span>
+            <span>{downloadSuccess}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDownloadSuccess(null)}
+            className="text-emerald-500 hover:text-emerald-700 font-bold ml-2 text-sm"
+            aria-label="Dismiss download success"
+          >
+            &times;
+          </button>
+        </div>
+      )}
 
       {/* Batch Selector Bar */}
       <div className="card p-4 bg-white shadow-sm flex flex-wrap items-center justify-between gap-4">

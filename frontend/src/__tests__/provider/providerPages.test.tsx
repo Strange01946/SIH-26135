@@ -366,12 +366,12 @@ describe('Training Provider Portal Frontend Components', () => {
   });
 
   describe('ProviderBulkImportPage & ProviderQuarantinePage', () => {
-    it('renders bulk import drag and drop upload zone', () => {
+    it('renders bulk import drag and drop upload zone supporting CSV and JSON', () => {
       renderWithProviders(<ProviderBulkImportPage />);
 
       expect(screen.getByText('Multipart Bulk Ingestion Workbench')).toBeInTheDocument();
-      expect(screen.getByText('1. Select & Stage CSV File')).toBeInTheDocument();
-      expect(screen.getByText(/Drag and drop your dataset CSV here/i)).toBeInTheDocument();
+      expect(screen.getByText(/1\. Select & Stage Dataset File/i)).toBeInTheDocument();
+      expect(screen.getByText(/Drag and drop your dataset \(CSV or JSON\) here/i)).toBeInTheDocument();
     });
 
     it('renders quarantine inspection grid and handles empty state', async () => {
@@ -380,6 +380,67 @@ describe('Training Provider Portal Frontend Components', () => {
       expect(screen.getByText('Import Quarantine Inspection & Error Export')).toBeInTheDocument();
       expect(screen.getByText('Load Records')).toBeInTheDocument();
       expect(screen.getByText(/No Import Batch Specified/i)).toBeInTheDocument();
+    });
+
+    it('triggers authenticated CSV export and manages object URL lifecycle', async () => {
+      const mockBlob = new Blob(['source_row,error_code\n1,TEST_ERR'], { type: 'text/csv' });
+      vi.mocked(providerApi.downloadQuarantineExport).mockResolvedValue(mockBlob);
+      vi.mocked(providerApi.getImportBatchStatus).mockResolvedValue({
+        importBatchId: 99,
+        batchCode: 'IMP-TEST-99',
+        entityType: 'Trainee',
+        status: 'PARTIALLY_COMPLETED',
+        rowCount: 10,
+        successCount: 8,
+        failureCount: 2,
+        duplicateCount: 0,
+        skippedCount: 0,
+        isTerminal: true,
+      });
+      vi.mocked(providerApi.getQuarantinedRecords).mockResolvedValue({
+        content: [
+          {
+            id: 1,
+            importBatchId: 99,
+            sourceRowNumber: 1,
+            entityType: 'Trainee',
+            importRecordStatusCode: 'FAILED',
+            errorCode: 'TEST_ERR',
+            errorMessage: 'Sample failure',
+            createdAt: '2026-11-22T10:00:00',
+          },
+        ],
+        totalElements: 1,
+        page: 0,
+        size: 15,
+        totalPages: 1,
+        first: true,
+        last: true,
+        hasNext: false,
+        hasPrevious: false,
+      });
+
+      const createObjectURLSpy = vi.spyOn(window.URL, 'createObjectURL').mockReturnValue('blob:mock-url');
+      const revokeObjectURLSpy = vi.spyOn(window.URL, 'revokeObjectURL').mockImplementation(() => {});
+
+      renderWithProviders(<ProviderQuarantinePage />, '/provider/quarantine?batchId=99');
+
+      await waitFor(() => {
+        expect(screen.getByText('Export Error CSV')).toBeInTheDocument();
+      });
+
+      const exportBtn = screen.getByRole('button', { name: /Export Error CSV/i });
+      fireEvent.click(exportBtn);
+
+      await waitFor(() => {
+        expect(providerApi.downloadQuarantineExport).toHaveBeenCalledWith(99, true);
+        expect(createObjectURLSpy).toHaveBeenCalledWith(mockBlob);
+        expect(revokeObjectURLSpy).toHaveBeenCalledWith('blob:mock-url');
+        expect(screen.getByText(/Quarantine CSV exported successfully/i)).toBeInTheDocument();
+      });
+
+      createObjectURLSpy.mockRestore();
+      revokeObjectURLSpy.mockRestore();
     });
   });
 });

@@ -4,6 +4,7 @@ import {
   apiPost,
   apiPut,
   apiUpload,
+  apiDownload,
 } from './client';
 import type { PagedResponse } from './types';
 import type {
@@ -279,6 +280,18 @@ export async function getQuarantinedRecords(
 ): Promise<PagedResponse<ImportRecordItem>> {
   return apiGetPaged<ImportRecordItem>(`/api/v1/import-batches/${batchId}/quarantine`, {
     params: { includeDuplicates, page, size },
+  });
+}
+
+export async function downloadQuarantineExport(
+  batchId: number,
+  includeDuplicates = true,
+): Promise<Blob> {
+  return apiDownload(`/api/v1/import-batches/${batchId}/quarantine/export`, {
+    params: { includeDuplicates },
+    headers: {
+      Accept: 'text/csv, application/octet-stream, */*',
+    },
   });
 }
 
