@@ -776,7 +776,30 @@ try {
 # Scenario 27: Trainee Identity Deduplication Preservation
 # -------------------------------------------------------------------------
 try {
-    $dedupCheck = & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -p"Aditya7033@" SIH26135_TEST -e "
+    # Resolve MySQL credentials securely from environment without hardcoding or printing secrets
+    $dbDatabase = if ($env:DB_NAME) { $env:DB_NAME } else { "SIH26135_TEST" }
+    if ($dbDatabase -ne "SIH26135_TEST") {
+        throw "SAFETY CHECK FAILED: Verification script must strictly target SIH26135_TEST, not '$dbDatabase'."
+    }
+    $dbUser = if ($env:DB_USERNAME) { $env:DB_USERNAME } else { "root" }
+    $dbPassword = if ($env:DB_PASSWORD) { $env:DB_PASSWORD } elseif ($env:MYSQL_PWD) { $env:MYSQL_PWD } else { $null }
+
+    if (-not $dbPassword) {
+        throw "Database verification credentials missing: Set DB_PASSWORD or MYSQL_PWD environment variable. Credentials are never hardcoded."
+    }
+
+    $mysqlBin = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
+    if (-not (Test-Path $mysqlBin)) {
+        $mysqlCmd = Get-Command mysql.exe -ErrorAction SilentlyContinue
+        if ($mysqlCmd) { $mysqlBin = $mysqlCmd.Source }
+    }
+    if (-not (Test-Path $mysqlBin)) {
+        throw "MySQL executable not found at '$mysqlBin' or on PATH."
+    }
+
+    # Pass password securely via process environment (MYSQL_PWD) to avoid CLI argument leakage and CLI warning
+    $env:MYSQL_PWD = $dbPassword
+    $dedupCheck = & $mysqlBin -u $dbUser --database=$dbDatabase -e "
     SELECT COUNT(*) AS c FROM trainees WHERE registration_number = 'REG-LIVE-VERIFY-001';
     "
     $countVal = [regex]::Match($dedupCheck, "\d+").Value
@@ -787,6 +810,8 @@ try {
     }
 } catch {
     Record-Result 27 "Identity Deduplication Preservation" $false $_.Exception.Message
+} finally {
+    $env:MYSQL_PWD = $null
 }
 
 # -------------------------------------------------------------------------

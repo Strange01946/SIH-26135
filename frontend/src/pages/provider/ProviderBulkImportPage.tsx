@@ -95,6 +95,7 @@ export function ProviderBulkImportPage(): React.JSX.Element {
     queryKey: ['provider', 'importStatus', activeBatchId],
     queryFn: async () => {
       if (!activeBatchId) return null;
+      pollCountRef.current += 1;
       try {
         const res = await getImportBatchStatus(activeBatchId);
         consecutiveFailuresRef.current = 0;
@@ -108,36 +109,48 @@ export function ProviderBulkImportPage(): React.JSX.Element {
       }
     },
     enabled: !!activeBatchId && !isPollingPaused && !isTimedOut,
+    retry: false, // Explicitly false so polling intervals and backoff govern all attempts
     refetchInterval: (query) => {
-      if (isPollingPaused || isTimedOut) return false;
-      const data = query.state.data;
-      if (!data) return 1500;
-      // Stop polling when batch reaches terminal state
-      if (data.isTerminal || ['COMPLETED', 'FAILED', 'PARTIALLY_COMPLETED'].includes(data.status)) {
+      // 1. If paused or timed out, stop polling
+      if (isPollingPaused || isTimedOut) {
         return false;
       }
 
-      // Check consecutive failure limit
+      // 2. Stop after consecutive failure limit
       if (consecutiveFailuresRef.current >= MAX_CONSECUTIVE_FAILURES) {
-        setIsPollingPaused(true);
         return false;
       }
 
-      // Check poll count budget
-      pollCountRef.current += 1;
+      // 3. Stop after monitoring budget (60 polls)
       if (pollCountRef.current >= MAX_POLL_COUNT) {
-        setIsTimedOut(true);
         return false;
       }
 
-      // Exponential backoff if there are network errors
+      // 4. Stop when batch reaches terminal state (when data exists)
+      const data = query.state.data;
+      if (data && (data.isTerminal || ['COMPLETED', 'FAILED', 'PARTIALLY_COMPLETED'].includes(data.status))) {
+        return false;
+      }
+
+      // 5. Exponential backoff if there are consecutive failures (even when data is undefined on first request!)
       if (consecutiveFailuresRef.current > 0) {
         return Math.min(10000, 1500 * Math.pow(2, consecutiveFailuresRef.current));
       }
 
+      // 6. Default active polling interval
       return 1500;
     },
   });
+
+  // Synchronize UI flags outside refetchInterval to avoid React state mutation during query evaluation
+  useEffect(() => {
+    if (consecutiveFailuresRef.current >= MAX_CONSECUTIVE_FAILURES && !isPollingPaused) {
+      setIsPollingPaused(true);
+    }
+    if (pollCountRef.current >= MAX_POLL_COUNT && !isTimedOut) {
+      setIsTimedOut(true);
+    }
+  }, [statusQuery.dataUpdatedAt, statusQuery.errorUpdatedAt, isPollingPaused, isTimedOut]);
 
   const handleResumePolling = () => {
     resetPollingBudget();
