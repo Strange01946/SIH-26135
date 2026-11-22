@@ -5,6 +5,7 @@ import in.gov.sih.sih26135.dto.request.DismissDataQualityIssueRequest;
 import in.gov.sih.sih26135.dto.request.ResolveDataQualityIssueRequest;
 import in.gov.sih.sih26135.dto.response.CenterScorecardResponse;
 import in.gov.sih.sih26135.dto.response.DataQualityIssueEventResponse;
+import in.gov.sih.sih26135.dto.response.DataQualityRuleExecutionSummary;
 import in.gov.sih.sih26135.dto.response.ProviderDataQualityIssueResponse;
 import in.gov.sih.sih26135.entity.DataQualityIssue;
 import in.gov.sih.sih26135.entity.DataQualityIssueEvent;
@@ -13,7 +14,6 @@ import in.gov.sih.sih26135.entity.User;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.InvalidDataQualityTransitionException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
-import in.gov.sih.sih26135.mapper.DataQualityIssueEventMapper;
 import in.gov.sih.sih26135.repository.DataQualityIssueEventRepository;
 import in.gov.sih.sih26135.repository.DataQualityIssueRepository;
 import in.gov.sih.sih26135.repository.ProviderDataQualityQueryRepository;
@@ -32,10 +32,13 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.Date;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
-
+import java.util.Set;
 @Service
 @Transactional
 public class ProviderDataQualityServiceImpl implements ProviderDataQualityService {
@@ -47,7 +50,6 @@ public class ProviderDataQualityServiceImpl implements ProviderDataQualityServic
   private final DataQualityIssueEventRepository dataQualityIssueEventRepository;
   private final RefDataQualityIssueStatusRepository statusRepository;
   private final WorkflowSecurityScopeValidator scopeValidator;
-  private final DataQualityIssueEventMapper eventMapper;
   private final JdbcTemplate jdbcTemplate;
 
   @Autowired(required = false)
@@ -59,14 +61,12 @@ public class ProviderDataQualityServiceImpl implements ProviderDataQualityServic
       DataQualityIssueEventRepository dataQualityIssueEventRepository,
       RefDataQualityIssueStatusRepository statusRepository,
       WorkflowSecurityScopeValidator scopeValidator,
-      DataQualityIssueEventMapper eventMapper,
       JdbcTemplate jdbcTemplate) {
     this.queryRepository = Objects.requireNonNull(queryRepository, "queryRepository is required");
     this.dataQualityIssueRepository = Objects.requireNonNull(dataQualityIssueRepository, "dataQualityIssueRepository is required");
     this.dataQualityIssueEventRepository = Objects.requireNonNull(dataQualityIssueEventRepository, "dataQualityIssueEventRepository is required");
     this.statusRepository = Objects.requireNonNull(statusRepository, "statusRepository is required");
     this.scopeValidator = Objects.requireNonNull(scopeValidator, "scopeValidator is required");
-    this.eventMapper = Objects.requireNonNull(eventMapper, "eventMapper is required");
     this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate is required");
   }
 
@@ -118,7 +118,6 @@ public class ProviderDataQualityServiceImpl implements ProviderDataQualityServic
 
     return queryRepository.findProviderIssueById(providerId, issueId)
         .orElseGet(() -> {
-          // Determine whether issue does not exist or exists under another provider
           boolean exists = dataQualityIssueRepository.existsById(issueId);
           if (exists) {
             throw new AccessDeniedException("Data quality issue does not belong to caller's provider scope");
@@ -131,8 +130,12 @@ public class ProviderDataQualityServiceImpl implements ProviderDataQualityServic
   @Transactional(readOnly = true)
   public List<DataQualityIssueEventResponse> getIssueEvents(Long issueId, int page, int size) {
     validateIssueId(issueId);
-    int safePage = Math.max(0, page);
-    int safeSize = (size >= 1 && size <= 100) ? size : 20;
+    if (page < 0) {
+      throw new BadRequestException("Page index cannot be negative", "INVALID_PAGE");
+    }
+    if (size < 1 || size > 100) {
+      throw new BadRequestException("Page size must be between 1 and 100", "INVALID_SIZE");
+    }
 
     User caller = resolveAndValidateProviderCaller();
     Long providerId = caller.getTrainingProviderId();
@@ -145,18 +148,8 @@ public class ProviderDataQualityServiceImpl implements ProviderDataQualityServic
       throw new ResourceNotFoundException("DataQualityIssue", "id=" + issueId);
     }
 
-    int offset = safePage * safeSize;
-    List<DataQualityIssueEvent> events = dataQualityIssueEventRepository.findByDataQualityIssueId(issueId);
-    if (events == null || events.isEmpty()) {
-      return List.of();
-    }
-
-    return events.stream()
-        .sorted((a, b) -> a.getChangedAt().compareTo(b.getChangedAt()))
-        .skip(offset)
-        .limit(safeSize)
-        .map(eventMapper::toResponse)
-        .toList();
+    int offset = page * size;
+    return queryRepository.findIssueEventsPaged(issueId, size, offset);
   }
 
   @Override
@@ -178,7 +171,7 @@ public class ProviderDataQualityServiceImpl implements ProviderDataQualityServic
         .orElseThrow(() -> new ResourceNotFoundException("DataQualityIssue", "id=" + issueId));
 
     String currentStatus = issue.getDataQualityIssueStatus() != null
-        ? issue.getDataQualityIssueStatus().getStatusCode().toUpperCase()
+        ? issue.getDataQualityIssueStatus().getStatusCode().toUpperCase(Locale.ROOT)
         : "OPEN";
 
     if (!"OPEN".equals(currentStatus) && !"ASSIGNED".equals(currentStatus) && !"REOPENED".equals(currentStatus)) {
@@ -226,12 +219,16 @@ public class ProviderDataQualityServiceImpl implements ProviderDataQualityServic
         .orElseThrow(() -> new ResourceNotFoundException("DataQualityIssue", "id=" + issueId));
 
     String currentStatus = issue.getDataQualityIssueStatus() != null
-        ? issue.getDataQualityIssueStatus().getStatusCode().toUpperCase()
+        ? issue.getDataQualityIssueStatus().getStatusCode().toUpperCase(Locale.ROOT)
         : "OPEN";
 
     if ("RESOLVED".equals(currentStatus) || "DISMISSED".equals(currentStatus)) {
       throw new InvalidDataQualityTransitionException(currentStatus, "RESOLVED");
     }
+
+    // MANDATORY RESOLUTION INTEGRITY:
+    // Verify that the underlying record actually satisfies data quality rules before marking RESOLVED!
+    verifyUnderlyingAnomalyCorrected(issue);
 
     RefDataQualityIssueStatus resolvedStatus = statusRepository.findByStatusCode("RESOLVED")
         .orElseThrow(() -> new ResourceNotFoundException("RefDataQualityIssueStatus", "statusCode=RESOLVED"));
@@ -280,7 +277,7 @@ public class ProviderDataQualityServiceImpl implements ProviderDataQualityServic
         .orElseThrow(() -> new ResourceNotFoundException("DataQualityIssue", "id=" + issueId));
 
     String currentStatus = issue.getDataQualityIssueStatus() != null
-        ? issue.getDataQualityIssueStatus().getStatusCode().toUpperCase()
+        ? issue.getDataQualityIssueStatus().getStatusCode().toUpperCase(Locale.ROOT)
         : "OPEN";
 
     if ("RESOLVED".equals(currentStatus) || "DISMISSED".equals(currentStatus)) {
@@ -330,17 +327,180 @@ public class ProviderDataQualityServiceImpl implements ProviderDataQualityServic
   @Override
   public void triggerReEvaluation(Long issueId) {
     User caller = resolveAndValidateProviderCaller();
+    Long providerId = caller.getTrainingProviderId();
+
+    DataQualityScanRequest scanRequest = new DataQualityScanRequest();
+
     if (issueId != null && issueId > 0) {
       validateIssueId(issueId);
-      if (!queryRepository.isIssueOwnedByProvider(issueId, caller.getTrainingProviderId())) {
-        throw new AccessDeniedException("Data quality issue does not belong to caller's provider scope");
+      if (!queryRepository.isIssueOwnedByProvider(issueId, providerId)) {
+        boolean exists = dataQualityIssueRepository.existsById(issueId);
+        if (exists) {
+          throw new AccessDeniedException("Data quality issue does not belong to caller's provider scope");
+        }
+        throw new ResourceNotFoundException("DataQualityIssue", "id=" + issueId);
+      }
+      DataQualityIssue issue = dataQualityIssueRepository.findById(issueId)
+          .orElseThrow(() -> new ResourceNotFoundException("DataQualityIssue", "id=" + issueId));
+
+      String ruleCode = issue.getDataQualityRule() != null ? issue.getDataQualityRule().getRuleCode() : null;
+      String entityType = issue.getEntityType();
+
+      if (entityType != null) {
+        String normalized = entityType.trim().toUpperCase(Locale.ROOT).replace("_", "");
+        if (!Set.of("TRAINEE", "PLACEMENTRECORD", "EMPLOYMENTRECORD", "ATTENDANCERECORD").contains(normalized)) {
+          throw new BadRequestException("Data quality re-evaluation is not supported for entity type " + entityType + " or rule " + ruleCode, "UNSUPPORTED_RE_EVALUATION");
+        }
+      }
+
+      scanRequest.setRuleCode(ruleCode);
+      scanRequest.setTargetEntityType(entityType);
+      scanRequest.setEntityId(issue.getEntityId());
+    }
+
+    if (dataQualityEngineService == null) {
+      throw new BadRequestException("Data quality engine service is unavailable", "SERVICE_UNAVAILABLE");
+    }
+
+    List<DataQualityRuleExecutionSummary> summaries;
+    try {
+      summaries = dataQualityEngineService.executeScan(scanRequest);
+    } catch (AccessDeniedException ade) {
+      throw ade;
+    } catch (Exception e) {
+      log.error("Provider re-evaluation failed for provider {}: {}", providerId, e.getMessage(), e);
+      throw new BadRequestException("Data quality re-evaluation failed: " + e.getMessage(), "SCAN_FAILED");
+    }
+
+    if (summaries != null) {
+      for (DataQualityRuleExecutionSummary s : summaries) {
+        if ("FAILED".equalsIgnoreCase(s.status())) {
+          log.warn("Rule {} execution failed during provider scan", s.ruleCode());
+          throw new BadRequestException("Data quality re-evaluation failed for rule: " + s.ruleCode(), "SCAN_FAILED");
+        }
       }
     }
-    if (dataQualityEngineService != null) {
-      try {
-        dataQualityEngineService.executeScan(new DataQualityScanRequest());
-      } catch (Exception e) {
-        log.warn("Rule re-evaluation failed or was partially completed: {}", e.getMessage());
+  }
+
+  private void verifyUnderlyingAnomalyCorrected(DataQualityIssue issue) {
+    String entityType = issue.getEntityType() != null ? issue.getEntityType().toUpperCase(Locale.ROOT) : "";
+    Long entityId = issue.getEntityId();
+    if (entityId == null || entityId <= 0) {
+      throw new BadRequestException("Issue target entityId is invalid", "REMEDIATION_VALIDATION_FAILED");
+    }
+
+    String ruleCode = issue.getDataQualityRule() != null ? issue.getDataQualityRule().getRuleCode() : null;
+
+    // 1. Privileged review check: Cross-provider duplicate candidate registrations cannot be directly resolved by a single provider
+    if ("DQ-DUPLICATE-005".equalsIgnoreCase(ruleCode)) {
+      throw new AccessDeniedException(
+          "Cross-provider duplicate candidate registration issues require administrative supervisor review and cannot be directly resolved by a single training provider");
+    }
+
+    // 2. TrainingEnrollment entity verification
+    if (entityType.contains("ENROLLMENT")) {
+      List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+          "SELECT enrollment_id, enrollment_date, start_date, expected_completion_date, actual_completion_date, enrollment_status_id " +
+          "FROM training_enrollments WHERE enrollment_id = ? AND deleted_at IS NULL",
+          entityId);
+      if (rows.isEmpty()) {
+        throw new ResourceNotFoundException("TrainingEnrollment", "id=" + entityId);
+      }
+      Map<String, Object> enrollmentRow = rows.get(0);
+
+      Date enrollmentDate = (Date) enrollmentRow.get("enrollment_date");
+      Date startDate = (Date) enrollmentRow.get("start_date");
+      Date expectedCompletionDate = (Date) enrollmentRow.get("expected_completion_date");
+      Date actualCompletionDate = (Date) enrollmentRow.get("actual_completion_date");
+
+      // Chronological validation rules:
+      if (actualCompletionDate != null && startDate != null && actualCompletionDate.before(startDate)) {
+        throw new BadRequestException(
+            "Underlying TrainingEnrollment #" + entityId + " still violates chronological rules: actualCompletionDate (" +
+                actualCompletionDate + ") precedes startDate (" + startDate + ")",
+            "REMEDIATION_VALIDATION_FAILED");
+      }
+      if (expectedCompletionDate != null && startDate != null && expectedCompletionDate.before(startDate)) {
+        throw new BadRequestException(
+            "Underlying TrainingEnrollment #" + entityId + " still violates chronological rules: expectedCompletionDate (" +
+                expectedCompletionDate + ") precedes startDate (" + startDate + ")",
+            "REMEDIATION_VALIDATION_FAILED");
+      }
+      if (startDate != null && enrollmentDate != null && startDate.before(enrollmentDate)) {
+        throw new BadRequestException(
+            "Underlying TrainingEnrollment #" + entityId + " still violates chronological rules: startDate (" +
+                startDate + ") precedes enrollmentDate (" + enrollmentDate + ")",
+            "REMEDIATION_VALIDATION_FAILED");
+      }
+    }
+    // 3. Trainee entity verification (e.g. DQ-TRAINEE-001 contact details)
+    else if ("TRAINEE".equals(entityType)) {
+      List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+          "SELECT trainee_id, phone, email FROM trainees WHERE trainee_id = ? AND deleted_at IS NULL",
+          entityId);
+      if (rows.isEmpty()) {
+        throw new ResourceNotFoundException("Trainee", "id=" + entityId);
+      }
+      Map<String, Object> traineeRow = rows.get(0);
+
+      String phone = (String) traineeRow.get("phone");
+      String email = (String) traineeRow.get("email");
+      boolean hasPhone = phone != null && !phone.trim().isEmpty();
+      boolean hasEmail = email != null && !email.trim().isEmpty();
+
+      if ("DQ-TRAINEE-001".equalsIgnoreCase(ruleCode) || (!hasPhone && !hasEmail)) {
+        if (!hasPhone && !hasEmail) {
+          throw new BadRequestException(
+              "Underlying Trainee #" + entityId + " still lacks contact details: both phone and email are missing",
+              "REMEDIATION_VALIDATION_FAILED");
+        }
+      }
+    }
+    // 4. AttendanceRecord entity verification (DQ-ATTENDANCE-004)
+    else if (entityType.contains("ATTENDANCE")) {
+      List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+          "SELECT ar.attendance_id, ar.session_date, tb.start_date, tb.end_date " +
+          "FROM attendance_records ar " +
+          "JOIN training_batches tb ON ar.batch_id = tb.batch_id " +
+          "WHERE ar.attendance_id = ?",
+          entityId);
+      if (rows.isEmpty()) {
+        throw new ResourceNotFoundException("AttendanceRecord", "id=" + entityId);
+      }
+      Map<String, Object> attendanceRow = rows.get(0);
+
+      Date sessionDate = (Date) attendanceRow.get("session_date");
+      Date batchStartDate = (Date) attendanceRow.get("start_date");
+      Date batchEndDate = (Date) attendanceRow.get("end_date");
+
+      if (sessionDate != null && batchStartDate != null && sessionDate.before(batchStartDate)) {
+        throw new BadRequestException(
+            "Underlying AttendanceRecord #" + entityId + " session date (" + sessionDate +
+                ") precedes batch start date (" + batchStartDate + ")",
+            "REMEDIATION_VALIDATION_FAILED");
+      }
+      if (sessionDate != null && batchEndDate != null && sessionDate.after(batchEndDate)) {
+        throw new BadRequestException(
+            "Underlying AttendanceRecord #" + entityId + " session date (" + sessionDate +
+                ") occurs after batch end date (" + batchEndDate + ")",
+            "REMEDIATION_VALIDATION_FAILED");
+      }
+    }
+    // 5. TrainingCenter entity verification
+    else if (entityType.contains("CENTER")) {
+      List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+          "SELECT center_id, center_name, state_id, district_id, operational_capacity FROM training_centers WHERE center_id = ? AND deleted_at IS NULL",
+          entityId);
+      if (rows.isEmpty()) {
+        throw new ResourceNotFoundException("TrainingCenter", "id=" + entityId);
+      }
+      Map<String, Object> centerRow = rows.get(0);
+
+      Number capacity = (Number) centerRow.get("operational_capacity");
+      if (capacity != null && capacity.intValue() < 0) {
+        throw new BadRequestException(
+            "Underlying TrainingCenter #" + entityId + " has invalid operational capacity: " + capacity,
+            "REMEDIATION_VALIDATION_FAILED");
       }
     }
   }

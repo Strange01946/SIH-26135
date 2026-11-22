@@ -38,21 +38,23 @@ function Record-Result {
 }
 
 $mysqlBin = "mysql"
-if (-not (Get-Command mysql -ErrorAction SilentlyContinue)) {
-    if (Test-Path "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe") {
-        $mysqlBin = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
-    }
+if (Test-Path "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe") {
+    $mysqlBin = "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
 }
 
 function Execute-MySqlQuery {
     param([string]$Query)
     try {
-        $output = & $mysqlBin -u$DbUser "-p$DbPass" $DbName -e $Query --batch --skip-column-names 2>$null
+        $output = & $mysqlBin "-u$($DbUser)" "-p$($DbPass)" $DbName -e $Query --batch --skip-column-names 2>$null
         return $output
     } catch {
         return $null
     }
 }
+
+# Reset test fixture issue 1002149 to OPEN and defective date for idempotent repeatability
+Execute-MySqlQuery "UPDATE data_quality_issues SET data_quality_issue_status_id = 1, resolved_at = NULL, resolved_by_user_id = NULL, resolution_notes = NULL WHERE data_quality_issue_id = 1002149;"
+Execute-MySqlQuery "UPDATE attendance_records SET session_date = '2026-11-22' WHERE attendance_id = 37;"
 
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host "SIH-26135 Phase 30.5 Provider Data Quality & Scorecards Verification" -ForegroundColor Cyan
@@ -202,10 +204,22 @@ try {
 # -------------------------------------------------------------------------
 try {
     $timelineResp = Invoke-RestMethod -Uri "$BaseUrl/api/v1/provider/data-quality/issues/$targetIssueId/events?page=0&size=5" -Method Get -Headers $providerHeaders
-    if ($timelineResp.data -is [System.Array]) {
-        Record-Result 9 "Fetch bounded event timeline" $true "Retrieved bounded audit events timeline for issue #$targetIssueId (event count: $($timelineResp.data.Count))"
+    $hasPaging = $timelineResp.data -is [System.Array]
+
+    # Verify bounds enforcement (>100 rejected with 400)
+    $boundsRejected = $false
+    try {
+        Invoke-RestMethod -Uri "$BaseUrl/api/v1/provider/data-quality/issues/$targetIssueId/events?page=0&size=101" -Method Get -Headers $providerHeaders
+    } catch {
+        if ($_.Exception.Response.StatusCode.value__ -eq 400) {
+            $boundsRejected = $true
+        }
+    }
+
+    if ($hasPaging -and $boundsRejected) {
+        Record-Result 9 "Fetch bounded event timeline" $true "Retrieved bounded audit events timeline for issue #$targetIssueId and verified database-side size>100 rejected with 400"
     } else {
-        Record-Result 9 "Fetch bounded event timeline" $false "Unexpected timeline response type"
+        Record-Result 9 "Fetch bounded event timeline" $false "Bounds enforcement or timeline retrieval failed: hasPaging=$hasPaging, boundsRejected=$boundsRejected"
     }
 } catch {
     Record-Result 9 "Fetch bounded event timeline" $false "Exception: $_"
@@ -245,14 +259,14 @@ try {
 # -------------------------------------------------------------------------
 try {
     # Find an issue belonging to another entity/center if available
-    $otherIssueId = Execute-MySqlQuery "SELECT dqi.issue_id FROM data_quality_issues dqi LEFT JOIN training_enrollments te ON dqi.entity_id = te.enrollment_id AND dqi.entity_type = 'TrainingEnrollment' LEFT JOIN training_centers tc ON tc.center_id = te.center_id WHERE (tc.provider_id != $providerId OR tc.provider_id IS NULL) LIMIT 1;"
+    $otherIssueId = Execute-MySqlQuery "SELECT dqi.data_quality_issue_id FROM data_quality_issues dqi WHERE dqi.data_quality_issue_id NOT IN (SELECT DISTINCT dqi2.data_quality_issue_id FROM data_quality_issues dqi2 LEFT JOIN training_centers tc_direct ON UPPER(dqi2.entity_type) IN ('TRAININGCENTER', 'TRAINING_CENTER', 'CENTER') AND dqi2.entity_id = tc_direct.center_id LEFT JOIN training_enrollments te ON UPPER(dqi2.entity_type) IN ('TRAININGENROLLMENT', 'TRAINING_ENROLLMENT', 'ENROLLMENT') AND dqi2.entity_id = te.enrollment_id LEFT JOIN training_batches tb ON UPPER(dqi2.entity_type) IN ('TRAININGBATCH', 'TRAINING_BATCH', 'BATCH') AND dqi2.entity_id = tb.batch_id LEFT JOIN attendance_records ar ON UPPER(dqi2.entity_type) IN ('ATTENDANCERECORD', 'ATTENDANCE_RECORD', 'ATTENDANCE') AND dqi2.entity_id = ar.attendance_id LEFT JOIN training_batches ar_tb ON ar.batch_id = ar_tb.batch_id WHERE tc_direct.provider_id = $providerId OR te.provider_id = $providerId OR tb.provider_id = $providerId OR ar_tb.provider_id = $providerId) LIMIT 1;"
     if (-not $otherIssueId) {
         $otherIssueId = 99999999
     }
 
     $failedAsExpected = $false
     try {
-        Invoke-RestMethod -Uri "$BaseUrl/api/v1/provider/data-quality/issues/$otherIssueId" -Method Get -Headers $providerHeaders
+        $null = Invoke-RestMethod -Uri "$BaseUrl/api/v1/provider/data-quality/issues/$otherIssueId" -Method Get -Headers $providerHeaders
     } catch {
         $statusCode = $_.Exception.Response.StatusCode.value__
         if ($statusCode -eq 403 -or $statusCode -eq 404) {
@@ -271,7 +285,7 @@ try {
     $failedAsExpected = $false
     $tamperBody = @{ resolutionNotes = "Cross-provider unauthorized tampering attempt" } | ConvertTo-Json
     try {
-        Invoke-RestMethod -Uri "$BaseUrl/api/v1/provider/data-quality/issues/$otherIssueId/resolve" -Method Post -Body $tamperBody -ContentType "application/json" -Headers $providerHeaders
+        $null = Invoke-RestMethod -Uri "$BaseUrl/api/v1/provider/data-quality/issues/$otherIssueId/resolve" -Method Post -Body $tamperBody -ContentType "application/json" -Headers $providerHeaders
     } catch {
         $statusCode = $_.Exception.Response.StatusCode.value__
         if ($statusCode -eq 403 -or $statusCode -eq 404) {
@@ -377,41 +391,88 @@ try {
 # -------------------------------------------------------------------------
 try {
     $reevalResp = Invoke-RestMethod -Uri "$BaseUrl/api/v1/provider/data-quality/re-evaluate" -Method Post -Headers $providerHeaders
-    if ($reevalResp.success -eq $true) {
-        Record-Result 17 "Trigger background rule re-evaluation" $true "Background rule re-evaluation successfully initiated"
+    $overallOk = $reevalResp.success -eq $true
+
+    # Also verify unsupported entity type re-evaluation rejection with 400
+    $unsupportedRejected = $false
+    $centerIssue = $activeIssuesResp.data.content | Where-Object { $_.entityType -eq "TrainingCenter" } | Select-Object -First 1
+    if ($centerIssue) {
+        try {
+            Invoke-RestMethod -Uri "$BaseUrl/api/v1/provider/data-quality/re-evaluate?issueId=$($centerIssue.id)" -Method Post -Headers $providerHeaders
+        } catch {
+            if ($_.Exception.Response.StatusCode.value__ -eq 400) {
+                $unsupportedRejected = $true
+            }
+        }
     } else {
-        Record-Result 17 "Trigger background rule re-evaluation" $false "Unexpected re-evaluation response"
+        $unsupportedRejected = $true
+    }
+
+    if ($overallOk -and $unsupportedRejected) {
+        Record-Result 17 "Trigger background rule re-evaluation" $true "Background rule re-evaluation initiated; unsupported entity type scan rejected with 400"
+    } else {
+        Record-Result 17 "Trigger background rule re-evaluation" $false "Re-evaluation validation failed: overallOk=$overallOk, unsupportedRejected=$unsupportedRejected"
     }
 } catch {
     Record-Result 17 "Trigger background rule re-evaluation" $false "Exception: $_"
 }
 
 # -------------------------------------------------------------------------
-# Scenario 18: Resolve Eligible Issue with Mandatory Notes
+# Scenario 17b: Resolution Integrity — Uncorrected Anomaly Rejection (400) & Privileged Review (403)
 # -------------------------------------------------------------------------
 try {
-    # Ensure target issue is currently open
-    $openIssue = $activeIssuesResp.data.content | Where-Object { $_.isOpen -eq $true } | Select-Object -First 1
-    if ($openIssue) {
-        $targetIssueId = $openIssue.id
+    # 1. Attempting to resolve uncorrected attendance issue (1002149) must be rejected with 400 REMEDIATION_VALIDATION_FAILED
+    $uncorrectedRejected = $false
+    try {
+        $badResolve = @{ resolutionNotes = "Attempting to resolve while session date remains out of batch bounds" } | ConvertTo-Json
+        $null = Invoke-RestMethod -Uri "$BaseUrl/api/v1/provider/data-quality/issues/1002149/resolve" -Method Post -Body $badResolve -ContentType "application/json" -Headers $providerHeaders
+    } catch {
+        if ($_.Exception.Response.StatusCode.value__ -eq 400) {
+            $uncorrectedRejected = $true
+        }
     }
 
+    # 2. Attempting to resolve privileged duplicate issue (1002116) must be rejected with 403
+    $privilegedRejected = $false
+    try {
+        $privResolve = @{ resolutionNotes = "Attempting unilateral resolution of duplicate candidate registration" } | ConvertTo-Json
+        $null = Invoke-RestMethod -Uri "$BaseUrl/api/v1/provider/data-quality/issues/1002116/resolve" -Method Post -Body $privResolve -ContentType "application/json" -Headers $providerHeaders
+    } catch {
+        if ($_.Exception.Response.StatusCode.value__ -eq 403) {
+            $privilegedRejected = $true
+        }
+    }
+
+    $integrityPassed = $uncorrectedRejected -and $privilegedRejected
+    Record-Result 18 "Enforce resolution integrity and privileged review" $integrityPassed "Uncorrected anomaly rejected with 400 ($uncorrectedRejected), Privileged duplicate rejected with 403 ($privilegedRejected)"
+} catch {
+    Record-Result 18 "Enforce resolution integrity and privileged review" $false "Exception: $_"
+}
+
+# -------------------------------------------------------------------------
+# Scenario 19: Resolve Eligible Issue with Mandatory Notes (After Domain Correction)
+# -------------------------------------------------------------------------
+try {
+    # Correct the underlying attendance record 37 to be inside batch boundaries
+    Execute-MySqlQuery "UPDATE attendance_records SET session_date = '2026-08-15' WHERE attendance_id = 37;"
+    $targetIssueId = 1002149
+
     $resolveBody = @{
-        resolutionNotes = "Enrollment completion date reconciled against signed course graduation certificates."
+        resolutionNotes = "Attendance session date verified and corrected to valid date 2026-08-15 within scheduled batch boundaries."
     } | ConvertTo-Json
 
     $resolveResp = Invoke-RestMethod -Uri "$BaseUrl/api/v1/provider/data-quality/issues/$targetIssueId/resolve" -Method Post -Body $resolveBody -ContentType "application/json" -Headers $providerHeaders
     if ($resolveResp.data.statusCode -eq "RESOLVED" -and $resolveResp.data.isOpen -eq $false) {
-        Record-Result 18 "Resolve eligible issue with mandatory notes" $true "Issue #$targetIssueId successfully transitioned to RESOLVED"
+        Record-Result 19 "Resolve eligible issue after real record correction" $true "Issue #$targetIssueId successfully transitioned to RESOLVED"
     } else {
-        Record-Result 18 "Resolve eligible issue with mandatory notes" $false "Issue status not marked RESOLVED"
+        Record-Result 19 "Resolve eligible issue after real record correction" $false "Issue status not marked RESOLVED"
     }
 } catch {
-    Record-Result 18 "Resolve eligible issue with mandatory notes" $false "Exception: $_"
+    Record-Result 19 "Resolve eligible issue after real record correction" $false "Exception: $_"
 }
 
 # -------------------------------------------------------------------------
-# Scenario 19: Verify Issue Disappears from Active Queue
+# Scenario 20: Verify Issue Disappears from Active Queue
 # -------------------------------------------------------------------------
 try {
     $newActiveResp = Invoke-RestMethod -Uri "$BaseUrl/api/v1/provider/data-quality/issues?activeOnly=true&page=0&size=20" -Method Get -Headers $providerHeaders
@@ -419,13 +480,13 @@ try {
     foreach ($item in $newActiveResp.data.content) {
         if ($item.id -eq $targetIssueId) { $foundInActive = $true }
     }
-    Record-Result 19 "Verify issue disappears from active queue" (-not $foundInActive) "Resolved issue #$targetIssueId is no longer present in Active Queue"
+    Record-Result 20 "Verify issue disappears from active queue" (-not $foundInActive) "Resolved issue #$targetIssueId is no longer present in Active Queue"
 } catch {
-    Record-Result 19 "Verify issue disappears from active queue" $false "Exception: $_"
+    Record-Result 20 "Verify issue disappears from active queue" $false "Exception: $_"
 }
 
 # -------------------------------------------------------------------------
-# Scenario 20: Verify Issue Remains Visible in Historical Records
+# Scenario 21: Verify Issue Remains Visible in Historical Records
 # -------------------------------------------------------------------------
 try {
     $allResp = Invoke-RestMethod -Uri "$BaseUrl/api/v1/provider/data-quality/issues?activeOnly=false&page=0&size=50" -Method Get -Headers $providerHeaders
@@ -435,24 +496,24 @@ try {
             $foundInAll = $true
         }
     }
-    Record-Result 20 "Verify issue remains visible in historical records" $foundInAll "Issue #$targetIssueId remains visible under All Issues (Historical) with status RESOLVED"
+    Record-Result 21 "Verify issue remains visible in historical records" $foundInAll "Issue #$targetIssueId remains visible under All Issues (Historical) with status RESOLVED"
 } catch {
-    Record-Result 20 "Verify issue remains visible in historical records" $false "Exception: $_"
+    Record-Result 21 "Verify issue remains visible in historical records" $false "Exception: $_"
 }
 
 # -------------------------------------------------------------------------
-# Scenario 21: Verify Center Scorecard Reflects Updated Cleanliness
+# Scenario 22: Verify Center Scorecard Reflects Updated Cleanliness
 # -------------------------------------------------------------------------
 try {
     $updatedScorecard = Invoke-RestMethod -Uri "$BaseUrl/api/v1/provider/centers/$centerId/scorecard" -Method Get -Headers $providerHeaders
     $newSc = $updatedScorecard.data
-    Record-Result 21 "Verify center scorecard reflects updated cleanliness" $true "Re-evaluated Scorecard for center $($centerId): Cleanliness Index=$($newSc.cleanlinessIndexPct)%, Active Defects=$($newSc.totalActiveIssues)"
+    Record-Result 22 "Verify center scorecard reflects updated cleanliness" $true "Re-evaluated Scorecard for center $($centerId): Cleanliness Index=$($newSc.cleanlinessIndexPct)%, Active Defects=$($newSc.totalActiveIssues)"
 } catch {
-    Record-Result 21 "Verify center scorecard reflects updated cleanliness" $false "Exception: $_"
+    Record-Result 22 "Verify center scorecard reflects updated cleanliness" $false "Exception: $_"
 }
 
 # -------------------------------------------------------------------------
-# Scenario 22: Verify No Invented Score on Zero Cohort
+# Scenario 23: Verify No Invented Score on Zero Cohort
 # -------------------------------------------------------------------------
 try {
     # Check if any center has zero enrollments or test mathematical function
@@ -460,18 +521,18 @@ try {
     $zeroCenterId = Execute-MySqlQuery "SELECT tc.center_id FROM training_centers tc LEFT JOIN training_enrollments te ON tc.center_id = te.center_id WHERE tc.provider_id = $providerId AND te.enrollment_id IS NULL LIMIT 1;"
     if ($zeroCenterId) {
         $zeroSc = Invoke-RestMethod -Uri "$BaseUrl/api/v1/provider/centers/$zeroCenterId/scorecard" -Method Get -Headers $providerHeaders
-        $isHonestNull = $zeroSc.data.cleanlinessIndexPct -eq $null -and $zeroSc.data.eligiblePopulation -eq 0
-        Record-Result 22 "Verify no invented score on zero cohort" $isHonestNull "Center $zeroCenterId with 0 enrollments returned null cleanliness index honestly without inventing 100%"
+        $isHonestNull = $zeroSc.data.totalEnrollments -eq 0 -and $zeroSc.data.completionRatePct -eq $null -and $zeroSc.data.dropoutRatePct -eq $null
+        Record-Result 23 "Verify no invented score on zero cohort" $isHonestNull "Center $zeroCenterId with 0 enrollments returned null completion/dropout rates honestly without inventing 0% or 100%"
     } else {
         # Validated formula invariant: OperationalMetricsMath returns null when eligiblePopulation <= 0
-        Record-Result 22 "Verify no invented score on zero cohort" $true "OperationalMetricsMath returns null when eligible population is zero (verified by source and formula)"
+        Record-Result 23 "Verify no invented score on zero cohort" $true "OperationalMetricsMath returns null when eligible population is zero (verified by source and formula)"
     }
 } catch {
-    Record-Result 22 "Verify no invented score on zero cohort" $false "Exception: $_"
+    Record-Result 23 "Verify no invented score on zero cohort" $false "Exception: $_"
 }
 
 # -------------------------------------------------------------------------
-# Scenario 23: Blank Resolution Notes Rejected with 400
+# Scenario 24: Blank Resolution Notes Rejected with 400
 # -------------------------------------------------------------------------
 try {
     $blankBody = @{ resolutionNotes = "    " } | ConvertTo-Json
@@ -483,13 +544,13 @@ try {
             $rejected = $true
         }
     }
-    Record-Result 23 "Blank resolution notes rejected with 400" $rejected "Blank or whitespace-only resolution notes rejected with HTTP 400 Bad Request"
+    Record-Result 24 "Blank resolution notes rejected with 400" $rejected "Blank or whitespace-only resolution notes rejected with HTTP 400 Bad Request"
 } catch {
-    Record-Result 23 "Blank resolution notes rejected with 400" $false "Exception: $_"
+    Record-Result 24 "Blank resolution notes rejected with 400" $false "Exception: $_"
 }
 
 # -------------------------------------------------------------------------
-# Scenario 24: Concurrent / Repeated Resolution Handled Cleanly
+# Scenario 25: Concurrent / Repeated Resolution Handled Cleanly
 # -------------------------------------------------------------------------
 try {
     $repeatedBody = @{ resolutionNotes = "Attempting duplicate resolution on already resolved issue" } | ConvertTo-Json
@@ -506,13 +567,13 @@ try {
             $handled = $true
         }
     }
-    Record-Result 24 "Concurrent / repeated resolution handled cleanly" $handled "Idempotent / repeated resolution handled cleanly without unhandled server exception"
+    Record-Result 25 "Concurrent / repeated resolution handled cleanly" $handled "Idempotent / repeated resolution handled cleanly without unhandled server exception"
 } catch {
-    Record-Result 24 "Concurrent / repeated resolution handled cleanly" $false "Exception: $_"
+    Record-Result 25 "Concurrent / repeated resolution handled cleanly" $false "Exception: $_"
 }
 
 # -------------------------------------------------------------------------
-# Scenario 25: Verify Role and Authentication Boundaries
+# Scenario 26: Verify Role and Authentication Boundaries
 # -------------------------------------------------------------------------
 try {
     $anonRejected = $false
@@ -546,9 +607,9 @@ try {
     }
 
     $bothEnforced = $anonRejected -and $traineeRejected
-    Record-Result 25 "Verify role and authentication boundaries" $bothEnforced "Unauthenticated returns 401 ($anonRejected), Trainee caller returns 403 ($traineeRejected)"
+    Record-Result 26 "Verify role and authentication boundaries" $bothEnforced "Unauthenticated returns 401 ($anonRejected), Trainee caller returns 403 ($traineeRejected)"
 } catch {
-    Record-Result 25 "Verify role and authentication boundaries" $false "Exception: $_"
+    Record-Result 26 "Verify role and authentication boundaries" $false "Exception: $_"
 }
 
 # -------------------------------------------------------------------------

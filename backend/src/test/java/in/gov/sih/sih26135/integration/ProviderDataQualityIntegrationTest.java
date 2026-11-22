@@ -33,6 +33,9 @@ public class ProviderDataQualityIntegrationTest extends BaseJourneyIntegrationTe
   private Long enrollmentAId;
   private Long issueAId;
   private Long issueBId;
+  private Long centerIssueAId;
+  private Long uncorrectedIssueId;
+  private Long privilegedIssueId;
 
   private String providerAToken;
   private HttpHeaders providerAHeaders;
@@ -105,10 +108,10 @@ public class ProviderDataQualityIntegrationTest extends BaseJourneyIntegrationTe
         """, "BT-A-" + runToken, courseId, providerAId, centerAId);
     trackedBatchIds.add(batchAId);
 
-    // 6. Trainee
+    // 6. Trainee (phone and email are initially NULL to model DQ-TRAINEE-001 anomaly)
     traineeId = insertAndGetId("""
-        INSERT INTO trainees (registration_number, first_name, last_name, gender_id, date_of_birth, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
-        VALUES (?, 'John', 'Doe', 1, '1995-05-15', 101, 1001, 1, 1, NOW(), NOW())
+        INSERT INTO trainees (registration_number, first_name, last_name, gender_id, date_of_birth, state_id, district_id, phone, email, current_employment_status_id, profile_status_id, created_at, updated_at)
+        VALUES (?, 'John', 'Doe', 1, '1995-05-15', 101, 1001, NULL, NULL, 1, 1, NOW(), NOW())
         """, "REG-TR-" + runToken);
     trackedTraineeIds.add(traineeId);
 
@@ -116,24 +119,52 @@ public class ProviderDataQualityIntegrationTest extends BaseJourneyIntegrationTe
     enrollmentAId = insertAndGetId("""
         INSERT INTO training_enrollments (enrollment_number, trainee_id, program_id, course_id, provider_id, center_id, batch_id, enrollment_date, start_date, expected_completion_date, enrollment_status_id, created_at, updated_at)
         VALUES (?, ?, 1, ?, ?, ?, ?, '2026-01-02', '2026-01-02', '2026-04-01', 1, NOW(), NOW())
-        """, "ENR-" + runToken, traineeId, courseId, providerAId, centerAId, batchAId);
+        """, "ENR-A-" + runToken, traineeId, courseId, providerAId, centerAId, batchAId);
     trackedEnrollmentIds.add(enrollmentAId);
 
     // 8. Data Quality Issues
-    Long ruleId = jdbcTemplate.queryForObject(
-        "SELECT data_quality_rule_id FROM data_quality_rules WHERE lifecycle_status_id = 1 LIMIT 1",
+    Long contactRuleId = jdbcTemplate.queryForObject(
+        "SELECT data_quality_rule_id FROM data_quality_rules WHERE rule_code = 'DQ-TRAINEE-001' LIMIT 1",
+        Long.class);
+
+    Long duplicateRuleId = jdbcTemplate.queryForObject(
+        "SELECT data_quality_rule_id FROM data_quality_rules WHERE rule_code = 'DQ-DUPLICATE-005' LIMIT 1",
+        Long.class);
+
+    Long attendanceRuleId = jdbcTemplate.queryForObject(
+        "SELECT data_quality_rule_id FROM data_quality_rules WHERE rule_code = 'DQ-ATTENDANCE-004' LIMIT 1",
         Long.class);
 
     issueAId = insertAndGetId("""
         INSERT INTO data_quality_issues (data_quality_rule_id, data_quality_category_id, data_quality_severity_id, data_quality_issue_status_id, data_quality_detection_source_id, entity_type, entity_id, issue_summary, detected_at, created_at, updated_at)
         VALUES (?, 2, 3, 1, 1, 'TrainingEnrollment', ?, 'Anomaly detected in Provider A enrollment', NOW(), NOW(), NOW())
-        """, ruleId, enrollmentAId);
+        """, attendanceRuleId, enrollmentAId);
     trackedDqIssueIds.add(issueAId);
+
+    // Uncorrected issue on Trainee missing contact details
+    uncorrectedIssueId = insertAndGetId("""
+        INSERT INTO data_quality_issues (data_quality_rule_id, data_quality_category_id, data_quality_severity_id, data_quality_issue_status_id, data_quality_detection_source_id, entity_type, entity_id, issue_summary, detected_at, created_at, updated_at)
+        VALUES (?, 2, 3, 1, 1, 'Trainee', ?, 'Missing contact information: both phone and email are missing', NOW(), NOW(), NOW())
+        """, contactRuleId, traineeId);
+    trackedDqIssueIds.add(uncorrectedIssueId);
+
+    // Privileged issue: cross-provider duplicate candidate registration
+    privilegedIssueId = insertAndGetId("""
+        INSERT INTO data_quality_issues (data_quality_rule_id, data_quality_category_id, data_quality_severity_id, data_quality_issue_status_id, data_quality_detection_source_id, entity_type, entity_id, issue_summary, detected_at, created_at, updated_at)
+        VALUES (?, 1, 4, 1, 1, 'Trainee', ?, 'Duplicate trainee registration detected across multiple providers', NOW(), NOW(), NOW())
+        """, duplicateRuleId, traineeId);
+    trackedDqIssueIds.add(privilegedIssueId);
+
+    centerIssueAId = insertAndGetId("""
+        INSERT INTO data_quality_issues (data_quality_rule_id, data_quality_category_id, data_quality_severity_id, data_quality_issue_status_id, data_quality_detection_source_id, entity_type, entity_id, issue_summary, detected_at, created_at, updated_at)
+        VALUES (?, 2, 3, 1, 1, 'TrainingCenter', ?, 'Anomaly detected in Provider A center', NOW(), NOW(), NOW())
+        """, contactRuleId, centerAId);
+    trackedDqIssueIds.add(centerIssueAId);
 
     issueBId = insertAndGetId("""
         INSERT INTO data_quality_issues (data_quality_rule_id, data_quality_category_id, data_quality_severity_id, data_quality_issue_status_id, data_quality_detection_source_id, entity_type, entity_id, issue_summary, detected_at, created_at, updated_at)
         VALUES (?, 2, 3, 1, 1, 'TrainingCenter', ?, 'Anomaly detected in Provider B center', NOW(), NOW(), NOW())
-        """, ruleId, centerBId);
+        """, contactRuleId, centerBId);
     trackedDqIssueIds.add(issueBId);
 
     // Users and Tokens
@@ -188,7 +219,7 @@ public class ProviderDataQualityIntegrationTest extends BaseJourneyIntegrationTe
   }
 
   @Test
-  @DisplayName("Scenario 3 & 10: Provider lists only own issues, never cross-provider issues")
+  @DisplayName("Scenario 3 & 10: Provider lists only own issues including TrainingCenter issues, never cross-provider issues")
   void providerListsOwnIssues_tenancyEnforced() {
     HttpEntity<Void> entity = new HttpEntity<>(providerAHeaders);
     ResponseEntity<JsonNode> response = restTemplate.exchange(
@@ -203,10 +234,10 @@ public class ProviderDataQualityIntegrationTest extends BaseJourneyIntegrationTe
     JsonNode content = body.path("data").path("content");
     assertThat(content.isArray()).isTrue();
 
-    // Verify issueA is present and issueB is strictly absent
+    // Verify issueA and centerIssueA are present and issueB is strictly absent
     List<Long> returnedIssueIds = new ArrayList<>();
     content.forEach(node -> returnedIssueIds.add(node.path("id").asLong()));
-    assertThat(returnedIssueIds).contains(issueAId);
+    assertThat(returnedIssueIds).contains(issueAId, centerIssueAId);
     assertThat(returnedIssueIds).doesNotContain(issueBId);
   }
 
@@ -235,24 +266,173 @@ public class ProviderDataQualityIntegrationTest extends BaseJourneyIntegrationTe
   }
 
   @Test
-  @DisplayName("Scenario 9: Bounded event audit timeline pagination")
-  void boundedTimelineEvents() {
-    HttpEntity<Void> entity = new HttpEntity<>(providerAHeaders);
+  @DisplayName("Requirement 2: Unchanged invalid record CANNOT be marked RESOLVED merely by supplying resolution notes")
+  void unchangedInvalidRecord_resolveRejected() {
+    // traineeId still has phone = null and email = null
+    HttpEntity<Map<String, String>> resolveEntity = new HttpEntity<>(
+        Map.of("resolutionNotes", "Attempting resolution without updating trainee contact details"),
+        providerAHeaders);
+
     ResponseEntity<JsonNode> response = restTemplate.exchange(
-        "http://localhost:" + port + "/api/v1/provider/data-quality/issues/" + issueAId + "/events?page=0&size=5",
-        HttpMethod.GET,
-        entity,
+        "http://localhost:" + port + "/api/v1/provider/data-quality/issues/" + uncorrectedIssueId + "/resolve",
+        HttpMethod.POST,
+        resolveEntity,
         JsonNode.class);
 
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    // MUST be rejected with 400 Bad Request
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     JsonNode body = response.getBody();
     assertThat(body).isNotNull();
-    JsonNode data = body.path("data");
-    assertThat(data.isArray()).isTrue();
+    assertThat(body.path("code").asText()).isEqualTo("REMEDIATION_VALIDATION_FAILED");
+
+    // Correcting the record in the database without calling /resolve does NOT automatically resolve it
+    jdbcTemplate.update(
+        "UPDATE trainees SET phone = '9876543210' WHERE trainee_id = ?",
+        traineeId);
+
+    // Verify issue is STILL open in the database
+    Integer statusId = jdbcTemplate.queryForObject(
+        "SELECT data_quality_issue_status_id FROM data_quality_issues WHERE data_quality_issue_id = ?",
+        Integer.class, uncorrectedIssueId);
+    assertThat(statusId).isEqualTo(1); // OPEN
+
+    // Now call /resolve after actual correction: MUST succeed
+    ResponseEntity<JsonNode> successResponse = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/issues/" + uncorrectedIssueId + "/resolve",
+        HttpMethod.POST,
+        resolveEntity,
+        JsonNode.class);
+
+    assertThat(successResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(successResponse.getBody().path("data").path("statusCode").asText()).isEqualTo("RESOLVED");
   }
 
   @Test
-  @DisplayName("Scenario 13 & 14: Center cleanliness scorecard and completion/dropout rate computation")
+  @DisplayName("Requirement 2: Privileged cross-provider duplicate issue cannot be unilaterally resolved by training provider")
+  void privilegedIssueResolution_rejected() {
+    HttpEntity<Map<String, String>> resolveEntity = new HttpEntity<>(
+        Map.of("resolutionNotes", "Provider trying to unilaterally resolve duplicate trainee"),
+        providerAHeaders);
+
+    ResponseEntity<String> response = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/issues/" + privilegedIssueId + "/resolve",
+        HttpMethod.POST,
+        resolveEntity,
+        String.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+  }
+
+  @Test
+  @DisplayName("Requirement 1: Cross-provider re-evaluation rejection and provider-scoped scan")
+  void providerScopedReEvaluation_tenancyEnforced() {
+    // 1. Unauthenticated scan -> 401
+    ResponseEntity<String> unauthResponse = restTemplate.postForEntity(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/re-evaluate",
+        null,
+        String.class);
+    assertThat(unauthResponse.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+
+    // 2. Trainee scan -> 403
+    HttpEntity<Void> traineeEntity = new HttpEntity<>(traineeHeaders);
+    ResponseEntity<String> traineeResponse = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/re-evaluate",
+        HttpMethod.POST,
+        traineeEntity,
+        String.class);
+    assertThat(traineeResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+    // 3. Provider A requesting scan on Provider B's issue -> 403/404
+    HttpEntity<Void> providerEntity = new HttpEntity<>(providerAHeaders);
+    ResponseEntity<String> crossResponse = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/re-evaluate?issueId=" + issueBId,
+        HttpMethod.POST,
+        providerEntity,
+        String.class);
+    assertThat(crossResponse.getStatusCode().value()).isIn(403, 404);
+
+    // 4. Provider A requesting scan on own supported issue -> 200 OK
+    ResponseEntity<JsonNode> validResponse = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/re-evaluate?issueId=" + uncorrectedIssueId,
+        HttpMethod.POST,
+        providerEntity,
+        JsonNode.class);
+    assertThat(validResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    // 5. Provider A requesting scan on unsupported entity type (centerIssueAId) -> 400 Bad Request
+    ResponseEntity<String> unsupportedResponse = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/re-evaluate?issueId=" + centerIssueAId,
+        HttpMethod.POST,
+        providerEntity,
+        String.class);
+    assertThat(unsupportedResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    // 6. Provider A requesting overall provider re-evaluation without issueId -> 200 OK
+    ResponseEntity<JsonNode> overallResponse = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/re-evaluate",
+        HttpMethod.POST,
+        providerEntity,
+        JsonNode.class);
+    assertThat(overallResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+  }
+
+  @Test
+  @DisplayName("Requirement 4: Database-side event pagination across multiple pages and bounds enforcement")
+  void databaseSideEventPagination_multiPage() {
+    // Insert 3 additional events for issueAId
+    jdbcTemplate.update("""
+        INSERT INTO data_quality_issue_events (data_quality_issue_id, data_quality_issue_status_id, changed_by_user_id, changed_at, remarks, created_at)
+        VALUES (?, 1, 1, '2026-01-01 10:00:00', 'Event 1 - Initial detection', '2026-01-01 10:00:00')
+        """, issueAId);
+    jdbcTemplate.update("""
+        INSERT INTO data_quality_issue_events (data_quality_issue_id, data_quality_issue_status_id, changed_by_user_id, changed_at, remarks, created_at)
+        VALUES (?, 3, 1, '2026-01-02 11:00:00', 'Event 2 - Investigation started', '2026-01-02 11:00:00')
+        """, issueAId);
+    jdbcTemplate.update("""
+        INSERT INTO data_quality_issue_events (data_quality_issue_id, data_quality_issue_status_id, changed_by_user_id, changed_at, remarks, created_at)
+        VALUES (?, 4, 1, '2026-01-03 12:00:00', 'Event 3 - Verification complete', '2026-01-03 12:00:00')
+        """, issueAId);
+
+    HttpEntity<Void> entity = new HttpEntity<>(providerAHeaders);
+
+    // Page 0, size 2: returns exactly 2 events
+    ResponseEntity<JsonNode> page0 = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/issues/" + issueAId + "/events?page=0&size=2",
+        HttpMethod.GET,
+        entity,
+        JsonNode.class);
+    assertThat(page0.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(page0.getBody().path("data").size()).isEqualTo(2);
+
+    // Page 1, size 2: returns at least 1 event
+    ResponseEntity<JsonNode> page1 = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/issues/" + issueAId + "/events?page=1&size=2",
+        HttpMethod.GET,
+        entity,
+        JsonNode.class);
+    assertThat(page1.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(page1.getBody().path("data").size()).isGreaterThanOrEqualTo(1);
+
+    // Page 10, size 2: returns 0 events (empty page)
+    ResponseEntity<JsonNode> emptyPage = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/issues/" + issueAId + "/events?page=10&size=2",
+        HttpMethod.GET,
+        entity,
+        JsonNode.class);
+    assertThat(emptyPage.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(emptyPage.getBody().path("data").size()).isEqualTo(0);
+
+    // Invalid size > 100: returns 400 Bad Request
+    ResponseEntity<String> invalidSize = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/issues/" + issueAId + "/events?page=0&size=101",
+        HttpMethod.GET,
+        entity,
+        String.class);
+    assertThat(invalidSize.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+  }
+
+  @Test
+  @DisplayName("Scenario 13 & 14 & Requirement 5: Center cleanliness scorecard and completion/dropout rate computation")
   void centerScorecardMetrics() {
     HttpEntity<Void> entity = new HttpEntity<>(providerAHeaders);
     ResponseEntity<JsonNode> response = restTemplate.exchange(
@@ -268,9 +448,12 @@ public class ProviderDataQualityIntegrationTest extends BaseJourneyIntegrationTe
     assertThat(scorecard).isNotNull();
     assertThat(scorecard.path("centerId").asLong()).isEqualTo(centerAId);
     assertThat(scorecard.path("cleanlinessFormula").asText()).contains("eligiblePopulation");
-    assertThat(scorecard.path("eligiblePopulation").asInt()).isGreaterThanOrEqualTo(1);
+    // Eligible population includes Center (1) + Batch (1) + Enrollments (1) + Trainees (1) = at least 4
+    assertThat(scorecard.path("eligiblePopulation").asInt()).isGreaterThanOrEqualTo(4);
     assertThat(scorecard.path("distinctAffectedEntities").asInt()).isGreaterThanOrEqualTo(1);
     assertThat(scorecard.path("cleanlinessIndexPct").asDouble()).isBetween(0.0, 100.0);
+    // Completion and dropout rates are computed against totalEnrollments
+    assertThat(scorecard.path("totalEnrollments").asInt()).isGreaterThanOrEqualTo(1);
   }
 
   @Test

@@ -1401,7 +1401,9 @@ public class GlobalExceptionHandler {
       in.gov.sih.sih26135.controller.InstitutionalAnalyticsController.class,
       in.gov.sih.sih26135.controller.EconomicOutcomeDashboardController.class,
       in.gov.sih.sih26135.controller.RetentionAttritionDashboardController.class,
-      in.gov.sih.sih26135.controller.SkillGapDashboardController.class
+      in.gov.sih.sih26135.controller.SkillGapDashboardController.class,
+      // in.gov.sih.sih26135.controller (Provider Portal Controllers)
+      in.gov.sih.sih26135.controller.ProviderDataQualityController.class
   );
 
   /**

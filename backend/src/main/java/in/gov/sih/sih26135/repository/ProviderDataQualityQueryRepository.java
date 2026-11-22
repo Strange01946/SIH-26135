@@ -1,6 +1,7 @@
 package in.gov.sih.sih26135.repository;
 
 import in.gov.sih.sih26135.dto.response.CenterScorecardResponse;
+import in.gov.sih.sih26135.dto.response.DataQualityIssueEventResponse;
 import in.gov.sih.sih26135.dto.response.ProviderDataQualityIssueResponse;
 import in.gov.sih.sih26135.util.AnalyticsCalculationUtils;
 import in.gov.sih.sih26135.util.OperationalMetricsMath;
@@ -41,17 +42,23 @@ public class ProviderDataQualityQueryRepository {
       " JOIN ref_data_quality_category c ON dqi.data_quality_category_id = c.data_quality_category_id " +
       " JOIN ref_data_quality_severity s ON dqi.data_quality_severity_id = s.data_quality_severity_id " +
       " JOIN ref_data_quality_issue_status st ON dqi.data_quality_issue_status_id = st.data_quality_issue_status_id " +
-      " LEFT JOIN trainees t ON UPPER(dqi.entity_type) = 'TRAINEE' AND dqi.entity_id = t.trainee_id AND t.deleted_at IS NULL " +
-      " LEFT JOIN training_enrollments t_te ON UPPER(dqi.entity_type) = 'TRAINEE' AND t.trainee_id = t_te.trainee_id AND t_te.deleted_at IS NULL AND t_te.provider_id = :providerId " +
+      " LEFT JOIN training_centers tc_direct ON UPPER(dqi.entity_type) IN ('TRAININGCENTER', 'TRAINING_CENTER', 'CENTER') AND dqi.entity_id = tc_direct.center_id AND tc_direct.deleted_at IS NULL " +
+      " LEFT JOIN ( " +
+      "     SELECT trainee_id, provider_id, MIN(center_id) AS center_id, MIN(batch_id) AS batch_id " +
+      "     FROM training_enrollments " +
+      "     WHERE deleted_at IS NULL " +
+      "     GROUP BY trainee_id, provider_id " +
+      " ) t_te ON UPPER(dqi.entity_type) = 'TRAINEE' AND dqi.entity_id = t_te.trainee_id AND t_te.provider_id = :providerId " +
       " LEFT JOIN training_enrollments te ON UPPER(dqi.entity_type) IN ('BATCHENROLLMENT', 'BATCH_ENROLLMENT', 'TRAININGENROLLMENT', 'TRAINING_ENROLLMENT') AND dqi.entity_id = te.enrollment_id AND te.deleted_at IS NULL " +
       " LEFT JOIN attendance_records ar ON UPPER(dqi.entity_type) IN ('ATTENDANCERECORD', 'ATTENDANCE_RECORD') AND dqi.entity_id = ar.attendance_id " +
       " LEFT JOIN training_batches ar_tb ON ar.batch_id = ar_tb.batch_id AND ar_tb.deleted_at IS NULL " +
       " LEFT JOIN training_batches tb ON UPPER(dqi.entity_type) IN ('TRAININGBATCH', 'TRAINING_BATCH', 'BATCH') AND dqi.entity_id = tb.batch_id AND tb.deleted_at IS NULL " +
-      " LEFT JOIN training_batches ref_tb ON COALESCE(te.batch_id, ar.batch_id, t_te.batch_id) = ref_tb.batch_id AND ref_tb.deleted_at IS NULL " +
-      " LEFT JOIN training_centers tc ON COALESCE(te.center_id, tb.center_id, ref_tb.center_id, t_te.center_id) = tc.center_id AND tc.deleted_at IS NULL ";
+      " LEFT JOIN training_batches ref_tb ON COALESCE(te.batch_id, ar.batch_id, tb.batch_id, t_te.batch_id) = ref_tb.batch_id AND ref_tb.deleted_at IS NULL " +
+      " LEFT JOIN training_centers tc ON COALESCE(tc_direct.center_id, te.center_id, tb.center_id, ar_tb.center_id, t_te.center_id) = tc.center_id AND tc.deleted_at IS NULL ";
 
   private static final String PROVIDER_OWNERSHIP_WHERE =
-      " WHERE ((UPPER(dqi.entity_type) = 'TRAINEE' AND t_te.provider_id = :providerId) " +
+      " WHERE ((UPPER(dqi.entity_type) IN ('TRAININGCENTER', 'TRAINING_CENTER', 'CENTER') AND tc_direct.provider_id = :providerId) " +
+      "    OR (UPPER(dqi.entity_type) = 'TRAINEE' AND t_te.provider_id = :providerId) " +
       "    OR (UPPER(dqi.entity_type) IN ('BATCHENROLLMENT', 'BATCH_ENROLLMENT', 'TRAININGENROLLMENT', 'TRAINING_ENROLLMENT') AND te.provider_id = :providerId) " +
       "    OR (UPPER(dqi.entity_type) IN ('ATTENDANCERECORD', 'ATTENDANCE_RECORD') AND ar_tb.provider_id = :providerId) " +
       "    OR (UPPER(dqi.entity_type) IN ('TRAININGBATCH', 'TRAINING_BATCH', 'BATCH') AND tb.provider_id = :providerId)) ";
@@ -127,7 +134,7 @@ public class ProviderDataQualityQueryRepository {
 
     if (centerId != null && centerId > 0) {
       params.addValue("centerId", centerId);
-      filterClause.append(" AND COALESCE(te.center_id, tb.center_id, ref_tb.center_id, t_te.center_id) = :centerId ");
+      filterClause.append(" AND COALESCE(tc_direct.center_id, te.center_id, tb.center_id, ar_tb.center_id, t_te.center_id) = :centerId ");
     }
 
     if (activeOnly != null) {
@@ -164,7 +171,7 @@ public class ProviderDataQualityQueryRepository {
         "  st.is_open_flag AS isOpen, " +
         "  dqi.entity_type AS entityType, " +
         "  dqi.entity_id AS entityId, " +
-        "  COALESCE(te.center_id, tb.center_id, ref_tb.center_id, t_te.center_id) AS centerId, " +
+        "  COALESCE(tc_direct.center_id, te.center_id, tb.center_id, ar_tb.center_id, t_te.center_id) AS centerId, " +
         "  tc.center_name AS centerName, " +
         "  COALESCE(tb.batch_id, ref_tb.batch_id) AS batchId, " +
         "  COALESCE(tb.batch_code, ref_tb.batch_code) AS batchCode, " +
@@ -210,7 +217,7 @@ public class ProviderDataQualityQueryRepository {
         "  st.is_open_flag AS isOpen, " +
         "  dqi.entity_type AS entityType, " +
         "  dqi.entity_id AS entityId, " +
-        "  COALESCE(te.center_id, tb.center_id, ref_tb.center_id, t_te.center_id) AS centerId, " +
+        "  COALESCE(tc_direct.center_id, te.center_id, tb.center_id, ar_tb.center_id, t_te.center_id) AS centerId, " +
         "  tc.center_name AS centerName, " +
         "  COALESCE(tb.batch_id, ref_tb.batch_id) AS batchId, " +
         "  COALESCE(tb.batch_code, ref_tb.batch_code) AS batchCode, " +
@@ -222,10 +229,10 @@ public class ProviderDataQualityQueryRepository {
         "  dqi.resolution_notes AS resolutionNotes " +
         BASE_ISSUE_JOINS +
         PROVIDER_OWNERSHIP_WHERE +
-        " AND dqi.data_quality_issue_id = :issueId LIMIT 1";
+        " AND dqi.data_quality_issue_id = :issueId";
 
-    List<ProviderDataQualityIssueResponse> list = jdbcTemplate.query(sql, params, new IssueRowMapper());
-    return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
+    List<ProviderDataQualityIssueResponse> results = jdbcTemplate.query(sql, params, new IssueRowMapper());
+    return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
   }
 
   public boolean isIssueOwnedByProvider(Long issueId, Long providerId) {
@@ -248,6 +255,42 @@ public class ProviderDataQualityQueryRepository {
     return count != null && count > 0;
   }
 
+  public List<DataQualityIssueEventResponse> findIssueEventsPaged(Long issueId, int limit, int offset) {
+    MapSqlParameterSource params = new MapSqlParameterSource();
+    params.addValue("issueId", issueId);
+    params.addValue("limit", limit);
+    params.addValue("offset", offset);
+
+    String sql =
+        "SELECT " +
+        "  ev.data_quality_issue_event_id AS id, " +
+        "  ev.data_quality_issue_id AS issueId, " +
+        "  ev.data_quality_issue_status_id AS statusId, " +
+        "  st.status_code AS statusCode, " +
+        "  st.status_name AS statusName, " +
+        "  ev.changed_by_user_id AS changedByUserId, " +
+        "  ev.changed_at AS changedAt, " +
+        "  ev.remarks AS remarks, " +
+        "  ev.created_at AS createdAt " +
+        "FROM data_quality_issue_events ev " +
+        "JOIN ref_data_quality_issue_status st ON ev.data_quality_issue_status_id = st.data_quality_issue_status_id " +
+        "WHERE ev.data_quality_issue_id = :issueId " +
+        "ORDER BY ev.changed_at DESC, ev.data_quality_issue_event_id DESC " +
+        "LIMIT :limit OFFSET :offset";
+
+    return jdbcTemplate.query(sql, params, (rs, rowNum) -> new DataQualityIssueEventResponse(
+        rs.getLong("id"),
+        rs.getLong("issueId"),
+        rs.getLong("statusId"),
+        rs.getString("statusCode"),
+        rs.getString("statusName"),
+        rs.getObject("changedByUserId", Long.class),
+        rs.getTimestamp("changedAt") != null ? rs.getTimestamp("changedAt").toLocalDateTime() : null,
+        rs.getString("remarks"),
+        rs.getTimestamp("createdAt") != null ? rs.getTimestamp("createdAt").toLocalDateTime() : null
+    ));
+  }
+
   public CenterScorecardResponse getCenterScorecard(Long providerId, Long centerId) {
     MapSqlParameterSource centerParams = new MapSqlParameterSource();
     centerParams.addValue("centerId", centerId);
@@ -265,18 +308,27 @@ public class ProviderDataQualityQueryRepository {
     String centerName = (String) centerRow.get("center_name");
 
     // 1. Eligible population in this center:
-    // Count distinct enrollments, attendance records, and trainees associated with this center
+    // Domain entities eligible for data quality evaluation at this center:
+    // - 1 TrainingCenter record (the center entity itself)
+    // - Distinct active batches
+    // - Distinct active enrollments
+    // - Distinct attendance records
+    // - Distinct active trainees enrolled at this center
     String eligibleSql =
         "SELECT " +
+        "  1 AS eligible_center, " +
+        "  (SELECT COUNT(DISTINCT tb.batch_id) FROM training_batches tb WHERE tb.center_id = :centerId AND tb.provider_id = :providerId AND tb.deleted_at IS NULL) AS eligible_batches, " +
         "  (SELECT COUNT(DISTINCT te.enrollment_id) FROM training_enrollments te WHERE te.center_id = :centerId AND te.provider_id = :providerId AND te.deleted_at IS NULL) AS eligible_enrollments, " +
         "  (SELECT COUNT(DISTINCT ar.attendance_id) FROM attendance_records ar JOIN training_batches tb ON ar.batch_id = tb.batch_id WHERE tb.center_id = :centerId AND tb.provider_id = :providerId AND tb.deleted_at IS NULL) AS eligible_attendance, " +
         "  (SELECT COUNT(DISTINCT te.trainee_id) FROM training_enrollments te WHERE te.center_id = :centerId AND te.provider_id = :providerId AND te.deleted_at IS NULL) AS eligible_trainees";
 
     Map<String, Object> eligibleCounts = jdbcTemplate.queryForMap(eligibleSql, centerParams);
+    long eligibleCenter = ((Number) eligibleCounts.get("eligible_center")).longValue();
+    long eligibleBatches = ((Number) eligibleCounts.get("eligible_batches")).longValue();
     long eligibleEnrollments = ((Number) eligibleCounts.get("eligible_enrollments")).longValue();
     long eligibleAttendance = ((Number) eligibleCounts.get("eligible_attendance")).longValue();
     long eligibleTrainees = ((Number) eligibleCounts.get("eligible_trainees")).longValue();
-    long eligiblePopulation = eligibleEnrollments + eligibleAttendance + eligibleTrainees;
+    long eligiblePopulation = eligibleCenter + eligibleBatches + eligibleEnrollments + eligibleAttendance + eligibleTrainees;
 
     // 2. Distinct affected entities in this center with active unresolved issues (st.is_open_flag = 1)
     String affectedSql =
@@ -284,7 +336,7 @@ public class ProviderDataQualityQueryRepository {
         BASE_ISSUE_JOINS +
         PROVIDER_OWNERSHIP_WHERE +
         " AND st.is_open_flag = 1 " +
-        " AND COALESCE(te.center_id, tb.center_id, ref_tb.center_id, t_te.center_id) = :centerId ";
+        " AND COALESCE(tc_direct.center_id, te.center_id, tb.center_id, ar_tb.center_id, t_te.center_id) = :centerId ";
 
     Long affected = jdbcTemplate.queryForObject(affectedSql, centerParams, Long.class);
     long distinctAffectedEntities = affected != null ? affected : 0L;
@@ -297,11 +349,11 @@ public class ProviderDataQualityQueryRepository {
 
     // 3. Issue breakdown by Severity and Category for this center
     String issuesSql =
-        "SELECT s.severity_code, c.category_code, COUNT(dqi.data_quality_issue_id) AS cnt " +
+        "SELECT s.severity_code, c.category_code, COUNT(DISTINCT dqi.data_quality_issue_id) AS cnt " +
         BASE_ISSUE_JOINS +
         PROVIDER_OWNERSHIP_WHERE +
         " AND st.is_open_flag = 1 " +
-        " AND COALESCE(te.center_id, tb.center_id, ref_tb.center_id, t_te.center_id) = :centerId " +
+        " AND COALESCE(tc_direct.center_id, te.center_id, tb.center_id, ar_tb.center_id, t_te.center_id) = :centerId " +
         " GROUP BY s.severity_code, c.category_code";
 
     Map<String, Long> bySeverity = new LinkedHashMap<>();
@@ -347,6 +399,7 @@ public class ProviderDataQualityQueryRepository {
     }
 
     // 4. Enrollment Outcome & Completion/Dropout metrics for this center
+    // Denominator is total center enrollments (consistent with platform-wide analytics standards)
     String enrollmentSql =
         "SELECT " +
         "  COUNT(te.enrollment_id) AS total_enrollments, " +
@@ -442,6 +495,9 @@ public class ProviderDataQualityQueryRepository {
       } else if (normEntity.contains("ATTENDANCE")) {
         remediationPermitted = true;
         remediationReason = "Attendance records can be corrected via attendance workbench.";
+      } else if (normEntity.contains("CENTER")) {
+        remediationPermitted = true;
+        remediationReason = "Training center operational profile is editable within provider scope (PUT /api/v1/training-centers/{id}).";
       } else if ("TRAINEE".equals(normEntity)) {
         remediationPermitted = false;
         remediationReason = "Direct trainee demographic profile edits are restricted to candidate self-service or state administrator (trainee.write required).";
