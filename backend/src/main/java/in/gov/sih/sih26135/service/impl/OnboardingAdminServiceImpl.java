@@ -28,6 +28,7 @@ import in.gov.sih.sih26135.repository.UserRoleRepository;
 import in.gov.sih.sih26135.service.OnboardingAdminService;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -44,6 +45,13 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
   private static final Long ROLE_ID_ASSESSOR = 10L;
   private static final Long STATUS_ACTIVE_ID = 2L;
   private static final Long STATUS_DISABLED_ID = 4L;
+
+  private static final Set<String> ALLOWED_GOVERNMENT_ROLES = Set.of(
+      "government_admin",
+      "government_officer",
+      "district_officer",
+      "analyst"
+  );
 
   private final OnboardingApplicationRepository onboardingApplicationRepository;
   private final UserRepository userRepository;
@@ -114,29 +122,15 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
     app.setUpdatedAt(now);
     OnboardingApplication savedApp = onboardingApplicationRepository.save(app);
 
-    // Activate the associated user
+    // Activate the associated user account so they can authenticate to the portal
     userRepository.findById(app.getUserId()).ifPresent(user -> {
       user.setUserStatusId(STATUS_ACTIVE_ID);
       user.setUpdatedAt(now);
       userRepository.save(user);
     });
 
-    // Update entity accreditation / verification
-    if ("TRAINING_PROVIDER".equalsIgnoreCase(app.getEntityType())) {
-      trainingProviderRepository.findById(app.getEntityId()).ifPresent(provider -> {
-        refAccreditationStatusRepository.findById(4L).ifPresent(provider::setAccreditationStatus); // ACCREDITED
-        provider.setUpdatedAt(now);
-        trainingProviderRepository.save(provider);
-      });
-    } else if ("EMPLOYER".equalsIgnoreCase(app.getEntityType())) {
-      employerRepository.findById(app.getEntityId()).ifPresent(employer -> {
-        refRecordVerificationStatusRepository.findById(4L).ifPresent(employer::setRecordVerificationStatus); // VERIFIED
-        employer.setVerifiedAt(now);
-        employer.setVerifiedByUserId(reviewerUserId);
-        employer.setUpdatedAt(now);
-        employerRepository.save(employer);
-      });
-    }
+    // Note: Portal onboarding approval activates the user account, but does NOT unilaterally
+    // confer statutory institutional accreditation or employer verification, preserving independent lifecycle checks.
 
     log.info("Application approved: appId={}, type={}, entityId={}, reviewerId={}",
         id, app.getApplicantType(), app.getEntityId(), reviewerUserId);
@@ -239,8 +233,13 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
       throw new ConflictException("Email is already registered", "EMAIL_ALREADY_EXISTS");
     }
 
-    Role targetRole = roleRepository.findByRoleCode(request.getRoleCode().trim())
-        .orElseThrow(() -> new BadRequestException("Invalid role code: " + request.getRoleCode(), "INVALID_ROLE"));
+    String rawRoleCode = request.getRoleCode() != null ? request.getRoleCode().trim().toLowerCase() : "";
+    if (!ALLOWED_GOVERNMENT_ROLES.contains(rawRoleCode)) {
+      throw new BadRequestException("Role code must be one of: " + ALLOWED_GOVERNMENT_ROLES, "INVALID_GOVERNMENT_ROLE");
+    }
+
+    Role targetRole = roleRepository.findByRoleCode(rawRoleCode)
+        .orElseThrow(() -> new BadRequestException("Invalid role code: " + rawRoleCode, "INVALID_ROLE"));
 
     LocalDateTime now = LocalDateTime.now();
 

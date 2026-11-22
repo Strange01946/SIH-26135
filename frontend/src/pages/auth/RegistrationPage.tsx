@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -18,10 +18,12 @@ type TabType = 'trainee' | 'provider' | 'employer' | 'status';
 
 export function RegistrationPage(): React.JSX.Element {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { establishSession } = useAuth();
 
   const [activeTab, setActiveTab] = useState<TabType>('trainee');
   const [refData, setRefData] = useState<RegistrationReferenceData | null>(null);
+  const [refLoading, setRefLoading] = useState(true);
+  const [refError, setRefError] = useState<string | null>(null);
 
   // Trainee Form State
   const [traineeForm, setTraineeForm] = useState({
@@ -33,13 +35,13 @@ export function RegistrationPage(): React.JSX.Element {
     middleName: '',
     lastName: '',
     dateOfBirth: '',
-    genderId: 1,
+    genderId: 0,
     phone: '',
-    stateId: 101,
-    districtId: 1001,
+    stateId: 0,
+    districtId: 0,
     addressLine1: '',
     pincode: '',
-    currentEmploymentStatusId: 1,
+    currentEmploymentStatusId: 0,
   });
 
   // Training Provider Form State
@@ -50,12 +52,12 @@ export function RegistrationPage(): React.JSX.Element {
     confirmPassword: '',
     providerName: '',
     registrationNumber: '',
-    organizationTypeId: 5,
+    organizationTypeId: 0,
     contactPersonName: '',
     contactEmail: '',
     contactPhone: '',
-    stateId: 101,
-    districtId: 1001,
+    stateId: 0,
+    districtId: 0,
     addressLine1: '',
     pincode: '',
   });
@@ -69,12 +71,12 @@ export function RegistrationPage(): React.JSX.Element {
     employerName: '',
     registrationNumber: '',
     gstin: '',
-    organizationTypeId: 1,
+    organizationTypeId: 0,
     contactPersonName: '',
     contactEmail: '',
     contactPhone: '',
-    stateId: 101,
-    districtId: 1001,
+    stateId: 0,
+    districtId: 0,
     addressLine1: '',
     pincode: '',
   });
@@ -88,22 +90,70 @@ export function RegistrationPage(): React.JSX.Element {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [applicationSuccess, setApplicationSuccess] = useState<OnboardingApplicationResponse | null>(null);
 
-  useEffect(() => {
-    getRegistrationReferenceData()
-      .then((data) => {
-        setRefData(data);
-        if (data.states?.length > 0) {
-          const defaultState = data.states[0].id;
-          const defaultDist = data.districts?.length > 0 ? data.districts[0].id : 1001;
-          setTraineeForm((prev) => ({ ...prev, stateId: defaultState, districtId: defaultDist }));
-          providerForm.stateId = defaultState;
-          employerForm.stateId = defaultState;
-        }
-      })
-      .catch((err) => {
-        console.error('Failed to load reference data:', err);
-      });
+  const fetchReferenceData = useCallback(async () => {
+    setRefLoading(true);
+    setRefError(null);
+    try {
+      const data = await getRegistrationReferenceData();
+      setRefData(data);
+      if (data.states && data.states.length > 0) {
+        const defaultState = data.states[0].id;
+        const matchingDistricts = data.districts?.filter((d) => d.parentId === defaultState) ?? [];
+        const defaultDistrict = matchingDistricts.length > 0 ? matchingDistricts[0].id : 0;
+        const defaultGender = data.genders?.length > 0 ? data.genders[0].id : 0;
+        const defaultEmp = data.employmentStatuses?.length > 0 ? data.employmentStatuses[0].id : 0;
+        const defaultOrg = data.organizationTypes?.length > 0 ? data.organizationTypes[0].id : 0;
+
+        setTraineeForm((prev) => ({
+          ...prev,
+          stateId: prev.stateId || defaultState,
+          districtId: prev.districtId || defaultDistrict,
+          genderId: prev.genderId || defaultGender,
+          currentEmploymentStatusId: prev.currentEmploymentStatusId || defaultEmp,
+        }));
+        setProviderForm((prev) => ({
+          ...prev,
+          stateId: prev.stateId || defaultState,
+          districtId: prev.districtId || defaultDistrict,
+          organizationTypeId: prev.organizationTypeId || defaultOrg,
+        }));
+        setEmployerForm((prev) => ({
+          ...prev,
+          stateId: prev.stateId || defaultState,
+          districtId: prev.districtId || defaultDistrict,
+          organizationTypeId: prev.organizationTypeId || defaultOrg,
+        }));
+      }
+    } catch (err) {
+      const apiErr = err as ApiError;
+      setRefError(apiErr.message || 'Failed to load official reference data.');
+    } finally {
+      setRefLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchReferenceData();
+  }, [fetchReferenceData]);
+
+  // Synchronized state-district handlers
+  const handleTraineeStateChange = (newStatId: number) => {
+    const matching = refData?.districts?.filter((d) => d.parentId === newStatId) ?? [];
+    const newDistrictId = matching.length > 0 ? matching[0].id : 0;
+    setTraineeForm((prev) => ({ ...prev, stateId: newStatId, districtId: newDistrictId }));
+  };
+
+  const handleProviderStateChange = (newStatId: number) => {
+    const matching = refData?.districts?.filter((d) => d.parentId === newStatId) ?? [];
+    const newDistrictId = matching.length > 0 ? matching[0].id : 0;
+    setProviderForm((prev) => ({ ...prev, stateId: newStatId, districtId: newDistrictId }));
+  };
+
+  const handleEmployerStateChange = (newStatId: number) => {
+    const matching = refData?.districts?.filter((d) => d.parentId === newStatId) ?? [];
+    const newDistrictId = matching.length > 0 ? matching[0].id : 0;
+    setEmployerForm((prev) => ({ ...prev, stateId: newStatId, districtId: newDistrictId }));
+  };
 
   const handleTraineeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,32 +164,37 @@ export function RegistrationPage(): React.JSX.Element {
       return;
     }
 
+    if (!traineeForm.stateId || !traineeForm.districtId) {
+      setErrorMsg('Please select a valid State and District from the official catalog.');
+      return;
+    }
+
     setSubmitting(true);
     try {
-      await registerTrainee({
-        username: traineeForm.username,
-        email: traineeForm.email,
+      const authResponse = await registerTrainee({
+        username: traineeForm.username.trim(),
+        email: traineeForm.email.trim(),
         password: traineeForm.password,
-        firstName: traineeForm.firstName,
-        middleName: traineeForm.middleName || undefined,
-        lastName: traineeForm.lastName || undefined,
+        firstName: traineeForm.firstName.trim(),
+        middleName: traineeForm.middleName ? traineeForm.middleName.trim() : undefined,
+        lastName: traineeForm.lastName ? traineeForm.lastName.trim() : undefined,
         dateOfBirth: traineeForm.dateOfBirth || undefined,
         genderId: Number(traineeForm.genderId),
-        phone: traineeForm.phone || undefined,
+        phone: traineeForm.phone ? traineeForm.phone.trim() : undefined,
         stateId: Number(traineeForm.stateId),
         districtId: Number(traineeForm.districtId),
-        addressLine1: traineeForm.addressLine1 || undefined,
-        pincode: traineeForm.pincode || undefined,
+        addressLine1: traineeForm.addressLine1 ? traineeForm.addressLine1.trim() : undefined,
+        pincode: traineeForm.pincode ? traineeForm.pincode.trim() : undefined,
         currentEmploymentStatusId: Number(traineeForm.currentEmploymentStatusId),
       });
 
-      // Automatically authenticate and navigate
-      await login({
-        usernameOrEmail: traineeForm.username,
-        password: traineeForm.password,
-      });
-
-      navigate('/trainee/dashboard', { replace: true });
+      // Seamless single-phase session transition without double login request
+      if (authResponse && authResponse.accessToken) {
+        establishSession(authResponse);
+        navigate('/trainee/dashboard', { replace: true });
+      } else {
+        navigate('/login', { replace: true });
+      }
     } catch (err) {
       const apiErr = err as ApiError;
       setErrorMsg(apiErr.message || 'Registration failed. Please check your inputs.');
@@ -154,6 +209,11 @@ export function RegistrationPage(): React.JSX.Element {
 
     if (providerForm.password !== providerForm.confirmPassword) {
       setErrorMsg('Passwords do not match');
+      return;
+    }
+
+    if (!providerForm.stateId || !providerForm.districtId) {
+      setErrorMsg('Please select a valid State and District from the official catalog.');
       return;
     }
 
@@ -190,6 +250,11 @@ export function RegistrationPage(): React.JSX.Element {
 
     if (employerForm.password !== employerForm.confirmPassword) {
       setErrorMsg('Passwords do not match');
+      return;
+    }
+
+    if (!employerForm.stateId || !employerForm.districtId) {
+      setErrorMsg('Please select a valid State and District from the official catalog.');
       return;
     }
 
@@ -315,6 +380,23 @@ export function RegistrationPage(): React.JSX.Element {
           <div className="mb-6 p-4 rounded-md bg-red-50 border border-red-200 text-sm text-red-800" role="alert">
             <div className="font-semibold mb-1">Registration Notice</div>
             <div>{errorMsg}</div>
+          </div>
+        )}
+
+        {/* Reference Data Loading or Failure Banner */}
+        {refError && (
+          <div className="mb-6 p-4 rounded-md bg-amber-50 border border-amber-300 text-sm text-amber-900 flex items-center justify-between" role="alert">
+            <div>
+              <span className="font-semibold">Official Geographic Catalog Error: </span>
+              {refError}
+            </div>
+            <button
+              type="button"
+              onClick={fetchReferenceData}
+              className="px-3 py-1 bg-amber-200 hover:bg-amber-300 text-amber-900 rounded font-medium text-xs transition-colors"
+            >
+              Retry
+            </button>
           </div>
         )}
 
@@ -463,11 +545,12 @@ export function RegistrationPage(): React.JSX.Element {
                       id="trainee-gender"
                       value={traineeForm.genderId}
                       onChange={(e) => setTraineeForm({ ...traineeForm, genderId: Number(e.target.value) })}
-                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none"
+                      disabled={refLoading || !!refError}
+                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none disabled:bg-gray-100"
                     >
                       {refData?.genders?.map((g) => (
                         <option key={g.id} value={g.id}>{g.name}</option>
-                      )) || <option value={1}>Female</option>}
+                      ))}
                     </select>
                   </div>
                   <div>
@@ -492,12 +575,13 @@ export function RegistrationPage(): React.JSX.Element {
                     <select
                       id="trainee-state"
                       value={traineeForm.stateId}
-                      onChange={(e) => setTraineeForm({ ...traineeForm, stateId: Number(e.target.value) })}
-                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none"
+                      onChange={(e) => handleTraineeStateChange(Number(e.target.value))}
+                      disabled={refLoading || !!refError}
+                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none disabled:bg-gray-100"
                     >
                       {refData?.states?.map((s) => (
                         <option key={s.id} value={s.id}>{s.name}</option>
-                      )) || <option value={101}>Delhi</option>}
+                      ))}
                     </select>
                   </div>
                   <div>
@@ -506,11 +590,14 @@ export function RegistrationPage(): React.JSX.Element {
                       id="trainee-district"
                       value={traineeForm.districtId}
                       onChange={(e) => setTraineeForm({ ...traineeForm, districtId: Number(e.target.value) })}
-                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none"
+                      disabled={refLoading || !!refError}
+                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none disabled:bg-gray-100"
                     >
-                      {refData?.districts?.map((d) => (
-                        <option key={d.id} value={d.id}>{d.name}</option>
-                      )) || <option value={1001}>New Delhi</option>}
+                      {refData?.districts
+                        ?.filter((d) => d.parentId === traineeForm.stateId)
+                        .map((d) => (
+                          <option key={d.id} value={d.id}>{d.name}</option>
+                        ))}
                     </select>
                   </div>
                 </div>
@@ -544,8 +631,8 @@ export function RegistrationPage(): React.JSX.Element {
               <div>
                 <button
                   type="submit"
-                  disabled={submitting}
-                  className="w-full btn-primary justify-center py-2.5 text-sm font-medium"
+                  disabled={submitting || refLoading || !!refError || !refData}
+                  className="w-full btn-primary justify-center py-2.5 text-sm font-medium disabled:opacity-50"
                 >
                   {submitting ? (
                     <span className="flex items-center gap-2">
@@ -638,12 +725,13 @@ export function RegistrationPage(): React.JSX.Element {
                     <select
                       id="provider-state"
                       value={providerForm.stateId}
-                      onChange={(e) => setProviderForm({ ...providerForm, stateId: Number(e.target.value) })}
-                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none"
+                      onChange={(e) => handleProviderStateChange(Number(e.target.value))}
+                      disabled={refLoading || !!refError}
+                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none disabled:bg-gray-100"
                     >
                       {refData?.states?.map((s) => (
                         <option key={s.id} value={s.id}>{s.name}</option>
-                      )) || <option value={101}>Delhi</option>}
+                      ))}
                     </select>
                   </div>
                   <div>
@@ -652,11 +740,14 @@ export function RegistrationPage(): React.JSX.Element {
                       id="provider-district"
                       value={providerForm.districtId}
                       onChange={(e) => setProviderForm({ ...providerForm, districtId: Number(e.target.value) })}
-                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none"
+                      disabled={refLoading || !!refError}
+                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none disabled:bg-gray-100"
                     >
-                      {refData?.districts?.map((d) => (
-                        <option key={d.id} value={d.id}>{d.name}</option>
-                      )) || <option value={1001}>New Delhi</option>}
+                      {refData?.districts
+                        ?.filter((d) => d.parentId === providerForm.stateId)
+                        .map((d) => (
+                          <option key={d.id} value={d.id}>{d.name}</option>
+                        ))}
                     </select>
                   </div>
                   <div>
@@ -728,8 +819,8 @@ export function RegistrationPage(): React.JSX.Element {
               <div>
                 <button
                   type="submit"
-                  disabled={submitting}
-                  className="w-full btn-primary justify-center py-2.5 text-sm font-medium"
+                  disabled={submitting || refLoading || !!refError || !refData}
+                  className="w-full btn-primary justify-center py-2.5 text-sm font-medium disabled:opacity-50"
                 >
                   {submitting ? (
                     <span className="flex items-center gap-2">
@@ -832,12 +923,13 @@ export function RegistrationPage(): React.JSX.Element {
                     <select
                       id="emp-state"
                       value={employerForm.stateId}
-                      onChange={(e) => setEmployerForm({ ...employerForm, stateId: Number(e.target.value) })}
-                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none"
+                      onChange={(e) => handleEmployerStateChange(Number(e.target.value))}
+                      disabled={refLoading || !!refError}
+                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none disabled:bg-gray-100"
                     >
                       {refData?.states?.map((s) => (
                         <option key={s.id} value={s.id}>{s.name}</option>
-                      )) || <option value={101}>Delhi</option>}
+                      ))}
                     </select>
                   </div>
                   <div>
@@ -846,11 +938,14 @@ export function RegistrationPage(): React.JSX.Element {
                       id="emp-district"
                       value={employerForm.districtId}
                       onChange={(e) => setEmployerForm({ ...employerForm, districtId: Number(e.target.value) })}
-                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none"
+                      disabled={refLoading || !!refError}
+                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none disabled:bg-gray-100"
                     >
-                      {refData?.districts?.map((d) => (
-                        <option key={d.id} value={d.id}>{d.name}</option>
-                      )) || <option value={1001}>New Delhi</option>}
+                      {refData?.districts
+                        ?.filter((d) => d.parentId === employerForm.stateId)
+                        .map((d) => (
+                          <option key={d.id} value={d.id}>{d.name}</option>
+                        ))}
                     </select>
                   </div>
                 </div>
@@ -911,8 +1006,8 @@ export function RegistrationPage(): React.JSX.Element {
               <div>
                 <button
                   type="submit"
-                  disabled={submitting}
-                  className="w-full btn-primary justify-center py-2.5 text-sm font-medium"
+                  disabled={submitting || refLoading || !!refError || !refData}
+                  className="w-full btn-primary justify-center py-2.5 text-sm font-medium disabled:opacity-50"
                 >
                   {submitting ? (
                     <span className="flex items-center gap-2">

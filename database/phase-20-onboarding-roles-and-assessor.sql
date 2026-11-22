@@ -2,8 +2,6 @@
 -- Dependencies: Phases 00–19
 -- MySQL 8.0+
 
-USE SIH26135;
-
 START TRANSACTION;
 
 -- 1. Ensure Assessor role exists in roles table

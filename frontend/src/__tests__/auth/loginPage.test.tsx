@@ -22,6 +22,7 @@ describe('LoginPage Component', () => {
       primaryPersona: null,
       defaultLandingRoute: '/admin/dashboard',
       login: mockLogin,
+      establishSession: vi.fn(),
       logout: vi.fn(),
       refreshProfile: vi.fn(),
       hasRole: vi.fn(),

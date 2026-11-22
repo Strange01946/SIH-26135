@@ -16,7 +16,7 @@ describe('Phase 30.3A — Registration & Onboarding Frontend Unit Tests', () => 
     vi.spyOn(registrationApi, 'getRegistrationReferenceData').mockResolvedValue({
       genders: [{ id: 1, code: 'FEMALE', name: 'Female' }, { id: 2, code: 'MALE', name: 'Male' }],
       states: [{ id: 101, code: 'DL', name: 'Delhi' }],
-      districts: [{ id: 1001, code: '1001', name: 'New Delhi' }],
+      districts: [{ id: 1001, code: '1001', name: 'New Delhi', parentId: 101 }],
       organizationTypes: [{ id: 5, code: 'TRAINING_PROVIDER', name: 'Training Provider' }],
       employmentStatuses: [{ id: 1, code: 'UNEMPLOYED', name: 'Unemployed' }],
     });
@@ -230,6 +230,7 @@ describe('Phase 30.3A — Registration & Onboarding Frontend Unit Tests', () => 
         defaultLandingRoute: '/admin/dashboard',
         login: vi.fn(),
         logout: vi.fn(),
+        establishSession: vi.fn(),
         refreshProfile: vi.fn(),
         hasRole: vi.fn((role) => role === 'ROLE_super_admin' || role === 'super_admin'),
         hasAnyRole: vi.fn(),

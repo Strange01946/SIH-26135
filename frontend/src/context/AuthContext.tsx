@@ -32,6 +32,7 @@ export interface AuthContextType {
   primaryPersona: UserPersona | null;
   defaultLandingRoute: string;
   login: (credentials: LoginRequest) => Promise<AuthResponse>;
+  establishSession: (response: AuthResponse) => void;
   logout: () => void;
   refreshProfile: () => Promise<AuthenticatedUserResponse | null>;
   hasRole: (role: string) => boolean;
@@ -49,6 +50,7 @@ const defaultUnauthenticatedContext: AuthContextType = {
   login: async () => {
     throw new Error('login must be called within an AuthProvider');
   },
+  establishSession: () => {},
   logout: () => {},
   refreshProfile: async () => null,
   hasRole: () => false,
@@ -134,6 +136,32 @@ export function AuthProvider({
     };
   }, [fetchProfile]);
 
+  // Establish authenticated session directly from AuthResponse (used by login and registration)
+  const establishSession = useCallback((response: AuthResponse): void => {
+    // Store in-memory access token and persistent refresh token (increments sessionGeneration)
+    setTokens(response.accessToken, response.refreshToken);
+    const sessionGen = getSessionGeneration();
+
+    // Populate user profile immediately from response
+    const immediateUser: AuthenticatedUserResponse = {
+      id: response.userId,
+      username: response.username,
+      authorities: response.authorities ?? [],
+    };
+    setUser(immediateUser);
+
+    // Asynchronously fetch full tenancy profile from /me without blocking login completion
+    apiGet<AuthenticatedUserResponse>('/api/v1/auth/me')
+      .then((fullProfile) => {
+        if (fullProfile && getSessionGeneration() === sessionGen) {
+          setUser(fullProfile);
+        }
+      })
+      .catch(() => {
+        // Fall back to immediateUser if /me fails
+      });
+  }, []);
+
   // Login handler (protected against race conditions)
   const login = useCallback(
     async (credentials: LoginRequest): Promise<AuthResponse> => {
@@ -141,33 +169,10 @@ export function AuthProvider({
         '/api/v1/auth/login',
         credentials,
       );
-
-      // Store in-memory access token and persistent refresh token (increments sessionGeneration)
-      setTokens(response.accessToken, response.refreshToken);
-      const loginGeneration = getSessionGeneration();
-
-      // Populate user profile immediately from response
-      const immediateUser: AuthenticatedUserResponse = {
-        id: response.userId,
-        username: response.username,
-        authorities: response.authorities ?? [],
-      };
-      setUser(immediateUser);
-
-      // Asynchronously fetch full tenancy profile from /me without blocking login completion
-      apiGet<AuthenticatedUserResponse>('/api/v1/auth/me')
-        .then((fullProfile) => {
-          if (fullProfile && getSessionGeneration() === loginGeneration) {
-            setUser(fullProfile);
-          }
-        })
-        .catch(() => {
-          // Fall back to immediateUser if /me fails
-        });
-
+      establishSession(response);
       return response;
     },
-    [],
+    [establishSession],
   );
 
   // Logout handler
@@ -231,6 +236,7 @@ export function AuthProvider({
       primaryPersona,
       defaultLandingRoute,
       login,
+      establishSession,
       logout,
       refreshProfile: fetchProfile,
       hasRole,
@@ -244,6 +250,7 @@ export function AuthProvider({
       primaryPersona,
       defaultLandingRoute,
       login,
+      establishSession,
       logout,
       fetchProfile,
       hasRole,

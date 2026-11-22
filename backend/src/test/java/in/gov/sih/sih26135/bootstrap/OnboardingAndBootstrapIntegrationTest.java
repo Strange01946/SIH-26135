@@ -15,23 +15,35 @@ import in.gov.sih.sih26135.dto.registration.RegisterTrainingProviderRequest;
 import in.gov.sih.sih26135.dto.registration.RegistrationReferenceDataResponse;
 import in.gov.sih.sih26135.dto.request.UpdateUserRequest;
 import in.gov.sih.sih26135.dto.response.UserResponse;
+import in.gov.sih.sih26135.entity.Employer;
 import in.gov.sih.sih26135.entity.OnboardingApplication;
 import in.gov.sih.sih26135.entity.Trainee;
+import in.gov.sih.sih26135.entity.TrainingProvider;
 import in.gov.sih.sih26135.entity.User;
+import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ConflictException;
+import in.gov.sih.sih26135.repository.EmployerRepository;
 import in.gov.sih.sih26135.repository.OnboardingApplicationRepository;
 import in.gov.sih.sih26135.repository.TraineeRepository;
+import in.gov.sih.sih26135.repository.TrainingProviderRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
 import in.gov.sih.sih26135.repository.UserRoleRepository;
 import in.gov.sih.sih26135.service.OnboardingAdminService;
 import in.gov.sih.sih26135.service.RegistrationService;
 import in.gov.sih.sih26135.service.UserService;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
@@ -58,6 +70,28 @@ class OnboardingAndBootstrapIntegrationTest {
 
   @Autowired
   private OnboardingApplicationRepository onboardingApplicationRepository;
+
+  @Autowired
+  private TrainingProviderRepository trainingProviderRepository;
+
+  @Autowired
+  private EmployerRepository employerRepository;
+
+  @BeforeEach
+  void setUpSecurity() {
+    SecurityContextHolder.getContext().setAuthentication(
+        new UsernamePasswordAuthenticationToken(
+            "admin_user",
+            null,
+            List.of(new SimpleGrantedAuthority("ROLE_super_admin"))
+        )
+    );
+  }
+
+  @AfterEach
+  void tearDownSecurity() {
+    SecurityContextHolder.clearContext();
+  }
 
   private String randomSuffix() {
     return UUID.randomUUID().toString().substring(0, 8);
@@ -243,5 +277,99 @@ class OnboardingAndBootstrapIntegrationTest {
       // Try deleting
       assertThrows(IllegalStateException.class, () -> userService.deleteUser(soleAdminId, 1L));
     }
+  }
+
+  @Test
+  @Transactional
+  @DisplayName("8. Disallowed government role codes are rejected at service boundary")
+  void testDisallowedGovernmentRoleRejection() {
+    ProvisionGovernmentAdminRequest req = new ProvisionGovernmentAdminRequest();
+    req.setUsername("invalid_gov_" + randomSuffix());
+    req.setEmail("invalid_gov@example.com");
+    req.setPassword("ValidPassword123!");
+    req.setRoleCode("trainee"); // Not in ALLOWED_GOVERNMENT_ROLES
+    req.setStateId(101L);
+    req.setDistrictId(1001L);
+
+    BadRequestException ex = assertThrows(BadRequestException.class, () -> onboardingAdminService.provisionGovernmentAdmin(req, 1L));
+    assertThat(ex.getMessage()).contains("Role code must be one of");
+  }
+
+  @Test
+  @Transactional
+  @DisplayName("9. Training Provider approval activates user without automatically granting statutory accreditation")
+  void testProviderApprovalPreservesStatutoryStatus() {
+    String suffix = randomSuffix();
+    RegisterTrainingProviderRequest req = new RegisterTrainingProviderRequest();
+    req.setUsername("tp_stat_" + suffix);
+    req.setEmail("tp_stat_" + suffix + "@example.com");
+    req.setPassword("ValidPassword123!");
+    req.setProviderName("Statutory Academy " + suffix);
+    req.setRegistrationNumber("TP-STAT-" + suffix);
+    req.setContactPersonName("Sunita Rao");
+    req.setContactEmail("tp_stat_" + suffix + "@example.com");
+    req.setStateId(101L);
+    req.setDistrictId(1001L);
+
+    OnboardingApplicationResponse appResp = registrationService.registerTrainingProvider(req);
+    OnboardingApplicationResponse approvedResp = onboardingAdminService.approveApplication(appResp.getApplicationId(), 1L);
+    assertThat(approvedResp.getStatus()).isEqualTo("APPROVED");
+
+    User user = userRepository.findById(appResp.getUserId()).orElseThrow();
+    assertThat(user.getUserStatusId()).isEqualTo(2L); // ACTIVE
+
+    TrainingProvider provider = trainingProviderRepository.findById(appResp.getEntityId()).orElseThrow();
+    assertThat(provider.getAccreditationStatus().getId()).isNotEqualTo(4L); // NOT ACCREDITED
+  }
+
+  @Test
+  @Transactional
+  @DisplayName("10. Employer approval activates user without automatically granting statutory enterprise verification")
+  void testEmployerApprovalPreservesStatutoryStatus() {
+    String suffix = randomSuffix();
+    RegisterEmployerRequest req = new RegisterEmployerRequest();
+    req.setUsername("emp_stat_" + suffix);
+    req.setEmail("emp_stat_" + suffix + "@example.com");
+    req.setPassword("ValidPassword123!");
+    req.setEmployerName("Statutory Enterprise " + suffix);
+    req.setRegistrationNumber("CIN-STAT-" + suffix);
+    req.setGstin("07BBBBB" + suffix.substring(0, 4).toUpperCase() + "1Z5");
+    req.setContactPersonName("Rajesh Patel");
+    req.setContactEmail("emp_stat_" + suffix + "@example.com");
+    req.setStateId(101L);
+    req.setDistrictId(1001L);
+
+    OnboardingApplicationResponse appResp = registrationService.registerEmployer(req);
+    OnboardingApplicationResponse approvedResp = onboardingAdminService.approveApplication(appResp.getApplicationId(), 1L);
+    assertThat(approvedResp.getStatus()).isEqualTo("APPROVED");
+
+    User user = userRepository.findById(appResp.getUserId()).orElseThrow();
+    assertThat(user.getUserStatusId()).isEqualTo(2L); // ACTIVE
+
+    Employer employer = employerRepository.findById(appResp.getEntityId()).orElseThrow();
+    assertThat(employer.getRecordVerificationStatus().getId()).isNotEqualTo(4L); // NOT VERIFIED
+  }
+
+  @Test
+  @DisplayName("11. Geographic reference data preserves parentId relationships for district filtering")
+  void testGeographicReferenceDataParentId() {
+    RegistrationReferenceDataResponse refData = registrationService.getReferenceData();
+    assertThat(refData.getDistricts()).isNotEmpty();
+    assertThat(refData.getDistricts()).allMatch(d -> d.getParentId() != null && d.getParentId() > 0);
+  }
+
+  @Test
+  @Transactional
+  @DisplayName("12. Method security rejects unprivileged caller attempting to approve onboarding application")
+  void testMethodSecurityRejection() {
+    SecurityContextHolder.getContext().setAuthentication(
+        new UsernamePasswordAuthenticationToken(
+            "trainee_user",
+            null,
+            List.of(new SimpleGrantedAuthority("ROLE_trainee"))
+        )
+    );
+
+    assertThrows(AccessDeniedException.class, () -> onboardingAdminService.approveApplication(9999L, 1L));
   }
 }

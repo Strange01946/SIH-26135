@@ -8,6 +8,7 @@ public class RegistrationReferenceDataResponse {
     private Long id;
     private String code;
     private String name;
+    private Long parentId;
 
     public ReferenceItem() {
     }
@@ -16,6 +17,13 @@ public class RegistrationReferenceDataResponse {
       this.id = id;
       this.code = code;
       this.name = name;
+    }
+
+    public ReferenceItem(Long id, String code, String name, Long parentId) {
+      this.id = id;
+      this.code = code;
+      this.name = name;
+      this.parentId = parentId;
     }
 
     public Long getId() {
@@ -40,6 +48,14 @@ public class RegistrationReferenceDataResponse {
 
     public void setName(String name) {
       this.name = name;
+    }
+
+    public Long getParentId() {
+      return parentId;
+    }
+
+    public void setParentId(Long parentId) {
+      this.parentId = parentId;
     }
   }
 

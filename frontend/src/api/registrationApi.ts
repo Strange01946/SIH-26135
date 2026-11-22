@@ -5,6 +5,7 @@ export interface ReferenceItem {
   id: number;
   code: string;
   name: string;
+  parentId?: number;
 }
 
 export interface RegistrationReferenceData {

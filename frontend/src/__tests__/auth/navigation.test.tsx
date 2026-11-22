@@ -23,6 +23,7 @@ describe('Navigation, Layout & Multi-Persona Sidebar Filtering', () => {
       primaryPersona: user?.authorities?.includes('ROLE_ADMIN') ? 'ADMIN' : null,
       defaultLandingRoute: '/dashboard',
       login: vi.fn(),
+      establishSession: vi.fn(),
       logout: mockLogout,
       refreshProfile: vi.fn(),
       hasRole: (r: string) => user?.authorities?.includes(r) ?? false,

@@ -49,6 +49,9 @@ public class SuperAdminBootstrapRunner implements ApplicationRunner {
   @Value("${app.bootstrap.superadmin.reset-password:false}")
   private boolean resetPassword;
 
+  @Value("${app.bootstrap.superadmin.allow-existing-user-escalation:false}")
+  private boolean allowExistingUserEscalation;
+
   public SuperAdminBootstrapRunner(
       UserRepository userRepository,
       UserRoleRepository userRoleRepository,
@@ -68,12 +71,20 @@ public class SuperAdminBootstrapRunner implements ApplicationRunner {
       return;
     }
 
-    List<UserRole> existingSuperAdmins = userRoleRepository.findByRoleId(SUPER_ADMIN_ROLE_ID);
+    // Filter existing Super Admins to valid non-deleted accounts
+    List<UserRole> existingSuperAdmins = userRoleRepository.findByRoleId(SUPER_ADMIN_ROLE_ID).stream()
+        .filter(ur -> userRepository.findById(ur.getUserId()).map(u -> u.getDeletedAt() == null).orElse(false))
+        .toList();
 
     if (!existingSuperAdmins.isEmpty()) {
       if (resetPassword) {
-        log.warn("Super admin password reset requested via configuration. Updating password for bootstrap username: {}", bootstrapUsername);
-        userRepository.findByUsername(bootstrapUsername).ifPresent(user -> {
+        log.warn("Super admin password reset requested via configuration. Validating bootstrap target: {}", bootstrapUsername);
+        userRepository.findByUsername(bootstrapUsername).ifPresentOrElse(user -> {
+          boolean holdsSuperAdminRole = userRoleRepository.existsByUserIdAndRoleId(user.getId(), SUPER_ADMIN_ROLE_ID);
+          if (!holdsSuperAdminRole) {
+            log.error("Password reset requested for '{}', but this user does NOT hold the Super Admin role. Skipping password reset to prevent unintended privilege overwrite.", bootstrapUsername);
+            return;
+          }
           user.setPasswordHash(passwordEncoder.encode(bootstrapPassword));
           user.setPasswordAlgo("argon2id");
           user.setFailedLoginCount(0);
@@ -81,7 +92,9 @@ public class SuperAdminBootstrapRunner implements ApplicationRunner {
           user.setUserStatusId(ACTIVE_STATUS_ID);
           user.setUpdatedAt(LocalDateTime.now());
           userRepository.save(user);
-          log.info("Super admin password successfully reset for user: {}", bootstrapUsername);
+          log.info("Super admin password successfully reset for verified Super Admin user: {}", bootstrapUsername);
+        }, () -> {
+          log.warn("Configured bootstrap user '{}' not found. Password reset skipped.", bootstrapUsername);
         });
       } else {
         log.info("Super Admin account(s) already exist (count: {}). Bootstrap check completed with no action needed.", existingSuperAdmins.size());
@@ -89,29 +102,55 @@ public class SuperAdminBootstrapRunner implements ApplicationRunner {
       return;
     }
 
-    log.info("No Super Admin found in system. Initializing default Super Admin bootstrap account...");
+    log.info("No active Super Admin found in system. Evaluating Super Admin bootstrap initialization...");
 
-    User adminUser = userRepository.findByUsername(bootstrapUsername).orElseGet(() -> {
-      User newUser = new User();
-      newUser.setUsername(bootstrapUsername);
-      newUser.setEmail(bootstrapEmail);
-      newUser.setPasswordHash(passwordEncoder.encode(bootstrapPassword));
-      newUser.setPasswordAlgo("argon2id");
-      newUser.setUserStatusId(ACTIVE_STATUS_ID);
-      newUser.setFailedLoginCount(0);
-      newUser.setMustChangePassword(false);
-      LocalDateTime now = LocalDateTime.now();
-      newUser.setCreatedAt(now);
-      newUser.setUpdatedAt(now);
-      return userRepository.save(newUser);
-    });
+    // Check if an existing account already claims the bootstrap username
+    var existingUserOpt = userRepository.findByUsername(bootstrapUsername);
 
-    if (!userRoleRepository.existsByUserIdAndRoleId(adminUser.getId(), SUPER_ADMIN_ROLE_ID)) {
-      UserRole superAdminRole = new UserRole(adminUser.getId(), SUPER_ADMIN_ROLE_ID, adminUser.getId());
-      superAdminRole.setAssignedAt(LocalDateTime.now());
-      userRoleRepository.save(superAdminRole);
+    if (existingUserOpt.isPresent()) {
+      User existingUser = existingUserOpt.get();
+      if (!allowExistingUserEscalation) {
+        log.error("Found existing user with username '{}' (userId={}) without Super Admin role. "
+            + "Refusing to silently escalate an arbitrary existing account to Super Admin without explicit recovery configuration "
+            + "(app.bootstrap.superadmin.allow-existing-user-escalation=true).",
+            bootstrapUsername, existingUser.getId());
+        return;
+      }
+
+      log.warn("Explicit recovery mode authorized (allow-existing-user-escalation=true). "
+          + "Granting Super Admin role (roleId={}) to existing user '{}' (userId={}).",
+          SUPER_ADMIN_ROLE_ID, bootstrapUsername, existingUser.getId());
+
+      if (!userRoleRepository.existsByUserIdAndRoleId(existingUser.getId(), SUPER_ADMIN_ROLE_ID)) {
+        UserRole superAdminRole = new UserRole(existingUser.getId(), SUPER_ADMIN_ROLE_ID, existingUser.getId());
+        superAdminRole.setAssignedAt(LocalDateTime.now());
+        userRoleRepository.save(superAdminRole);
+      }
+      existingUser.setUserStatusId(ACTIVE_STATUS_ID);
+      existingUser.setUpdatedAt(LocalDateTime.now());
+      userRepository.save(existingUser);
+      log.info("Existing user '{}' escalated to Super Admin via explicit recovery intent.", bootstrapUsername);
+      return;
     }
 
-    log.info("Bootstrap super admin account initialized: {} (email: {})", adminUser.getUsername(), adminUser.getEmail());
+    // Fresh installation: create dedicated Super Admin
+    User newUser = new User();
+    newUser.setUsername(bootstrapUsername);
+    newUser.setEmail(bootstrapEmail);
+    newUser.setPasswordHash(passwordEncoder.encode(bootstrapPassword));
+    newUser.setPasswordAlgo("argon2id");
+    newUser.setUserStatusId(ACTIVE_STATUS_ID);
+    newUser.setFailedLoginCount(0);
+    newUser.setMustChangePassword(false);
+    LocalDateTime now = LocalDateTime.now();
+    newUser.setCreatedAt(now);
+    newUser.setUpdatedAt(now);
+    User adminUser = userRepository.save(newUser);
+    if (adminUser != null && adminUser.getId() != null) {
+      UserRole superAdminRole = new UserRole(adminUser.getId(), SUPER_ADMIN_ROLE_ID, adminUser.getId());
+      superAdminRole.setAssignedAt(now);
+      userRoleRepository.save(superAdminRole);
+      log.info("Bootstrap super admin account successfully initialized: {} (email: {})", adminUser.getUsername(), adminUser.getEmail());
+    }
   }
 }

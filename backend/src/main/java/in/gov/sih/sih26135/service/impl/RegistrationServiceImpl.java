@@ -443,18 +443,18 @@ public class RegistrationServiceImpl implements RegistrationService {
     // Districts
     List<ReferenceItem> districts = new ArrayList<>();
     try {
-      jdbcTemplate.query("SELECT district_id, district_name FROM districts ORDER BY district_name", (rs) -> {
-        districts.add(new ReferenceItem(rs.getLong("district_id"), String.valueOf(rs.getLong("district_id")), rs.getString("district_name")));
+      jdbcTemplate.query("SELECT district_id, state_id, district_name FROM districts WHERE deleted_at IS NULL ORDER BY district_name", (rs) -> {
+        districts.add(new ReferenceItem(rs.getLong("district_id"), String.valueOf(rs.getLong("district_id")), rs.getString("district_name"), rs.getLong("state_id")));
       });
     } catch (Exception e) {
       log.warn("Could not query districts: {}", e.getMessage());
     }
     if (districts.isEmpty()) {
-      districts.add(new ReferenceItem(1001L, "1001", "New Delhi"));
-      districts.add(new ReferenceItem(1002L, "1002", "Mumbai City"));
-      districts.add(new ReferenceItem(1003L, "1003", "Bengaluru Urban"));
-      districts.add(new ReferenceItem(1004L, "1004", "Chennai"));
-      districts.add(new ReferenceItem(1005L, "1005", "Lucknow"));
+      districts.add(new ReferenceItem(1001L, "1001", "New Delhi", 101L));
+      districts.add(new ReferenceItem(1002L, "1002", "Mumbai City", 102L));
+      districts.add(new ReferenceItem(1003L, "1003", "Bengaluru Urban", 103L));
+      districts.add(new ReferenceItem(1004L, "1004", "Chennai", 104L));
+      districts.add(new ReferenceItem(1005L, "1005", "Lucknow", 105L));
     }
     response.setDistricts(districts);
 

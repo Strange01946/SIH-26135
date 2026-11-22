@@ -6,6 +6,10 @@ import {
   provisionSuperAdmin,
   type AdminUserResponse,
 } from '@/api/adminApi';
+import {
+  getRegistrationReferenceData,
+  type RegistrationReferenceData,
+} from '@/api/registrationApi';
 import { useAuth } from '@/context/AuthContext';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import type { ApiError } from '@/api/types';
@@ -19,6 +23,9 @@ export function AdminUsersPage(): React.JSX.Element {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  // Geographic Reference Data State
+  const [refData, setRefData] = useState<RegistrationReferenceData | null>(null);
+
   // Modal State
   const [showModal, setShowModal] = useState(false);
   const [provisionTab, setProvisionTab] = useState<'assessor' | 'gov' | 'super'>('assessor');
@@ -31,8 +38,8 @@ export function AdminUsersPage(): React.JSX.Element {
     password: '',
     fullName: '',
     phone: '',
-    stateId: 101,
-    districtId: 1001,
+    stateId: 0,
+    districtId: 0,
   });
 
   // Gov Admin Form
@@ -42,8 +49,8 @@ export function AdminUsersPage(): React.JSX.Element {
     password: '',
     fullName: '',
     roleCode: 'district_officer' as 'government_admin' | 'government_officer' | 'district_officer' | 'analyst',
-    stateId: 101,
-    districtId: 1001,
+    stateId: 0,
+    districtId: 0,
   });
 
   // Super Admin Form
@@ -53,6 +60,43 @@ export function AdminUsersPage(): React.JSX.Element {
     password: '',
     fullName: '',
   });
+
+  useEffect(() => {
+    getRegistrationReferenceData()
+      .then((data) => {
+        setRefData(data);
+        if (data.states && data.states.length > 0) {
+          const defaultState = data.states[0].id;
+          const matching = data.districts?.filter((d) => d.parentId === defaultState) ?? [];
+          const defaultDistrict = matching.length > 0 ? matching[0].id : 0;
+          setAssessorForm((prev) => ({
+            ...prev,
+            stateId: prev.stateId || defaultState,
+            districtId: prev.districtId || defaultDistrict,
+          }));
+          setGovForm((prev) => ({
+            ...prev,
+            stateId: prev.stateId || defaultState,
+            districtId: prev.districtId || defaultDistrict,
+          }));
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load reference data in AdminUsersPage:', err);
+      });
+  }, []);
+
+  const handleAssessorStateChange = (stateId: number) => {
+    const matching = refData?.districts?.filter((d) => d.parentId === stateId) ?? [];
+    const newDistrictId = matching.length > 0 ? matching[0].id : 0;
+    setAssessorForm((prev) => ({ ...prev, stateId, districtId: newDistrictId }));
+  };
+
+  const handleGovStateChange = (stateId: number) => {
+    const matching = refData?.districts?.filter((d) => d.parentId === stateId) ?? [];
+    const newDistrictId = matching.length > 0 ? matching[0].id : 0;
+    setGovForm((prev) => ({ ...prev, stateId, districtId: newDistrictId }));
+  };
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -89,7 +133,9 @@ export function AdminUsersPage(): React.JSX.Element {
       });
       setSuccessMsg(`Assessor "${res.username}" provisioned successfully with assessor authorities.`);
       setShowModal(false);
-      setAssessorForm({ username: '', email: '', password: '', fullName: '', phone: '', stateId: 101, districtId: 1001 });
+      const defState = refData?.states?.[0]?.id ?? 0;
+      const defDist = refData?.districts?.find((d) => d.parentId === defState)?.id ?? 0;
+      setAssessorForm({ username: '', email: '', password: '', fullName: '', phone: '', stateId: defState, districtId: defDist });
       await fetchUsers();
     } catch (err) {
       const apiErr = err as ApiError;
@@ -116,7 +162,9 @@ export function AdminUsersPage(): React.JSX.Element {
       });
       setSuccessMsg(`Government officer "${res.username}" provisioned with role "${govForm.roleCode}".`);
       setShowModal(false);
-      setGovForm({ username: '', email: '', password: '', fullName: '', roleCode: 'district_officer', stateId: 101, districtId: 1001 });
+      const defState = refData?.states?.[0]?.id ?? 0;
+      const defDist = refData?.districts?.find((d) => d.parentId === defState)?.id ?? 0;
+      setGovForm({ username: '', email: '', password: '', fullName: '', roleCode: 'district_officer', stateId: defState, districtId: defDist });
       await fetchUsers();
     } catch (err) {
       const apiErr = err as ApiError;
@@ -351,6 +399,34 @@ export function AdminUsersPage(): React.JSX.Element {
                     className="w-full px-3 py-2 border rounded-md text-xs focus:ring-1 focus:ring-navy focus:outline-none"
                   />
                 </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">State Jurisdiction</label>
+                    <select
+                      value={assessorForm.stateId}
+                      onChange={(e) => handleAssessorStateChange(Number(e.target.value))}
+                      className="w-full px-3 py-2 border rounded-md text-xs focus:ring-1 focus:ring-navy focus:outline-none"
+                    >
+                      {refData?.states?.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">District Jurisdiction</label>
+                    <select
+                      value={assessorForm.districtId}
+                      onChange={(e) => setAssessorForm({ ...assessorForm, districtId: Number(e.target.value) })}
+                      className="w-full px-3 py-2 border rounded-md text-xs focus:ring-1 focus:ring-navy focus:outline-none"
+                    >
+                      {refData?.districts
+                        ?.filter((d) => d.parentId === assessorForm.stateId)
+                        .map((d) => (
+                          <option key={d.id} value={d.id}>{d.name}</option>
+                        ))}
+                    </select>
+                  </div>
+                </div>
                 <div className="flex justify-end gap-3 pt-3 border-t">
                   <button type="button" onClick={() => setShowModal(false)} className="btn-secondary text-xs">
                     Cancel
@@ -411,6 +487,34 @@ export function AdminUsersPage(): React.JSX.Element {
                     onChange={(e) => setGovForm({ ...govForm, password: e.target.value })}
                     className="w-full px-3 py-2 border rounded-md text-xs focus:ring-1 focus:ring-navy focus:outline-none"
                   />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">State Jurisdiction</label>
+                    <select
+                      value={govForm.stateId}
+                      onChange={(e) => handleGovStateChange(Number(e.target.value))}
+                      className="w-full px-3 py-2 border rounded-md text-xs focus:ring-1 focus:ring-navy focus:outline-none"
+                    >
+                      {refData?.states?.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">District Jurisdiction</label>
+                    <select
+                      value={govForm.districtId}
+                      onChange={(e) => setGovForm({ ...govForm, districtId: Number(e.target.value) })}
+                      className="w-full px-3 py-2 border rounded-md text-xs focus:ring-1 focus:ring-navy focus:outline-none"
+                    >
+                      {refData?.districts
+                        ?.filter((d) => d.parentId === govForm.stateId)
+                        .map((d) => (
+                          <option key={d.id} value={d.id}>{d.name}</option>
+                        ))}
+                    </select>
+                  </div>
                 </div>
                 <div className="flex justify-end gap-3 pt-3 border-t">
                   <button type="button" onClick={() => setShowModal(false)} className="btn-secondary text-xs">
