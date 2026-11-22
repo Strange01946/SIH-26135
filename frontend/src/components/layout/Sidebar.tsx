@@ -86,6 +86,20 @@ const NAV_ITEMS: NavItem[] = [
     roles: ['ROLE_TRAINING_PROVIDER', 'ROLE_training_provider'],
   },
   {
+    label: 'Quality Remediation',
+    to: '/provider/data-quality',
+    icon: '🔍',
+    personas: ['TRAINING_PROVIDER'],
+    roles: ['ROLE_TRAINING_PROVIDER', 'ROLE_training_provider'],
+  },
+  {
+    label: 'Center Scorecards',
+    to: '/provider/scorecards',
+    icon: '📊',
+    personas: ['TRAINING_PROVIDER'],
+    roles: ['ROLE_TRAINING_PROVIDER', 'ROLE_training_provider'],
+  },
+  {
     label: 'Assessor Console',
     to: '/assessor/dashboard',
     icon: '⚖️',

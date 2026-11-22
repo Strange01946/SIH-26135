@@ -159,30 +159,42 @@ export function ProviderOverviewPage(): React.JSX.Element {
       </div>
 
       {/* Quick Action Navigation Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <Link
           to="/provider/batches"
-          className="btn-primary py-3 px-4 flex items-center justify-center gap-2 text-sm font-semibold rounded-md shadow-sm"
+          className="btn-primary py-2.5 px-3 flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md shadow-sm"
         >
           <span aria-hidden="true">➕</span> Create Batch
         </Link>
         <Link
           to="/provider/enrollment"
-          className="btn-outline py-3 px-4 flex items-center justify-center gap-2 text-sm font-semibold rounded-md shadow-sm bg-white"
+          className="btn-outline py-2.5 px-3 flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md shadow-sm bg-white"
         >
           <span aria-hidden="true">📝</span> Enroll Trainee
         </Link>
         <Link
           to="/provider/imports"
-          className="btn-outline py-3 px-4 flex items-center justify-center gap-2 text-sm font-semibold rounded-md shadow-sm bg-white"
+          className="btn-outline py-2.5 px-3 flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md shadow-sm bg-white"
         >
-          <span aria-hidden="true">📤</span> Bulk CSV Ingestion
+          <span aria-hidden="true">📤</span> Bulk CSV
         </Link>
         <Link
           to="/provider/quarantine"
-          className="btn-outline py-3 px-4 flex items-center justify-center gap-2 text-sm font-semibold rounded-md shadow-sm bg-white"
+          className="btn-outline py-2.5 px-3 flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md shadow-sm bg-white"
         >
-          <span aria-hidden="true">⚠️</span> Quarantine &amp; Errors
+          <span aria-hidden="true">⚠️</span> Quarantine
+        </Link>
+        <Link
+          to="/provider/data-quality"
+          className="btn-outline py-2.5 px-3 flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md shadow-sm bg-white border-blue-300 text-blue-700 hover:bg-blue-50"
+        >
+          <span aria-hidden="true">🔍</span> Data Quality
+        </Link>
+        <Link
+          to="/provider/scorecards"
+          className="btn-outline py-2.5 px-3 flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md shadow-sm bg-white border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+        >
+          <span aria-hidden="true">📊</span> Scorecards
         </Link>
       </div>
 

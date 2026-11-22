@@ -23,6 +23,8 @@ import { ProviderBatchesPage } from '@/pages/provider/ProviderBatchesPage';
 import { ProviderEnrollmentPage } from '@/pages/provider/ProviderEnrollmentPage';
 import { ProviderBulkImportPage } from '@/pages/provider/ProviderBulkImportPage';
 import { ProviderQuarantinePage } from '@/pages/provider/ProviderQuarantinePage';
+import { ProviderDataQualityPage } from '@/pages/provider/ProviderDataQualityPage';
+import { ProviderScorecardsPage } from '@/pages/provider/ProviderScorecardsPage';
 import { TraineePortalLayout } from '@/pages/trainee/TraineePortalLayout';
 import { TraineeOverviewPage } from '@/pages/trainee/TraineeOverviewPage';
 import { TraineeTrainingPage } from '@/pages/trainee/TraineeTrainingPage';
@@ -92,6 +94,8 @@ export function AppRouter(): React.JSX.Element {
             <Route path="enrollment" element={<ProviderEnrollmentPage />} />
             <Route path="imports" element={<ProviderBulkImportPage />} />
             <Route path="quarantine" element={<ProviderQuarantinePage />} />
+            <Route path="data-quality" element={<ProviderDataQualityPage />} />
+            <Route path="scorecards" element={<ProviderScorecardsPage />} />
             <Route index element={<Navigate to="dashboard" replace />} />
           </Route>
 
