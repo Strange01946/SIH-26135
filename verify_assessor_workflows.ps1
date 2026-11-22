@@ -757,7 +757,51 @@ try {
 }
 
 # -------------------------------------------------------------------------
-# Scenario 15: Modifying Marks on Finalized Assessment Rejected
+# Scenario 15: Same-Total Different-Component Marks Rejection Guard
+# -------------------------------------------------------------------------
+try {
+    # In Scenario 13, Trainee 1 had theory=25, practical=45, viva=15 (total=85).
+    # Here we submit theory=15, practical=55, viva=15 (same total=85, but different component marks).
+    $sameTotalDiffCompBody = @{
+        isDraft = $false
+        candidates = @(
+            @{
+                traineeId = [int64]$trainee1Id
+                enrollmentId = [int64]$enrollment1Id
+                appeared = $true
+                theoryScore = 15.00  # Shifted from 25 to 15
+                practicalScore = 55.00 # Shifted from 45 to 55 (Total remains 85.00)
+                vivaScore = 15.00
+            },
+            @{
+                traineeId = [int64]$trainee2Id
+                enrollmentId = [int64]$enrollment2Id
+                appeared = $true
+                theoryScore = 10.00
+                practicalScore = 15.00
+                vivaScore = 5.00
+            },
+            @{
+                traineeId = [int64]$trainee3Id
+                enrollmentId = [int64]$enrollment3Id
+                appeared = $false
+            }
+        )
+    } | ConvertTo-Json
+
+    $sameTotalRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$assessmentId/finalize" -Method "Post" -Body $sameTotalDiffCompBody -Headers $headers1
+
+    if ($sameTotalRes.StatusCode -eq 400 -and $sameTotalRes.Content -like "*ASSESSMENT_ALREADY_FINALIZED*") {
+        Record-Result 15 "Same-Total Different-Component Marks Rejection Guard" $true "Re-finalization with identical total but altered component marks rejected with HTTP 400 ASSESSMENT_ALREADY_FINALIZED"
+    } else {
+        Record-Result 15 "Same-Total Different-Component Marks Rejection Guard" $false "Expected HTTP 400 ASSESSMENT_ALREADY_FINALIZED, got $($sameTotalRes.StatusCode): $($sameTotalRes.Content)"
+    }
+} catch {
+    Record-Result 15 "Same-Total Different-Component Marks Rejection Guard" $false $_.Exception.Message
+}
+
+# -------------------------------------------------------------------------
+# Scenario 16: Modifying Marks on Finalized Assessment Rejected
 # -------------------------------------------------------------------------
 try {
     $altFinalizeBody = @{
@@ -790,30 +834,30 @@ try {
     $altFinRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$assessmentId/finalize" -Method "Post" -Body $altFinalizeBody -Headers $headers1
 
     if ($altFinRes.StatusCode -eq 400 -and $altFinRes.Content -like "*ASSESSMENT_ALREADY_FINALIZED*") {
-        Record-Result 15 "Altered Finalization Marks Rejection Guard" $true "Re-finalization with altered marks rejected with HTTP 400 ASSESSMENT_ALREADY_FINALIZED"
+        Record-Result 16 "Altered Finalization Marks Rejection Guard" $true "Re-finalization with altered marks rejected with HTTP 400 ASSESSMENT_ALREADY_FINALIZED"
     } else {
-        Record-Result 15 "Altered Finalization Marks Rejection Guard" $false "Expected HTTP 400 ASSESSMENT_ALREADY_FINALIZED, got $($altFinRes.StatusCode): $($altFinRes.Content)"
+        Record-Result 16 "Altered Finalization Marks Rejection Guard" $false "Expected HTTP 400 ASSESSMENT_ALREADY_FINALIZED, got $($altFinRes.StatusCode): $($altFinRes.Content)"
     }
 } catch {
-    Record-Result 15 "Altered Finalization Marks Rejection Guard" $false $_.Exception.Message
+    Record-Result 16 "Altered Finalization Marks Rejection Guard" $false $_.Exception.Message
 }
 
 # -------------------------------------------------------------------------
-# Scenario 16: Draft Submission on Finalized Assessment Rejected
+# Scenario 17: Draft Submission on Finalized Assessment Rejected
 # -------------------------------------------------------------------------
 try {
     $editAttempt = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$assessmentId/draft" -Method "Post" -Body $draftBody -Headers $headers1
     if ($editAttempt.StatusCode -eq 400 -and $editAttempt.Content -like "*ASSESSMENT_ALREADY_FINALIZED*") {
-        Record-Result 16 "Draft Modification on Finalized Assessment Guard" $true "Draft submission rejected with HTTP 400 ASSESSMENT_ALREADY_FINALIZED"
+        Record-Result 17 "Draft Modification on Finalized Assessment Guard" $true "Draft submission rejected with HTTP 400 ASSESSMENT_ALREADY_FINALIZED"
     } else {
-        Record-Result 16 "Draft Modification on Finalized Assessment Guard" $false "Expected HTTP 400 but got $($editAttempt.StatusCode)"
+        Record-Result 17 "Draft Modification on Finalized Assessment Guard" $false "Expected HTTP 400 but got $($editAttempt.StatusCode)"
     }
 } catch {
-    Record-Result 16 "Draft Modification on Finalized Assessment Guard" $false $_.Exception.Message
+    Record-Result 17 "Draft Modification on Finalized Assessment Guard" $false $_.Exception.Message
 }
 
 # -------------------------------------------------------------------------
-# Scenario 17: Historical Enrollment Completion Date Preservation
+# Scenario 18: Historical Enrollment Completion Date Preservation
 # -------------------------------------------------------------------------
 try {
     # Set Trainee 1 enrollment to historical completion date
@@ -824,16 +868,16 @@ try {
     $savedCompletionDate = (Invoke-MysqlQuery "SELECT actual_completion_date FROM training_enrollments WHERE enrollment_id = $enrollment1Id;").Trim()
 
     if ($savedCompletionDate -eq "2025-05-10") {
-        Record-Result 17 "Historical Completion Date Preservation" $true "Historical completion date '2025-05-10' safely preserved without being overwritten"
+        Record-Result 18 "Historical Completion Date Preservation" $true "Historical completion date '2025-05-10' safely preserved without being overwritten"
     } else {
-        Record-Result 17 "Historical Completion Date Preservation" $false "Expected '2025-05-10', found '$savedCompletionDate'"
+        Record-Result 18 "Historical Completion Date Preservation" $false "Expected '2025-05-10', found '$savedCompletionDate'"
     }
 } catch {
-    Record-Result 17 "Historical Completion Date Preservation" $false $_.Exception.Message
+    Record-Result 18 "Historical Completion Date Preservation" $false $_.Exception.Message
 }
 
 # -------------------------------------------------------------------------
-# Scenario 18: Cross-Assessor & Unauthenticated Certificate Access Guard
+# Scenario 19: Cross-Assessor & Unauthenticated Certificate Access Guard
 # -------------------------------------------------------------------------
 try {
     if ($certId) {
@@ -845,19 +889,19 @@ try {
         $unauthPdfRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certifications/$certId/download" -Method "Get" -Headers @{}
 
         if ($pdf1Res.StatusCode -eq 200 -and $pdf2Res.StatusCode -eq 403 -and $unauthPdfRes.StatusCode -eq 401) {
-            Record-Result 18 "Certificate Download Access Authorization Guard" $true "Assigned assessor: 200 OK; Unassigned assessor: 403 Forbidden; Unauthenticated: 401 Unauthorized"
+            Record-Result 19 "Certificate Download Access Authorization Guard" $true "Assigned assessor: 200 OK; Unassigned assessor: 403 Forbidden; Unauthenticated: 401 Unauthorized"
         } else {
-            Record-Result 18 "Certificate Download Access Authorization Guard" $false "Assessor1=$($pdf1Res.StatusCode), Assessor2=$($pdf2Res.StatusCode), Unauth=$($unauthPdfRes.StatusCode)"
+            Record-Result 19 "Certificate Download Access Authorization Guard" $false "Assessor1=$($pdf1Res.StatusCode), Assessor2=$($pdf2Res.StatusCode), Unauth=$($unauthPdfRes.StatusCode)"
         }
     } else {
-        Record-Result 18 "Certificate Download Access Authorization Guard" $false "No certId available"
+        Record-Result 19 "Certificate Download Access Authorization Guard" $false "No certId available"
     }
 } catch {
-    Record-Result 18 "Certificate Download Access Authorization Guard" $false $_.Exception.Message
+    Record-Result 19 "Certificate Download Access Authorization Guard" $false $_.Exception.Message
 }
 
 # -------------------------------------------------------------------------
-# Scenario 19: Trainee Tenancy Certificate Access (Owner allowed, Cross-Trainee denied)
+# Scenario 20: Trainee Tenancy Certificate Access (Owner allowed, Cross-Trainee denied)
 # -------------------------------------------------------------------------
 try {
     if ($certId -and $trainee1Headers.Count -gt 0 -and $trainee2Headers.Count -gt 0) {
@@ -867,19 +911,19 @@ try {
         $t2PdfRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certifications/$certId/download" -Method "Get" -Headers $trainee2Headers
 
         if ($t1PdfRes.StatusCode -eq 200 -and $t2PdfRes.StatusCode -eq 403) {
-            Record-Result 19 "Trainee Tenancy Certificate Isolation Guard" $true "Certificate owner trainee: 200 OK; Cross-trainee: 403 Forbidden"
+            Record-Result 20 "Trainee Tenancy Certificate Isolation Guard" $true "Certificate owner trainee: 200 OK; Cross-trainee: 403 Forbidden"
         } else {
-            Record-Result 19 "Trainee Tenancy Certificate Isolation Guard" $false "Owner=$($t1PdfRes.StatusCode), Cross-Trainee=$($t2PdfRes.StatusCode)"
+            Record-Result 20 "Trainee Tenancy Certificate Isolation Guard" $false "Owner=$($t1PdfRes.StatusCode), Cross-Trainee=$($t2PdfRes.StatusCode)"
         }
     } else {
-        Record-Result 19 "Trainee Tenancy Certificate Isolation Guard" $false "Trainee tokens or certId unavailable"
+        Record-Result 20 "Trainee Tenancy Certificate Isolation Guard" $false "Trainee tokens or certId unavailable"
     }
 } catch {
-    Record-Result 19 "Trainee Tenancy Certificate Isolation Guard" $false $_.Exception.Message
+    Record-Result 20 "Trainee Tenancy Certificate Isolation Guard" $false $_.Exception.Message
 }
 
 # -------------------------------------------------------------------------
-# Scenario 20: Authentic PDF Generation & Content Stream Validation
+# Scenario 21: Authentic PDF Generation & Content Stream Validation
 # -------------------------------------------------------------------------
 try {
     if ($certId) {
@@ -900,19 +944,19 @@ try {
         $hasVerif = $contentStr.Contains("Verification Status: PENDING VERIFICATION")
 
         if ($pdfRes.StatusCode -eq 200 -and $hasMagic -and $hasEof -and $hasCourse -and $hasCertNum -and $hasStatus -and $hasVerif) {
-            Record-Result 20 "Authentic PDF Content Stream & Status Integrity" $true "Valid PDF-1.4 with %%EOF, matching Course Code, Certificate Number, ACTIVE status, and PENDING verification banner"
+            Record-Result 21 "Authentic PDF Content Stream & Status Integrity" $true "Valid PDF-1.4 with %%EOF, matching Course Code, Certificate Number, ACTIVE status, and PENDING verification banner"
         } else {
-            Record-Result 20 "Authentic PDF Content Stream & Status Integrity" $false "Magic=$hasMagic, EOF=$hasEof, Course=$hasCourse, Cert=$hasCertNum, Status=$hasStatus, Verif=$hasVerif"
+            Record-Result 21 "Authentic PDF Content Stream & Status Integrity" $false "Magic=$hasMagic, EOF=$hasEof, Course=$hasCourse, Cert=$hasCertNum, Status=$hasStatus, Verif=$hasVerif"
         }
     } else {
-        Record-Result 20 "Authentic PDF Content Stream & Status Integrity" $false "No certId available"
+        Record-Result 21 "Authentic PDF Content Stream & Status Integrity" $false "No certId available"
     }
 } catch {
-    Record-Result 20 "Authentic PDF Content Stream & Status Integrity" $false $_.Exception.Message
+    Record-Result 21 "Authentic PDF Content Stream & Status Integrity" $false $_.Exception.Message
 }
 
 # -------------------------------------------------------------------------
-# Scenario 21: Jackson Remarks Special Characters & JSON Formatting Integrity
+# Scenario 22: Jackson Remarks Special Characters & JSON Formatting Integrity
 # -------------------------------------------------------------------------
 try {
     $rawRemarks = (Invoke-MysqlQuery "SELECT ar.remarks FROM assessment_results ar JOIN trainee_assessments ta ON ar.trainee_assessment_id = ta.trainee_assessment_id WHERE ta.assessment_id = $assessmentId AND ta.trainee_id = $trainee1Id;").Trim()
@@ -924,32 +968,107 @@ try {
     $hasNote = $parsedRemarks.note -like "*inverter wiring*"
 
     if ($hasTheory -and $hasPractical -and $hasStatus -and $hasNote) {
-        Record-Result 21 "Jackson Remarks Serialization & Breakdown Storage" $true "Component breakdown safely stored as typed JSON without string concatenation or quote corruption"
+        Record-Result 22 "Jackson Remarks Serialization & Breakdown Storage" $true "Component breakdown safely stored as typed JSON without string concatenation or quote corruption"
     } else {
-        Record-Result 21 "Jackson Remarks Serialization & Breakdown Storage" $false "Raw JSON: $rawRemarks"
+        Record-Result 22 "Jackson Remarks Serialization & Breakdown Storage" $false "Raw JSON: $rawRemarks"
     }
 } catch {
-    Record-Result 21 "Jackson Remarks Serialization & Breakdown Storage" $false $_.Exception.Message
+    Record-Result 22 "Jackson Remarks Serialization & Breakdown Storage" $false $_.Exception.Message
 }
 
 # -------------------------------------------------------------------------
-# Scenario 22: Target Endpoint Aliases Functional Check
+# Scenario 23: Target Endpoint Aliases Functional Check
 # -------------------------------------------------------------------------
 try {
     $resultsAlias = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessments/results" -Method "Get" -Headers $headers1
     $issueAlias = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certificates/issue" -Method "Post" -Body "{}" -Headers $headers1
 
     if ($resultsAlias.StatusCode -eq 200 -and $issueAlias.StatusCode -ne 404) {
-        Record-Result 22 "Target Endpoint Aliases Functionality" $true "Aliases /api/v1/assessments/results and /api/v1/certificates/issue are active"
+        Record-Result 23 "Target Endpoint Aliases Functionality" $true "Aliases /api/v1/assessments/results and /api/v1/certificates/issue are active"
     } else {
-        Record-Result 22 "Target Endpoint Aliases Functionality" $false "resultsAlias=$($resultsAlias.StatusCode), issueAlias=$($issueAlias.StatusCode)"
+        Record-Result 23 "Target Endpoint Aliases Functionality" $false "resultsAlias=$($resultsAlias.StatusCode), issueAlias=$($issueAlias.StatusCode)"
     }
 } catch {
-    Record-Result 22 "Target Endpoint Aliases Functionality" $false $_.Exception.Message
+    Record-Result 23 "Target Endpoint Aliases Functionality" $false $_.Exception.Message
 }
 
 # -------------------------------------------------------------------------
-# Scenario 23: Reverse-Dependency Database Teardown
+# Scenario 24: Certificate Query Endpoint Trainee Isolation & Scoping
+# -------------------------------------------------------------------------
+try {
+    # 1. Trainee 1 queries own certificates by traineeId -> 200 OK
+    $t1QueryOwn = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certifications?traineeId=$trainee1Id" -Method "Get" -Headers $trainee1Headers
+    # 2. Trainee 1 queries Trainee 2 by traineeId -> 403 Forbidden
+    $t1QueryOtherTrainee = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certifications?traineeId=$trainee2Id" -Method "Get" -Headers $trainee1Headers
+    # 3. Trainee 1 queries Trainee 1's enrollment -> 200 OK
+    $t1QueryOwnEnr = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certifications?enrollmentId=$enrollment1Id" -Method "Get" -Headers $trainee1Headers
+    # 4. Trainee 1 queries Trainee 2's enrollment -> 403 Forbidden
+    $t1QueryOtherEnr = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certifications?enrollmentId=$enrollment2Id" -Method "Get" -Headers $trainee1Headers
+    # 5. Trainee 1 generic query -> 200 OK, returns only Trainee 1's certificates
+    $t1Generic = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certifications" -Method "Get" -Headers $trainee1Headers
+    $t1GenericJson = $t1Generic.Content | ConvertFrom-Json
+    $allT1Only = $true
+    foreach ($item in $t1GenericJson.data) {
+        if ($item.traineeId -ne [int64]$trainee1Id) {
+            $allT1Only = $false
+        }
+    }
+
+    if ($t1QueryOwn.StatusCode -eq 200 -and $t1QueryOtherTrainee.StatusCode -eq 403 -and $t1QueryOwnEnr.StatusCode -eq 200 -and $t1QueryOtherEnr.StatusCode -eq 403 -and $t1Generic.StatusCode -eq 200 -and $allT1Only) {
+        Record-Result 24 "Certificate Query Trainee Isolation & Filtering" $true "Trainee can only view own certificates; foreign traineeId/enrollmentId blocked with 403; generic list filtered to own certs"
+    } else {
+        Record-Result 24 "Certificate Query Trainee Isolation & Filtering" $false "ownTrainee=$($t1QueryOwn.StatusCode), otherTrainee=$($t1QueryOtherTrainee.StatusCode), ownEnr=$($t1QueryOwnEnr.StatusCode), otherEnr=$($t1QueryOtherEnr.StatusCode), generic=$($t1Generic.StatusCode), allT1Only=$allT1Only"
+    }
+} catch {
+    Record-Result 24 "Certificate Query Trainee Isolation & Filtering" $false $_.Exception.Message
+}
+
+# -------------------------------------------------------------------------
+# Scenario 25: Certificate Query Endpoint Assessor Assignment Scoping
+# -------------------------------------------------------------------------
+try {
+    $t1ResultId = (Invoke-MysqlQuery "SELECT ar.assessment_result_id FROM assessment_results ar JOIN trainee_assessments ta ON ar.trainee_assessment_id = ta.trainee_assessment_id WHERE ta.assessment_id = $assessmentId AND ta.trainee_id = $trainee1Id;").Trim()
+
+    # 1. Assessor 1 (assigned evaluator) queries certificates by courseId -> 200 OK
+    $a1Course = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certifications?courseId=$courseId" -Method "Get" -Headers $headers1
+    # 2. Assessor 2 (unassigned) queries certificates by assessmentResultId -> 403 Forbidden
+    $a2Result = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certifications?assessmentResultId=$t1ResultId" -Method "Get" -Headers $headers2
+    # 3. Assessor 2 generic query -> 200 OK with empty list (0 certs)
+    $a2Generic = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certifications" -Method "Get" -Headers $headers2
+    $a2Json = $a2Generic.Content | ConvertFrom-Json
+    $a2Count = $a2Json.data.Count
+
+    if ($a1Course.StatusCode -eq 200 -and $a2Result.StatusCode -eq 403 -and $a2Generic.StatusCode -eq 200 -and $a2Count -eq 0) {
+        Record-Result 25 "Certificate Query Assessor Assignment Scoping" $true "Assessor 1 accesses certificates from assigned assessment; Assessor 2 blocked on unassigned result with 403; generic list yields 0 certs"
+    } else {
+        Record-Result 25 "Certificate Query Assessor Assignment Scoping" $false "a1Course=$($a1Course.StatusCode), a2Result=$($a2Result.StatusCode), a2Generic=$($a2Generic.StatusCode), a2Count=$a2Count"
+    }
+} catch {
+    Record-Result 25 "Certificate Query Assessor Assignment Scoping" $false $_.Exception.Message
+}
+
+# -------------------------------------------------------------------------
+# Scenario 26: Authoritative Awarding Body Resolution & Verification Status Integrity
+# -------------------------------------------------------------------------
+try {
+    $issuingBodyVal = (Invoke-MysqlQuery "SELECT issuing_body FROM certifications WHERE certification_id = $certId;").Trim()
+    $verifStatusVal = (Invoke-MysqlQuery "SELECT certificate_verification_status_id FROM certifications WHERE certification_id = $certId;").Trim()
+
+    $hasSector = $issuingBodyVal -like "*Green Skills Council*"
+    $noGovClaim = -not ($issuingBodyVal -like "*National Skill Development Authority*")
+    $isPending = [int]$verifStatusVal -eq 2
+
+    if ($hasSector -and $noGovClaim -and $isPending) {
+        Record-Result 26 "Authoritative Awarding Body Resolution & Verification Integrity" $true "Issuing body correctly resolved to sector council '$issuingBodyVal' without fabricated government claims; verification status is PENDING (2)"
+    } else {
+        Record-Result 26 "Authoritative Awarding Body Resolution & Verification Integrity" $false "issuingBody='$issuingBodyVal', verifStatus=$verifStatusVal"
+    }
+} catch {
+    Record-Result 26 "Authoritative Awarding Body Resolution & Verification Integrity" $false $_.Exception.Message
+}
+
+# -------------------------------------------------------------------------
+# Scenario 27: Reverse-Dependency Database Teardown
 # -------------------------------------------------------------------------
 try {
     if ($certId) {
@@ -972,21 +1091,21 @@ try {
     Invoke-MysqlQuery "DELETE FROM user_roles WHERE user_id IN ($assessor1Id, $assessor2Id, $trainee1UserId, $trainee2UserId);"
     Invoke-MysqlQuery "DELETE FROM users WHERE user_id IN ($assessor1Id, $assessor2Id, $trainee1UserId, $trainee2UserId);"
 
-    Record-Result 23 "Reverse-Dependency Database Teardown" $true "All tracked test fixtures deleted cleanly from SIH26135_TEST"
+    Record-Result 27 "Reverse-Dependency Database Teardown" $true "All tracked test fixtures deleted cleanly from SIH26135_TEST"
 } catch {
-    Record-Result 23 "Reverse-Dependency Database Teardown" $false $_.Exception.Message
+    Record-Result 27 "Reverse-Dependency Database Teardown" $false $_.Exception.Message
 }
 
 # -------------------------------------------------------------------------
-# Scenario 24: Post-Test Authoritative Trainee 1005143L Invariant Preservation
+# Scenario 28: Post-Test Authoritative Trainee 1005143L Invariant Preservation
 # -------------------------------------------------------------------------
 $postTraineeCount = Invoke-MysqlQuery "SELECT COUNT(*) FROM trainees WHERE trainee_id = 1005143 AND deleted_at IS NULL;"
 $postConsentCount = Invoke-MysqlQuery "SELECT COUNT(*) FROM trainee_consents WHERE trainee_id = 1005143 AND consent_status_id = 1;"
 
 if ([int]$postTraineeCount.Trim() -eq 1 -and [int]$postConsentCount.Trim() -eq 5) {
-    Record-Result 24 "Post-Test Authoritative Trainee 1005143L Invariant Preservation" $true "Trainee 1005143L retained exactly 5 active granted DPDP consents."
+    Record-Result 28 "Post-Test Authoritative Trainee 1005143L Invariant Preservation" $true "Trainee 1005143L retained exactly 5 active granted DPDP consents."
 } else {
-    Record-Result 24 "Post-Test Authoritative Trainee 1005143L Invariant Preservation" $false "Invariant violated! Found trainee=$postTraineeCount, consents=$postConsentCount"
+    Record-Result 28 "Post-Test Authoritative Trainee 1005143L Invariant Preservation" $false "Invariant violated! Found trainee=$postTraineeCount, consents=$postConsentCount"
 }
 
 # -------------------------------------------------------------------------

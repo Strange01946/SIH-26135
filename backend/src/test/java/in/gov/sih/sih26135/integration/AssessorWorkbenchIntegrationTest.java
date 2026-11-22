@@ -63,9 +63,19 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
 
   private Long trainee1Id;
   private Long enrollment1Id;
+  private Long trainee1UserId;
+  private String trainee1Token;
+  private HttpHeaders trainee1Headers;
 
   private Long trainee2Id;
   private Long enrollment2Id;
+  private Long trainee2UserId;
+  private String trainee2Token;
+  private HttpHeaders trainee2Headers;
+
+  private Long adminUserId;
+  private String adminToken;
+  private HttpHeaders adminHeaders;
 
   private Long assignedAssessmentId;
   private String assignedAssessmentCode;
@@ -167,11 +177,36 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
         """, "BAT-AS-" + runToken, fixtureCourseId, fixtureProviderId, fixtureCenterId, fixtureProgramId);
     trackedBatchIds.add(fixtureBatchId);
 
+    // Admin User
+    adminUserId = insertAndGetId("""
+        INSERT INTO users (username, email, password_hash, password_algo, user_status_id, created_at, updated_at)
+        VALUES (?, ?, 'hash', 'argon2id', 1, NOW(), NOW())
+        """, "admin_" + runToken, "admin_" + runToken + "@gov.in");
+    trackedUserIds.add(adminUserId);
+    jdbcTemplate.update("""
+        INSERT INTO user_roles (user_id, role_id, assigned_at)
+        SELECT ?, role_id, NOW() FROM roles WHERE role_code = 'super_admin' LIMIT 1
+        """, adminUserId);
+    adminToken = generateBearerToken(adminUserId, "admin_" + runToken, List.of("ROLE_super_admin", "assessment.manage"));
+    adminHeaders = createAuthHeaders(adminToken);
+
     // 4. Trainee 1
+    trainee1UserId = insertAndGetId("""
+        INSERT INTO users (username, email, password_hash, password_algo, user_status_id, created_at, updated_at)
+        VALUES (?, ?, 'hash', 'argon2id', 1, NOW(), NOW())
+        """, "trainee1_" + runToken, "trainee1_" + runToken + "@candidate.in");
+    trackedUserIds.add(trainee1UserId);
+    jdbcTemplate.update("""
+        INSERT INTO user_roles (user_id, role_id, assigned_at)
+        SELECT ?, role_id, NOW() FROM roles WHERE role_code = 'trainee' LIMIT 1
+        """, trainee1UserId);
+    trainee1Token = generateBearerToken(trainee1UserId, "trainee1_" + runToken, List.of("ROLE_trainee", "trainee.read"));
+    trainee1Headers = createAuthHeaders(trainee1Token);
+
     trainee1Id = insertAndGetId("""
-        INSERT INTO trainees (registration_number, first_name, last_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
-        VALUES (?, 'Rahul', 'Sharma', 1, 101, 1001, 1, 1, NOW(), NOW())
-        """, "REG-AS1-" + runToken);
+        INSERT INTO trainees (user_id, registration_number, first_name, last_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
+        VALUES (?, ?, 'Rahul', 'Sharma', 1, 101, 1001, 1, 1, NOW(), NOW())
+        """, trainee1UserId, "REG-AS1-" + runToken);
     trackedTraineeIds.add(trainee1Id);
 
     enrollment1Id = insertAndGetId("""
@@ -181,10 +216,22 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     trackedEnrollmentIds.add(enrollment1Id);
 
     // 5. Trainee 2
+    trainee2UserId = insertAndGetId("""
+        INSERT INTO users (username, email, password_hash, password_algo, user_status_id, created_at, updated_at)
+        VALUES (?, ?, 'hash', 'argon2id', 1, NOW(), NOW())
+        """, "trainee2_" + runToken, "trainee2_" + runToken + "@candidate.in");
+    trackedUserIds.add(trainee2UserId);
+    jdbcTemplate.update("""
+        INSERT INTO user_roles (user_id, role_id, assigned_at)
+        SELECT ?, role_id, NOW() FROM roles WHERE role_code = 'trainee' LIMIT 1
+        """, trainee2UserId);
+    trainee2Token = generateBearerToken(trainee2UserId, "trainee2_" + runToken, List.of("ROLE_trainee", "trainee.read"));
+    trainee2Headers = createAuthHeaders(trainee2Token);
+
     trainee2Id = insertAndGetId("""
-        INSERT INTO trainees (registration_number, first_name, last_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
-        VALUES (?, 'Pooja', 'Verma', 2, 101, 1001, 1, 1, NOW(), NOW())
-        """, "REG-AS2-" + runToken);
+        INSERT INTO trainees (user_id, registration_number, first_name, last_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
+        VALUES (?, ?, 'Pooja', 'Verma', 2, 101, 1001, 1, 1, NOW(), NOW())
+        """, trainee2UserId, "REG-AS2-" + runToken);
     trackedTraineeIds.add(trainee2Id);
 
     enrollment2Id = insertAndGetId("""
@@ -935,5 +982,286 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     );
     // Since issue expects a body or query, it should return 200 or 400 (not 404!)
     assertThat(issueResp.getStatusCode().value()).isNotEqualTo(404);
+  }
+
+  @Test
+  @DisplayName("15. Finalization rejects identical total with altered component marks")
+  void testFinalizeSameTotalDifferentComponentsRejected() {
+    CandidateScoreInput c1 = new CandidateScoreInput();
+    c1.setTraineeId(trainee1Id);
+    c1.setEnrollmentId(enrollment1Id);
+    c1.setAppeared(true);
+    c1.setTheoryScore(new BigDecimal("20.00"));
+    c1.setPracticalScore(new BigDecimal("40.00"));
+    c1.setVivaScore(new BigDecimal("10.00")); // total = 70.00
+
+    CandidateScoreInput c2 = new CandidateScoreInput();
+    c2.setTraineeId(trainee2Id);
+    c2.setEnrollmentId(enrollment2Id);
+    c2.setAppeared(false);
+
+    SaveAssessmentScoresRequest initialReq = new SaveAssessmentScoresRequest();
+    initialReq.setDraft(false);
+    initialReq.setCandidates(List.of(c1, c2));
+
+    ResponseEntity<String> firstFin = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/finalize"),
+        HttpMethod.POST,
+        new HttpEntity<>(initialReq, assessor1Headers),
+        String.class
+    );
+    assertThat(firstFin.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    // Replay with IDENTICAL total (70.00) but DIFFERENT components (theory 10 + practical 50 + viva 10 = 70.00)
+    c1.setTheoryScore(new BigDecimal("10.00"));
+    c1.setPracticalScore(new BigDecimal("50.00"));
+    c1.setVivaScore(new BigDecimal("10.00"));
+
+    SaveAssessmentScoresRequest diffCompReq = new SaveAssessmentScoresRequest();
+    diffCompReq.setDraft(false);
+    diffCompReq.setCandidates(List.of(c1, c2));
+
+    ResponseEntity<String> secondFin = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/finalize"),
+        HttpMethod.POST,
+        new HttpEntity<>(diffCompReq, assessor1Headers),
+        String.class
+    );
+    assertThat(secondFin.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(secondFin.getBody()).contains("ASSESSMENT_ALREADY_FINALIZED");
+  }
+
+  @Test
+  @DisplayName("16. Certificate retrieval scoping for Trainee, Assessor, and Admin")
+  void testCertificateRetrievalScopingForTraineeAndAssessor() throws Exception {
+    // Finalize assessment so trainee 1 has a certificate
+    CandidateScoreInput c1 = new CandidateScoreInput();
+    c1.setTraineeId(trainee1Id);
+    c1.setEnrollmentId(enrollment1Id);
+    c1.setAppeared(true);
+    c1.setTheoryScore(new BigDecimal("25.00"));
+    c1.setPracticalScore(new BigDecimal("45.00"));
+    c1.setVivaScore(new BigDecimal("15.00"));
+
+    CandidateScoreInput c2 = new CandidateScoreInput();
+    c2.setTraineeId(trainee2Id);
+    c2.setEnrollmentId(enrollment2Id);
+    c2.setAppeared(false);
+
+    SaveAssessmentScoresRequest finReq = new SaveAssessmentScoresRequest();
+    finReq.setDraft(false);
+    finReq.setCandidates(List.of(c1, c2));
+
+    ResponseEntity<String> finResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/finalize"),
+        HttpMethod.POST,
+        new HttpEntity<>(finReq, assessor1Headers),
+        String.class
+    );
+    assertThat(finResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    Long certId = jdbcTemplate.queryForObject(
+        "SELECT certification_id FROM certifications WHERE trainee_id = ? AND enrollment_id = ?",
+        Long.class, trainee1Id, enrollment1Id);
+    assertThat(certId).isNotNull();
+
+    Long result1Id = jdbcTemplate.queryForObject("""
+        SELECT ar.assessment_result_id FROM assessment_results ar
+        JOIN trainee_assessments ta ON ar.trainee_assessment_id = ta.trainee_assessment_id
+        WHERE ta.assessment_id = ? AND ta.trainee_id = ?
+        """, Long.class, assignedAssessmentId, trainee1Id);
+    assertThat(result1Id).isNotNull();
+
+    // 1. Trainee 1 sees own certificate
+    ResponseEntity<String> trainee1OwnResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/certifications?traineeId=" + trainee1Id),
+        HttpMethod.GET,
+        new HttpEntity<>(trainee1Headers),
+        String.class
+    );
+    assertThat(trainee1OwnResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    JsonNode t1Data = parseResponseJson(trainee1OwnResp.getBody()).get("data");
+    assertThat(t1Data.size()).isGreaterThanOrEqualTo(1);
+
+    // 2. Trainee 1 blocked from querying trainee 2
+    ResponseEntity<String> trainee1OtherTraineeResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/certifications?traineeId=" + trainee2Id),
+        HttpMethod.GET,
+        new HttpEntity<>(trainee1Headers),
+        String.class
+    );
+    assertThat(trainee1OtherTraineeResp.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+    // 3. Trainee 1 blocked from querying enrollment 2
+    ResponseEntity<String> trainee1OtherEnrResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/certifications?enrollmentId=" + enrollment2Id),
+        HttpMethod.GET,
+        new HttpEntity<>(trainee1Headers),
+        String.class
+    );
+    assertThat(trainee1OtherEnrResp.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+    // 4. Trainee 1 generic query (/api/v1/certifications) returns only Trainee 1 certificates
+    ResponseEntity<String> trainee1AllResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/certifications"),
+        HttpMethod.GET,
+        new HttpEntity<>(trainee1Headers),
+        String.class
+    );
+    assertThat(trainee1AllResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    JsonNode allT1 = parseResponseJson(trainee1AllResp.getBody()).get("data");
+    for (JsonNode c : allT1) {
+      assertThat(c.get("traineeId").asLong()).isEqualTo(trainee1Id);
+    }
+
+    // 5. Assessor 1 (assigned) retrieves certificates for course
+    ResponseEntity<String> assessor1CourseResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/certifications?courseId=" + fixtureCourseId),
+        HttpMethod.GET,
+        new HttpEntity<>(assessor1Headers),
+        String.class
+    );
+    assertThat(assessor1CourseResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    JsonNode a1Data = parseResponseJson(assessor1CourseResp.getBody()).get("data");
+    assertThat(a1Data.size()).isGreaterThanOrEqualTo(1);
+
+    // 6. Assessor 2 (unassigned) blocked from accessing cert by ID
+    ResponseEntity<String> assessor2CertResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/certifications/" + certId),
+        HttpMethod.GET,
+        new HttpEntity<>(assessor2Headers),
+        String.class
+    );
+    assertThat(assessor2CertResp.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+    // 7. Assessor 2 (unassigned) blocked from querying assessment result ID
+    ResponseEntity<String> assessor2ResultResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/certifications?assessmentResultId=" + result1Id),
+        HttpMethod.GET,
+        new HttpEntity<>(assessor2Headers),
+        String.class
+    );
+    assertThat(assessor2ResultResp.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+    // 8. Assessor 2 generic query returns empty list (0 certificates)
+    ResponseEntity<String> assessor2AllResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/certifications"),
+        HttpMethod.GET,
+        new HttpEntity<>(assessor2Headers),
+        String.class
+    );
+    assertThat(assessor2AllResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    JsonNode a2Data = parseResponseJson(assessor2AllResp.getBody()).get("data");
+    assertThat(a2Data.size()).isEqualTo(0);
+
+    // 9. Admin has full access across all filters
+    ResponseEntity<String> adminResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/certifications?traineeId=" + trainee1Id),
+        HttpMethod.GET,
+        new HttpEntity<>(adminHeaders),
+        String.class
+    );
+    assertThat(adminResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+  }
+
+  @Test
+  @DisplayName("17. Enrollment completion rules enforced: attendance & batch status requirements")
+  void testEnrollmentCompletionRequirementsEnforced() {
+    // Trainee 1 has low attendance: 1 present, 3 absent (25% < 70%)
+    jdbcTemplate.update("""
+        INSERT INTO attendance_records (enrollment_id, trainee_id, batch_id, session_date, session_sequence, attendance_status_id, marked_at)
+        VALUES (?, ?, ?, '2026-01-10', 1, 1, NOW()),
+               (?, ?, ?, '2026-01-11', 1, 2, NOW()),
+               (?, ?, ?, '2026-01-12', 1, 2, NOW()),
+               (?, ?, ?, '2026-01-13', 1, 2, NOW())
+        """, enrollment1Id, trainee1Id, fixtureBatchId,
+             enrollment1Id, trainee1Id, fixtureBatchId,
+             enrollment1Id, trainee1Id, fixtureBatchId,
+             enrollment1Id, trainee1Id, fixtureBatchId);
+
+    // Enrollment 2 is DEFERRED (status = 5)
+    jdbcTemplate.update("""
+        UPDATE training_enrollments SET enrollment_status_id = 5 WHERE enrollment_id = ?
+        """, enrollment2Id);
+
+    CandidateScoreInput c1 = new CandidateScoreInput();
+    c1.setTraineeId(trainee1Id);
+    c1.setEnrollmentId(enrollment1Id);
+    c1.setAppeared(true);
+    c1.setTheoryScore(new BigDecimal("25.00"));
+    c1.setPracticalScore(new BigDecimal("45.00"));
+    c1.setVivaScore(new BigDecimal("15.00"));
+
+    CandidateScoreInput c2 = new CandidateScoreInput();
+    c2.setTraineeId(trainee2Id);
+    c2.setEnrollmentId(enrollment2Id);
+    c2.setAppeared(false);
+
+    SaveAssessmentScoresRequest finReq = new SaveAssessmentScoresRequest();
+    finReq.setDraft(false);
+    finReq.setCandidates(List.of(c1, c2));
+
+    ResponseEntity<String> finResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/finalize"),
+        HttpMethod.POST,
+        new HttpEntity<>(finReq, assessor1Headers),
+        String.class
+    );
+    assertThat(finResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    // Enrollment 1 must NOT be marked COMPLETED because attendance was < 70%
+    Long enr1Status = jdbcTemplate.queryForObject(
+        "SELECT enrollment_status_id FROM training_enrollments WHERE enrollment_id = ?",
+        Long.class, enrollment1Id);
+    assertThat(enr1Status).isNotEqualTo(3L);
+
+    // Enrollment 2 must remain DEFERRED (5), NOT COMPLETED
+    Long enr2Status = jdbcTemplate.queryForObject(
+        "SELECT enrollment_status_id FROM training_enrollments WHERE enrollment_id = ?",
+        Long.class, enrollment2Id);
+    assertThat(enr2Status).isEqualTo(5L);
+  }
+
+  @Test
+  @DisplayName("18. Authoritative issuing body resolved accurately without fabricated claims")
+  void testAuthoritativeIssuingBodyResolution() {
+    CandidateScoreInput c1 = new CandidateScoreInput();
+    c1.setTraineeId(trainee1Id);
+    c1.setEnrollmentId(enrollment1Id);
+    c1.setAppeared(true);
+    c1.setTheoryScore(new BigDecimal("25.00"));
+    c1.setPracticalScore(new BigDecimal("45.00"));
+    c1.setVivaScore(new BigDecimal("15.00"));
+
+    CandidateScoreInput c2 = new CandidateScoreInput();
+    c2.setTraineeId(trainee2Id);
+    c2.setEnrollmentId(enrollment2Id);
+    c2.setAppeared(false);
+
+    SaveAssessmentScoresRequest finReq = new SaveAssessmentScoresRequest();
+    finReq.setDraft(false);
+    finReq.setCandidates(List.of(c1, c2));
+
+    ResponseEntity<String> finResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/finalize"),
+        HttpMethod.POST,
+        new HttpEntity<>(finReq, assessor1Headers),
+        String.class
+    );
+    assertThat(finResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    String issuingBody = jdbcTemplate.queryForObject(
+        "SELECT issuing_body FROM certifications WHERE trainee_id = ? AND enrollment_id = ?",
+        String.class, trainee1Id, enrollment1Id);
+    assertThat(issuingBody).isNotNull();
+    // Must contain parent organization name
+    assertThat(issuingBody).contains("Skill Org " + runToken);
+    // Must NOT contain fabricated fallback
+    assertThat(issuingBody).doesNotContain("National Skill Development Authority");
+
+    Long verifStatusId = jdbcTemplate.queryForObject(
+        "SELECT certificate_verification_status_id FROM certifications WHERE trainee_id = ? AND enrollment_id = ?",
+        Long.class, trainee1Id, enrollment1Id);
+    assertThat(verifStatusId).isEqualTo(2L); // PENDING verification status
   }
 }

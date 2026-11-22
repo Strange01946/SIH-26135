@@ -193,23 +193,52 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
     }
   }
 
+  private boolean isScoreEqual(BigDecimal a, BigDecimal b) {
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return false;
+    return a.compareTo(b) == 0;
+  }
+
   private String resolveAuthoritativeIssuingBody(Assessment assessment) {
+    // 1. Parent Organization (if accredited awarding body / council)
     if (assessment.getTrainingBatch() != null && assessment.getTrainingBatch().getTrainingProvider() != null) {
       TrainingProvider provider = assessment.getTrainingBatch().getTrainingProvider();
       if (provider.getOrganizationId() != null && organizationRepository != null) {
         Optional<Organization> org = organizationRepository.findById(provider.getOrganizationId());
         if (org.isPresent() && org.get().getOrganizationName() != null && !org.get().getOrganizationName().isBlank()) {
-          return org.get().getOrganizationName();
+          return org.get().getOrganizationName().trim();
         }
       }
-      if (provider.getProviderName() != null && !provider.getProviderName().isBlank()) {
-        return provider.getProviderName();
+    }
+
+    // 2. Sector Skill Council / Awarding Body via Course Sector
+    if (assessment.getCourse() != null && assessment.getCourse().getSector() != null) {
+      String sectorName = assessment.getCourse().getSector().getSectorName();
+      if (sectorName != null && !sectorName.isBlank()) {
+        String cleanSector = sectorName.trim();
+        if (cleanSector.toLowerCase(Locale.ROOT).contains("council")
+            || cleanSector.toLowerCase(Locale.ROOT).contains("body")
+            || cleanSector.toLowerCase(Locale.ROOT).contains("board")) {
+          return cleanSector;
+        }
+        return cleanSector + " Skill Council";
       }
     }
-    if (assessment.getProgram() != null && assessment.getProgram().getProgramName() != null && !assessment.getProgram().getProgramName().isBlank()) {
-      return assessment.getProgram().getProgramName();
+
+    // 3. Provider Name
+    if (assessment.getTrainingBatch() != null && assessment.getTrainingBatch().getTrainingProvider() != null) {
+      TrainingProvider provider = assessment.getTrainingBatch().getTrainingProvider();
+      if (provider.getProviderName() != null && !provider.getProviderName().isBlank()) {
+        return provider.getProviderName().trim();
+      }
     }
-    return "Authorized Assessment & Certification Body";
+
+    // 4. Program
+    if (assessment.getProgram() != null && assessment.getProgram().getProgramName() != null && !assessment.getProgram().getProgramName().isBlank()) {
+      return assessment.getProgram().getProgramName().trim();
+    }
+
+    return "Authorized Awarding Body";
   }
 
   @Override
@@ -647,6 +676,14 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
             break;
           }
           TraineeAssessment existingTa = existingTaOpt.get();
+
+          // Enrollment identity match
+          if (existingTa.getTrainingEnrollment() == null || input.getEnrollmentId() == null
+              || !existingTa.getTrainingEnrollment().getId().equals(input.getEnrollmentId())) {
+            isIdentical = false;
+            break;
+          }
+
           boolean expectedAppeared = input.getAppeared() != null ? input.getAppeared() : true;
           if (Boolean.TRUE.equals(existingTa.getAppearedFlag()) != expectedAppeared) {
             isIdentical = false;
@@ -666,6 +703,20 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
                 .add(inPractical != null ? inPractical : BigDecimal.ZERO)
                 .add(inViva != null ? inViva : BigDecimal.ZERO);
             if (existingRes.getObtainedScore() == null || existingRes.getObtainedScore().compareTo(inTotal) != 0) {
+              isIdentical = false;
+              break;
+            }
+
+            // Exact component marks comparison
+            AssessmentComponentScoresJson existingScores = parseComponentScores(existingRes.getRemarks());
+            if (existingScores == null) {
+              isIdentical = false;
+              break;
+            }
+
+            if (!isScoreEqual(inTheory, existingScores.getTheory())
+                || !isScoreEqual(inPractical, existingScores.getPractical())
+                || !isScoreEqual(inViva, existingScores.getViva())) {
               isIdentical = false;
               break;
             }
@@ -917,18 +968,45 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
           certificationRepository.save(cert);
           certsIssued++;
 
-          // Transition active training enrollments to COMPLETED
+          // Evaluate training enrollment completion
           if (enrollment.getEnrollmentStatus() != null) {
             Long curStatusId = enrollment.getEnrollmentStatus().getId();
             if (curStatusId == 1L || curStatusId == 2L) { // Only active enrollments
-              if (statusCompleted != null) {
+              boolean meetsRequirements = true;
+
+              // Batch status check: batch must not be CANCELLED (5) or SUSPENDED (6)
+              if (assessment.getTrainingBatch() != null && assessment.getTrainingBatch().getBatchStatus() != null) {
+                Long batchStatusId = assessment.getTrainingBatch().getBatchStatus().getId();
+                if (batchStatusId == 5L || batchStatusId == 6L) {
+                  meetsRequirements = false;
+                }
+              }
+
+              // Attendance requirement check: if attendance records exist for this enrollment, verify minimum attendance (70%)
+              if (meetsRequirements) {
+                Long totalSessions = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM attendance_records WHERE enrollment_id = ?",
+                    Long.class, enrollment.getId());
+                if (totalSessions != null && totalSessions > 0) {
+                  Long attendedSessions = jdbcTemplate.queryForObject(
+                      "SELECT COUNT(*) FROM attendance_records WHERE enrollment_id = ? AND attendance_status_id IN (1, 3, 6)",
+                      Long.class, enrollment.getId());
+                  double rate = (attendedSessions != null ? attendedSessions.doubleValue() : 0.0) / totalSessions.doubleValue();
+                  if (rate < 0.70) {
+                    meetsRequirements = false;
+                    log.info("Enrollment {} has attendance rate {} below 70% threshold; training completion deferred", enrollment.getId(), rate);
+                  }
+                }
+              }
+
+              if (meetsRequirements && statusCompleted != null) {
                 enrollment.setEnrollmentStatus(statusCompleted);
+                if (enrollment.getActualCompletionDate() == null) {
+                  enrollment.setActualCompletionDate(today);
+                }
+                enrollment.setUpdatedAt(now);
+                trainingEnrollmentRepository.save(enrollment);
               }
-              if (enrollment.getActualCompletionDate() == null) {
-                enrollment.setActualCompletionDate(today);
-              }
-              enrollment.setUpdatedAt(now);
-              trainingEnrollmentRepository.save(enrollment);
             } else if (curStatusId == 3L) { // Already completed
               if (enrollment.getActualCompletionDate() == null) {
                 enrollment.setActualCompletionDate(today);
@@ -968,6 +1046,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
   }
 
   @Override
+  @Transactional(readOnly = true)
   public byte[] generateCertificatePdf(Long certificationId) {
     if (certificationId == null || certificationId <= 0) {
       throw new BadRequestException("Certification ID must be valid and positive");
@@ -980,22 +1059,28 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
     User caller = resolveAuthenticatedCaller();
     boolean isAdmin = isAdministrativeCaller();
     if (!isAdmin) {
-      boolean isAssignedAssessor = false;
-      if (cert.getAssessmentResult() != null
-          && cert.getAssessmentResult().getTraineeAssessment() != null
-          && cert.getAssessmentResult().getTraineeAssessment().getAssessment() != null) {
-        Long evaluatorId = cert.getAssessmentResult().getTraineeAssessment().getAssessment().getEvaluatorUserId();
-        if (evaluatorId != null && evaluatorId.equals(caller.getId())) {
-          isAssignedAssessor = true;
-        }
-      }
+      Integer assignedCount = jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM certifications c " +
+          "JOIN assessment_results ar ON c.assessment_result_id = ar.assessment_result_id " +
+          "JOIN trainee_assessments ta ON ar.trainee_assessment_id = ta.trainee_assessment_id " +
+          "JOIN assessments a ON ta.assessment_id = a.assessment_id " +
+          "WHERE c.certification_id = ? AND a.evaluator_user_id = ?",
+          Integer.class,
+          certificationId,
+          caller.getId()
+      );
+      boolean isAssignedAssessor = assignedCount != null && assignedCount > 0;
 
       boolean isOwnTrainee = false;
-      if (cert.getTrainee() != null && traineeRepository != null) {
-        Optional<Trainee> callerTrainee = traineeRepository.findByUserId(caller.getId());
-        if (callerTrainee.isPresent() && callerTrainee.get().getId().equals(cert.getTrainee().getId())) {
-          isOwnTrainee = true;
-        }
+      Optional<Trainee> callerTrainee = traineeRepository.findByUserId(caller.getId());
+      if (callerTrainee.isPresent()) {
+        Integer ownCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM certifications WHERE certification_id = ? AND trainee_id = ?",
+            Integer.class,
+            certificationId,
+            callerTrainee.get().getId()
+        );
+        isOwnTrainee = ownCount != null && ownCount > 0;
       }
 
       if (!isAssignedAssessor && !isOwnTrainee) {
@@ -1013,7 +1098,9 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
     String courseCode = course != null ? course.getCourseCode() : "N/A";
     String certNumber = cert.getCertificateNumber();
     String issueDate = cert.getIssueDate() != null ? cert.getIssueDate().format(DateTimeFormatter.ofPattern("dd-MMM-yyyy")) : "N/A";
-    String issuingBody = cert.getIssuingBody() != null ? cert.getIssuingBody() : "National Skill Development Authority";
+    String issuingBody = cert.getIssuingBody() != null && !cert.getIssuingBody().isBlank()
+        ? cert.getIssuingBody()
+        : "Authorized Awarding Body";
 
     String assessmentTitle = "Standard Competency Evaluation";
     if (result != null && result.getTraineeAssessment() != null && result.getTraineeAssessment().getAssessment() != null) {
