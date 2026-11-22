@@ -29,4 +29,12 @@ public interface CertificationRepository extends JpaRepository<Certification, Lo
   List<Certification> findByCertificateVerificationStatusId(Long certificateVerificationStatusId);
 
   List<Certification> findByIssueDate(LocalDate issueDate);
+
+  Optional<Certification> findFirstByAssessmentResultId(Long assessmentResultId);
+
+  Optional<Certification> findFirstByTrainingEnrollmentId(Long enrollmentId);
+
+  boolean existsByAssessmentResultId(Long assessmentResultId);
+
+  boolean existsByTrainingEnrollmentId(Long enrollmentId);
 }

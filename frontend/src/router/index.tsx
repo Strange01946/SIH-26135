@@ -13,9 +13,10 @@ import { PlaceholderPage } from '@/pages/placeholder/PlaceholderPage';
 import { PageLoading } from '@/components/feedback/LoadingSpinner';
 import {
   AdminDashboard,
-  AssessorDashboard,
   EmployerDashboard,
 } from '@/pages/personas/PersonaDashboards';
+import { AssessorWorkbenchPage } from '@/pages/assessor/AssessorWorkbenchPage';
+import { AssessorScoringPage } from '@/pages/assessor/AssessorScoringPage';
 import { ProviderOverviewPage } from '@/pages/provider/ProviderOverviewPage';
 import { ProviderCentersPage } from '@/pages/provider/ProviderCentersPage';
 import { ProviderCoursesPage } from '@/pages/provider/ProviderCoursesPage';
@@ -103,7 +104,8 @@ export function AppRouter(): React.JSX.Element {
             path="/assessor"
             element={<RoleGuard allowedPersonas={['ASSESSOR']} />}
           >
-            <Route path="dashboard" element={<AssessorDashboard />} />
+            <Route path="dashboard" element={<AssessorWorkbenchPage />} />
+            <Route path="assessments/:assessmentId" element={<AssessorScoringPage />} />
             <Route index element={<Navigate to="dashboard" replace />} />
           </Route>
 

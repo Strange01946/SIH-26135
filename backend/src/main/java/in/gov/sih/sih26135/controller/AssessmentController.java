@@ -36,7 +36,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @Validated
 @RestController
 @RequestMapping("/api/v1/assessments")
-@PreAuthorize("hasAuthority('assessment.manage')")
+@PreAuthorize("hasAnyAuthority('assessment.manage', 'ROLE_assessor')")
 public class AssessmentController {
 
   private final AssessmentService assessmentService;

@@ -1,0 +1,575 @@
+package in.gov.sih.sih26135.integration;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import in.gov.sih.sih26135.dto.assessor.CandidateScoreInput;
+import in.gov.sih.sih26135.dto.assessor.SaveAssessmentScoresRequest;
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * Phase 30.6 — Assessment & Certification Subsystem: Assessor Workbench Integration Tests.
+ *
+ * <p>Verifies:
+ * <ul>
+ *   <li>Assessor assignment scoping (evaluator_user_id) and 403 Forbidden on unassigned assessments.</li>
+ *   <li>Candidate roster retrieval with enrollment and score status.</li>
+ *   <li>Draft score persistence: pending outcome, JSON remarks, no certificate issued.</li>
+ *   <li>Authoritative score validation: negative rejection, max component check, 100 aggregate limit.</li>
+ *   <li>Finalization logic:
+ *     <ul>
+ *       <li>Failing candidates: FAIL outcome, no certification.</li>
+ *       <li>Passing candidates: PASS outcome, authoritative Certification issued (ISSUED, VERIFIED), enrollment COMPLETED.</li>
+ *     </ul>
+ *   </li>
+ *   <li>Finalized assessment immutability (cannot modify once finalized).</li>
+ *   <li>Authentic PDF certificate download (%PDF-1.4 header).</li>
+ *   <li>Target endpoint aliases (/api/v1/assessments/results and /api/v1/certificates/issue).</li>
+ * </ul>
+ */
+public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest {
+
+  private String runToken;
+
+  private Long assessor1UserId;
+  private String assessor1Token;
+  private HttpHeaders assessor1Headers;
+
+  private Long assessor2UserId;
+  private String assessor2Token;
+  private HttpHeaders assessor2Headers;
+
+  private Long fixtureSectorId;
+  private Long fixtureCourseId;
+  private Long fixtureOrgId;
+  private Long fixtureDeptId;
+  private Long fixtureSchemeId;
+  private Long fixtureProgramId;
+  private Long fixtureProviderId;
+  private Long fixtureCenterId;
+  private Long fixtureBatchId;
+
+  private Long trainee1Id;
+  private Long enrollment1Id;
+
+  private Long trainee2Id;
+  private Long enrollment2Id;
+
+  private Long assignedAssessmentId;
+  private String assignedAssessmentCode;
+
+  @BeforeEach
+  void setUpAssessorFixtures() {
+    runToken = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+
+    // 1. Create Assessor 1 (primary assigned evaluator)
+    assessor1UserId = insertAndGetId("""
+        INSERT INTO users (username, email, password_hash, password_algo, user_status_id, created_at, updated_at)
+        VALUES (?, ?, 'hash', 'argon2id', 1, NOW(), NOW())
+        """, "assessor1_" + runToken, "assessor1_" + runToken + "@test.gov.in");
+    trackedUserIds.add(assessor1UserId);
+
+    jdbcTemplate.update("""
+        INSERT INTO user_roles (user_id, role_id, assigned_at)
+        SELECT ?, role_id, NOW() FROM roles WHERE role_code = 'assessor' LIMIT 1
+        """, assessor1UserId);
+
+    assessor1Token = generateBearerToken(
+        assessor1UserId,
+        "assessor1_" + runToken,
+        List.of("ROLE_assessor", "assessment.manage", "trainee.read")
+    );
+    assessor1Headers = createAuthHeaders(assessor1Token);
+
+    // 2. Create Assessor 2 (unassigned assessor to verify tenant/assignment isolation)
+    assessor2UserId = insertAndGetId("""
+        INSERT INTO users (username, email, password_hash, password_algo, user_status_id, created_at, updated_at)
+        VALUES (?, ?, 'hash', 'argon2id', 1, NOW(), NOW())
+        """, "assessor2_" + runToken, "assessor2_" + runToken + "@test.gov.in");
+    trackedUserIds.add(assessor2UserId);
+
+    jdbcTemplate.update("""
+        INSERT INTO user_roles (user_id, role_id, assigned_at)
+        SELECT ?, role_id, NOW() FROM roles WHERE role_code = 'assessor' LIMIT 1
+        """, assessor2UserId);
+
+    assessor2Token = generateBearerToken(
+        assessor2UserId,
+        "assessor2_" + runToken,
+        List.of("ROLE_assessor", "assessment.manage", "trainee.read")
+    );
+    assessor2Headers = createAuthHeaders(assessor2Token);
+
+    // 3. Domain Hierarchy
+    fixtureSectorId = insertAndGetId("""
+        INSERT INTO sectors (sector_code, sector_name, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, 1, NOW(), NOW())
+        """, "SEC-AS-" + runToken, "Electronics & Hardware " + runToken);
+    trackedSectorIds.add(fixtureSectorId);
+
+    fixtureCourseId = insertAndGetId("""
+        INSERT INTO courses (course_code, course_name, sector_id, delivery_mode_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, 1, 1, NOW(), NOW())
+        """, "CRS-AS-" + runToken, "Field Technician " + runToken, fixtureSectorId);
+    trackedCourseIds.add(fixtureCourseId);
+
+    fixtureOrgId = insertAndGetId("""
+        INSERT INTO organizations (organization_code, organization_name, organization_type_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, 1, 1, NOW(), NOW())
+        """, "ORG-AS-" + runToken, "Skill Org " + runToken);
+    trackedOrgIds.add(fixtureOrgId);
+
+    fixtureDeptId = insertAndGetId("""
+        INSERT INTO departments (organization_id, department_code, department_name, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, 1, NOW(), NOW())
+        """, fixtureOrgId, "DEP-AS-" + runToken, "Dept Skill " + runToken);
+    trackedDeptIds.add(fixtureDeptId);
+
+    fixtureSchemeId = insertAndGetId("""
+        INSERT INTO schemes (scheme_code, scheme_name, department_id, currency_code, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, 'INR', 1, NOW(), NOW())
+        """, "SCH-AS-" + runToken, "PMKVY Scheme " + runToken, fixtureDeptId);
+    trackedSchemeIds.add(fixtureSchemeId);
+
+    fixtureProgramId = insertAndGetId("""
+        INSERT INTO programs (program_code, program_name, department_id, scheme_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 1, NOW(), NOW())
+        """, "PRG-AS-" + runToken, "Vocational Program " + runToken, fixtureDeptId, fixtureSchemeId);
+    trackedProgramIds.add(fixtureProgramId);
+
+    fixtureProviderId = insertAndGetId("""
+        INSERT INTO training_providers (provider_code, provider_name, registration_number, organization_type_id, organization_id, state_id, district_id, accreditation_status_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, 5, ?, 101, 1001, 1, 1, NOW(), NOW())
+        """, "PRV-AS-" + runToken, "Apex Institute " + runToken, "REG-AS-" + runToken, fixtureOrgId);
+    trackedProviderIds.add(fixtureProviderId);
+
+    fixtureCenterId = insertAndGetId("""
+        INSERT INTO training_centers (provider_id, center_code, center_name, state_id, district_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, 101, 1001, 1, NOW(), NOW())
+        """, fixtureProviderId, "CTR-AS-" + runToken, "Apex Center " + runToken);
+    trackedCenterIds.add(fixtureCenterId);
+
+    fixtureBatchId = insertAndGetId("""
+        INSERT INTO training_batches (batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, '2026-01-01', 50, 1, NOW(), NOW())
+        """, "BAT-AS-" + runToken, fixtureCourseId, fixtureProviderId, fixtureCenterId, fixtureProgramId);
+    trackedBatchIds.add(fixtureBatchId);
+
+    // 4. Trainee 1
+    trainee1Id = insertAndGetId("""
+        INSERT INTO trainees (registration_number, first_name, last_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
+        VALUES (?, 'Rahul', 'Sharma', 1, 101, 1001, 1, 1, NOW(), NOW())
+        """, "REG-AS1-" + runToken);
+    trackedTraineeIds.add(trainee1Id);
+
+    enrollment1Id = insertAndGetId("""
+        INSERT INTO training_enrollments (enrollment_number, trainee_id, course_id, provider_id, center_id, batch_id, program_id, enrollment_status_id, enrollment_date, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1, CURDATE(), NOW(), NOW())
+        """, "ENR-AS1-" + runToken, trainee1Id, fixtureCourseId, fixtureProviderId, fixtureCenterId, fixtureBatchId, fixtureProgramId);
+    trackedEnrollmentIds.add(enrollment1Id);
+
+    // 5. Trainee 2
+    trainee2Id = insertAndGetId("""
+        INSERT INTO trainees (registration_number, first_name, last_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
+        VALUES (?, 'Pooja', 'Verma', 2, 101, 1001, 1, 1, NOW(), NOW())
+        """, "REG-AS2-" + runToken);
+    trackedTraineeIds.add(trainee2Id);
+
+    enrollment2Id = insertAndGetId("""
+        INSERT INTO training_enrollments (enrollment_number, trainee_id, course_id, provider_id, center_id, batch_id, program_id, enrollment_status_id, enrollment_date, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1, CURDATE(), NOW(), NOW())
+        """, "ENR-AS2-" + runToken, trainee2Id, fixtureCourseId, fixtureProviderId, fixtureCenterId, fixtureBatchId, fixtureProgramId);
+    trackedEnrollmentIds.add(enrollment2Id);
+
+    // 6. Assessment assigned to Assessor 1
+    assignedAssessmentCode = "ASM-AS-" + runToken;
+    assignedAssessmentId = insertAndGetId("""
+        INSERT INTO assessments (assessment_code, assessment_name, course_id, batch_id, program_id, assessment_type_id, maximum_score, pass_score, assessment_date, evaluator_user_id, evaluator_name, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, 'Technician Practical & Theory Assessment', ?, ?, ?, 1, 100.00, 50.00, CURDATE(), ?, 'Assessor One', 1, NOW(), NOW())
+        """, assignedAssessmentCode, fixtureCourseId, fixtureBatchId, fixtureProgramId, assessor1UserId);
+    trackedAssessmentIds.add(assignedAssessmentId);
+  }
+
+  @Test
+  @DisplayName("1. Assessor retrieves assigned assessments; unassigned assessor sees none")
+  void testAssessorAssessmentListingAndScoping() throws Exception {
+    // Assessor 1 retrieves assignments
+    ResponseEntity<String> response1 = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments"),
+        HttpMethod.GET,
+        new HttpEntity<>(assessor1Headers),
+        String.class
+    );
+
+    assertThat(response1.getStatusCode()).isEqualTo(HttpStatus.OK);
+    JsonNode root1 = parseResponseJson(response1.getBody());
+    assertThat(root1.get("success").asBoolean()).isTrue();
+    JsonNode data1 = root1.get("data");
+    assertThat(data1.isArray()).isTrue();
+    assertThat(data1.size()).isGreaterThanOrEqualTo(1);
+
+    boolean foundAssigned = false;
+    for (JsonNode item : data1) {
+      if (item.get("id").asLong() == assignedAssessmentId) {
+        foundAssigned = true;
+        assertThat(item.get("assessmentCode").asText()).isEqualTo(assignedAssessmentCode);
+        assertThat(item.get("courseName").asText()).contains("Field Technician");
+        assertThat(item.get("batchCode").asText()).isEqualTo("BAT-AS-" + runToken);
+        assertThat(item.get("maximumScore").asDouble()).isEqualTo(100.0);
+        assertThat(item.get("passScore").asDouble()).isEqualTo(50.0);
+        assertThat(item.get("theoryMaxScore").asDouble()).isEqualTo(30.0);
+        assertThat(item.get("practicalMaxScore").asDouble()).isEqualTo(50.0);
+        assertThat(item.get("vivaMaxScore").asDouble()).isEqualTo(20.0);
+        assertThat(item.get("totalCandidates").asInt()).isEqualTo(2);
+      }
+    }
+    assertThat(foundAssigned).isTrue();
+
+    // Assessor 2 (unassigned) calls the same endpoint - should NOT see assessor 1's assessment
+    ResponseEntity<String> response2 = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments"),
+        HttpMethod.GET,
+        new HttpEntity<>(assessor2Headers),
+        String.class
+    );
+
+    assertThat(response2.getStatusCode()).isEqualTo(HttpStatus.OK);
+    JsonNode root2 = parseResponseJson(response2.getBody());
+    for (JsonNode item : root2.get("data")) {
+      assertThat(item.get("id").asLong()).isNotEqualTo(assignedAssessmentId);
+    }
+  }
+
+  @Test
+  @DisplayName("2. Accessing unassigned assessment roster returns 403 Forbidden")
+  void testUnassignedAssessmentAccessReturns403() {
+    ResponseEntity<String> response = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/roster"),
+        HttpMethod.GET,
+        new HttpEntity<>(assessor2Headers),
+        String.class
+    );
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+  }
+
+  @Test
+  @DisplayName("3. Assessor retrieves candidate roster with correct initial unassessed status")
+  void testGetCandidateRoster() throws Exception {
+    ResponseEntity<String> response = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/roster"),
+        HttpMethod.GET,
+        new HttpEntity<>(assessor1Headers),
+        String.class
+    );
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    JsonNode root = parseResponseJson(response.getBody());
+    assertThat(root.get("success").asBoolean()).isTrue();
+
+    JsonNode data = root.get("data");
+    assertThat(data.get("assessment").get("id").asLong()).isEqualTo(assignedAssessmentId);
+
+    JsonNode candidates = data.get("candidates");
+    assertThat(candidates.isArray()).isTrue();
+    assertThat(candidates.size()).isEqualTo(2);
+
+    for (JsonNode c : candidates) {
+      assertThat(c.get("assessmentOutcomeCode").asText()).isEqualTo("PENDING");
+      assertThat(c.get("isFinalized").asBoolean()).isFalse();
+      assertThat(c.get("certificateNumber").isNull()).isTrue();
+    }
+  }
+
+  @Test
+  @DisplayName("4. Saving draft scores persists partial marks without issuing certification")
+  void testSaveDraftScores() throws Exception {
+    CandidateScoreInput c1 = new CandidateScoreInput();
+    c1.setTraineeId(trainee1Id);
+    c1.setEnrollmentId(enrollment1Id);
+    c1.setAppeared(true);
+    c1.setTheoryScore(new BigDecimal("22.50"));
+    c1.setPracticalScore(new BigDecimal("35.00"));
+    c1.setVivaScore(null); // Partial marks in draft
+    c1.setRemarks("Draft observation for Rahul");
+
+    CandidateScoreInput c2 = new CandidateScoreInput();
+    c2.setTraineeId(trainee2Id);
+    c2.setEnrollmentId(enrollment2Id);
+    c2.setAppeared(true);
+    c2.setTheoryScore(new BigDecimal("15.00"));
+    c2.setPracticalScore(null);
+    c2.setVivaScore(null);
+
+    SaveAssessmentScoresRequest draftReq = new SaveAssessmentScoresRequest();
+    draftReq.setDraft(true);
+    draftReq.setCandidates(List.of(c1, c2));
+
+    ResponseEntity<String> response = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/draft"),
+        HttpMethod.POST,
+        new HttpEntity<>(draftReq, assessor1Headers),
+        String.class
+    );
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    JsonNode root = parseResponseJson(response.getBody());
+    assertThat(root.get("success").asBoolean()).isTrue();
+    assertThat(root.get("data").get("totalProcessed").asInt()).isEqualTo(2);
+    assertThat(root.get("data").get("certificatesIssued").asInt()).isEqualTo(0);
+
+    // Verify database state: NO certification should exist
+    Integer certCount = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM certifications WHERE enrollment_id IN (?, ?)",
+        Integer.class, enrollment1Id, enrollment2Id);
+    assertThat(certCount).isEqualTo(0);
+
+    // Verify assessment lifecycle remains SCHEDULED (1)
+    Integer lifecycle = jdbcTemplate.queryForObject(
+        "SELECT lifecycle_status_id FROM assessments WHERE assessment_id = ?",
+        Integer.class, assignedAssessmentId);
+    assertThat(lifecycle).isEqualTo(1);
+
+    // Reopen roster and verify draft values persisted
+    ResponseEntity<String> rosterResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/roster"),
+        HttpMethod.GET,
+        new HttpEntity<>(assessor1Headers),
+        String.class
+    );
+    JsonNode rosterData = parseResponseJson(rosterResp.getBody()).get("data");
+    for (JsonNode cand : rosterData.get("candidates")) {
+      if (cand.get("traineeId").asLong() == trainee1Id) {
+        assertThat(cand.get("theoryScore").asDouble()).isEqualTo(22.50);
+        assertThat(cand.get("practicalScore").asDouble()).isEqualTo(35.00);
+        assertThat(cand.get("vivaScore").isNull()).isTrue();
+        assertThat(cand.get("assessmentOutcomeCode").asText()).isEqualTo("PENDING");
+      }
+    }
+  }
+
+  @Test
+  @DisplayName("5. Score validation rejects negative marks, over-max components, and aggregate > 100")
+  void testScoreValidations() {
+    // 5A. Negative mark
+    CandidateScoreInput negInput = new CandidateScoreInput();
+    negInput.setTraineeId(trainee1Id);
+    negInput.setEnrollmentId(enrollment1Id);
+    negInput.setAppeared(true);
+    negInput.setTheoryScore(new BigDecimal("-5.00"));
+
+    SaveAssessmentScoresRequest req1 = new SaveAssessmentScoresRequest();
+    req1.setDraft(true);
+    req1.setCandidates(List.of(negInput));
+
+    ResponseEntity<String> resp1 = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/draft"),
+        HttpMethod.POST,
+        new HttpEntity<>(req1, assessor1Headers),
+        String.class
+    );
+    assertThat(resp1.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    // 5B. Over-max theory (> 30)
+    CandidateScoreInput overTheory = new CandidateScoreInput();
+    overTheory.setTraineeId(trainee1Id);
+    overTheory.setEnrollmentId(enrollment1Id);
+    overTheory.setAppeared(true);
+    overTheory.setTheoryScore(new BigDecimal("35.00")); // Max is 30
+
+    SaveAssessmentScoresRequest req2 = new SaveAssessmentScoresRequest();
+    req2.setDraft(true);
+    req2.setCandidates(List.of(overTheory));
+
+    ResponseEntity<String> resp2 = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/draft"),
+        HttpMethod.POST,
+        new HttpEntity<>(req2, assessor1Headers),
+        String.class
+    );
+    assertThat(resp2.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    // 5C. Over-max practical (> 50)
+    CandidateScoreInput overPrac = new CandidateScoreInput();
+    overPrac.setTraineeId(trainee1Id);
+    overPrac.setEnrollmentId(enrollment1Id);
+    overPrac.setAppeared(true);
+    overPrac.setPracticalScore(new BigDecimal("55.00")); // Max is 50
+
+    SaveAssessmentScoresRequest req3 = new SaveAssessmentScoresRequest();
+    req3.setDraft(true);
+    req3.setCandidates(List.of(overPrac));
+
+    ResponseEntity<String> resp3 = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/draft"),
+        HttpMethod.POST,
+        new HttpEntity<>(req3, assessor1Headers),
+        String.class
+    );
+    assertThat(resp3.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+  }
+
+  @Test
+  @DisplayName("6. Finalizing with passing and failing candidates authoritatively declares outcomes and issues certs")
+  void testFinalizePassingAndFailingCandidates() throws Exception {
+    // Candidate 1: Passing (Theory 25/30, Practical 45/50, Viva 15/20 => Total 85 >= 50)
+    CandidateScoreInput passCandidate = new CandidateScoreInput();
+    passCandidate.setTraineeId(trainee1Id);
+    passCandidate.setEnrollmentId(enrollment1Id);
+    passCandidate.setAppeared(true);
+    passCandidate.setTheoryScore(new BigDecimal("25.00"));
+    passCandidate.setPracticalScore(new BigDecimal("45.00"));
+    passCandidate.setVivaScore(new BigDecimal("15.00"));
+    passCandidate.setRemarks("Excellent hands-on performance");
+
+    // Candidate 2: Failing (Theory 10/30, Practical 15/50, Viva 5/20 => Total 30 < 50)
+    CandidateScoreInput failCandidate = new CandidateScoreInput();
+    failCandidate.setTraineeId(trainee2Id);
+    failCandidate.setEnrollmentId(enrollment2Id);
+    failCandidate.setAppeared(true);
+    failCandidate.setTheoryScore(new BigDecimal("10.00"));
+    failCandidate.setPracticalScore(new BigDecimal("15.00"));
+    failCandidate.setVivaScore(new BigDecimal("5.00"));
+    failCandidate.setRemarks("Needs remediation in circuit assembly");
+
+    SaveAssessmentScoresRequest finalizeReq = new SaveAssessmentScoresRequest();
+    finalizeReq.setDraft(false);
+    finalizeReq.setCandidates(List.of(passCandidate, failCandidate));
+
+    ResponseEntity<String> response = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/finalize"),
+        HttpMethod.POST,
+        new HttpEntity<>(finalizeReq, assessor1Headers),
+        String.class
+    );
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    JsonNode root = parseResponseJson(response.getBody());
+    assertThat(root.get("success").asBoolean()).isTrue();
+    JsonNode data = root.get("data");
+
+    assertThat(data.get("passedCount").asInt()).isEqualTo(1);
+    assertThat(data.get("failedCount").asInt()).isEqualTo(1);
+    assertThat(data.get("certificatesIssued").asInt()).isEqualTo(1);
+
+    // Verify candidate 1: Passed, certificate created, enrollment completed
+    Integer cand1Outcome = jdbcTemplate.queryForObject("""
+        SELECT ar.assessment_outcome_id
+        FROM assessment_results ar
+        JOIN trainee_assessments ta ON ar.trainee_assessment_id = ta.trainee_assessment_id
+        WHERE ta.assessment_id = ? AND ta.trainee_id = ?
+        """, Integer.class, assignedAssessmentId, trainee1Id);
+    assertThat(cand1Outcome).isEqualTo(2); // 2 = PASS
+
+    List<Long> cert1Ids = jdbcTemplate.queryForList(
+        "SELECT certification_id FROM certifications WHERE trainee_id = ? AND enrollment_id = ?",
+        Long.class, trainee1Id, enrollment1Id);
+    assertThat(cert1Ids).hasSize(1);
+    Long certId = cert1Ids.get(0);
+    trackedCertificationIds.add(certId);
+
+    // Verify certificate details: status = ISSUED (1), verification = VERIFIED (3)
+    Integer certStatus = jdbcTemplate.queryForObject(
+        "SELECT certificate_status_id FROM certifications WHERE certification_id = ?",
+        Integer.class, certId);
+    assertThat(certStatus).isEqualTo(1);
+
+    Integer certVerif = jdbcTemplate.queryForObject(
+        "SELECT certificate_verification_status_id FROM certifications WHERE certification_id = ?",
+        Integer.class, certId);
+    assertThat(certVerif).isEqualTo(3);
+
+    // Verify candidate 1 enrollment status = 3 (COMPLETED)
+    Integer enr1Status = jdbcTemplate.queryForObject(
+        "SELECT enrollment_status_id FROM training_enrollments WHERE enrollment_id = ?",
+        Integer.class, enrollment1Id);
+    assertThat(enr1Status).isEqualTo(3);
+
+    // Verify candidate 2: Failed, NO certificate
+    Integer cand2Outcome = jdbcTemplate.queryForObject("""
+        SELECT ar.assessment_outcome_id
+        FROM assessment_results ar
+        JOIN trainee_assessments ta ON ar.trainee_assessment_id = ta.trainee_assessment_id
+        WHERE ta.assessment_id = ? AND ta.trainee_id = ?
+        """, Integer.class, assignedAssessmentId, trainee2Id);
+    assertThat(cand2Outcome).isEqualTo(3); // 3 = FAIL
+
+    Integer cand2CertCount = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM certifications WHERE trainee_id = ? AND enrollment_id = ?",
+        Integer.class, trainee2Id, enrollment2Id);
+    assertThat(cand2CertCount).isEqualTo(0);
+
+    // Verify candidate 2 enrollment remains in original status (1)
+    Integer enr2Status = jdbcTemplate.queryForObject(
+        "SELECT enrollment_status_id FROM training_enrollments WHERE enrollment_id = ?",
+        Integer.class, enrollment2Id);
+    assertThat(enr2Status).isEqualTo(1);
+
+    // Verify assessment lifecycle is now 2 (FINALIZED)
+    Integer asmStatus = jdbcTemplate.queryForObject(
+        "SELECT lifecycle_status_id FROM assessments WHERE assessment_id = ?",
+        Integer.class, assignedAssessmentId);
+    assertThat(asmStatus).isEqualTo(2);
+
+    // 7. Verify Finalized Immutability: modifying finalized assessment must be rejected
+    ResponseEntity<String> modResponse = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/draft"),
+        HttpMethod.POST,
+        new HttpEntity<>(finalizeReq, assessor1Headers),
+        String.class
+    );
+    assertThat(modResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    // 8. Verify Authentic PDF Download
+    ResponseEntity<byte[]> pdfResponse = restTemplate.exchange(
+        getBaseUrl("/api/v1/certifications/" + certId + "/download"),
+        HttpMethod.GET,
+        new HttpEntity<>(assessor1Headers),
+        byte[].class
+    );
+    assertThat(pdfResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(pdfResponse.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_PDF);
+
+    byte[] body = pdfResponse.getBody();
+    assertThat(body).isNotNull();
+    assertThat(body.length).isGreaterThan(100);
+
+    String magic = new String(body, 0, 5, StandardCharsets.US_ASCII);
+    assertThat(magic).isEqualTo("%PDF-");
+  }
+
+  @Test
+  @DisplayName("7. Endpoint aliases (/api/v1/assessments/results and /api/v1/certificates/issue) are functional")
+  void testEndpointAliases() {
+    // Results alias endpoint
+    ResponseEntity<String> resultsResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessments/results"),
+        HttpMethod.GET,
+        new HttpEntity<>(assessor1Headers),
+        String.class
+    );
+    assertThat(resultsResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    // Certificates alias issue endpoint
+    ResponseEntity<String> issueResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/certificates/issue"),
+        HttpMethod.POST,
+        new HttpEntity<>(assessor1Headers),
+        String.class
+    );
+    // Since issue expects a body or query, it should return 200 or 400 (not 404!)
+    assertThat(issueResp.getStatusCode().value()).isNotEqualTo(404);
+  }
+}

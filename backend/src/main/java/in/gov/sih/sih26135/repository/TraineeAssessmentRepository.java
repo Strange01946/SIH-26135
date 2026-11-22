@@ -23,4 +23,8 @@ public interface TraineeAssessmentRepository extends JpaRepository<TraineeAssess
   List<TraineeAssessment> findByTraineeId(Long traineeId);
 
   List<TraineeAssessment> findByAssessmentDate(LocalDate assessmentDate);
+
+  Optional<TraineeAssessment> findByAssessmentIdAndTraineeId(Long assessmentId, Long traineeId);
+
+  Optional<TraineeAssessment> findByAssessmentIdAndTrainingEnrollmentId(Long assessmentId, Long enrollmentId);
 }

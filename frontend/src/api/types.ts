@@ -99,6 +99,7 @@ export interface AuthenticatedUserResponse {
   id: number;
   username: string;
   email?: string;
+  fullName?: string;
   authorities: string[];
   organizationId?: number | null;
   departmentId?: number | null;

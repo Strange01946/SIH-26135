@@ -25,4 +25,8 @@ public interface AssessmentRepository extends JpaRepository<Assessment, Long> {
   List<Assessment> findByAssessmentDate(LocalDate assessmentDate);
 
   List<Assessment> findByLifecycleStatusId(Long lifecycleStatusId);
+
+  List<Assessment> findByEvaluatorUserId(Long evaluatorUserId);
+
+  List<Assessment> findByEvaluatorUserIdAndDeletedAtIsNull(Long evaluatorUserId);
 }

@@ -8,12 +8,16 @@ import in.gov.sih.sih26135.dto.request.CreateCertificationRequest;
 import in.gov.sih.sih26135.dto.request.UpdateCertificationRequest;
 import in.gov.sih.sih26135.dto.response.CertificationResponse;
 import in.gov.sih.sih26135.response.ApiResponse;
+import in.gov.sih.sih26135.service.AssessorWorkbenchService;
 import in.gov.sih.sih26135.service.CertificationService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDate;
 import java.util.List;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -35,17 +39,21 @@ import org.springframework.security.access.prepost.PreAuthorize;
  */
 @Validated
 @RestController
-@RequestMapping("/api/v1/certifications")
-@PreAuthorize("hasAnyAuthority('assessment.manage', 'trainee.read', 'ROLE_trainee')")
+@RequestMapping({"/api/v1/certifications", "/api/v1/certificates"})
+@PreAuthorize("hasAnyAuthority('assessment.manage', 'trainee.read', 'ROLE_trainee', 'ROLE_assessor')")
 public class CertificationController {
 
   private final CertificationService certificationService;
+  private final AssessorWorkbenchService assessorWorkbenchService;
 
   @org.springframework.beans.factory.annotation.Autowired(required = false)
   private in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator securityScopeValidator;
 
-  public CertificationController(CertificationService certificationService) {
+  public CertificationController(
+      CertificationService certificationService,
+      @org.springframework.beans.factory.annotation.Autowired(required = false) AssessorWorkbenchService assessorWorkbenchService) {
     this.certificationService = certificationService;
+    this.assessorWorkbenchService = assessorWorkbenchService;
   }
 
   /**
@@ -235,5 +243,49 @@ public class CertificationController {
   public ResponseEntity<ApiResponse<Void>> deleteCertification(@PathVariable @Positive Long id) {
     certificationService.deleteCertification(id);
     return ResponseEntity.ok(ApiResponse.success("Certification deleted successfully"));
+  }
+
+  /**
+   * Generates and streams authentic Certificate PDF.
+   */
+  @GetMapping(value = "/{id}/download", produces = MediaType.APPLICATION_PDF_VALUE)
+  @PreAuthorize("hasAnyAuthority('assessment.manage', 'trainee.read', 'ROLE_trainee', 'ROLE_assessor', 'ROLE_super_admin', 'ROLE_government_admin')")
+  public ResponseEntity<byte[]> downloadCertificatePdf(@PathVariable @Positive Long id) {
+    if (securityScopeValidator != null) {
+      org.springframework.security.core.Authentication auth =
+          org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+      boolean isAssessorOrAdmin = auth != null && auth.getAuthorities().stream().anyMatch(a ->
+          "ROLE_assessor".equals(a.getAuthority()) ||
+          "assessment.manage".equals(a.getAuthority()) ||
+          "ROLE_super_admin".equals(a.getAuthority()) ||
+          "ROLE_government_admin".equals(a.getAuthority())
+      );
+      if (!isAssessorOrAdmin) {
+        CertificationResponse cert = certificationService.getById(id);
+        if (cert != null && cert.getTraineeId() != null) {
+          securityScopeValidator.validateTraineeScope(cert.getTraineeId());
+        }
+      }
+    }
+    if (assessorWorkbenchService == null) {
+      throw new IllegalStateException("AssessorWorkbenchService is required for PDF certificate generation");
+    }
+    byte[] pdfBytes = assessorWorkbenchService.generateCertificatePdf(id);
+    HttpHeaders headers = new HttpHeaders();
+    headers.setContentType(MediaType.APPLICATION_PDF);
+    headers.setContentDisposition(ContentDisposition.attachment().filename("Certificate_" + id + ".pdf").build());
+    headers.setContentLength(pdfBytes.length);
+    return new ResponseEntity<>(pdfBytes, headers, HttpStatus.OK);
+  }
+
+  /**
+   * Alias endpoint for issuing certificates at /api/v1/certificates/issue.
+   */
+  @PostMapping("/issue")
+  @PreAuthorize("hasAuthority('assessment.manage')")
+  public ResponseEntity<ApiResponse<CertificationResponse>> issueCertificate(
+      @Valid @RequestBody CreateCertificationRequest request,
+      HttpServletRequest httpRequest) {
+    return createCertification(request, httpRequest);
   }
 }
