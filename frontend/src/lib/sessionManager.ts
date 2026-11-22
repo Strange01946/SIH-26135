@@ -168,7 +168,19 @@ export async function refreshAccessToken(): Promise<string> {
     } catch (err) {
       // Invalidate session on failure only if session hasn't already been superseded
       if (sessionGeneration === requestGeneration) {
-        clearSession();
+        // Authoritative auth rejection: HTTP 401 or HTTP 403 (expired, revoked, or disabled)
+        const isAxios = axios.isAxiosError(err);
+        const status = isAxios
+          ? err.response?.status
+          : ((err as { status?: number; response?: { status?: number } })?.status ??
+             (err as { response?: { status?: number } })?.response?.status);
+        const isAuthRejection = status === 401 || status === 403;
+
+        // Invalidate session on explicit 401/403 rejection.
+        // For temporary network failures (no response, offline, or 5xx server error), preserve recoverable refresh token in storage.
+        if (isAuthRejection) {
+          clearSession();
+        }
       }
       throw err;
     } finally {

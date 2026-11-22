@@ -23,6 +23,7 @@ describe('Route Guards & Persona Access Control (ProtectedRoute, RoleGuard, Pers
       user: null,
       isAuthenticated: false,
       isInitializing: false,
+      connectionError: null,
       personas: [],
       primaryPersona: null,
       defaultLandingRoute: '/login',
@@ -30,6 +31,7 @@ describe('Route Guards & Persona Access Control (ProtectedRoute, RoleGuard, Pers
       establishSession: vi.fn(),
       logout: vi.fn(),
       refreshProfile: vi.fn(),
+      retrySession: vi.fn(),
       hasRole: (r: string) => {
         const auths = defaultAuth.user?.authorities ?? [];
         return auths.some(

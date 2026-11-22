@@ -28,6 +28,7 @@ export interface AuthContextType {
   user: AuthenticatedUserResponse | null;
   isAuthenticated: boolean;
   isInitializing: boolean;
+  connectionError: string | null;
   personas: UserPersona[];
   primaryPersona: UserPersona | null;
   defaultLandingRoute: string;
@@ -35,6 +36,7 @@ export interface AuthContextType {
   establishSession: (response: AuthResponse) => void;
   logout: () => void;
   refreshProfile: () => Promise<AuthenticatedUserResponse | null>;
+  retrySession: () => Promise<void>;
   hasRole: (role: string) => boolean;
   hasAnyRole: (roles: string[]) => boolean;
   hasAuthority: (authority: string) => boolean;
@@ -44,6 +46,7 @@ const defaultUnauthenticatedContext: AuthContextType = {
   user: null,
   isAuthenticated: false,
   isInitializing: false,
+  connectionError: null,
   personas: [],
   primaryPersona: null,
   defaultLandingRoute: '/login',
@@ -53,6 +56,7 @@ const defaultUnauthenticatedContext: AuthContextType = {
   establishSession: () => {},
   logout: () => {},
   refreshProfile: async () => null,
+  retrySession: async () => {},
   hasRole: () => false,
   hasAnyRole: () => false,
   hasAuthority: () => false,
@@ -67,12 +71,14 @@ export function AuthProvider({
 }): React.JSX.Element {
   const [user, setUser] = useState<AuthenticatedUserResponse | null>(null);
   const [isInitializing, setIsInitializing] = useState<boolean>(true);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   // Synchronize state when sessionManager terminates session externally (e.g. 401 refresh failure)
   useEffect(() => {
     const unsubscribe = subscribeToSession((active) => {
       if (!active) {
         setUser(null);
+        setConnectionError(null);
       }
     });
     return unsubscribe;
@@ -85,22 +91,29 @@ export function AuthProvider({
       const profile = await apiGet<AuthenticatedUserResponse>('/api/v1/auth/me');
       if (getSessionGeneration() === generation) {
         setUser(profile);
+        setConnectionError(null);
         return profile;
       }
       return null;
     } catch (err: unknown) {
-      const apiErr = err as { status?: number };
-      if (apiErr?.status === 401 || apiErr?.status === 403) {
+      const apiErr = err as { status?: number; response?: { status?: number } };
+      const status = apiErr?.status ?? apiErr?.response?.status;
+      if (status === 401 || status === 403) {
         if (getSessionGeneration() === generation) {
           clearSession();
           setUser(null);
+          setConnectionError(null);
+        }
+      } else {
+        if (getSessionGeneration() === generation) {
+          setConnectionError('Unable to verify profile due to network or server error.');
         }
       }
       return null;
     }
   }, []);
 
-  // Startup session restoration
+  // Startup session restoration with explicit error classification
   useEffect(() => {
     let isMounted = true;
 
@@ -117,17 +130,36 @@ export function AuthProvider({
       try {
         // Attempt silent refresh using stored refresh token
         await refreshAccessToken();
-        if (isMounted && getSessionGeneration() === generation) {
-          const profile = await fetchProfile();
-          if (!profile && getSessionGeneration() === generation) {
-            clearSession();
-            setUser(null);
-          }
+        if (!isMounted || getSessionGeneration() !== generation) {
+          return;
         }
-      } catch {
+
+        // Fetch verified profile from /api/v1/auth/me
+        const profile = await apiGet<AuthenticatedUserResponse>('/api/v1/auth/me');
         if (isMounted && getSessionGeneration() === generation) {
+          setUser(profile);
+          setConnectionError(null);
+        }
+      } catch (err: unknown) {
+        if (!isMounted || getSessionGeneration() !== generation) {
+          return;
+        }
+
+        const apiErr = err as { status?: number; response?: { status?: number } };
+        const status = apiErr?.status ?? apiErr?.response?.status;
+        const isAuthError = status === 401 || status === 403;
+
+        if (isAuthError) {
+          // Explicit 401/403 authorization rejection: invalidate session and reset user state
           clearSession();
           setUser(null);
+          setConnectionError(null);
+        } else {
+          // Temporary network failure or 5xx:
+          // Preserve recoverable session state in storage (do NOT call clearSession()),
+          // set reconnection error state, and DO NOT falsely claim authenticated profile verification.
+          setUser(null);
+          setConnectionError('Unable to connect to authentication server. Please check your network and retry.');
         }
       } finally {
         if (isMounted) {
@@ -141,13 +173,44 @@ export function AuthProvider({
     return () => {
       isMounted = false;
     };
-  }, [fetchProfile]);
+  }, []);
+
+  // Retry session restoration (for reconnection when network was offline or server recovered)
+  const retrySession = useCallback(async (): Promise<void> => {
+    if (!hasSession()) return;
+    const generation = getSessionGeneration();
+    try {
+      await refreshAccessToken();
+      if (getSessionGeneration() === generation) {
+        const profile = await apiGet<AuthenticatedUserResponse>('/api/v1/auth/me');
+        if (getSessionGeneration() === generation) {
+          setUser(profile);
+          setConnectionError(null);
+        }
+      }
+    } catch (err: unknown) {
+      const apiErr = err as { status?: number; response?: { status?: number } };
+      const status = apiErr?.status ?? apiErr?.response?.status;
+      if (status === 401 || status === 403) {
+        if (getSessionGeneration() === generation) {
+          clearSession();
+          setUser(null);
+          setConnectionError(null);
+        }
+      } else {
+        if (getSessionGeneration() === generation) {
+          setConnectionError('Reconnection attempt failed. Please check your network.');
+        }
+      }
+    }
+  }, []);
 
   // Establish authenticated session directly from AuthResponse (used by login and registration)
   const establishSession = useCallback((response: AuthResponse): void => {
     // Store in-memory access token and persistent refresh token (increments sessionGeneration)
     setTokens(response.accessToken, response.refreshToken);
     const sessionGen = getSessionGeneration();
+    setConnectionError(null);
 
     // Populate user profile immediately from response
     const immediateUser: AuthenticatedUserResponse = {
@@ -162,19 +225,26 @@ export function AuthProvider({
       .then((fullProfile) => {
         if (fullProfile && getSessionGeneration() === sessionGen) {
           setUser(fullProfile);
+          setConnectionError(null);
         }
       })
       .catch((err: unknown) => {
-        const apiErr = err as { status?: number };
+        const apiErr = err as { status?: number; response?: { status?: number } };
+        const status = apiErr?.status ?? apiErr?.response?.status;
         // If /me explicitly fails due to authentication or authorization rejection (401/403),
         // clear the session to prevent an invalid, deactivated, or revoked account from remaining authenticated.
-        if (apiErr?.status === 401 || apiErr?.status === 403) {
+        if (status === 401 || status === 403) {
           if (getSessionGeneration() === sessionGen) {
             clearSession();
             setUser(null);
+            setConnectionError(null);
+          }
+        } else {
+          // For temporary network errors (status 0, status >= 500), retain immediateUser so the UI is resilient
+          if (getSessionGeneration() === sessionGen) {
+            setConnectionError('Profile synchronization pending: unable to reach server.');
           }
         }
-        // For temporary network errors (status 0, status >= 500), retain immediateUser so the UI is resilient.
       });
   }, []);
 
@@ -248,6 +318,7 @@ export function AuthProvider({
       user,
       isAuthenticated: Boolean(user),
       isInitializing,
+      connectionError,
       personas,
       primaryPersona,
       defaultLandingRoute,
@@ -255,6 +326,7 @@ export function AuthProvider({
       establishSession,
       logout,
       refreshProfile: fetchProfile,
+      retrySession,
       hasRole,
       hasAnyRole,
       hasAuthority,
@@ -262,6 +334,7 @@ export function AuthProvider({
     [
       user,
       isInitializing,
+      connectionError,
       personas,
       primaryPersona,
       defaultLandingRoute,
@@ -269,6 +342,7 @@ export function AuthProvider({
       establishSession,
       logout,
       fetchProfile,
+      retrySession,
       hasRole,
       hasAnyRole,
       hasAuthority,

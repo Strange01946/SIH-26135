@@ -12,11 +12,13 @@ function TestConsumer(): React.JSX.Element {
     user,
     isAuthenticated,
     isInitializing,
+    connectionError,
     personas,
     primaryPersona,
     defaultLandingRoute,
     login,
     logout,
+    retrySession,
     hasRole,
     hasAuthority,
   } = useAuth();
@@ -25,6 +27,7 @@ function TestConsumer(): React.JSX.Element {
     <div>
       <div data-testid="isInitializing">{String(isInitializing)}</div>
       <div data-testid="isAuthenticated">{String(isAuthenticated)}</div>
+      <div data-testid="connectionError">{connectionError ?? 'none'}</div>
       <div data-testid="username">{user?.username ?? 'none'}</div>
       <div data-testid="personas">{personas.join(',')}</div>
       <div data-testid="primaryPersona">{primaryPersona ?? 'none'}</div>
@@ -44,6 +47,7 @@ function TestConsumer(): React.JSX.Element {
       </button>
 
       <button onClick={() => logout()}>Trigger Logout</button>
+      <button onClick={() => { void retrySession(); }}>Trigger Retry</button>
     </div>
   );
 }
@@ -118,12 +122,11 @@ describe('AuthContext & AuthProvider', () => {
     expect(screen.getByTestId('hasAuthoritySystemManage').textContent).toBe('true');
   });
 
-  it('clears session on mount when silent refresh fails', async () => {
+  it('clears session on mount when silent refresh fails with 401/403 authorization rejection', async () => {
     sessionManager.setRefreshToken('invalid-refresh-token');
 
-    vi.spyOn(sessionManager, 'refreshAccessToken').mockRejectedValue(
-      new Error('Token expired or revoked'),
-    );
+    const authErr = Object.assign(new Error('Token expired or revoked'), { status: 401 });
+    vi.spyOn(sessionManager, 'refreshAccessToken').mockRejectedValue(authErr);
 
     await act(async () => {
       render(
@@ -139,7 +142,81 @@ describe('AuthContext & AuthProvider', () => {
 
     expect(screen.getByTestId('isAuthenticated').textContent).toBe('false');
     expect(screen.getByTestId('username').textContent).toBe('none');
+    expect(screen.getByTestId('connectionError').textContent).toBe('none');
     expect(sessionManager.getAccessToken()).toBeNull();
+    expect(sessionManager.getRefreshToken()).toBeNull();
+  });
+
+  it('preserves session in storage and sets connectionError on mount when silent refresh encounters network failure', async () => {
+    sessionManager.setRefreshToken('valid-offline-refresh-token');
+
+    const networkErr = new Error('Network error connecting to auth server');
+    vi.spyOn(sessionManager, 'refreshAccessToken').mockRejectedValue(networkErr);
+
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <TestConsumer />
+        </AuthProvider>,
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('isInitializing').textContent).toBe('false');
+    });
+
+    // Invariant: does not falsely claim authenticated profile verification, but preserves stored token
+    expect(screen.getByTestId('isAuthenticated').textContent).toBe('false');
+    expect(screen.getByTestId('username').textContent).toBe('none');
+    expect(screen.getByTestId('connectionError').textContent).toContain('Unable to connect to authentication server');
+    expect(sessionManager.getRefreshToken()).toBe('valid-offline-refresh-token');
+  });
+
+  it('allows retrying session restoration via retrySession when network connectivity returns', async () => {
+    sessionManager.setRefreshToken('valid-offline-refresh-token');
+
+    const networkErr = new Error('Network error');
+    const refreshSpy = vi.spyOn(sessionManager, 'refreshAccessToken').mockRejectedValueOnce(networkErr);
+
+    const mockProfile: AuthenticatedUserResponse = {
+      id: 99,
+      username: 'reconnected_user',
+      authorities: ['ROLE_TRAINEE'],
+    };
+
+    vi.spyOn(apiClient, 'apiGet').mockImplementation(async (url: string) => {
+      if (url === '/api/v1/auth/me') return mockProfile;
+      throw new Error(`Unexpected GET: ${url}`);
+    });
+
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <TestConsumer />
+        </AuthProvider>,
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('isInitializing').textContent).toBe('false');
+    });
+
+    expect(screen.getByTestId('connectionError').textContent).not.toBe('none');
+    expect(screen.getByTestId('isAuthenticated').textContent).toBe('false');
+
+    // Server comes back online
+    refreshSpy.mockResolvedValueOnce('new-valid-jwt');
+
+    // Trigger retry
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Trigger Retry' }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('isAuthenticated').textContent).toBe('true');
+      expect(screen.getByTestId('username').textContent).toBe('reconnected_user');
+      expect(screen.getByTestId('connectionError').textContent).toBe('none');
+    });
   });
 
   it('logs in user, sets tokens, retrieves full profile, and updates context state', async () => {

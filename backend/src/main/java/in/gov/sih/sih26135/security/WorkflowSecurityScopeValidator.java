@@ -229,11 +229,12 @@ public class WorkflowSecurityScopeValidator {
       return false;
     }
 
-    // 2. Must hold explicit verified administrative role. analytics.read alone must NEVER grant nationwide access!
+    // 2. Must hold explicit verified administrative or national analytical role. analytics.read alone must NEVER grant nationwide access!
     boolean hasSuperAdminRole = authorities.contains("ROLE_super_admin");
     boolean hasGovAdminRole = authorities.contains("ROLE_government_admin");
+    boolean hasAnalystRole = authorities.contains("ROLE_analyst");
 
-    if (!hasSuperAdminRole && !hasGovAdminRole) {
+    if (!hasSuperAdminRole && !hasGovAdminRole && !hasAnalystRole) {
       log.warn("Nationwide authorization rejected: caller lacks explicit national administrative role");
       return false;
     }

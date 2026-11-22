@@ -21,7 +21,7 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 
 export function LoginPage(): React.JSX.Element {
-  const { login, isAuthenticated, user } = useAuth();
+  const { login, isAuthenticated, user, connectionError, retrySession } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -130,6 +130,28 @@ export function LoginPage(): React.JSX.Element {
                 ℹ️
               </span>
               <span>Your session has expired. Please sign in again to continue your work.</span>
+            </div>
+          )}
+
+          {/* Connection Error / Retry Banner */}
+          {connectionError && (
+            <div
+              role="alert"
+              className="mb-5 rounded-md bg-yellow-50 p-3.5 border border-yellow-200 text-sm text-yellow-900 flex items-start justify-between gap-2.5"
+            >
+              <div className="flex items-start gap-2.5">
+                <span className="text-yellow-600 mt-0.5" aria-hidden="true">
+                  ⚠️
+                </span>
+                <span className="leading-snug">{connectionError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => { void retrySession(); }}
+                className="ml-2 inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-yellow-300 bg-white text-yellow-800 hover:bg-yellow-50 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+              >
+                Retry
+              </button>
             </div>
           )}
 

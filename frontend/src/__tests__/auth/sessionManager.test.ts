@@ -119,14 +119,27 @@ describe('Session Manager (lib/sessionManager)', () => {
     expect(getAccessToken()).toBeNull();
   });
 
-  it('fails and clears session on refresh API failure', async () => {
-    setRefreshToken('bad-refresh-token');
-    vi.mocked(axios.post).mockRejectedValueOnce(new Error('Network error during refresh'));
+  it('fails and clears session on authoritative 401/403 refresh rejection', async () => {
+    setRefreshToken('expired-refresh-token');
+    const authError = Object.assign(new Error('Token expired or revoked'), {
+      response: { status: 401 },
+    });
+    vi.mocked(axios.post).mockRejectedValueOnce(authError);
 
-    await expect(refreshAccessToken()).rejects.toThrow('Network error during refresh');
+    await expect(refreshAccessToken()).rejects.toThrow('Token expired or revoked');
     expect(getAccessToken()).toBeNull();
     expect(getRefreshToken()).toBeNull();
     expect(hasSession()).toBe(false);
+  });
+
+  it('preserves recoverable session state (refresh token) on transient network or 5xx refresh error', async () => {
+    setRefreshToken('valid-refresh-token');
+    vi.mocked(axios.post).mockRejectedValueOnce(new Error('Network error during refresh'));
+
+    await expect(refreshAccessToken()).rejects.toThrow('Network error during refresh');
+    // Session is NOT cleared on temporary network failure
+    expect(getRefreshToken()).toBe('valid-refresh-token');
+    expect(hasSession()).toBe(true);
   });
 
   it('prevents race conditions: in-flight refresh resolving after logout (clearSession) does not restore tokens', async () => {
