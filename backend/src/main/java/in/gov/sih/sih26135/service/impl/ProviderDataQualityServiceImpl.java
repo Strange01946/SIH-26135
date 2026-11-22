@@ -22,6 +22,7 @@ import in.gov.sih.sih26135.security.AuditPayloadMasker;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.DataQualityEngineService;
 import in.gov.sih.sih26135.service.ProviderDataQualityService;
+import in.gov.sih.sih26135.service.dq.ScanScopeContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,6 +33,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.sql.Date;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -353,6 +355,17 @@ public class ProviderDataQualityServiceImpl implements ProviderDataQualityServic
         }
       }
 
+      Set<String> supportedRules = Set.of(
+          "DQ-TRAINEE-001",
+          "DQ-ATTENDANCE-004",
+          "DQ-PLACEMENT-002",
+          "DQ-EMPLOYMENT-003",
+          "DQ-DUPLICATE-005"
+      );
+      if (ruleCode != null && !supportedRules.contains(ruleCode)) {
+        throw new BadRequestException("Data quality re-evaluation is not supported for rule " + ruleCode, "UNSUPPORTED_RE_EVALUATION");
+      }
+
       scanRequest.setRuleCode(ruleCode);
       scanRequest.setTargetEntityType(entityType);
       scanRequest.setEntityId(issue.getEntityId());
@@ -362,11 +375,16 @@ public class ProviderDataQualityServiceImpl implements ProviderDataQualityServic
       throw new BadRequestException("Data quality engine service is unavailable", "SERVICE_UNAVAILABLE");
     }
 
+    // Explicitly construct provider-scoped context
+    ScanScopeContext providerScope = ScanScopeContext.providerScoped(caller.getId(), providerId);
+
     List<DataQualityRuleExecutionSummary> summaries;
     try {
-      summaries = dataQualityEngineService.executeScan(scanRequest);
+      summaries = dataQualityEngineService.executeScopedScan(scanRequest, providerScope);
     } catch (AccessDeniedException ade) {
       throw ade;
+    } catch (BadRequestException bre) {
+      throw bre;
     } catch (Exception e) {
       log.error("Provider re-evaluation failed for provider {}: {}", providerId, e.getMessage(), e);
       throw new BadRequestException("Data quality re-evaluation failed: " + e.getMessage(), "SCAN_FAILED");
@@ -378,42 +396,223 @@ public class ProviderDataQualityServiceImpl implements ProviderDataQualityServic
           log.warn("Rule {} execution failed during provider scan", s.ruleCode());
           throw new BadRequestException("Data quality re-evaluation failed for rule: " + s.ruleCode(), "SCAN_FAILED");
         }
+        if (issueId != null && "SKIPPED".equalsIgnoreCase(s.status())) {
+          log.warn("Rule {} skipped during provider scan", s.ruleCode());
+          throw new BadRequestException("Data quality re-evaluation is not supported for rule: " + s.ruleCode(), "UNSUPPORTED_RE_EVALUATION");
+        }
       }
     }
   }
 
   private void verifyUnderlyingAnomalyCorrected(DataQualityIssue issue) {
-    String entityType = issue.getEntityType() != null ? issue.getEntityType().toUpperCase(Locale.ROOT) : "";
     Long entityId = issue.getEntityId();
     if (entityId == null || entityId <= 0) {
       throw new BadRequestException("Issue target entityId is invalid", "REMEDIATION_VALIDATION_FAILED");
     }
 
+    String entityType = issue.getEntityType() != null ? issue.getEntityType().trim() : "";
+    String normalizedEntityType = entityType.toUpperCase(Locale.ROOT).replace("_", "");
+
     String ruleCode = issue.getDataQualityRule() != null ? issue.getDataQualityRule().getRuleCode() : null;
+    if (ruleCode == null || ruleCode.isBlank()) {
+      throw new BadRequestException("Data quality issue rule code is missing and cannot be validated", "UNSUPPORTED_RULE_VALIDATION");
+    }
+    String normalizedRuleCode = ruleCode.trim().toUpperCase(Locale.ROOT);
 
     // 1. Privileged review check: Cross-provider duplicate candidate registrations cannot be directly resolved by a single provider
-    if ("DQ-DUPLICATE-005".equalsIgnoreCase(ruleCode)) {
+    if ("DQ-DUPLICATE-005".equals(normalizedRuleCode)) {
       throw new AccessDeniedException(
           "Cross-provider duplicate candidate registration issues require administrative supervisor review and cannot be directly resolved by a single training provider");
     }
 
-    // 2. TrainingEnrollment entity verification
-    if (entityType.contains("ENROLLMENT")) {
+    // 2. Rule DQ-TRAINEE-001: Missing Trainee Contact Information (phone or email)
+    if ("DQ-TRAINEE-001".equals(normalizedRuleCode)) {
+      if (!"TRAINEE".equals(normalizedEntityType)) {
+        throw new BadRequestException(
+            "Target entity type '" + entityType + "' is invalid for rule " + ruleCode,
+            "UNSUPPORTED_RULE_VALIDATION");
+      }
       List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-          "SELECT enrollment_id, enrollment_date, start_date, expected_completion_date, actual_completion_date, enrollment_status_id " +
+          "SELECT trainee_id, phone, email FROM trainees WHERE trainee_id = ? AND deleted_at IS NULL",
+          entityId);
+      if (rows.isEmpty()) {
+        throw new ResourceNotFoundException("Trainee", "id=" + entityId);
+      }
+      Map<String, Object> traineeRow = rows.get(0);
+      String phone = (String) traineeRow.get("phone");
+      String email = (String) traineeRow.get("email");
+      boolean hasPhone = phone != null && !phone.trim().isEmpty();
+      boolean hasEmail = email != null && !email.trim().isEmpty();
+      if (!hasPhone && !hasEmail) {
+        throw new BadRequestException(
+            "Underlying Trainee #" + entityId + " still lacks contact details: both phone and email are missing",
+            "REMEDIATION_VALIDATION_FAILED");
+      }
+      return;
+    }
+
+    // 3. Rule DQ-ATTENDANCE-004: Attendance Outside Batch Operational Boundaries
+    if ("DQ-ATTENDANCE-004".equals(normalizedRuleCode)) {
+      if (!"ATTENDANCERECORD".equals(normalizedEntityType)) {
+        throw new BadRequestException(
+            "Target entity type '" + entityType + "' is invalid for rule " + ruleCode,
+            "UNSUPPORTED_RULE_VALIDATION");
+      }
+      List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+          "SELECT ar.attendance_id, ar.session_date, tb.start_date, tb.end_date " +
+          "FROM attendance_records ar " +
+          "JOIN training_batches tb ON ar.batch_id = tb.batch_id " +
+          "WHERE ar.attendance_id = ?",
+          entityId);
+      if (rows.isEmpty()) {
+        throw new ResourceNotFoundException("AttendanceRecord", "id=" + entityId);
+      }
+      Map<String, Object> attendanceRow = rows.get(0);
+      Date sessionDate = (Date) attendanceRow.get("session_date");
+      Date batchStartDate = (Date) attendanceRow.get("start_date");
+      Date batchEndDate = (Date) attendanceRow.get("end_date");
+
+      if (sessionDate == null || batchStartDate == null) {
+        throw new BadRequestException(
+            "Underlying AttendanceRecord #" + entityId + " has missing session date or batch start date",
+            "REMEDIATION_VALIDATION_FAILED");
+      }
+      if (sessionDate.before(batchStartDate)) {
+        throw new BadRequestException(
+            "Underlying AttendanceRecord #" + entityId + " session date (" + sessionDate +
+                ") precedes batch start date (" + batchStartDate + ")",
+            "REMEDIATION_VALIDATION_FAILED");
+      }
+      if (batchEndDate != null && sessionDate.after(batchEndDate)) {
+        throw new BadRequestException(
+            "Underlying AttendanceRecord #" + entityId + " session date (" + sessionDate +
+                ") occurs after batch end date (" + batchEndDate + ")",
+            "REMEDIATION_VALIDATION_FAILED");
+      }
+      return;
+    }
+
+    // 4. Rule DQ-PLACEMENT-002: Placement Temporal Incoherence
+    if ("DQ-PLACEMENT-002".equals(normalizedRuleCode)) {
+      if (!"PLACEMENTRECORD".equals(normalizedEntityType)) {
+        throw new BadRequestException(
+            "Target entity type '" + entityType + "' is invalid for rule " + ruleCode,
+            "UNSUPPORTED_RULE_VALIDATION");
+      }
+      List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+          "SELECT pr.placement_id, pr.offer_date, pr.actual_joining_date, te.enrollment_date " +
+          "FROM placement_records pr " +
+          "JOIN training_enrollments te ON pr.enrollment_id = te.enrollment_id " +
+          "WHERE pr.placement_id = ? AND pr.deleted_at IS NULL",
+          entityId);
+      if (rows.isEmpty()) {
+        throw new ResourceNotFoundException("PlacementRecord", "id=" + entityId);
+      }
+      Map<String, Object> placementRow = rows.get(0);
+      Date offerDate = (Date) placementRow.get("offer_date");
+      Date actualJoiningDate = (Date) placementRow.get("actual_joining_date");
+      Date enrollmentDate = (Date) placementRow.get("enrollment_date");
+
+      if (offerDate != null && enrollmentDate != null && offerDate.before(enrollmentDate)) {
+        throw new BadRequestException(
+            "Underlying PlacementRecord #" + entityId + " offer date (" + offerDate + ") precedes enrollment date (" + enrollmentDate + ")",
+            "REMEDIATION_VALIDATION_FAILED");
+      }
+      if (actualJoiningDate != null && offerDate != null && actualJoiningDate.before(offerDate)) {
+        throw new BadRequestException(
+            "Underlying PlacementRecord #" + entityId + " joining date (" + actualJoiningDate + ") precedes offer date (" + offerDate + ")",
+            "REMEDIATION_VALIDATION_FAILED");
+      }
+      if (actualJoiningDate != null && enrollmentDate != null && actualJoiningDate.before(enrollmentDate)) {
+        throw new BadRequestException(
+            "Underlying PlacementRecord #" + entityId + " joining date (" + actualJoiningDate + ") precedes enrollment date (" + enrollmentDate + ")",
+            "REMEDIATION_VALIDATION_FAILED");
+      }
+      return;
+    }
+
+    // 5. Rule DQ-EMPLOYMENT-003: Invalid or Suspicious Salary
+    if ("DQ-EMPLOYMENT-003".equals(normalizedRuleCode)) {
+      if (!"EMPLOYMENTRECORD".equals(normalizedEntityType)) {
+        throw new BadRequestException(
+            "Target entity type '" + entityType + "' is invalid for rule " + ruleCode,
+            "UNSUPPORTED_RULE_VALIDATION");
+      }
+      List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+          "SELECT er.employment_id, er.starting_salary, er.work_state_id, sf.frequency_code " +
+          "FROM employment_records er " +
+          "LEFT JOIN ref_salary_frequency sf ON er.salary_frequency_id = sf.salary_frequency_id " +
+          "WHERE er.employment_id = ? AND er.deleted_at IS NULL",
+          entityId);
+      if (rows.isEmpty()) {
+        throw new ResourceNotFoundException("EmploymentRecord", "id=" + entityId);
+      }
+      Map<String, Object> empRow = rows.get(0);
+      Object salaryObj = empRow.get("starting_salary");
+      if (salaryObj == null) {
+        throw new BadRequestException(
+            "Underlying EmploymentRecord #" + entityId + " starting salary is missing",
+            "REMEDIATION_VALIDATION_FAILED");
+      }
+      BigDecimal salary = new BigDecimal(salaryObj.toString());
+      if (salary.compareTo(BigDecimal.ZERO) <= 0) {
+        throw new BadRequestException(
+            "Underlying EmploymentRecord #" + entityId + " starting salary (" + salary + ") must be greater than zero",
+            "REMEDIATION_VALIDATION_FAILED");
+      }
+      return;
+    }
+
+    // 6. TrainingCenter operational profile & capacity rules (e.g. DQ-CENTER-001 or Center entities)
+    if (normalizedRuleCode.startsWith("DQ-CENTER") || "TRAININGCENTER".equals(normalizedEntityType)) {
+      if (!"TRAININGCENTER".equals(normalizedEntityType)) {
+        throw new BadRequestException(
+            "Target entity type '" + entityType + "' is invalid for rule " + ruleCode,
+            "UNSUPPORTED_RULE_VALIDATION");
+      }
+      List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+          "SELECT center_id, center_name, state_id, district_id, operational_capacity FROM training_centers WHERE center_id = ? AND deleted_at IS NULL",
+          entityId);
+      if (rows.isEmpty()) {
+        throw new ResourceNotFoundException("TrainingCenter", "id=" + entityId);
+      }
+      Map<String, Object> centerRow = rows.get(0);
+      String centerName = (String) centerRow.get("center_name");
+      Number capacity = (Number) centerRow.get("operational_capacity");
+
+      if (centerName == null || centerName.trim().isEmpty()) {
+        throw new BadRequestException(
+            "Underlying TrainingCenter #" + entityId + " center name cannot be blank",
+            "REMEDIATION_VALIDATION_FAILED");
+      }
+      if (capacity != null && capacity.intValue() < 0) {
+        throw new BadRequestException(
+            "Underlying TrainingCenter #" + entityId + " has invalid operational capacity: " + capacity,
+            "REMEDIATION_VALIDATION_FAILED");
+      }
+      return;
+    }
+
+    // 7. TrainingEnrollment chronology rules (e.g. DQ-ENROLLMENT-001)
+    if (normalizedRuleCode.startsWith("DQ-ENROLLMENT")) {
+      if (!"TRAININGENROLLMENT".equals(normalizedEntityType)) {
+        throw new BadRequestException(
+            "Target entity type '" + entityType + "' is invalid for rule " + ruleCode,
+            "UNSUPPORTED_RULE_VALIDATION");
+      }
+      List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+          "SELECT enrollment_id, enrollment_date, start_date, expected_completion_date, actual_completion_date " +
           "FROM training_enrollments WHERE enrollment_id = ? AND deleted_at IS NULL",
           entityId);
       if (rows.isEmpty()) {
         throw new ResourceNotFoundException("TrainingEnrollment", "id=" + entityId);
       }
       Map<String, Object> enrollmentRow = rows.get(0);
-
       Date enrollmentDate = (Date) enrollmentRow.get("enrollment_date");
       Date startDate = (Date) enrollmentRow.get("start_date");
       Date expectedCompletionDate = (Date) enrollmentRow.get("expected_completion_date");
       Date actualCompletionDate = (Date) enrollmentRow.get("actual_completion_date");
 
-      // Chronological validation rules:
       if (actualCompletionDate != null && startDate != null && actualCompletionDate.before(startDate)) {
         throw new BadRequestException(
             "Underlying TrainingEnrollment #" + entityId + " still violates chronological rules: actualCompletionDate (" +
@@ -432,77 +631,13 @@ public class ProviderDataQualityServiceImpl implements ProviderDataQualityServic
                 startDate + ") precedes enrollmentDate (" + enrollmentDate + ")",
             "REMEDIATION_VALIDATION_FAILED");
       }
+      return;
     }
-    // 3. Trainee entity verification (e.g. DQ-TRAINEE-001 contact details)
-    else if ("TRAINEE".equals(entityType)) {
-      List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-          "SELECT trainee_id, phone, email FROM trainees WHERE trainee_id = ? AND deleted_at IS NULL",
-          entityId);
-      if (rows.isEmpty()) {
-        throw new ResourceNotFoundException("Trainee", "id=" + entityId);
-      }
-      Map<String, Object> traineeRow = rows.get(0);
 
-      String phone = (String) traineeRow.get("phone");
-      String email = (String) traineeRow.get("email");
-      boolean hasPhone = phone != null && !phone.trim().isEmpty();
-      boolean hasEmail = email != null && !email.trim().isEmpty();
-
-      if ("DQ-TRAINEE-001".equalsIgnoreCase(ruleCode) || (!hasPhone && !hasEmail)) {
-        if (!hasPhone && !hasEmail) {
-          throw new BadRequestException(
-              "Underlying Trainee #" + entityId + " still lacks contact details: both phone and email are missing",
-              "REMEDIATION_VALIDATION_FAILED");
-        }
-      }
-    }
-    // 4. AttendanceRecord entity verification (DQ-ATTENDANCE-004)
-    else if (entityType.contains("ATTENDANCE")) {
-      List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-          "SELECT ar.attendance_id, ar.session_date, tb.start_date, tb.end_date " +
-          "FROM attendance_records ar " +
-          "JOIN training_batches tb ON ar.batch_id = tb.batch_id " +
-          "WHERE ar.attendance_id = ?",
-          entityId);
-      if (rows.isEmpty()) {
-        throw new ResourceNotFoundException("AttendanceRecord", "id=" + entityId);
-      }
-      Map<String, Object> attendanceRow = rows.get(0);
-
-      Date sessionDate = (Date) attendanceRow.get("session_date");
-      Date batchStartDate = (Date) attendanceRow.get("start_date");
-      Date batchEndDate = (Date) attendanceRow.get("end_date");
-
-      if (sessionDate != null && batchStartDate != null && sessionDate.before(batchStartDate)) {
-        throw new BadRequestException(
-            "Underlying AttendanceRecord #" + entityId + " session date (" + sessionDate +
-                ") precedes batch start date (" + batchStartDate + ")",
-            "REMEDIATION_VALIDATION_FAILED");
-      }
-      if (sessionDate != null && batchEndDate != null && sessionDate.after(batchEndDate)) {
-        throw new BadRequestException(
-            "Underlying AttendanceRecord #" + entityId + " session date (" + sessionDate +
-                ") occurs after batch end date (" + batchEndDate + ")",
-            "REMEDIATION_VALIDATION_FAILED");
-      }
-    }
-    // 5. TrainingCenter entity verification
-    else if (entityType.contains("CENTER")) {
-      List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-          "SELECT center_id, center_name, state_id, district_id, operational_capacity FROM training_centers WHERE center_id = ? AND deleted_at IS NULL",
-          entityId);
-      if (rows.isEmpty()) {
-        throw new ResourceNotFoundException("TrainingCenter", "id=" + entityId);
-      }
-      Map<String, Object> centerRow = rows.get(0);
-
-      Number capacity = (Number) centerRow.get("operational_capacity");
-      if (capacity != null && capacity.intValue() < 0) {
-        throw new BadRequestException(
-            "Underlying TrainingCenter #" + entityId + " has invalid operational capacity: " + capacity,
-            "REMEDIATION_VALIDATION_FAILED");
-      }
-    }
+    // Fail closed for any unknown or unsupported rule code
+    throw new BadRequestException(
+        "Data quality issue with rule code '" + ruleCode + "' cannot be automatically verified for provider resolution",
+        "UNSUPPORTED_RULE_VALIDATION");
   }
 
   private void validateCenterBelongsToProvider(Long centerId, Long providerId) {

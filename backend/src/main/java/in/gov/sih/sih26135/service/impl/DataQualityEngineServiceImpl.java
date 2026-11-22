@@ -83,6 +83,13 @@ public class DataQualityEngineServiceImpl implements DataQualityEngineService {
 
   @Override
   public List<DataQualityRuleExecutionSummary> executeScan(DataQualityScanRequest request) {
+    ScanScopeContext scopeContext = resolveAndValidateScope(request);
+    return executeScopedScan(request, scopeContext);
+  }
+
+  @Override
+  public List<DataQualityRuleExecutionSummary> executeScopedScan(
+      DataQualityScanRequest request, ScanScopeContext explicitScopeContext) {
     ContextSnapshot previousSnapshot = CorrelationContextHolder.captureSnapshot();
     String previousMdcCorr = MDC.get(CorrelationIdFilter.MDC_CORRELATION_ID_KEY);
     String previousMdcReq = MDC.get(CorrelationIdFilter.MDC_REQUEST_ID_KEY);
@@ -97,7 +104,7 @@ public class DataQualityEngineServiceImpl implements DataQualityEngineService {
     }
 
     try {
-      return executeScanInternal(request);
+      return executeScanInternal(request, explicitScopeContext);
     } finally {
       if (generatedServerCorrelation) {
         CorrelationContextHolder.restore(previousSnapshot);
@@ -115,9 +122,43 @@ public class DataQualityEngineServiceImpl implements DataQualityEngineService {
     }
   }
 
-  private List<DataQualityRuleExecutionSummary> executeScanInternal(DataQualityScanRequest request) {
+  private List<DataQualityRuleExecutionSummary> executeScanInternal(
+      DataQualityScanRequest request, ScanScopeContext explicitScopeContext) {
     // 1. Authorize caller and determine tenancy boundary (fails closed on missing scope)
-    ScanScopeContext scopeContext = resolveAndValidateScope(request);
+    ScanScopeContext scopeContext;
+    if (explicitScopeContext == null) {
+      scopeContext = resolveAndValidateScope(request);
+    } else {
+      explicitScopeContext.validateAuthoritativeScope();
+      if (scopeValidator != null) {
+        boolean isNationwide = scopeValidator.isNationwideAdmin();
+        if (!isNationwide && explicitScopeContext.canScanNationwide()) {
+          throw new AccessDeniedException("Caller lacks nationwide administrative scan authority");
+        }
+        if (scopeValidator.isTrainingProviderCaller()) {
+          Optional<User> userOpt = scopeValidator.resolveAuthenticatedUser();
+          Long callerProviderId = userOpt.map(User::getTrainingProviderId).orElse(null);
+          if (callerProviderId != null && !callerProviderId.equals(explicitScopeContext.trainingProviderId())) {
+            throw new AccessDeniedException("Explicit scan scope trainingProviderId does not match authenticated provider");
+          }
+        }
+        if (scopeValidator.isEmployerCaller()) {
+          Optional<User> userOpt = scopeValidator.resolveAuthenticatedUser();
+          Long callerEmployerId = userOpt.map(User::getEmployerId).orElse(null);
+          if (callerEmployerId != null && !callerEmployerId.equals(explicitScopeContext.employerId())) {
+            throw new AccessDeniedException("Explicit scan scope employerId does not match authenticated employer");
+          }
+        }
+        if (scopeValidator.isStateAdmin()) {
+          Optional<User> userOpt = scopeValidator.resolveAuthenticatedUser();
+          Long callerStateId = userOpt.map(User::getStateId).orElse(null);
+          if (callerStateId != null && !callerStateId.equals(explicitScopeContext.stateId())) {
+            throw new AccessDeniedException("Explicit scan scope stateId does not match authenticated state admin");
+          }
+        }
+      }
+      scopeContext = explicitScopeContext;
+    }
 
     // 2. Validate request parameters and persona-to-scope compatibility
     validateScanRequest(request, scopeContext);

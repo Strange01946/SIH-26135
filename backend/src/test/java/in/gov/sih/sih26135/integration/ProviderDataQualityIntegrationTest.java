@@ -36,6 +36,8 @@ public class ProviderDataQualityIntegrationTest extends BaseJourneyIntegrationTe
   private Long centerIssueAId;
   private Long uncorrectedIssueId;
   private Long privilegedIssueId;
+  private Long invalidCenterIssueId;
+  private Long unknownRuleIssueId;
 
   private String providerAToken;
   private HttpHeaders providerAHeaders;
@@ -135,10 +137,16 @@ public class ProviderDataQualityIntegrationTest extends BaseJourneyIntegrationTe
         "SELECT data_quality_rule_id FROM data_quality_rules WHERE rule_code = 'DQ-ATTENDANCE-004' LIMIT 1",
         Long.class);
 
+    Long attendanceAId = insertAndGetId("""
+        INSERT INTO attendance_records (enrollment_id, trainee_id, batch_id, session_date, attendance_status_id, marked_at, created_at, updated_at)
+        VALUES (?, ?, ?, '2026-01-10', 1, NOW(), NOW(), NOW())
+        """, enrollmentAId, traineeId, batchAId);
+    trackedAttendanceIds.add(attendanceAId);
+
     issueAId = insertAndGetId("""
         INSERT INTO data_quality_issues (data_quality_rule_id, data_quality_category_id, data_quality_severity_id, data_quality_issue_status_id, data_quality_detection_source_id, entity_type, entity_id, issue_summary, detected_at, created_at, updated_at)
-        VALUES (?, 2, 3, 1, 1, 'TrainingEnrollment', ?, 'Anomaly detected in Provider A enrollment', NOW(), NOW(), NOW())
-        """, attendanceRuleId, enrollmentAId);
+        VALUES (?, 2, 3, 1, 1, 'AttendanceRecord', ?, 'Anomaly detected in Provider A attendance', NOW(), NOW(), NOW())
+        """, attendanceRuleId, attendanceAId);
     trackedDqIssueIds.add(issueAId);
 
     // Uncorrected issue on Trainee missing contact details
@@ -166,6 +174,36 @@ public class ProviderDataQualityIntegrationTest extends BaseJourneyIntegrationTe
         VALUES (?, 2, 3, 1, 1, 'TrainingCenter', ?, 'Anomaly detected in Provider B center', NOW(), NOW(), NOW())
         """, contactRuleId, centerBId);
     trackedDqIssueIds.add(issueBId);
+
+    Long centerRuleId = jdbcTemplate.query(
+        "SELECT data_quality_rule_id FROM data_quality_rules WHERE rule_code = 'DQ-CENTER-001'",
+        (rs, rowNum) -> rs.getLong(1)
+    ).stream().findFirst().orElseGet(() -> {
+      return insertAndGetId("""
+          INSERT INTO data_quality_rules (rule_code, rule_name, description, target_entity_type, data_quality_category_id, data_quality_severity_id, lifecycle_status_id, created_at, updated_at)
+          VALUES ('DQ-CENTER-001', 'Training Center Profile and Capacity Validity', 'Validates training center profile', 'TrainingCenter', 2, 3, 1, NOW(), NOW())
+          """);
+    });
+
+    // Issue for an invalid training center (blank name)
+    Long invalidCenterId = insertAndGetId("""
+        INSERT INTO training_centers (provider_id, center_code, center_name, operational_capacity, state_id, district_id, lifecycle_status_id, created_at, updated_at)
+        VALUES (?, ?, '   ', 10, 101, 1001, 1, NOW(), NOW())
+        """, providerAId, "TC-INV-" + runToken);
+    trackedCenterIds.add(invalidCenterId);
+
+    invalidCenterIssueId = insertAndGetId("""
+        INSERT INTO data_quality_issues (data_quality_rule_id, data_quality_category_id, data_quality_severity_id, data_quality_issue_status_id, data_quality_detection_source_id, entity_type, entity_id, issue_summary, detected_at, created_at, updated_at)
+        VALUES (?, 2, 3, 1, 1, 'TrainingCenter', ?, 'Center profile has blank center_name', NOW(), NOW(), NOW())
+        """, centerRuleId, invalidCenterId);
+    trackedDqIssueIds.add(invalidCenterIssueId);
+
+    // Issue with null/unknown rule code on an otherwise valid trainee
+    unknownRuleIssueId = insertAndGetId("""
+        INSERT INTO data_quality_issues (data_quality_rule_id, data_quality_category_id, data_quality_severity_id, data_quality_issue_status_id, data_quality_detection_source_id, entity_type, entity_id, issue_summary, detected_at, created_at, updated_at)
+        VALUES (NULL, 2, 3, 1, 1, 'Trainee', ?, 'Issue missing rule code specification', NOW(), NOW(), NOW())
+        """, traineeId);
+    trackedDqIssueIds.add(unknownRuleIssueId);
 
     // Users and Tokens
     Long userAId = insertAndGetId("""
@@ -515,5 +553,138 @@ public class ProviderDataQualityIntegrationTest extends BaseJourneyIntegrationTe
         String.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+  }
+
+  @Test
+  @DisplayName("Requirement 3: Still-invalid TrainingCenter issue cannot be resolved (rejected with 400)")
+  void stillInvalidTrainingCenterIssue_cannotBeResolved() {
+    HttpEntity<Map<String, String>> resolveEntity = new HttpEntity<>(
+        Map.of("resolutionNotes", "Attempting resolution while training center name is still blank"),
+        providerAHeaders);
+
+    ResponseEntity<JsonNode> response = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/issues/" + invalidCenterIssueId + "/resolve",
+        HttpMethod.POST,
+        resolveEntity,
+        JsonNode.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().path("code").asText()).isEqualTo("REMEDIATION_VALIDATION_FAILED");
+  }
+
+  @Test
+  @DisplayName("Requirement 3: An unrelated field correction cannot resolve a different anomaly")
+  void unrelatedFieldCorrection_cannotResolveAnomaly() {
+    // Trainee currently has phone = NULL and email = NULL (DQ-TRAINEE-001)
+    // Update unrelated field (last_name) while keeping phone and email NULL
+    jdbcTemplate.update("UPDATE trainees SET last_name = 'UnrelatedLastNameChange' WHERE trainee_id = ?", traineeId);
+
+    HttpEntity<Map<String, String>> resolveEntity = new HttpEntity<>(
+        Map.of("resolutionNotes", "Updated last name hoping to resolve missing contact anomaly"),
+        providerAHeaders);
+
+    ResponseEntity<JsonNode> response = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/issues/" + uncorrectedIssueId + "/resolve",
+        HttpMethod.POST,
+        resolveEntity,
+        JsonNode.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().path("code").asText()).isEqualTo("REMEDIATION_VALIDATION_FAILED");
+  }
+
+  @Test
+  @DisplayName("Requirement 3: Unknown rule codes cannot be resolved without validation (400 UNSUPPORTED_RULE_VALIDATION)")
+  void unknownRuleCode_cannotBeResolvedWithoutValidation() {
+    HttpEntity<Map<String, String>> resolveEntity = new HttpEntity<>(
+        Map.of("resolutionNotes", "Attempting to resolve issue with null or unknown rule code"),
+        providerAHeaders);
+
+    ResponseEntity<JsonNode> response = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/issues/" + unknownRuleIssueId + "/resolve",
+        HttpMethod.POST,
+        resolveEntity,
+        JsonNode.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().path("code").asText()).isEqualTo("UNSUPPORTED_RULE_VALIDATION");
+  }
+
+  @Test
+  @DisplayName("Requirement 3: Unknown entity type or entity mismatch cannot bypass verification (400 UNSUPPORTED_RULE_VALIDATION)")
+  void entityTypeMismatch_cannotBypassVerification() {
+    // centerIssueAId has rule DQ-TRAINEE-001 but target entity is TrainingCenter
+    HttpEntity<Map<String, String>> resolveEntity = new HttpEntity<>(
+        Map.of("resolutionNotes", "Attempting to resolve trainee rule on a center entity"),
+        providerAHeaders);
+
+    ResponseEntity<JsonNode> response = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/issues/" + centerIssueAId + "/resolve",
+        HttpMethod.POST,
+        resolveEntity,
+        JsonNode.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().path("code").asText()).isEqualTo("UNSUPPORTED_RULE_VALIDATION");
+  }
+
+  @Test
+  @DisplayName("Requirement 1 & 3: Provider A scan cannot inspect, alter, or create issues for Provider B")
+  void providerACannotScanProviderBData() {
+    // Provider A triggers a provider-wide scan
+    HttpEntity<Void> entity = new HttpEntity<>(providerAHeaders);
+    ResponseEntity<JsonNode> scanResponse = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/re-evaluate",
+        HttpMethod.POST,
+        entity,
+        JsonNode.class);
+
+    assertThat(scanResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    // Verify Provider B issues are strictly unchanged and uninspected
+    HttpEntity<Void> providerBEntity = new HttpEntity<>(providerBHeaders);
+    ResponseEntity<JsonNode> bIssuesResponse = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/issues?activeOnly=true",
+        HttpMethod.GET,
+        providerBEntity,
+        JsonNode.class);
+
+    assertThat(bIssuesResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    JsonNode bContent = bIssuesResponse.getBody().path("data").path("content");
+    List<Long> bIssueIds = new ArrayList<>();
+    bContent.forEach(node -> bIssueIds.add(node.path("id").asLong()));
+    assertThat(bIssueIds).contains(issueBId);
+    assertThat(bIssueIds).doesNotContain(issueAId, centerIssueAId, uncorrectedIssueId);
+  }
+
+  @Test
+  @DisplayName("Requirement 1 & 3: Provider-wide scans with null issueId cannot become nationwide scans")
+  void providerWideScanCannotBecomeNationwideScan() {
+    // Null issueId provider scan
+    HttpEntity<Void> entity = new HttpEntity<>(providerAHeaders);
+    ResponseEntity<JsonNode> response = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/re-evaluate",
+        HttpMethod.POST,
+        entity,
+        JsonNode.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    // Verify Provider A's active queue only has Provider A issues
+    ResponseEntity<JsonNode> aIssuesResponse = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/issues?activeOnly=true",
+        HttpMethod.GET,
+        entity,
+        JsonNode.class);
+
+    assertThat(aIssuesResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    JsonNode aContent = aIssuesResponse.getBody().path("data").path("content");
+    List<Long> aIssueIds = new ArrayList<>();
+    aContent.forEach(node -> aIssueIds.add(node.path("id").asLong()));
+    assertThat(aIssueIds).doesNotContain(issueBId);
   }
 }
