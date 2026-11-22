@@ -4,7 +4,9 @@ import in.gov.sih.sih26135.dto.request.DismissDataQualityIssueRequest;
 import in.gov.sih.sih26135.dto.request.ResolveDataQualityIssueRequest;
 import in.gov.sih.sih26135.dto.response.CenterScorecardResponse;
 import in.gov.sih.sih26135.dto.response.DataQualityIssueEventResponse;
+import in.gov.sih.sih26135.dto.response.DataQualityRuleExecutionSummary;
 import in.gov.sih.sih26135.dto.response.ProviderDataQualityIssueResponse;
+import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.response.PagedResponse;
 import in.gov.sih.sih26135.response.PaginationUtils;
@@ -183,14 +185,28 @@ public class ProviderDataQualityController {
    * Triggers background rule re-evaluation after domain record remediation.
    */
   @PostMapping("/data-quality/re-evaluate")
-  public ResponseEntity<ApiResponse<Void>> triggerReEvaluation(
+  public ResponseEntity<ApiResponse<List<DataQualityRuleExecutionSummary>>> triggerReEvaluation(
       @RequestParam(value = "issueId", required = false) @Positive Long issueId,
       HttpServletRequest httpRequest) {
 
-    providerDataQualityService.triggerReEvaluation(issueId);
+    List<DataQualityRuleExecutionSummary> summaries = providerDataQualityService.triggerReEvaluation(issueId);
+    boolean hasSkipped = summaries != null && summaries.stream().anyMatch(s -> "SKIPPED".equalsIgnoreCase(s.status()));
+    boolean hasFailed = summaries != null && summaries.stream().anyMatch(s -> "FAILED".equalsIgnoreCase(s.status()));
+    if (hasFailed) {
+      throw new BadRequestException("Data quality re-evaluation failed for one or more rules", "SCAN_FAILED");
+    }
+    if (hasSkipped) {
+      if (issueId != null) {
+        throw new BadRequestException("Data quality re-evaluation is not supported for requested rule", "UNSUPPORTED_RE_EVALUATION");
+      }
+      return ResponseEntity.ok(ApiResponse.success(
+          "Rule re-evaluation partially completed: some rules were skipped due to unavailable detectors",
+          summaries,
+          httpRequest.getRequestURI()));
+    }
     return ResponseEntity.ok(ApiResponse.success(
         "Rule re-evaluation triggered successfully",
-        null,
+        summaries,
         httpRequest.getRequestURI()));
   }
 }

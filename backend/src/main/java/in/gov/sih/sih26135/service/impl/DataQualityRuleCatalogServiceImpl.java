@@ -47,6 +47,8 @@ public class DataQualityRuleCatalogServiceImpl implements DataQualityRuleCatalog
   public static final String RULE_EMPLOYMENT_003 = "DQ-EMPLOYMENT-003";
   public static final String RULE_ATTENDANCE_004 = "DQ-ATTENDANCE-004";
   public static final String RULE_DUPLICATE_005 = "DQ-DUPLICATE-005";
+  public static final String RULE_CENTER_001 = "DQ-CENTER-001";
+  public static final String RULE_ENROLLMENT_001 = "DQ-ENROLLMENT-001";
 
   private final DataQualityRuleRepository dataQualityRuleRepository;
   private final RefDataQualityCategoryRepository refDataQualityCategoryRepository;
@@ -116,6 +118,24 @@ public class DataQualityRuleCatalogServiceImpl implements DataQualityRuleCatalog
         "Identifies candidate duplicate trainee registrations across distinct training centers based on matching deterministic identity signals.",
         "Trainee",
         "DUPLICATE",
+        "HIGH"
+    );
+
+    provisionRuleIfMissing(
+        RULE_CENTER_001,
+        "Training Center Profile and Capacity Validity",
+        "Detects training centers with missing or blank center names or invalid operational capacity.",
+        "TrainingCenter",
+        "MISSING",
+        "MEDIUM"
+    );
+
+    provisionRuleIfMissing(
+        RULE_ENROLLMENT_001,
+        "Enrollment Temporal Chronology",
+        "Detects chronological inconsistencies in training enrollment milestones such as completion preceding start date.",
+        "TrainingEnrollment",
+        "INCONSISTENT",
         "HIGH"
     );
   }

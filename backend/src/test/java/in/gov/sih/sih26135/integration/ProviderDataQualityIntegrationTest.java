@@ -687,4 +687,163 @@ public class ProviderDataQualityIntegrationTest extends BaseJourneyIntegrationTe
     aContent.forEach(node -> aIssueIds.add(node.path("id").asLong()));
     assertThat(aIssueIds).doesNotContain(issueBId);
   }
+
+  @Test
+  @DisplayName("Regression Fix: Unknown DQ-CENTER-999 on a valid TrainingCenter is rejected with 400 UNSUPPORTED_RULE_VALIDATION")
+  void unknownCenterRule_cannotBeResolved_returnsUnsupportedRuleValidation() {
+    Long ruleId = insertAndGetId("""
+        INSERT INTO data_quality_rules (rule_code, rule_name, description, target_entity_type, data_quality_category_id, data_quality_severity_id, lifecycle_status_id, created_at, updated_at)
+        VALUES ('DQ-CENTER-999', 'Unknown Center Rule', 'Unknown rule', 'TrainingCenter', 2, 3, 1, NOW(), NOW())
+        """);
+    try {
+      Long issueId = insertAndGetId("""
+          INSERT INTO data_quality_issues (data_quality_rule_id, data_quality_category_id, data_quality_severity_id, data_quality_issue_status_id, data_quality_detection_source_id, entity_type, entity_id, issue_summary, detected_at, created_at, updated_at)
+          VALUES (?, 2, 3, 1, 1, 'TrainingCenter', ?, 'Unknown rule on center', NOW(), NOW(), NOW())
+          """, ruleId, centerAId);
+      trackedDqIssueIds.add(issueId);
+
+      HttpEntity<Map<String, String>> resolveEntity = new HttpEntity<>(
+          Map.of("resolutionNotes", "Attempting resolution for unsupported rule DQ-CENTER-999"),
+          providerAHeaders);
+
+      ResponseEntity<JsonNode> response = restTemplate.exchange(
+          "http://localhost:" + port + "/api/v1/provider/data-quality/issues/" + issueId + "/resolve",
+          HttpMethod.POST,
+          resolveEntity,
+          JsonNode.class);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().path("code").asText()).isEqualTo("UNSUPPORTED_RULE_VALIDATION");
+    } finally {
+      jdbcTemplate.update("DELETE FROM data_quality_rules WHERE data_quality_rule_id = ?", ruleId);
+    }
+  }
+
+  @Test
+  @DisplayName("Regression Fix: Unknown DQ-ENROLLMENT-999 on a valid TrainingEnrollment is rejected with 400 UNSUPPORTED_RULE_VALIDATION")
+  void unknownEnrollmentRule_cannotBeResolved_returnsUnsupportedRuleValidation() {
+    Long ruleId = insertAndGetId("""
+        INSERT INTO data_quality_rules (rule_code, rule_name, description, target_entity_type, data_quality_category_id, data_quality_severity_id, lifecycle_status_id, created_at, updated_at)
+        VALUES ('DQ-ENROLLMENT-999', 'Unknown Enrollment Rule', 'Unknown rule', 'TrainingEnrollment', 2, 3, 1, NOW(), NOW())
+        """);
+    try {
+      Long issueId = insertAndGetId("""
+          INSERT INTO data_quality_issues (data_quality_rule_id, data_quality_category_id, data_quality_severity_id, data_quality_issue_status_id, data_quality_detection_source_id, entity_type, entity_id, issue_summary, detected_at, created_at, updated_at)
+          VALUES (?, 2, 3, 1, 1, 'TrainingEnrollment', ?, 'Unknown rule on enrollment', NOW(), NOW(), NOW())
+          """, ruleId, enrollmentAId);
+      trackedDqIssueIds.add(issueId);
+
+      HttpEntity<Map<String, String>> resolveEntity = new HttpEntity<>(
+          Map.of("resolutionNotes", "Attempting resolution for unsupported rule DQ-ENROLLMENT-999"),
+          providerAHeaders);
+
+      ResponseEntity<JsonNode> response = restTemplate.exchange(
+          "http://localhost:" + port + "/api/v1/provider/data-quality/issues/" + issueId + "/resolve",
+          HttpMethod.POST,
+          resolveEntity,
+          JsonNode.class);
+
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(response.getBody()).isNotNull();
+      assertThat(response.getBody().path("code").asText()).isEqualTo("UNSUPPORTED_RULE_VALIDATION");
+    } finally {
+      jdbcTemplate.update("DELETE FROM data_quality_rules WHERE data_quality_rule_id = ?", ruleId);
+    }
+  }
+
+  @Test
+  @DisplayName("Regression Fix: Valid DQ-CENTER-001 with corrected record is accepted and marked RESOLVED")
+  void validCenter001_withCorrectedRecord_isAccepted() {
+    // Ensure centerAId has a valid non-blank name and valid capacity
+    jdbcTemplate.update("UPDATE training_centers SET center_name = 'Corrected Valid Center Name', operational_capacity = 50 WHERE center_id = ?", centerAId);
+
+    Long centerRuleId = jdbcTemplate.queryForObject(
+        "SELECT data_quality_rule_id FROM data_quality_rules WHERE rule_code = 'DQ-CENTER-001' LIMIT 1",
+        Long.class);
+
+    Long issueId = insertAndGetId("""
+        INSERT INTO data_quality_issues (data_quality_rule_id, data_quality_category_id, data_quality_severity_id, data_quality_issue_status_id, data_quality_detection_source_id, entity_type, entity_id, issue_summary, detected_at, created_at, updated_at)
+        VALUES (?, 2, 3, 1, 1, 'TrainingCenter', ?, 'Valid center rule on corrected center', NOW(), NOW(), NOW())
+        """, centerRuleId, centerAId);
+    trackedDqIssueIds.add(issueId);
+
+    HttpEntity<Map<String, String>> resolveEntity = new HttpEntity<>(
+        Map.of("resolutionNotes", "Resolved center profile anomaly with valid center name and operational capacity"),
+        providerAHeaders);
+
+    ResponseEntity<JsonNode> response = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/issues/" + issueId + "/resolve",
+        HttpMethod.POST,
+        resolveEntity,
+        JsonNode.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().path("data").path("statusCode").asText()).isEqualTo("RESOLVED");
+  }
+
+  @Test
+  @DisplayName("Regression Fix: Valid DQ-ENROLLMENT-001 with corrected record is accepted and marked RESOLVED")
+  void validEnrollment001_withCorrectedRecord_isAccepted() {
+    // Ensure enrollmentAId has valid chronological milestones
+    jdbcTemplate.update(
+        "UPDATE training_enrollments SET enrollment_date = '2026-01-02', start_date = '2026-01-05', expected_completion_date = '2026-04-01', actual_completion_date = '2026-04-02' WHERE enrollment_id = ?",
+        enrollmentAId);
+
+    Long enrollmentRuleId = jdbcTemplate.queryForObject(
+        "SELECT data_quality_rule_id FROM data_quality_rules WHERE rule_code = 'DQ-ENROLLMENT-001' LIMIT 1",
+        Long.class);
+
+    Long issueId = insertAndGetId("""
+        INSERT INTO data_quality_issues (data_quality_rule_id, data_quality_category_id, data_quality_severity_id, data_quality_issue_status_id, data_quality_detection_source_id, entity_type, entity_id, issue_summary, detected_at, created_at, updated_at)
+        VALUES (?, 2, 3, 1, 1, 'TrainingEnrollment', ?, 'Chronological validation for enrollment', NOW(), NOW(), NOW())
+        """, enrollmentRuleId, enrollmentAId);
+    trackedDqIssueIds.add(issueId);
+
+    HttpEntity<Map<String, String>> resolveEntity = new HttpEntity<>(
+        Map.of("resolutionNotes", "Resolved enrollment chronology anomaly with valid dates"),
+        providerAHeaders);
+
+    ResponseEntity<JsonNode> response = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/issues/" + issueId + "/resolve",
+        HttpMethod.POST,
+        resolveEntity,
+        JsonNode.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().path("data").path("statusCode").asText()).isEqualTo("RESOLVED");
+  }
+
+  @Test
+  @DisplayName("Regression Fix: Provider-wide scan with missing detector does not falsely report full success")
+  void providerWideScanWithMissingDetector_reportsPartialCompletion() {
+    HttpEntity<Void> entity = new HttpEntity<>(providerAHeaders);
+    ResponseEntity<JsonNode> response = restTemplate.exchange(
+        "http://localhost:" + port + "/api/v1/provider/data-quality/re-evaluate",
+        HttpMethod.POST,
+        entity,
+        JsonNode.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().path("success").asBoolean()).isTrue();
+    // Verify it reports partial completion message rather than unconditional full success
+    assertThat(response.getBody().path("message").asText())
+        .isEqualTo("Rule re-evaluation partially completed: some rules were skipped due to unavailable detectors");
+
+    // Verify summaries are returned and contain SKIPPED for rules lacking detectors (such as DQ-CENTER-001)
+    JsonNode dataNode = response.getBody().path("data");
+    assertThat(dataNode.isArray()).isTrue();
+    assertThat(dataNode.size()).isGreaterThan(0);
+    boolean hasSkipped = false;
+    for (JsonNode item : dataNode) {
+      if ("SKIPPED".equalsIgnoreCase(item.path("status").asText())) {
+        hasSkipped = true;
+        break;
+      }
+    }
+    assertThat(hasSkipped).isTrue();
+  }
 }

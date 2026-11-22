@@ -36,5 +36,5 @@ public interface ProviderDataQualityService {
 
   CenterScorecardResponse getCenterScorecard(Long centerId);
 
-  void triggerReEvaluation(Long issueId);
+  List<in.gov.sih.sih26135.dto.response.DataQualityRuleExecutionSummary> triggerReEvaluation(Long issueId);
 }
