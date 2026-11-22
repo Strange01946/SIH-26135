@@ -79,10 +79,10 @@ describe('TraineeConsentPage Component', () => {
       expect(screen.getByText('Process registration and training records')).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/Data Fiduciary:/i)).toBeInTheDocument();
-    expect(screen.getByText(/Skill India Training & Placement Platform/i)).toBeInTheDocument();
-    expect(screen.getByText(/privacy@skillindia.gov.in/i)).toBeInTheDocument();
-    expect(screen.getByText(/Standard DPDP Consent Form/i)).toBeInTheDocument();
+    expect(screen.getByText(/Statutory Basis:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Consent Policy Version:/i)).toBeInTheDocument();
+    expect(screen.queryByText(/privacy@skillindia\.gov\.in/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/dpo@skills\.gov\.in/i)).not.toBeInTheDocument();
 
     // Audit log table
     expect(screen.getByText('Statutory Consent Register')).toBeInTheDocument();

@@ -43,11 +43,14 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @Validated
 @RestController
 @RequestMapping("/api/v1/training-enrollments")
-@PreAuthorize("hasAuthority('enrollment.manage')")
+@PreAuthorize("hasAnyAuthority('enrollment.manage', 'trainee.read', 'ROLE_trainee')")
 public class TrainingEnrollmentController {
 
   private final TrainingEnrollmentService trainingEnrollmentService;
   private final CandidateLifecycleOrchestratorService candidateLifecycleOrchestratorService;
+
+  @Autowired(required = false)
+  private in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator securityScopeValidator;
 
   @Autowired
   public TrainingEnrollmentController(
@@ -100,6 +103,9 @@ public class TrainingEnrollmentController {
       @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
+    if (securityScopeValidator != null) {
+      securityScopeValidator.validateTraineeScope(traineeId);
+    }
     Pageable pageable = PaginationUtils.buildPageable(
         page, size, sort, direction, PaginationUtils.TRAINING_ENROLLMENT_SORT_FIELDS, "id"
     );
@@ -281,6 +287,7 @@ public class TrainingEnrollmentController {
    * @return 201 Created with created TrainingEnrollmentResponse enveloped in ApiResponse
    */
   @PostMapping
+  @PreAuthorize("hasAuthority('enrollment.manage')")
   public ResponseEntity<ApiResponse<TrainingEnrollmentResponse>> createEnrollment(
       @Valid @RequestBody CreateTrainingEnrollmentRequest request,
       HttpServletRequest httpRequest) {
@@ -320,6 +327,7 @@ public class TrainingEnrollmentController {
    * @return 200 OK with updated TrainingEnrollmentResponse enveloped in ApiResponse
    */
   @PutMapping("/{id}")
+  @PreAuthorize("hasAuthority('enrollment.manage')")
   public ResponseEntity<ApiResponse<TrainingEnrollmentResponse>> updateEnrollment(
       @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateTrainingEnrollmentRequest request) {
@@ -334,6 +342,7 @@ public class TrainingEnrollmentController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
+  @PreAuthorize("hasAuthority('enrollment.manage')")
   public ResponseEntity<ApiResponse<Void>> deleteEnrollment(@PathVariable @Positive Long id) {
     trainingEnrollmentService.deleteEnrollment(id);
     return ResponseEntity.ok(ApiResponse.success("Training enrollment deleted successfully"));

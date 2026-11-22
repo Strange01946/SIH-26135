@@ -34,7 +34,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @Validated
 @RestController
 @RequestMapping("/api/v1/consents")
-@PreAuthorize("hasAuthority('consent.manage')")
+@PreAuthorize("hasAnyAuthority('consent.manage', 'ROLE_trainee')")
 public class ConsentController {
 
   private final TraineeConsentService traineeConsentService;

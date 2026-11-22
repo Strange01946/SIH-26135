@@ -36,10 +36,13 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @Validated
 @RestController
 @RequestMapping("/api/v1/certifications")
-@PreAuthorize("hasAuthority('assessment.manage')")
+@PreAuthorize("hasAnyAuthority('assessment.manage', 'trainee.read', 'ROLE_trainee')")
 public class CertificationController {
 
   private final CertificationService certificationService;
+
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  private in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator securityScopeValidator;
 
   public CertificationController(CertificationService certificationService) {
     this.certificationService = certificationService;
@@ -79,6 +82,9 @@ public class CertificationController {
   @GetMapping(params = "traineeId")
   public ResponseEntity<ApiResponse<List<CertificationResponse>>> getByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId) {
+    if (securityScopeValidator != null) {
+      securityScopeValidator.validateTraineeScope(traineeId);
+    }
     List<CertificationResponse> certifications = certificationService.getByTraineeId(traineeId);
     return ResponseEntity.ok(ApiResponse.ok(certifications));
   }
@@ -193,6 +199,7 @@ public class CertificationController {
    * @return 201 Created with created CertificationResponse enveloped in ApiResponse
    */
   @PostMapping
+  @PreAuthorize("hasAuthority('assessment.manage')")
   public ResponseEntity<ApiResponse<CertificationResponse>> createCertification(
       @Valid @RequestBody CreateCertificationRequest request,
       HttpServletRequest httpRequest) {
@@ -209,6 +216,7 @@ public class CertificationController {
    * @return 200 OK with updated CertificationResponse enveloped in ApiResponse
    */
   @PutMapping("/{id}")
+  @PreAuthorize("hasAuthority('assessment.manage')")
   public ResponseEntity<ApiResponse<CertificationResponse>> updateCertification(
       @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateCertificationRequest request) {
@@ -223,6 +231,7 @@ public class CertificationController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
+  @PreAuthorize("hasAuthority('assessment.manage')")
   public ResponseEntity<ApiResponse<Void>> deleteCertification(@PathVariable @Positive Long id) {
     certificationService.deleteCertification(id);
     return ResponseEntity.ok(ApiResponse.success("Certification deleted successfully"));

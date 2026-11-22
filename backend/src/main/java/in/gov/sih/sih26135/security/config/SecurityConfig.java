@@ -91,6 +91,7 @@ public class SecurityConfig {
             .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
             .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
             .requestMatchers(HttpMethod.POST, "/api/v1/auth/login", "/api/v1/auth/refresh").permitAll()
+            .requestMatchers("/api/v1/auth/register/**").permitAll()
             .requestMatchers(HttpMethod.POST, "/api/v1/communication/webhooks/**").permitAll()
             .requestMatchers("/api/v1/auth/me").authenticated()
             .requestMatchers(

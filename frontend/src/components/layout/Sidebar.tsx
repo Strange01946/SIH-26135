@@ -23,6 +23,20 @@ const NAV_ITEMS: NavItem[] = [
     roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin'],
   },
   {
+    label: 'Onboarding Requests',
+    to: '/admin/onboarding',
+    icon: '📥',
+    personas: ['ADMIN'],
+    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin'],
+  },
+  {
+    label: 'Provision Users',
+    to: '/admin/users',
+    icon: '👤',
+    personas: ['ADMIN'],
+    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin'],
+  },
+  {
     label: 'Provider Console',
     to: '/provider/dashboard',
     icon: '🏫',

@@ -4,6 +4,9 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { LoginPage } from '@/pages/auth/LoginPage';
+import { RegistrationPage } from '@/pages/auth/RegistrationPage';
+import { AdminOnboardingPage } from '@/pages/admin/AdminOnboardingPage';
+import { AdminUsersPage } from '@/pages/admin/AdminUsersPage';
 import { ForbiddenPage } from '@/pages/auth/ForbiddenPage';
 import { NotFoundPage } from '@/pages/NotFound';
 import { PlaceholderPage } from '@/pages/placeholder/PlaceholderPage';
@@ -36,6 +39,7 @@ export function AppRouter(): React.JSX.Element {
       <Routes>
         {/* Public Routes */}
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegistrationPage />} />
         <Route path="/" element={<RootRedirect />} />
 
         {/* Protected App Shell */}
@@ -66,6 +70,8 @@ export function AppRouter(): React.JSX.Element {
             element={<RoleGuard allowedPersonas={['ADMIN']} />}
           >
             <Route path="dashboard" element={<AdminDashboard />} />
+            <Route path="onboarding" element={<AdminOnboardingPage />} />
+            <Route path="users" element={<AdminUsersPage />} />
             <Route index element={<Navigate to="dashboard" replace />} />
           </Route>
 

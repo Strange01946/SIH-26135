@@ -33,10 +33,13 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @Validated
 @RestController
 @RequestMapping("/api/v1/assessment-results")
-@PreAuthorize("hasAuthority('assessment.manage')")
+@PreAuthorize("hasAnyAuthority('assessment.manage', 'trainee.read', 'ROLE_trainee')")
 public class AssessmentResultController {
 
   private final AssessmentResultService assessmentResultService;
+
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  private in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator securityScopeValidator;
 
   public AssessmentResultController(AssessmentResultService assessmentResultService) {
     this.assessmentResultService = assessmentResultService;
@@ -76,6 +79,9 @@ public class AssessmentResultController {
   @GetMapping(params = "traineeId")
   public ResponseEntity<ApiResponse<List<AssessmentResultResponse>>> getByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId) {
+    if (securityScopeValidator != null) {
+      securityScopeValidator.validateTraineeScope(traineeId);
+    }
     List<AssessmentResultResponse> results = assessmentResultService.getByTraineeId(traineeId);
     return ResponseEntity.ok(ApiResponse.ok(results));
   }
@@ -112,6 +118,7 @@ public class AssessmentResultController {
    * @return 201 Created with created AssessmentResultResponse enveloped in ApiResponse
    */
   @PostMapping
+  @PreAuthorize("hasAuthority('assessment.manage')")
   public ResponseEntity<ApiResponse<AssessmentResultResponse>> createAssessmentResult(
       @Valid @RequestBody CreateAssessmentResultRequest request,
       HttpServletRequest httpRequest) {
@@ -128,6 +135,7 @@ public class AssessmentResultController {
    * @return 200 OK with updated AssessmentResultResponse enveloped in ApiResponse
    */
   @PutMapping("/{id}")
+  @PreAuthorize("hasAuthority('assessment.manage')")
   public ResponseEntity<ApiResponse<AssessmentResultResponse>> updateAssessmentResult(
       @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateAssessmentResultRequest request) {
@@ -142,6 +150,7 @@ public class AssessmentResultController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
+  @PreAuthorize("hasAuthority('assessment.manage')")
   public ResponseEntity<ApiResponse<Void>> deleteAssessmentResult(@PathVariable @Positive Long id) {
     assessmentResultService.deleteAssessmentResult(id);
     return ResponseEntity.ok(ApiResponse.success("Assessment result deleted successfully"));

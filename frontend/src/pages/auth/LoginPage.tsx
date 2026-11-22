@@ -227,6 +227,14 @@ export function LoginPage(): React.JSX.Element {
             </div>
           </form>
 
+          {/* Register Link */}
+          <div className="mt-4 text-center">
+            <span className="text-sm text-gray-600">New to Skill India? </span>
+            <Link to="/register" className="text-sm font-semibold text-navy hover:underline">
+              Create an account or register organisation
+            </Link>
+          </div>
+
           {/* Official Security Notice */}
           <div className="mt-6 pt-4 border-t border-gray-100 text-center">
             <p className="text-xs text-gray-500 leading-normal">

@@ -35,10 +35,13 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @Validated
 @RestController
 @RequestMapping("/api/v1/attendance-records")
-@PreAuthorize("hasAuthority('enrollment.manage')")
+@PreAuthorize("hasAnyAuthority('enrollment.manage', 'trainee.read', 'ROLE_trainee')")
 public class AttendanceRecordController {
 
   private final AttendanceRecordService attendanceRecordService;
+
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  private in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator securityScopeValidator;
 
   public AttendanceRecordController(AttendanceRecordService attendanceRecordService) {
     this.attendanceRecordService = attendanceRecordService;
@@ -78,6 +81,9 @@ public class AttendanceRecordController {
   @GetMapping(params = "traineeId")
   public ResponseEntity<ApiResponse<List<AttendanceRecordResponse>>> getByTraineeId(
       @RequestParam("traineeId") @Positive Long traineeId) {
+    if (securityScopeValidator != null) {
+      securityScopeValidator.validateTraineeScope(traineeId);
+    }
     List<AttendanceRecordResponse> records = attendanceRecordService.getByTraineeId(traineeId);
     return ResponseEntity.ok(ApiResponse.ok(records));
   }
@@ -144,6 +150,7 @@ public class AttendanceRecordController {
    * @return 201 Created with created AttendanceRecordResponse enveloped in ApiResponse
    */
   @PostMapping
+  @PreAuthorize("hasAuthority('enrollment.manage')")
   public ResponseEntity<ApiResponse<AttendanceRecordResponse>> createAttendanceRecord(
       @Valid @RequestBody CreateAttendanceRecordRequest request,
       HttpServletRequest httpRequest) {
@@ -160,6 +167,7 @@ public class AttendanceRecordController {
    * @return 200 OK with updated AttendanceRecordResponse enveloped in ApiResponse
    */
   @PutMapping("/{id}")
+  @PreAuthorize("hasAuthority('enrollment.manage')")
   public ResponseEntity<ApiResponse<AttendanceRecordResponse>> updateAttendanceRecord(
       @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateAttendanceRecordRequest request) {
@@ -174,6 +182,7 @@ public class AttendanceRecordController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
+  @PreAuthorize("hasAuthority('enrollment.manage')")
   public ResponseEntity<ApiResponse<Void>> deleteAttendanceRecord(@PathVariable @Positive Long id) {
     attendanceRecordService.deleteAttendanceRecord(id);
     return ResponseEntity.ok(ApiResponse.success("Attendance record deleted successfully"));

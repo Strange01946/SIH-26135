@@ -156,6 +156,9 @@ public class UserServiceImpl implements UserService {
       if (!refUserStatusRepository.existsById(request.getUserStatusId())) {
         throw new BadRequestException("Invalid user status ID: status does not exist", "INVALID_USER_STATUS");
       }
+      if (!Long.valueOf(2L).equals(request.getUserStatusId())) {
+        validateSuperAdminProtection(id);
+      }
       user.setUserStatusId(request.getUserStatusId());
     }
 
@@ -188,6 +191,8 @@ public class UserServiceImpl implements UserService {
   public void deleteUser(Long id, Long actorUserId) {
     User user = userRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("User", "id"));
+
+    validateSuperAdminProtection(id);
 
     LocalDateTime now = LocalDateTime.now();
     user.setDeletedAt(now);
@@ -230,6 +235,10 @@ public class UserServiceImpl implements UserService {
       throw new ResourceNotFoundException("Role", "id");
     }
 
+    if (Long.valueOf(1L).equals(roleId)) {
+      validateSuperAdminProtection(userId);
+    }
+
     UserRoleId userRoleId = new UserRoleId(userId, roleId);
     if (!userRoleRepository.existsById(userRoleId)) {
       throw new ResourceNotFoundException("UserRole assignment", "userId and roleId");
@@ -251,6 +260,22 @@ public class UserServiceImpl implements UserService {
           return userRoleMapper.toResponse(ur, role);
         })
         .toList();
+  }
+
+  private void validateSuperAdminProtection(Long targetUserId) {
+    boolean isSuperAdmin = userRoleRepository.existsByUserIdAndRoleId(targetUserId, 1L);
+    if (!isSuperAdmin) {
+      return;
+    }
+    List<UserRole> superAdminRoles = userRoleRepository.findByRoleId(1L);
+    long activeSuperAdminCount = superAdminRoles.stream()
+        .map(ur -> userRepository.findById(ur.getUserId()).orElse(null))
+        .filter(u -> u != null && u.getDeletedAt() == null && Long.valueOf(2L).equals(u.getUserStatusId()))
+        .count();
+
+    if (activeSuperAdminCount <= 1) {
+      throw new IllegalStateException("Cannot delete, deactivate, or unassign the last remaining active Super Admin account");
+    }
   }
 
   private String resolveStatusCode(Long userStatusId) {

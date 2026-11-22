@@ -1,0 +1,331 @@
+package in.gov.sih.sih26135.service.impl;
+
+import in.gov.sih.sih26135.dto.registration.OnboardingApplicationResponse;
+import in.gov.sih.sih26135.dto.registration.ProvisionAssessorRequest;
+import in.gov.sih.sih26135.dto.registration.ProvisionGovernmentAdminRequest;
+import in.gov.sih.sih26135.dto.registration.ProvisionSuperAdminRequest;
+import in.gov.sih.sih26135.dto.response.UserResponse;
+import in.gov.sih.sih26135.entity.Employer;
+import in.gov.sih.sih26135.entity.OnboardingApplication;
+import in.gov.sih.sih26135.entity.RefAccreditationStatus;
+import in.gov.sih.sih26135.entity.RefRecordVerificationStatus;
+import in.gov.sih.sih26135.entity.Role;
+import in.gov.sih.sih26135.entity.TrainingProvider;
+import in.gov.sih.sih26135.entity.User;
+import in.gov.sih.sih26135.entity.UserRole;
+import in.gov.sih.sih26135.exception.BadRequestException;
+import in.gov.sih.sih26135.exception.ConflictException;
+import in.gov.sih.sih26135.exception.ResourceNotFoundException;
+import in.gov.sih.sih26135.mapper.UserMapper;
+import in.gov.sih.sih26135.repository.EmployerRepository;
+import in.gov.sih.sih26135.repository.OnboardingApplicationRepository;
+import in.gov.sih.sih26135.repository.RefAccreditationStatusRepository;
+import in.gov.sih.sih26135.repository.RefRecordVerificationStatusRepository;
+import in.gov.sih.sih26135.repository.RoleRepository;
+import in.gov.sih.sih26135.repository.TrainingProviderRepository;
+import in.gov.sih.sih26135.repository.UserRepository;
+import in.gov.sih.sih26135.repository.UserRoleRepository;
+import in.gov.sih.sih26135.service.OnboardingAdminService;
+import java.time.LocalDateTime;
+import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@Transactional(readOnly = true)
+public class OnboardingAdminServiceImpl implements OnboardingAdminService {
+
+  private static final Logger log = LoggerFactory.getLogger(OnboardingAdminServiceImpl.class);
+
+  private static final Long ROLE_ID_SUPER_ADMIN = 1L;
+  private static final Long ROLE_ID_ASSESSOR = 10L;
+  private static final Long STATUS_ACTIVE_ID = 2L;
+  private static final Long STATUS_DISABLED_ID = 4L;
+
+  private final OnboardingApplicationRepository onboardingApplicationRepository;
+  private final UserRepository userRepository;
+  private final UserRoleRepository userRoleRepository;
+  private final RoleRepository roleRepository;
+  private final TrainingProviderRepository trainingProviderRepository;
+  private final EmployerRepository employerRepository;
+  private final RefAccreditationStatusRepository refAccreditationStatusRepository;
+  private final RefRecordVerificationStatusRepository refRecordVerificationStatusRepository;
+  private final UserMapper userMapper;
+  private final PasswordEncoder passwordEncoder;
+
+  public OnboardingAdminServiceImpl(
+      OnboardingApplicationRepository onboardingApplicationRepository,
+      UserRepository userRepository,
+      UserRoleRepository userRoleRepository,
+      RoleRepository roleRepository,
+      TrainingProviderRepository trainingProviderRepository,
+      EmployerRepository employerRepository,
+      RefAccreditationStatusRepository refAccreditationStatusRepository,
+      RefRecordVerificationStatusRepository refRecordVerificationStatusRepository,
+      UserMapper userMapper,
+      PasswordEncoder passwordEncoder) {
+    this.onboardingApplicationRepository = onboardingApplicationRepository;
+    this.userRepository = userRepository;
+    this.userRoleRepository = userRoleRepository;
+    this.roleRepository = roleRepository;
+    this.trainingProviderRepository = trainingProviderRepository;
+    this.employerRepository = employerRepository;
+    this.refAccreditationStatusRepository = refAccreditationStatusRepository;
+    this.refRecordVerificationStatusRepository = refRecordVerificationStatusRepository;
+    this.userMapper = userMapper;
+    this.passwordEncoder = passwordEncoder;
+  }
+
+  @Override
+  public List<OnboardingApplicationResponse> getApplications(String status) {
+    List<OnboardingApplication> applications;
+    if (status != null && !status.isBlank()) {
+      applications = onboardingApplicationRepository.findByStatusOrderByCreatedAtDesc(status.trim().toUpperCase());
+    } else {
+      applications = onboardingApplicationRepository.findAllByOrderByCreatedAtDesc();
+    }
+    return applications.stream().map(this::mapToResponse).toList();
+  }
+
+  @Override
+  public OnboardingApplicationResponse getApplicationById(Long id) {
+    OnboardingApplication app = onboardingApplicationRepository.findById(id)
+        .orElseThrow(() -> new ResourceNotFoundException("OnboardingApplication", "id"));
+    return mapToResponse(app);
+  }
+
+  @Override
+  @Transactional
+  public OnboardingApplicationResponse approveApplication(Long id, Long reviewerUserId) {
+    OnboardingApplication app = onboardingApplicationRepository.findById(id)
+        .orElseThrow(() -> new ResourceNotFoundException("OnboardingApplication", "id"));
+
+    if (!"PENDING".equalsIgnoreCase(app.getStatus())) {
+      throw new BadRequestException("Only PENDING applications can be approved", "APPLICATION_ALREADY_PROCESSED");
+    }
+
+    LocalDateTime now = LocalDateTime.now();
+    app.setStatus("APPROVED");
+    app.setReviewedByUserId(reviewerUserId);
+    app.setReviewedAt(now);
+    app.setUpdatedAt(now);
+    OnboardingApplication savedApp = onboardingApplicationRepository.save(app);
+
+    // Activate the associated user
+    userRepository.findById(app.getUserId()).ifPresent(user -> {
+      user.setUserStatusId(STATUS_ACTIVE_ID);
+      user.setUpdatedAt(now);
+      userRepository.save(user);
+    });
+
+    // Update entity accreditation / verification
+    if ("TRAINING_PROVIDER".equalsIgnoreCase(app.getEntityType())) {
+      trainingProviderRepository.findById(app.getEntityId()).ifPresent(provider -> {
+        refAccreditationStatusRepository.findById(4L).ifPresent(provider::setAccreditationStatus); // ACCREDITED
+        provider.setUpdatedAt(now);
+        trainingProviderRepository.save(provider);
+      });
+    } else if ("EMPLOYER".equalsIgnoreCase(app.getEntityType())) {
+      employerRepository.findById(app.getEntityId()).ifPresent(employer -> {
+        refRecordVerificationStatusRepository.findById(4L).ifPresent(employer::setRecordVerificationStatus); // VERIFIED
+        employer.setVerifiedAt(now);
+        employer.setVerifiedByUserId(reviewerUserId);
+        employer.setUpdatedAt(now);
+        employerRepository.save(employer);
+      });
+    }
+
+    log.info("Application approved: appId={}, type={}, entityId={}, reviewerId={}",
+        id, app.getApplicantType(), app.getEntityId(), reviewerUserId);
+
+    OnboardingApplicationResponse response = mapToResponse(savedApp);
+    response.setMessage("Application approved successfully. User account has been activated.");
+    return response;
+  }
+
+  @Override
+  @Transactional
+  public OnboardingApplicationResponse rejectApplication(Long id, String reason, Long reviewerUserId) {
+    OnboardingApplication app = onboardingApplicationRepository.findById(id)
+        .orElseThrow(() -> new ResourceNotFoundException("OnboardingApplication", "id"));
+
+    if (!"PENDING".equalsIgnoreCase(app.getStatus())) {
+      throw new BadRequestException("Only PENDING applications can be rejected", "APPLICATION_ALREADY_PROCESSED");
+    }
+
+    LocalDateTime now = LocalDateTime.now();
+    app.setStatus("REJECTED");
+    app.setRejectionReason(reason != null && !reason.isBlank() ? reason.trim() : "Application rejected by administrator");
+    app.setReviewedByUserId(reviewerUserId);
+    app.setReviewedAt(now);
+    app.setUpdatedAt(now);
+    OnboardingApplication savedApp = onboardingApplicationRepository.save(app);
+
+    // Disable the associated user
+    userRepository.findById(app.getUserId()).ifPresent(user -> {
+      user.setUserStatusId(STATUS_DISABLED_ID);
+      user.setUpdatedAt(now);
+      userRepository.save(user);
+    });
+
+    log.info("Application rejected: appId={}, reviewerId={}, reason={}", id, reviewerUserId, app.getRejectionReason());
+
+    OnboardingApplicationResponse response = mapToResponse(savedApp);
+    response.setMessage("Application has been rejected.");
+    return response;
+  }
+
+  @Override
+  @Transactional
+  public UserResponse provisionAssessor(ProvisionAssessorRequest request, Long actorUserId) {
+    if (request == null) {
+      throw new BadRequestException("Provisioning request cannot be null");
+    }
+
+    String username = request.getUsername().trim();
+    String email = request.getEmail().trim().toLowerCase();
+
+    if (userRepository.existsByUsername(username)) {
+      throw new ConflictException("Username is already taken", "USERNAME_ALREADY_EXISTS");
+    }
+    if (userRepository.existsByEmail(email)) {
+      throw new ConflictException("Email is already registered", "EMAIL_ALREADY_EXISTS");
+    }
+
+    LocalDateTime now = LocalDateTime.now();
+
+    User user = new User();
+    user.setUsername(username);
+    user.setEmail(email);
+    user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+    user.setPasswordAlgo("argon2id");
+    user.setUserStatusId(STATUS_ACTIVE_ID);
+    user.setOrganizationId(request.getOrganizationId());
+    user.setStateId(request.getStateId());
+    user.setDistrictId(request.getDistrictId());
+    user.setFailedLoginCount(0);
+    user.setMustChangePassword(false);
+    user.setCreatedByUserId(actorUserId);
+    user.setCreatedAt(now);
+    user.setUpdatedAt(now);
+    User savedUser = userRepository.save(user);
+
+    // Assign Role 10 (assessor)
+    UserRole userRole = new UserRole(savedUser.getId(), ROLE_ID_ASSESSOR, actorUserId);
+    userRole.setAssignedAt(now);
+    userRoleRepository.save(userRole);
+
+    log.info("Assessor provisioned: username={}, userId={}, by={}", username, savedUser.getId(), actorUserId);
+    return userMapper.toResponse(savedUser, "ACTIVE");
+  }
+
+  @Override
+  @Transactional
+  public UserResponse provisionGovernmentAdmin(ProvisionGovernmentAdminRequest request, Long actorUserId) {
+    if (request == null) {
+      throw new BadRequestException("Provisioning request cannot be null");
+    }
+
+    String username = request.getUsername().trim();
+    String email = request.getEmail().trim().toLowerCase();
+
+    if (userRepository.existsByUsername(username)) {
+      throw new ConflictException("Username is already taken", "USERNAME_ALREADY_EXISTS");
+    }
+    if (userRepository.existsByEmail(email)) {
+      throw new ConflictException("Email is already registered", "EMAIL_ALREADY_EXISTS");
+    }
+
+    Role targetRole = roleRepository.findByRoleCode(request.getRoleCode().trim())
+        .orElseThrow(() -> new BadRequestException("Invalid role code: " + request.getRoleCode(), "INVALID_ROLE"));
+
+    LocalDateTime now = LocalDateTime.now();
+
+    User user = new User();
+    user.setUsername(username);
+    user.setEmail(email);
+    user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+    user.setPasswordAlgo("argon2id");
+    user.setUserStatusId(STATUS_ACTIVE_ID);
+    user.setOrganizationId(request.getOrganizationId());
+    user.setStateId(request.getStateId());
+    user.setDistrictId(request.getDistrictId());
+    user.setFailedLoginCount(0);
+    user.setMustChangePassword(false);
+    user.setCreatedByUserId(actorUserId);
+    user.setCreatedAt(now);
+    user.setUpdatedAt(now);
+    User savedUser = userRepository.save(user);
+
+    UserRole userRole = new UserRole(savedUser.getId(), targetRole.getId(), actorUserId);
+    userRole.setAssignedAt(now);
+    userRoleRepository.save(userRole);
+
+    log.info("Government user provisioned: username={}, role={}, by={}", username, targetRole.getRoleCode(), actorUserId);
+    return userMapper.toResponse(savedUser, "ACTIVE");
+  }
+
+  @Override
+  @Transactional
+  public UserResponse provisionSuperAdmin(ProvisionSuperAdminRequest request, Long actorUserId) {
+    if (request == null) {
+      throw new BadRequestException("Provisioning request cannot be null");
+    }
+
+    String username = request.getUsername().trim();
+    String email = request.getEmail().trim().toLowerCase();
+
+    if (userRepository.existsByUsername(username)) {
+      throw new ConflictException("Username is already taken", "USERNAME_ALREADY_EXISTS");
+    }
+    if (userRepository.existsByEmail(email)) {
+      throw new ConflictException("Email is already registered", "EMAIL_ALREADY_EXISTS");
+    }
+
+    LocalDateTime now = LocalDateTime.now();
+
+    User user = new User();
+    user.setUsername(username);
+    user.setEmail(email);
+    user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+    user.setPasswordAlgo("argon2id");
+    user.setUserStatusId(STATUS_ACTIVE_ID);
+    user.setFailedLoginCount(0);
+    user.setMustChangePassword(false);
+    user.setCreatedByUserId(actorUserId);
+    user.setCreatedAt(now);
+    user.setUpdatedAt(now);
+    User savedUser = userRepository.save(user);
+
+    UserRole userRole = new UserRole(savedUser.getId(), ROLE_ID_SUPER_ADMIN, actorUserId);
+    userRole.setAssignedAt(now);
+    userRoleRepository.save(userRole);
+
+    log.info("Super Admin provisioned: username={}, userId={}, by={}", username, savedUser.getId(), actorUserId);
+    return userMapper.toResponse(savedUser, "ACTIVE");
+  }
+
+  private OnboardingApplicationResponse mapToResponse(OnboardingApplication app) {
+    OnboardingApplicationResponse resp = new OnboardingApplicationResponse();
+    resp.setApplicationId(app.getId());
+    resp.setApplicationNumber(app.getApplicationNumber());
+    resp.setApplicantType(app.getApplicantType());
+    resp.setUserId(app.getUserId());
+    userRepository.findById(app.getUserId()).ifPresent(u -> resp.setUsername(u.getUsername()));
+    resp.setEntityType(app.getEntityType());
+    resp.setEntityId(app.getEntityId());
+    resp.setOrganizationName(app.getOrganizationName());
+    resp.setContactPerson(app.getContactPerson());
+    resp.setContactEmail(app.getContactEmail());
+    resp.setContactPhone(app.getContactPhone());
+    resp.setStatus(app.getStatus());
+    resp.setRejectionReason(app.getRejectionReason());
+    resp.setReviewedByUserId(app.getReviewedByUserId());
+    resp.setReviewedAt(app.getReviewedAt());
+    resp.setCreatedAt(app.getCreatedAt());
+    return resp;
+  }
+}

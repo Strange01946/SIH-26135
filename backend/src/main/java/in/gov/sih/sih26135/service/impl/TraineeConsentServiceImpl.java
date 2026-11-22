@@ -14,10 +14,12 @@ import in.gov.sih.sih26135.repository.RefConsentStatusRepository;
 import in.gov.sih.sih26135.repository.RefConsentTypeRepository;
 import in.gov.sih.sih26135.repository.TraineeConsentRepository;
 import in.gov.sih.sih26135.repository.TraineeRepository;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.TraineeConsentService;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +32,9 @@ public class TraineeConsentServiceImpl implements TraineeConsentService {
   private final RefConsentTypeRepository refConsentTypeRepository;
   private final RefConsentStatusRepository refConsentStatusRepository;
   private final TraineeConsentMapper traineeConsentMapper;
+
+  @Autowired(required = false)
+  private WorkflowSecurityScopeValidator securityScopeValidator;
 
   public TraineeConsentServiceImpl(
       TraineeConsentRepository traineeConsentRepository,
@@ -44,15 +49,37 @@ public class TraineeConsentServiceImpl implements TraineeConsentService {
     this.traineeConsentMapper = traineeConsentMapper;
   }
 
+  @Autowired
+  public TraineeConsentServiceImpl(
+      TraineeConsentRepository traineeConsentRepository,
+      TraineeRepository traineeRepository,
+      RefConsentTypeRepository refConsentTypeRepository,
+      RefConsentStatusRepository refConsentStatusRepository,
+      TraineeConsentMapper traineeConsentMapper,
+      @Autowired(required = false) WorkflowSecurityScopeValidator securityScopeValidator) {
+    this(traineeConsentRepository, traineeRepository, refConsentTypeRepository, refConsentStatusRepository, traineeConsentMapper);
+    this.securityScopeValidator = securityScopeValidator;
+  }
+
+  public void setSecurityScopeValidator(WorkflowSecurityScopeValidator securityScopeValidator) {
+    this.securityScopeValidator = securityScopeValidator;
+  }
+
   @Override
   public TraineeConsentResponse getById(Long id) {
     TraineeConsent consent = traineeConsentRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("TraineeConsent", "id"));
+    if (securityScopeValidator != null && consent.getTrainee() != null) {
+      securityScopeValidator.validateTraineeScope(consent.getTrainee().getId());
+    }
     return traineeConsentMapper.toResponse(consent);
   }
 
   @Override
   public List<TraineeConsentResponse> getConsentsByTraineeId(Long traineeId) {
+    if (securityScopeValidator != null) {
+      securityScopeValidator.validateTraineeScope(traineeId);
+    }
     if (!traineeRepository.existsById(traineeId)) {
       throw new ResourceNotFoundException("Trainee", "id");
     }
@@ -63,6 +90,9 @@ public class TraineeConsentServiceImpl implements TraineeConsentService {
 
   @Override
   public List<TraineeConsentResponse> getConsentsByTraineeAndType(Long traineeId, Long consentTypeId) {
+    if (securityScopeValidator != null) {
+      securityScopeValidator.validateTraineeScope(traineeId);
+    }
     if (!traineeRepository.existsById(traineeId)) {
       throw new ResourceNotFoundException("Trainee", "id");
     }
@@ -76,6 +106,9 @@ public class TraineeConsentServiceImpl implements TraineeConsentService {
 
   @Override
   public List<TraineeConsentResponse> getConsentsByTraineeAndStatus(Long traineeId, Long consentStatusId) {
+    if (securityScopeValidator != null) {
+      securityScopeValidator.validateTraineeScope(traineeId);
+    }
     if (!traineeRepository.existsById(traineeId)) {
       throw new ResourceNotFoundException("Trainee", "id");
     }
@@ -95,6 +128,9 @@ public class TraineeConsentServiceImpl implements TraineeConsentService {
     }
     if (request.getTraineeId() == null) {
       throw new BadRequestException("Trainee ID is required");
+    }
+    if (securityScopeValidator != null) {
+      securityScopeValidator.validateTraineeScope(request.getTraineeId());
     }
     if (request.getConsentTypeId() == null) {
       throw new BadRequestException("Consent type ID is required");
@@ -143,6 +179,9 @@ public class TraineeConsentServiceImpl implements TraineeConsentService {
 
     TraineeConsent consent = traineeConsentRepository.findById(consentId)
         .orElseThrow(() -> new ResourceNotFoundException("TraineeConsent", "id"));
+    if (securityScopeValidator != null && consent.getTrainee() != null) {
+      securityScopeValidator.validateTraineeScope(consent.getTrainee().getId());
+    }
     RefConsentStatus status = refConsentStatusRepository.findById(request.getConsentStatusId())
         .orElseThrow(() -> new ResourceNotFoundException("ConsentStatus", "id"));
 

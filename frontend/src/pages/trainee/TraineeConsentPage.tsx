@@ -366,9 +366,8 @@ export const TraineeConsentPage: React.FC = () => {
               Under Section 6 of the DPDP Act, personal data is processed solely for the specified purposes of skill qualification, certification verification, and employment outcome analytics. You have the statutory right to give, manage, or withdraw consent at any time without punitive consequences, except where processing is mandated by law for educational qualification records.
             </p>
             <div className="text-xs text-gov-neutral-500 pt-1 flex flex-wrap gap-x-6 gap-y-1">
-              <span><strong>Data Fiduciary:</strong> Skill India Training &amp; Placement Platform</span>
-              <span><strong>Data Privacy Support:</strong> privacy@skillindia.gov.in (Portal Compliance Desk)</span>
-              <span><strong>Policy Version:</strong> v1.0 (Standard DPDP Consent Form)</span>
+              <span><strong>Statutory Basis:</strong> Digital Personal Data Protection Act, 2023 (§ 6)</span>
+              <span><strong>Consent Policy Version:</strong> v1.0</span>
             </div>
           </div>
         </div>
