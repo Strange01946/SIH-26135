@@ -57,7 +57,8 @@ final class TrainingTenantScopeSupport {
 
     User caller = scopeValidator.resolveAuthenticatedUser()
         .orElseThrow(() -> new AccessDeniedException("Authoritative caller user record not found"));
-    if (caller.getDeletedAt() != null || (caller.getUserStatusId() != null && caller.getUserStatusId() != 1)) {
+    if (caller.getDeletedAt() != null
+        || (caller.getUserStatusId() != null && caller.getUserStatusId() != 1L && caller.getUserStatusId() != 2L)) {
       throw new AccessDeniedException("Caller user account is deleted or inactive");
     }
 
@@ -77,7 +78,7 @@ final class TrainingTenantScopeSupport {
     if ((roleProvider ? 1 : 0) + ((roleStateAdmin || roleOfficer) ? 1 : 0) > 1) {
       throw new AccessDeniedException("Caller holds conflicting persona roles");
     }
-    if (roleProvider && (!hasProvider || hasState || hasDistrict)) {
+    if (roleProvider && !hasProvider) {
       throw new AccessDeniedException("Training provider caller lacks valid unambiguous provider scope");
     }
     if ((roleStateAdmin || roleOfficer) && (!hasState || hasProvider)) {
@@ -90,10 +91,7 @@ final class TrainingTenantScopeSupport {
       throw new AccessDeniedException("Scoped administrator cannot claim nationwide scope");
     }
 
-    if (hasProvider) {
-      if (hasState || hasDistrict) {
-        throw new AccessDeniedException("Caller has conflicting provider and geographic tenancy");
-      }
+    if (roleProvider || hasProvider) {
       return new CallerScope(false, null, null, caller.getTrainingProviderId());
     }
     if (hasState) {

@@ -58,6 +58,12 @@ public class TrainingBatchResponse {
   @Schema(description = "Batch maximum capacity", example = "30")
   private Integer capacity;
 
+  @Schema(description = "Authoritative count of actively enrolled trainees", example = "12")
+  private Integer enrolledCount;
+
+  @Schema(description = "Authoritative remaining available seats", example = "18")
+  private Integer availableSeats;
+
   @Schema(description = "Batch status lookup ID", example = "1")
   private Long batchStatusId;
 
@@ -262,6 +268,22 @@ public class TrainingBatchResponse {
 
   public void setCapacity(Integer capacity) {
     this.capacity = capacity;
+  }
+
+  public Integer getEnrolledCount() {
+    return enrolledCount;
+  }
+
+  public void setEnrolledCount(Integer enrolledCount) {
+    this.enrolledCount = enrolledCount;
+  }
+
+  public Integer getAvailableSeats() {
+    return availableSeats;
+  }
+
+  public void setAvailableSeats(Integer availableSeats) {
+    this.availableSeats = availableSeats;
   }
 
   public Long getBatchStatusId() {

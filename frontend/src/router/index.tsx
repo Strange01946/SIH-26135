@@ -13,10 +13,16 @@ import { PlaceholderPage } from '@/pages/placeholder/PlaceholderPage';
 import { PageLoading } from '@/components/feedback/LoadingSpinner';
 import {
   AdminDashboard,
-  ProviderDashboard,
   AssessorDashboard,
   EmployerDashboard,
 } from '@/pages/personas/PersonaDashboards';
+import { ProviderOverviewPage } from '@/pages/provider/ProviderOverviewPage';
+import { ProviderCentersPage } from '@/pages/provider/ProviderCentersPage';
+import { ProviderCoursesPage } from '@/pages/provider/ProviderCoursesPage';
+import { ProviderBatchesPage } from '@/pages/provider/ProviderBatchesPage';
+import { ProviderEnrollmentPage } from '@/pages/provider/ProviderEnrollmentPage';
+import { ProviderBulkImportPage } from '@/pages/provider/ProviderBulkImportPage';
+import { ProviderQuarantinePage } from '@/pages/provider/ProviderQuarantinePage';
 import { TraineePortalLayout } from '@/pages/trainee/TraineePortalLayout';
 import { TraineeOverviewPage } from '@/pages/trainee/TraineeOverviewPage';
 import { TraineeTrainingPage } from '@/pages/trainee/TraineeTrainingPage';
@@ -79,7 +85,13 @@ export function AppRouter(): React.JSX.Element {
             path="/provider"
             element={<RoleGuard allowedPersonas={['TRAINING_PROVIDER']} />}
           >
-            <Route path="dashboard" element={<ProviderDashboard />} />
+            <Route path="dashboard" element={<ProviderOverviewPage />} />
+            <Route path="centers" element={<ProviderCentersPage />} />
+            <Route path="courses" element={<ProviderCoursesPage />} />
+            <Route path="batches" element={<ProviderBatchesPage />} />
+            <Route path="enrollment" element={<ProviderEnrollmentPage />} />
+            <Route path="imports" element={<ProviderBulkImportPage />} />
+            <Route path="quarantine" element={<ProviderQuarantinePage />} />
             <Route index element={<Navigate to="dashboard" replace />} />
           </Route>
 

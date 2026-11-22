@@ -57,7 +57,7 @@ import org.springframework.web.multipart.MultipartFile;
 @Validated
 @RestController
 @RequestMapping({"/api/v1/import-batches", "/api/v1/import/batches"})
-@PreAuthorize("hasAnyAuthority('system.manage', 'audit.read', 'trainee.read', 'trainee.write', 'placement.manage')")
+@PreAuthorize("hasAnyAuthority('system.manage', 'audit.read', 'trainee.read', 'trainee.write', 'placement.manage', 'enrollment.manage')")
 public class ImportBatchController {
 
   private final ImportBatchService importBatchService;
@@ -197,7 +197,7 @@ public class ImportBatchController {
       }
   )
   @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-  @PreAuthorize("hasAnyAuthority('system.manage', 'trainee.write', 'placement.manage')")
+  @PreAuthorize("hasAnyAuthority('system.manage', 'trainee.write', 'placement.manage', 'enrollment.manage')")
   public ResponseEntity<ApiResponse<ImportBatchResponse>> uploadBatch(
       @RequestPart("file") MultipartFile file,
       @RequestParam(value = "entityType", required = false) String entityType,
@@ -229,7 +229,7 @@ public class ImportBatchController {
       }
   )
   @PostMapping("/{id}/process")
-  @PreAuthorize("hasAnyAuthority('system.manage', 'trainee.write', 'placement.manage')")
+  @PreAuthorize("hasAnyAuthority('system.manage', 'trainee.write', 'placement.manage', 'enrollment.manage')")
   public ResponseEntity<ApiResponse<ImportBatchProgressResponse>> processBatch(
       @PathVariable @Positive Long id,
       HttpServletRequest httpRequest) {
@@ -249,7 +249,7 @@ public class ImportBatchController {
    * @return 200 OK with reconciled ImportBatchProgressResponse in PENDING status ready for resume
    */
   @PostMapping("/{id}/recover")
-  @PreAuthorize("hasAnyAuthority('system.manage', 'trainee.write', 'placement.manage')")
+  @PreAuthorize("hasAnyAuthority('system.manage', 'trainee.write', 'placement.manage', 'enrollment.manage')")
   public ResponseEntity<ApiResponse<ImportBatchProgressResponse>> recoverInterruptedBatch(
       @PathVariable @Positive Long id,
       @RequestParam(value = "confirmWorkerTerminated", defaultValue = "false") boolean confirmWorkerTerminated,
@@ -268,7 +268,7 @@ public class ImportBatchController {
    * @param id import batch identifier
    * @return 200 OK with ImportBatchProgressResponse enveloped in ApiResponse
    */
-  @GetMapping("/{id}/progress")
+  @GetMapping({"/{id}/progress", "/{id}/status"})
   public ResponseEntity<ApiResponse<ImportBatchProgressResponse>> getBatchProgress(
       @PathVariable @Positive Long id) {
     ImportBatchProgressResponse response = requireWorkflow().getBatchProgress(id);
@@ -332,6 +332,64 @@ public class ImportBatchController {
         "sourceRowNumber", Sort.Direction.ASC, Sort.Direction.ASC);
     Page<ImportRecordResponse> records = requireWorkflow().getQuarantinedRecords(id, includeDuplicates, pageable);
     return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(records)));
+  }
+
+  /**
+   * Exports quarantined records for an import batch as an RFC-4180 compliant CSV stream
+   * with spreadsheet formula injection protection.
+   *
+   * @param id import batch identifier
+   * @param includeDuplicates whether DUPLICATE rows should be included
+   * @return 200 OK with streaming CSV attachment
+   */
+  @GetMapping(value = {"/{id}/quarantine/export", "/{id}/export/csv"}, produces = "text/csv")
+  @PreAuthorize("hasAnyAuthority('system.manage', 'trainee.read', 'trainee.write', 'placement.manage', 'enrollment.manage')")
+  public ResponseEntity<org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody> exportQuarantinedCsv(
+      @PathVariable @Positive Long id,
+      @RequestParam(value = "includeDuplicates", defaultValue = "true") boolean includeDuplicates) {
+    Page<ImportRecordResponse> firstPage = requireWorkflow().getQuarantinedRecords(
+        id, includeDuplicates, org.springframework.data.domain.PageRequest.of(0, 500, Sort.by(Sort.Direction.ASC, "sourceRowNumber")));
+
+    org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody responseBody = outputStream -> {
+      try (in.gov.sih.sih26135.service.export.SafeCsvStreamWriter writer =
+               new in.gov.sih.sih26135.service.export.SafeCsvStreamWriter(outputStream)) {
+        writer.writeHeader(List.of(
+            "Record ID", "Batch ID", "Batch Code", "Source Row", "Entity Type",
+            "Record Status", "Error Code", "Error Message", "Created At"
+        ));
+
+        int pageNum = 0;
+        Page<ImportRecordResponse> page = firstPage;
+        while (page != null && page.hasContent()) {
+          for (ImportRecordResponse rec : page.getContent()) {
+            writer.writeRow(List.of(
+                rec.id() != null ? rec.id() : "",
+                rec.importBatchId() != null ? rec.importBatchId() : "",
+                rec.importBatchCode() != null ? rec.importBatchCode() : "",
+                rec.sourceRowNumber() != null ? rec.sourceRowNumber() : "",
+                rec.entityType() != null ? rec.entityType() : "",
+                rec.importRecordStatusCode() != null ? rec.importRecordStatusCode() : "",
+                rec.errorCode() != null ? rec.errorCode() : "",
+                rec.errorMessage() != null ? rec.errorMessage() : "",
+                rec.createdAt() != null ? rec.createdAt().toString() : ""
+            ));
+          }
+          if (page.hasNext()) {
+            pageNum++;
+            page = requireWorkflow().getQuarantinedRecords(
+                id, includeDuplicates, org.springframework.data.domain.PageRequest.of(pageNum, 500, Sort.by(Sort.Direction.ASC, "sourceRowNumber")));
+          } else {
+            break;
+          }
+        }
+      }
+    };
+
+    String filename = "import_batch_" + id + "_quarantine.csv";
+    return ResponseEntity.ok()
+        .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+        .contentType(org.springframework.http.MediaType.parseMediaType("text/csv; charset=UTF-8"))
+        .body(responseBody);
   }
 
   /**

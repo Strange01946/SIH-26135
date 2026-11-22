@@ -8,10 +8,23 @@ import in.gov.sih.sih26135.entity.RefBatchStatus;
 import in.gov.sih.sih26135.entity.TrainingBatch;
 import in.gov.sih.sih26135.entity.TrainingCenter;
 import in.gov.sih.sih26135.entity.TrainingProvider;
+import in.gov.sih.sih26135.repository.TrainingEnrollmentRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
 public class TrainingBatchMapper {
+
+  private final TrainingEnrollmentRepository trainingEnrollmentRepository;
+
+  public TrainingBatchMapper() {
+    this(null);
+  }
+
+  @Autowired
+  public TrainingBatchMapper(@Autowired(required = false) TrainingEnrollmentRepository trainingEnrollmentRepository) {
+    this.trainingEnrollmentRepository = trainingEnrollmentRepository;
+  }
 
   public TrainingBatchResponse toResponse(TrainingBatch entity) {
     if (entity == null) {
@@ -63,7 +76,7 @@ public class TrainingBatchMapper {
       batchStatusName = entity.getBatchStatus().getStatusName();
     }
 
-    return new TrainingBatchResponse(
+    TrainingBatchResponse response = new TrainingBatchResponse(
         entity.getId(),
         entity.getBatchCode(),
         courseId,
@@ -88,6 +101,16 @@ public class TrainingBatchMapper {
         entity.getUpdatedAt(),
         entity.getDeletedAt()
     );
+
+    if (trainingEnrollmentRepository != null && entity.getId() != null) {
+      int enrolled = (int) trainingEnrollmentRepository.countActiveEnrollmentsByBatchId(entity.getId());
+      response.setEnrolledCount(enrolled);
+      if (entity.getCapacity() != null) {
+        response.setAvailableSeats(Math.max(0, entity.getCapacity() - enrolled));
+      }
+    }
+
+    return response;
   }
 
   public TrainingBatch toEntity(

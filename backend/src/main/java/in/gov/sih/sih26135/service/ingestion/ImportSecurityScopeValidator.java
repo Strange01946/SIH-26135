@@ -90,7 +90,8 @@ public class ImportSecurityScopeValidator {
         : Set.of();
     boolean hasAnyWrite = authorities.contains("system.manage")
         || authorities.contains("trainee.write")
-        || authorities.contains("placement.manage");
+        || authorities.contains("placement.manage")
+        || authorities.contains("enrollment.manage");
     if (!hasAnyWrite) {
       throw new AccessDeniedException("Caller lacks required permission to modify bulk import resources");
     }
@@ -102,7 +103,7 @@ public class ImportSecurityScopeValidator {
     boolean hasManage = callerScope.authorities().contains("system.manage");
     String normalizedBatchEntity = normalizeEntityTypeLenient(batch.getEntityType());
     boolean hasDomainWrite = (ImportContractSchema.ENTITY_TRAINEE.equals(normalizedBatchEntity)
-        && callerScope.authorities().contains("trainee.write"))
+        && (callerScope.authorities().contains("trainee.write") || callerScope.authorities().contains("enrollment.manage")))
         || (ImportContractSchema.ENTITY_PLACEMENT_RECORD.equals(normalizedBatchEntity)
         && callerScope.authorities().contains("placement.manage"));
     if (!hasManage && !hasDomainWrite) {
@@ -243,7 +244,7 @@ public class ImportSecurityScopeValidator {
     if (requireWriteAuthority) {
       boolean hasManage = authorities.contains("system.manage");
       boolean hasDomainWrite = (ImportContractSchema.ENTITY_TRAINEE.equals(normalizedEntityType)
-          && authorities.contains("trainee.write"))
+          && (authorities.contains("trainee.write") || authorities.contains("enrollment.manage")))
           || (ImportContractSchema.ENTITY_PLACEMENT_RECORD.equals(normalizedEntityType)
           && authorities.contains("placement.manage"));
       if (!hasManage && !hasDomainWrite) {
@@ -254,7 +255,8 @@ public class ImportSecurityScopeValidator {
           || authorities.contains("audit.read")
           || authorities.contains("trainee.read")
           || authorities.contains("trainee.write")
-          || authorities.contains("placement.manage");
+          || authorities.contains("placement.manage")
+          || authorities.contains("enrollment.manage");
       if (!hasRead) {
         throw new AccessDeniedException("Caller lacks required permission to view import batches");
       }
@@ -271,7 +273,8 @@ public class ImportSecurityScopeValidator {
     User caller = scopeValidator.resolveAuthenticatedUser()
         .orElseThrow(() -> new AccessDeniedException("Authoritative caller user record not found"));
 
-    if (caller.getDeletedAt() != null || (caller.getUserStatusId() != null && caller.getUserStatusId() != 1)) {
+    if (caller.getDeletedAt() != null
+        || (caller.getUserStatusId() != null && caller.getUserStatusId() != 1L && caller.getUserStatusId() != 2L)) {
       throw new AccessDeniedException("Caller user account is deleted or inactive");
     }
 
@@ -306,44 +309,72 @@ public class ImportSecurityScopeValidator {
     if (roleNational && (hasProviderId || hasEmployerId)) {
       throw new AccessDeniedException("Caller has conflicting administrative role and organizational tenancy");
     }
-    if ((roleStateAdmin || roleOfficer) && (hasProviderId || hasEmployerId)) {
-      throw new AccessDeniedException("Administrative caller has conflicting provider or employer tenancy scope");
-    }
-    if ((roleStateAdmin || roleOfficer) && !hasStateId) {
-      throw new AccessDeniedException("Administrative caller lacks required state scope");
-    }
-    if (roleProvider && !hasProviderId) {
-      throw new AccessDeniedException("Training provider caller lacks required trainingProviderId scope");
-    }
-    if (roleEmployer && !hasEmployerId) {
-      throw new AccessDeniedException("Employer caller lacks required employerId scope");
+
+    if (roleProvider) {
+      if (!hasProviderId) {
+        throw new AccessDeniedException("Training provider caller lacks required trainingProviderId scope");
+      }
+      if (hasEmployerId) {
+        throw new AccessDeniedException("Training provider caller cannot have employer scope");
+      }
+      Long providerStateId = lookupProviderStateId(caller.getTrainingProviderId());
+      if (providerStateId == null) {
+        providerStateId = caller.getStateId();
+      }
+      return new CallerScope(
+          caller,
+          false,
+          caller.getStateId(),
+          caller.getDistrictId(),
+          caller.getTrainingProviderId(),
+          null,
+          providerStateId,
+          authorities
+      );
     }
 
-    int tenantRootCount = (hasStateId ? 1 : 0) + (hasProviderId ? 1 : 0) + (hasEmployerId ? 1 : 0);
-    if (tenantRootCount == 0) {
-      throw new AccessDeniedException("Caller lacks authorized tenant scope");
-    }
-    if (tenantRootCount > 1) {
-      throw new AccessDeniedException("Caller has ambiguous or conflicting tenant scope");
-    }
-    if (hasStateId && (roleProvider || roleEmployer)) {
-      throw new AccessDeniedException("Caller has conflicting persona role and state tenancy");
-    }
-    if ((hasProviderId || hasEmployerId) && hasDistrictId) {
-      throw new AccessDeniedException("Caller has conflicting organizational and geographic tenancy");
+    if (roleEmployer) {
+      if (!hasEmployerId) {
+        throw new AccessDeniedException("Employer caller lacks required employerId scope");
+      }
+      if (hasProviderId) {
+        throw new AccessDeniedException("Employer caller cannot have provider scope");
+      }
+      return new CallerScope(
+          caller,
+          false,
+          caller.getStateId(),
+          caller.getDistrictId(),
+          null,
+          caller.getEmployerId(),
+          null,
+          authorities
+      );
     }
 
-    Long providerStateId = hasProviderId ? lookupProviderStateId(caller.getTrainingProviderId()) : null;
-    return new CallerScope(
-        caller,
-        false,
-        caller.getStateId(),
-        caller.getDistrictId(),
-        caller.getTrainingProviderId(),
-        caller.getEmployerId(),
-        providerStateId,
-        authorities
-    );
+    if (roleStateAdmin || roleOfficer) {
+      if (!hasStateId) {
+        throw new AccessDeniedException("Administrative caller lacks required state scope");
+      }
+      if (hasProviderId || hasEmployerId) {
+        throw new AccessDeniedException("Administrative caller has conflicting provider or employer tenancy scope");
+      }
+      if (roleOfficer && !hasDistrictId) {
+        throw new AccessDeniedException("District officer caller lacks required districtId scope");
+      }
+      return new CallerScope(
+          caller,
+          false,
+          caller.getStateId(),
+          caller.getDistrictId(),
+          null,
+          null,
+          null,
+          authorities
+      );
+    }
+
+    throw new AccessDeniedException("Caller lacks authorized tenant scope");
   }
 
   private Long resolveUserEffectiveStateId(User user) {

@@ -1025,14 +1025,15 @@ public class WorkflowSecurityScopeValidator {
       );
     }
 
-    // B. Training Provider Persona: Trainee must be enrolled with caller provider
+    // B. Training Provider Persona: Trainee must not be enrolled with another training provider
     if (isTrainingProviderCaller() || authUser.getTrainingProviderId() != null) {
       Long providerId = authUser.getTrainingProviderId();
       if (providerId == null) {
         throw new BadRequestException("Authenticated user is not assigned to a training provider", "PROVIDER_ASSIGNMENT_REQUIRED");
       }
-      if (!isTraineeEnrolledWithProvider(targetTraineeId, providerId)) {
-        log.warn("Provider scope violation: provider={} attempted to access target trainee={}", providerId, targetTraineeId);
+      if (isTraineeEnrolledWithOtherProvider(targetTraineeId, providerId)) {
+        log.warn("Provider scope violation: provider={} attempted to access target trainee={} enrolled with another provider",
+            providerId, targetTraineeId);
         throw new BadRequestException(
             "Authenticated training provider is not authorized to act on records of another trainee",
             "TRAINEE_MISMATCH"
@@ -1096,6 +1097,16 @@ public class WorkflowSecurityScopeValidator {
       return count != null && count > 0;
     }
     return true; // Default permissive in mock-only unit tests without jdbcTemplate
+  }
+
+  private boolean isTraineeEnrolledWithOtherProvider(Long traineeId, Long providerId) {
+    if (jdbcTemplate != null) {
+      Integer count = jdbcTemplate.queryForObject(
+          "SELECT COUNT(*) FROM training_enrollments WHERE trainee_id = ? AND provider_id != ? AND deleted_at IS NULL",
+          Integer.class, traineeId, providerId);
+      return count != null && count > 0;
+    }
+    return false;
   }
 
   private boolean isTraineeEmployedWithEmployer(Long traineeId, Long employerId) {
