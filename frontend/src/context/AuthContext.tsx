@@ -22,6 +22,7 @@ import {
   type UserPersona,
   getUserPersonas,
   getDefaultLandingRoute,
+  getDefaultLandingRouteForPersona,
 } from '@/api/types';
 
 export interface AuthContextType {
@@ -31,6 +32,8 @@ export interface AuthContextType {
   connectionError: string | null;
   personas: UserPersona[];
   primaryPersona: UserPersona | null;
+  activePersona: UserPersona | null;
+  setActivePersona: (persona: UserPersona) => void;
   defaultLandingRoute: string;
   login: (credentials: LoginRequest) => Promise<AuthResponse>;
   establishSession: (response: AuthResponse) => void;
@@ -49,6 +52,8 @@ const defaultUnauthenticatedContext: AuthContextType = {
   connectionError: null,
   personas: [],
   primaryPersona: null,
+  activePersona: null,
+  setActivePersona: () => {},
   defaultLandingRoute: '/login',
   login: async () => {
     throw new Error('login must be called within an AuthProvider');
@@ -261,10 +266,72 @@ export function AuthProvider({
     [establishSession],
   );
 
+  // Active Persona Context for role-specific workbench navigation & multi-role switching
+  const [activePersonaState, setActivePersonaState] = useState<UserPersona | null>(() => {
+    try {
+      const saved = localStorage.getItem('sih_active_persona');
+      return (saved as UserPersona) || null;
+    } catch {
+      return null;
+    }
+  });
+
+  const personas = useMemo(
+    () => getUserPersonas(user?.authorities ?? []),
+    [user?.authorities],
+  );
+
+  const primaryPersona = useMemo(
+    () => (personas.length > 0 ? personas[0] : null),
+    [personas],
+  );
+
+  // Synchronize activePersona with available personas
+  useEffect(() => {
+    if (personas.length === 0) {
+      if (activePersonaState !== null) {
+        setActivePersonaState(null);
+        try {
+          localStorage.removeItem('sih_active_persona');
+        } catch {
+          // Ignore storage errors
+        }
+      }
+    } else if (!activePersonaState || !personas.includes(activePersonaState)) {
+      const fallbackPersona = personas[0];
+      setActivePersonaState(fallbackPersona);
+      try {
+        localStorage.setItem('sih_active_persona', fallbackPersona);
+      } catch {
+        // Ignore storage errors
+      }
+    }
+  }, [personas, activePersonaState]);
+
+  const setActivePersona = useCallback(
+    (newPersona: UserPersona) => {
+      if (personas.includes(newPersona)) {
+        setActivePersonaState(newPersona);
+        try {
+          localStorage.setItem('sih_active_persona', newPersona);
+        } catch {
+          // Ignore storage errors
+        }
+      }
+    },
+    [personas],
+  );
+
   // Logout handler
   const logout = useCallback(() => {
     clearSession();
     setUser(null);
+    setActivePersonaState(null);
+    try {
+      localStorage.removeItem('sih_active_persona');
+    } catch {
+      // Ignore storage errors
+    }
   }, []);
 
   // Check single authority or role (case-insensitive)
@@ -298,19 +365,14 @@ export function AuthProvider({
     [user, hasRole, hasAuthority],
   );
 
-  const personas = useMemo(
-    () => getUserPersonas(user?.authorities ?? []),
-    [user?.authorities],
-  );
-
-  const primaryPersona = useMemo(
-    () => (personas.length > 0 ? personas[0] : null),
-    [personas],
-  );
-
   const defaultLandingRoute = useMemo(
-    () => getDefaultLandingRoute(user?.authorities ?? []),
-    [user?.authorities],
+    () => {
+      if (activePersonaState && personas.includes(activePersonaState)) {
+        return getDefaultLandingRouteForPersona(activePersonaState);
+      }
+      return getDefaultLandingRoute(user?.authorities ?? []);
+    },
+    [activePersonaState, personas, user?.authorities],
   );
 
   const value = useMemo<AuthContextType>(
@@ -321,6 +383,8 @@ export function AuthProvider({
       connectionError,
       personas,
       primaryPersona,
+      activePersona: activePersonaState,
+      setActivePersona,
       defaultLandingRoute,
       login,
       establishSession,
@@ -337,6 +401,8 @@ export function AuthProvider({
       connectionError,
       personas,
       primaryPersona,
+      activePersonaState,
+      setActivePersona,
       defaultLandingRoute,
       login,
       establishSession,

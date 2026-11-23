@@ -22,6 +22,8 @@ describe('Navigation, Layout & Multi-Persona Sidebar Filtering', () => {
       connectionError: null,
       personas: user?.authorities?.includes('ROLE_ADMIN') ? ['ADMIN'] : [],
       primaryPersona: user?.authorities?.includes('ROLE_ADMIN') ? 'ADMIN' : null,
+      activePersona: user?.authorities?.includes('ROLE_ADMIN') ? 'ADMIN' : null,
+      setActivePersona: vi.fn(),
       defaultLandingRoute: '/dashboard',
       login: vi.fn(),
       establishSession: vi.fn(),
@@ -102,16 +104,14 @@ describe('Navigation, Layout & Multi-Persona Sidebar Filtering', () => {
       );
 
       expect(screen.getByText('Admin Console')).toBeInTheDocument();
-      expect(screen.getByText('Trainees')).toBeInTheDocument();
-      expect(screen.getByText('Training Batches')).toBeInTheDocument();
-      expect(screen.getByText('Assessments')).toBeInTheDocument();
-      expect(screen.getByText('Placements')).toBeInTheDocument();
-      expect(screen.getByText('Employment')).toBeInTheDocument();
-      expect(screen.getByText('Analytics')).toBeInTheDocument();
-      expect(screen.getByText('Data Quality')).toBeInTheDocument();
-      expect(screen.getByText('Bulk Import')).toBeInTheDocument();
-      expect(screen.getByText('Audit Log')).toBeInTheDocument();
-      expect(screen.getByText('User Management')).toBeInTheDocument();
+      expect(screen.getByText('Onboarding Requests')).toBeInTheDocument();
+      expect(screen.getByText('User Provisioning')).toBeInTheDocument();
+
+      // Must not leak other persona portals
+      expect(screen.queryByText('Trainee Portal')).toBeNull();
+      expect(screen.queryByText('Provider Console')).toBeNull();
+      expect(screen.queryByText('Assessor Console')).toBeNull();
+      expect(screen.queryByText('Employer Console')).toBeNull();
     });
 
     it('renders training provider links for Training Provider persona', () => {
@@ -122,18 +122,23 @@ describe('Navigation, Layout & Multi-Persona Sidebar Filtering', () => {
       );
 
       expect(screen.getByText('Provider Console')).toBeInTheDocument();
-      expect(screen.getByText('Trainees')).toBeInTheDocument();
-      expect(screen.getByText('Training Batches')).toBeInTheDocument();
-      expect(screen.getByText('Placements')).toBeInTheDocument();
-      expect(screen.getByText('Bulk Import')).toBeInTheDocument();
+      expect(screen.getByText('Training Centers')).toBeInTheDocument();
+      expect(screen.getByText('Approved Courses')).toBeInTheDocument();
+      expect(screen.getByText('Batch Management')).toBeInTheDocument();
+      expect(screen.getByText('Candidate Enrollment')).toBeInTheDocument();
+      expect(screen.getByText('Bulk Ingestion')).toBeInTheDocument();
+      expect(screen.getByText('Import Quarantine')).toBeInTheDocument();
+      expect(screen.getByText('Quality Remediation')).toBeInTheDocument();
+      expect(screen.getByText('Center Scorecards')).toBeInTheDocument();
 
-      // Should not see Admin or Assessor only sections
-      expect(screen.queryByText('Audit Log')).toBeNull();
-      expect(screen.queryByText('User Management')).toBeNull();
-      expect(screen.queryByText('Assessments')).toBeNull();
+      // Must not leak Admin, Assessor, or Trainee portals
+      expect(screen.queryByText('Admin Console')).toBeNull();
+      expect(screen.queryByText('Assessor Console')).toBeNull();
+      expect(screen.queryByText('Trainee Portal')).toBeNull();
+      expect(screen.queryByText('Employer Console')).toBeNull();
     });
 
-    it('renders assessor evaluation links for Assessor persona', () => {
+    it('renders assessor evaluation links for Assessor persona without cross-role leakage', () => {
       render(
         <MemoryRouter>
           <Sidebar currentRole="ROLE_ASSESSOR" />
@@ -141,13 +146,13 @@ describe('Navigation, Layout & Multi-Persona Sidebar Filtering', () => {
       );
 
       expect(screen.getByText('Assessor Console')).toBeInTheDocument();
-      expect(screen.getByText('Trainees')).toBeInTheDocument();
-      expect(screen.getByText('Assessments')).toBeInTheDocument();
 
-      // Should not see Batches, Placements, or Admin sections
-      expect(screen.queryByText('Training Batches')).toBeNull();
-      expect(screen.queryByText('Placements')).toBeNull();
-      expect(screen.queryByText('Audit Log')).toBeNull();
+      // Strict isolation: must NOT see Trainee Portal or Provider / Admin links
+      expect(screen.queryByText('Trainee Portal')).toBeNull();
+      expect(screen.queryByText('My Training & Attendance')).toBeNull();
+      expect(screen.queryByText('DPDP Privacy & Consent')).toBeNull();
+      expect(screen.queryByText('Batch Management')).toBeNull();
+      expect(screen.queryByText('Admin Console')).toBeNull();
     });
 
     it('renders employer links for Employer persona', () => {
@@ -158,12 +163,11 @@ describe('Navigation, Layout & Multi-Persona Sidebar Filtering', () => {
       );
 
       expect(screen.getByText('Employer Console')).toBeInTheDocument();
-      expect(screen.getByText('Placements')).toBeInTheDocument();
-      expect(screen.getByText('Employment')).toBeInTheDocument();
 
-      // Should not see Trainees management or Batches
-      expect(screen.queryByText('Trainees')).toBeNull();
-      expect(screen.queryByText('Training Batches')).toBeNull();
+      // Must not see Trainees management or Batches
+      expect(screen.queryByText('Trainee Portal')).toBeNull();
+      expect(screen.queryByText('Batch Management')).toBeNull();
+      expect(screen.queryByText('Admin Console')).toBeNull();
     });
 
     it('renders strictly learner links for Trainee persona', () => {
@@ -174,13 +178,16 @@ describe('Navigation, Layout & Multi-Persona Sidebar Filtering', () => {
       );
 
       expect(screen.getByText('Trainee Portal')).toBeInTheDocument();
-      expect(screen.getByText('Dashboard')).toBeInTheDocument();
+      expect(screen.getByText('My Training & Attendance')).toBeInTheDocument();
+      expect(screen.getByText('DPDP Privacy & Consent')).toBeInTheDocument();
+      expect(screen.getByText('Assessments & Certificates')).toBeInTheDocument();
+      expect(screen.getByText('Career Journey & Surveys')).toBeInTheDocument();
 
-      // Should not see any operational administration links
-      expect(screen.queryByText('User Management')).toBeNull();
-      expect(screen.queryByText('Audit Log')).toBeNull();
-      expect(screen.queryByText('Data Quality')).toBeNull();
-      expect(screen.queryByText('Training Batches')).toBeNull();
+      // Must not see any operational administration links
+      expect(screen.queryByText('Admin Console')).toBeNull();
+      expect(screen.queryByText('Provider Console')).toBeNull();
+      expect(screen.queryByText('Assessor Console')).toBeNull();
+      expect(screen.queryByText('User Provisioning')).toBeNull();
     });
   });
 });

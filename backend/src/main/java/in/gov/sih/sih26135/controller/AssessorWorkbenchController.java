@@ -136,4 +136,21 @@ public class AssessorWorkbenchController {
         response,
         httpRequest.getRequestURI()));
   }
+
+  /**
+   * Re-evaluates pending candidates on a finalized assessment and issues certificates for any who have become eligible.
+   */
+  @PostMapping("/assessments/{id}/issue-pending")
+  @Operation(summary = "Issue certificates for eligible pending candidates")
+  public ResponseEntity<ApiResponse<SaveAssessmentScoresResponse>> issuePendingCertificates(
+      @PathVariable @Positive Long id,
+      HttpServletRequest httpRequest) {
+
+    SaveAssessmentScoresResponse response = assessorWorkbenchService.issuePendingCertificates(id);
+
+    return ResponseEntity.ok(ApiResponse.success(
+        "Pending candidate requirements re-evaluated and eligible certificates issued",
+        response,
+        httpRequest.getRequestURI()));
+  }
 }

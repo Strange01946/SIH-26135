@@ -119,6 +119,19 @@ export async function finalizeAssessment(
 }
 
 /**
+ * Issues certificates for eligible pending candidates on a finalized assessment.
+ * Endpoint: POST /api/v1/assessor/assessments/{id}/issue-pending
+ */
+export async function issuePendingCertificates(
+  assessmentId: number,
+): Promise<SaveAssessmentScoresResponse> {
+  return apiPost<Record<string, never>, SaveAssessmentScoresResponse>(
+    `/api/v1/assessor/assessments/${assessmentId}/issue-pending`,
+    {},
+  );
+}
+
+/**
  * Downloads authentic certificate PDF byte stream (%PDF-1.4).
  * Endpoint: GET /api/v1/certifications/{id}/download
  */

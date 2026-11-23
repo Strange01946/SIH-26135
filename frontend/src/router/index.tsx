@@ -33,6 +33,7 @@ import { TraineeConsentPage } from '@/pages/trainee/TraineeConsentPage';
 import { TraineeAssessmentsPage } from '@/pages/trainee/TraineeAssessmentsPage';
 import { TraineeJourneyPage } from '@/pages/trainee/TraineeJourneyPage';
 import { useAuth } from '@/context/AuthContext';
+import { getDefaultLandingRouteForPersona } from '@/api/types';
 
 function RootRedirect(): React.JSX.Element {
   const { isAuthenticated, defaultLandingRoute, isInitializing } = useAuth();
@@ -40,6 +41,30 @@ function RootRedirect(): React.JSX.Element {
     return <PageLoading message="Initializing platform..." />;
   }
   return <Navigate to={isAuthenticated ? defaultLandingRoute : '/login'} replace />;
+}
+
+function DashboardRedirect(): React.JSX.Element {
+  const { activePersona, primaryPersona } = useAuth();
+  const currentPersona = activePersona || primaryPersona;
+  if (currentPersona) {
+    return <Navigate to={getDefaultLandingRouteForPersona(currentPersona)} replace />;
+  }
+  return <Navigate to="/login" replace />;
+}
+
+function TraineeRouteRedirect(): React.JSX.Element {
+  const { activePersona, primaryPersona } = useAuth();
+  const currentPersona = activePersona || primaryPersona;
+  if (currentPersona === 'TRAINING_PROVIDER') {
+    return <Navigate to="/provider/enrollment" replace />;
+  }
+  if (currentPersona === 'ASSESSOR') {
+    return <Navigate to="/assessor/dashboard" replace />;
+  }
+  if (currentPersona === 'TRAINEE') {
+    return <Navigate to="/trainee/dashboard" replace />;
+  }
+  return <Navigate to="/admin/onboarding" replace />;
 }
 
 export function AppRouter(): React.JSX.Element {
@@ -59,15 +84,10 @@ export function AppRouter(): React.JSX.Element {
             </ProtectedRoute>
           }
         >
-          {/* General Platform Dashboard */}
+          {/* General Platform Dashboard -> Persona Default Dashboard */}
           <Route
             path="/dashboard"
-            element={
-              <PlaceholderPage
-                title="Platform Overview"
-                description="General multi-tenant statistics and announcements across all skilling domains."
-              />
-            }
+            element={<DashboardRedirect />}
           />
 
           {/* Access Denied Page */}
@@ -131,12 +151,12 @@ export function AppRouter(): React.JSX.Element {
             </Route>
           </Route>
 
-          {/* Operational Domain Routes Guarded by Persona */}
+          {/* Operational Domain Aliases: Seamlessly redirect to authoritative persona workflows */}
           <Route
             path="/trainees/*"
             element={
-              <RoleGuard allowedPersonas={['ADMIN', 'TRAINING_PROVIDER', 'ASSESSOR']}>
-                <PlaceholderPage title="Trainee Management" />
+              <RoleGuard allowedPersonas={['ADMIN', 'TRAINING_PROVIDER', 'ASSESSOR', 'TRAINEE']}>
+                <TraineeRouteRedirect />
               </RoleGuard>
             }
           />
@@ -144,7 +164,7 @@ export function AppRouter(): React.JSX.Element {
             path="/batches/*"
             element={
               <RoleGuard allowedPersonas={['ADMIN', 'TRAINING_PROVIDER']}>
-                <PlaceholderPage title="Training Batches" />
+                <Navigate to="/provider/batches" replace />
               </RoleGuard>
             }
           />
@@ -152,7 +172,31 @@ export function AppRouter(): React.JSX.Element {
             path="/assessments/*"
             element={
               <RoleGuard allowedPersonas={['ADMIN', 'ASSESSOR']}>
-                <PlaceholderPage title="Assessments &amp; Certifications" />
+                <Navigate to="/assessor/dashboard" replace />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/import/*"
+            element={
+              <RoleGuard allowedPersonas={['ADMIN', 'TRAINING_PROVIDER']}>
+                <Navigate to="/provider/imports" replace />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/data-quality/*"
+            element={
+              <RoleGuard allowedPersonas={['ADMIN', 'TRAINING_PROVIDER']}>
+                <Navigate to="/provider/data-quality" replace />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/users/*"
+            element={
+              <RoleGuard allowedPersonas={['ADMIN']}>
+                <Navigate to="/admin/users" replace />
               </RoleGuard>
             }
           />
@@ -181,34 +225,10 @@ export function AppRouter(): React.JSX.Element {
             }
           />
           <Route
-            path="/data-quality/*"
-            element={
-              <RoleGuard allowedPersonas={['ADMIN']}>
-                <PlaceholderPage title="Data Quality Scorecard" />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="/import/*"
-            element={
-              <RoleGuard allowedPersonas={['ADMIN', 'TRAINING_PROVIDER']}>
-                <PlaceholderPage title="Bulk Data Ingestion" />
-              </RoleGuard>
-            }
-          />
-          <Route
             path="/audit/*"
             element={
               <RoleGuard allowedPersonas={['ADMIN']}>
                 <PlaceholderPage title="System Audit Log" />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="/users/*"
-            element={
-              <RoleGuard allowedPersonas={['ADMIN']}>
-                <PlaceholderPage title="User Management &amp; Permissions" />
               </RoleGuard>
             }
           />

@@ -535,4 +535,17 @@ public class CertificationController {
       HttpServletRequest httpRequest) {
     return createCertification(request, httpRequest);
   }
+
+  /**
+   * Evaluates pending candidate requirements and issues certificate for passed candidate.
+   */
+  @PostMapping("/issue-pending")
+  @PreAuthorize("hasAuthority('assessment.manage')")
+  public ResponseEntity<ApiResponse<CertificationResponse>> issuePendingCertificate(
+      @RequestParam("assessmentResultId") @Positive Long assessmentResultId,
+      HttpServletRequest httpRequest) {
+    CertificationResponse response = certificationService.issuePendingCertificate(assessmentResultId);
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(ApiResponse.success("Pending certification evaluated and issued successfully", response, httpRequest.getRequestURI()));
+  }
 }

@@ -240,6 +240,33 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
         """, "ENR-AS2-" + runToken, trainee2Id, fixtureCourseId, fixtureProviderId, fixtureCenterId, fixtureBatchId, fixtureProgramId);
     trackedEnrollmentIds.add(enrollment2Id);
 
+    // Default attendance records for Trainee 1 and 2: 5 sessions PRESENT (100% attendance >= 70%)
+    jdbcTemplate.update("""
+        INSERT INTO attendance_records (enrollment_id, trainee_id, batch_id, session_date, session_sequence, attendance_status_id, marked_at)
+        VALUES (?, ?, ?, '2026-01-02', 1, 1, NOW()),
+               (?, ?, ?, '2026-01-03', 1, 1, NOW()),
+               (?, ?, ?, '2026-01-04', 1, 1, NOW()),
+               (?, ?, ?, '2026-01-05', 1, 1, NOW()),
+               (?, ?, ?, '2026-01-06', 1, 1, NOW())
+        """, enrollment1Id, trainee1Id, fixtureBatchId,
+             enrollment1Id, trainee1Id, fixtureBatchId,
+             enrollment1Id, trainee1Id, fixtureBatchId,
+             enrollment1Id, trainee1Id, fixtureBatchId,
+             enrollment1Id, trainee1Id, fixtureBatchId);
+
+    jdbcTemplate.update("""
+        INSERT INTO attendance_records (enrollment_id, trainee_id, batch_id, session_date, session_sequence, attendance_status_id, marked_at)
+        VALUES (?, ?, ?, '2026-01-02', 1, 1, NOW()),
+               (?, ?, ?, '2026-01-03', 1, 1, NOW()),
+               (?, ?, ?, '2026-01-04', 1, 1, NOW()),
+               (?, ?, ?, '2026-01-05', 1, 1, NOW()),
+               (?, ?, ?, '2026-01-06', 1, 1, NOW())
+        """, enrollment2Id, trainee2Id, fixtureBatchId,
+             enrollment2Id, trainee2Id, fixtureBatchId,
+             enrollment2Id, trainee2Id, fixtureBatchId,
+             enrollment2Id, trainee2Id, fixtureBatchId,
+             enrollment2Id, trainee2Id, fixtureBatchId);
+
     // 6. Assessment assigned to Assessor 1
     assignedAssessmentCode = "ASM-AS-" + runToken;
     assignedAssessmentId = insertAndGetId("""
@@ -1263,5 +1290,338 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
         "SELECT certificate_verification_status_id FROM certifications WHERE trainee_id = ? AND enrollment_id = ?",
         Long.class, trainee1Id, enrollment1Id);
     assertThat(verifStatusId).isEqualTo(2L); // PENDING verification status
+  }
+
+  @Test
+  @DisplayName("19. PASS candidate with no authorized issuer: PASS persisted, no certificate issued, status PENDING_ISSUANCE")
+  void testPassWithNoAuthorizedIssuer() throws Exception {
+    // Set organization_type_id to 5 (TRAINING_PROVIDER - not an accredited awarding body)
+    jdbcTemplate.update("UPDATE organizations SET organization_type_id = 5 WHERE organization_id = ?", fixtureOrgId);
+
+    CandidateScoreInput c1 = new CandidateScoreInput();
+    c1.setTraineeId(trainee1Id);
+    c1.setEnrollmentId(enrollment1Id);
+    c1.setAppeared(true);
+    c1.setTheoryScore(new BigDecimal("25.00"));
+    c1.setPracticalScore(new BigDecimal("45.00"));
+    c1.setVivaScore(new BigDecimal("15.00"));
+
+    CandidateScoreInput c2 = new CandidateScoreInput();
+    c2.setTraineeId(trainee2Id);
+    c2.setEnrollmentId(enrollment2Id);
+    c2.setAppeared(false);
+
+    SaveAssessmentScoresRequest finReq = new SaveAssessmentScoresRequest();
+    finReq.setDraft(false);
+    finReq.setCandidates(List.of(c1, c2));
+
+    ResponseEntity<String> finResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/finalize"),
+        HttpMethod.POST,
+        new HttpEntity<>(finReq, assessor1Headers),
+        String.class
+    );
+    assertThat(finResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    // 1. Candidate 1 outcome is PASS (outcome = 2)
+    Integer cand1Outcome = jdbcTemplate.queryForObject("""
+        SELECT ar.assessment_outcome_id
+        FROM assessment_results ar
+        JOIN trainee_assessments ta ON ar.trainee_assessment_id = ta.trainee_assessment_id
+        WHERE ta.assessment_id = ? AND ta.trainee_id = ?
+        """, Integer.class, assignedAssessmentId, trainee1Id);
+    assertThat(cand1Outcome).isEqualTo(2);
+
+    // 2. Training enrollment is marked COMPLETED (training was done)
+    Long enr1Status = jdbcTemplate.queryForObject(
+        "SELECT enrollment_status_id FROM training_enrollments WHERE enrollment_id = ?",
+        Long.class, enrollment1Id);
+    assertThat(enr1Status).isEqualTo(3L);
+
+    // 3. ZERO certificates created (no invented authority, no placeholder)
+    List<Long> certIds = jdbcTemplate.queryForList(
+        "SELECT certification_id FROM certifications WHERE trainee_id = ? AND enrollment_id = ?",
+        Long.class, trainee1Id, enrollment1Id);
+    assertThat(certIds).isEmpty();
+
+    // 4. Assessor roster reflects PENDING_ISSUANCE
+    ResponseEntity<String> rosterResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/roster"),
+        HttpMethod.GET,
+        new HttpEntity<>(assessor1Headers),
+        String.class
+    );
+    assertThat(rosterResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    JsonNode rosterData = parseResponseJson(rosterResp.getBody()).get("data");
+    JsonNode cand1 = null;
+    for (JsonNode c : rosterData.get("candidates")) {
+      if (c.get("traineeId").asLong() == trainee1Id) {
+        cand1 = c;
+        break;
+      }
+    }
+    assertThat(cand1).isNotNull();
+    assertThat(cand1.get("isPassFlag").asBoolean()).isTrue();
+    assertThat(cand1.get("certificateId").isNull()).isTrue();
+    assertThat(cand1.get("certificateStatusCode").asText()).isEqualTo("PENDING_ISSUANCE");
+  }
+
+  @Test
+  @DisplayName("20. PASS candidate with insufficient attendance (< 70%): PASS persisted, enrollment not completed, no certificate")
+  void testPassWithInsufficientAttendance() {
+    // Delete existing attendance records and insert 1 present, 3 absent (25% < 70%)
+    jdbcTemplate.update("DELETE FROM attendance_records WHERE enrollment_id = ?", enrollment1Id);
+    jdbcTemplate.update("""
+        INSERT INTO attendance_records (enrollment_id, trainee_id, batch_id, session_date, session_sequence, attendance_status_id, marked_at)
+        VALUES (?, ?, ?, '2026-01-10', 1, 1, NOW()),
+               (?, ?, ?, '2026-01-11', 1, 2, NOW()),
+               (?, ?, ?, '2026-01-12', 1, 2, NOW()),
+               (?, ?, ?, '2026-01-13', 1, 2, NOW())
+        """, enrollment1Id, trainee1Id, fixtureBatchId,
+             enrollment1Id, trainee1Id, fixtureBatchId,
+             enrollment1Id, trainee1Id, fixtureBatchId,
+             enrollment1Id, trainee1Id, fixtureBatchId);
+
+    CandidateScoreInput c1 = new CandidateScoreInput();
+    c1.setTraineeId(trainee1Id);
+    c1.setEnrollmentId(enrollment1Id);
+    c1.setAppeared(true);
+    c1.setTheoryScore(new BigDecimal("25.00"));
+    c1.setPracticalScore(new BigDecimal("45.00"));
+    c1.setVivaScore(new BigDecimal("15.00"));
+
+    CandidateScoreInput c2 = new CandidateScoreInput();
+    c2.setTraineeId(trainee2Id);
+    c2.setEnrollmentId(enrollment2Id);
+    c2.setAppeared(false);
+
+    SaveAssessmentScoresRequest finReq = new SaveAssessmentScoresRequest();
+    finReq.setDraft(false);
+    finReq.setCandidates(List.of(c1, c2));
+
+    ResponseEntity<String> finResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/finalize"),
+        HttpMethod.POST,
+        new HttpEntity<>(finReq, assessor1Headers),
+        String.class
+    );
+    assertThat(finResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    // 1. Candidate 1 outcome is PASS
+    Integer cand1Outcome = jdbcTemplate.queryForObject("""
+        SELECT ar.assessment_outcome_id
+        FROM assessment_results ar
+        JOIN trainee_assessments ta ON ar.trainee_assessment_id = ta.trainee_assessment_id
+        WHERE ta.assessment_id = ? AND ta.trainee_id = ?
+        """, Integer.class, assignedAssessmentId, trainee1Id);
+    assertThat(cand1Outcome).isEqualTo(2);
+
+    // 2. Training enrollment remains ENROLLED (1), NOT COMPLETED (3)
+    Long enr1Status = jdbcTemplate.queryForObject(
+        "SELECT enrollment_status_id FROM training_enrollments WHERE enrollment_id = ?",
+        Long.class, enrollment1Id);
+    assertThat(enr1Status).isEqualTo(1L);
+
+    // 3. ZERO certificates created
+    List<Long> certIds = jdbcTemplate.queryForList(
+        "SELECT certification_id FROM certifications WHERE trainee_id = ? AND enrollment_id = ?",
+        Long.class, trainee1Id, enrollment1Id);
+    assertThat(certIds).isEmpty();
+  }
+
+  @Test
+  @DisplayName("21. PASS candidate with zero attendance records on offline course: PASS persisted, enrollment not completed, no certificate")
+  void testPassWithNoAttendanceRecords() throws Exception {
+    // Delete all attendance records for Trainee 1
+    jdbcTemplate.update("DELETE FROM attendance_records WHERE enrollment_id = ?", enrollment1Id);
+
+    CandidateScoreInput c1 = new CandidateScoreInput();
+    c1.setTraineeId(trainee1Id);
+    c1.setEnrollmentId(enrollment1Id);
+    c1.setAppeared(true);
+    c1.setTheoryScore(new BigDecimal("25.00"));
+    c1.setPracticalScore(new BigDecimal("45.00"));
+    c1.setVivaScore(new BigDecimal("15.00"));
+
+    CandidateScoreInput c2 = new CandidateScoreInput();
+    c2.setTraineeId(trainee2Id);
+    c2.setEnrollmentId(enrollment2Id);
+    c2.setAppeared(false);
+
+    SaveAssessmentScoresRequest finReq = new SaveAssessmentScoresRequest();
+    finReq.setDraft(false);
+    finReq.setCandidates(List.of(c1, c2));
+
+    ResponseEntity<String> finResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/finalize"),
+        HttpMethod.POST,
+        new HttpEntity<>(finReq, assessor1Headers),
+        String.class
+    );
+    assertThat(finResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    // 1. Outcome is PASS
+    Integer cand1Outcome = jdbcTemplate.queryForObject("""
+        SELECT ar.assessment_outcome_id
+        FROM assessment_results ar
+        JOIN trainee_assessments ta ON ar.trainee_assessment_id = ta.trainee_assessment_id
+        WHERE ta.assessment_id = ? AND ta.trainee_id = ?
+        """, Integer.class, assignedAssessmentId, trainee1Id);
+    assertThat(cand1Outcome).isEqualTo(2);
+
+    // 2. Training enrollment remains ENROLLED (1)
+    Long enr1Status = jdbcTemplate.queryForObject(
+        "SELECT enrollment_status_id FROM training_enrollments WHERE enrollment_id = ?",
+        Long.class, enrollment1Id);
+    assertThat(enr1Status).isEqualTo(1L);
+
+    // 3. ZERO certificates created
+    List<Long> certIds = jdbcTemplate.queryForList(
+        "SELECT certification_id FROM certifications WHERE trainee_id = ? AND enrollment_id = ?",
+        Long.class, trainee1Id, enrollment1Id);
+    assertThat(certIds).isEmpty();
+
+    // 4. Roster reflects PENDING_ELIGIBILITY
+    ResponseEntity<String> rosterResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/roster"),
+        HttpMethod.GET,
+        new HttpEntity<>(assessor1Headers),
+        String.class
+    );
+    JsonNode rosterData = parseResponseJson(rosterResp.getBody()).get("data");
+    JsonNode cand1 = null;
+    for (JsonNode c : rosterData.get("candidates")) {
+      if (c.get("traineeId").asLong() == trainee1Id) {
+        cand1 = c;
+        break;
+      }
+    }
+    assertThat(cand1).isNotNull();
+    assertThat(cand1.get("certificateStatusCode").asText()).isEqualTo("PENDING_ELIGIBILITY");
+  }
+
+  @Test
+  @DisplayName("22. PASS candidate on ONLINE course (attendance not applicable): enrollment completed and certificate issued")
+  void testPassWithAttendanceNotApplicableOnlineCourse() {
+    // Set course delivery mode to ONLINE (2)
+    jdbcTemplate.update("UPDATE courses SET delivery_mode_id = 2 WHERE course_id = ?", fixtureCourseId);
+    // Delete all attendance records (to prove physical attendance is not applicable)
+    jdbcTemplate.update("DELETE FROM attendance_records WHERE enrollment_id = ?", enrollment1Id);
+
+    CandidateScoreInput c1 = new CandidateScoreInput();
+    c1.setTraineeId(trainee1Id);
+    c1.setEnrollmentId(enrollment1Id);
+    c1.setAppeared(true);
+    c1.setTheoryScore(new BigDecimal("25.00"));
+    c1.setPracticalScore(new BigDecimal("45.00"));
+    c1.setVivaScore(new BigDecimal("15.00"));
+
+    CandidateScoreInput c2 = new CandidateScoreInput();
+    c2.setTraineeId(trainee2Id);
+    c2.setEnrollmentId(enrollment2Id);
+    c2.setAppeared(false);
+
+    SaveAssessmentScoresRequest finReq = new SaveAssessmentScoresRequest();
+    finReq.setDraft(false);
+    finReq.setCandidates(List.of(c1, c2));
+
+    ResponseEntity<String> finResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/finalize"),
+        HttpMethod.POST,
+        new HttpEntity<>(finReq, assessor1Headers),
+        String.class
+    );
+    assertThat(finResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    // Enrollment completed
+    Long enr1Status = jdbcTemplate.queryForObject(
+        "SELECT enrollment_status_id FROM training_enrollments WHERE enrollment_id = ?",
+        Long.class, enrollment1Id);
+    assertThat(enr1Status).isEqualTo(3L);
+
+    // Certificate issued
+    List<Long> certIds = jdbcTemplate.queryForList(
+        "SELECT certification_id FROM certifications WHERE trainee_id = ? AND enrollment_id = ?",
+        Long.class, trainee1Id, enrollment1Id);
+    assertThat(certIds).hasSize(1);
+    trackedCertificationIds.add(certIds.get(0));
+  }
+
+  @Test
+  @DisplayName("23. Pending candidate becomes eligible and receives certificate through authorized workflow")
+  void testPendingCandidateBecomesEligibleAndReceivesCertificate() {
+    // Trainee 1 starts with 0 attendance records
+    jdbcTemplate.update("DELETE FROM attendance_records WHERE enrollment_id = ?", enrollment1Id);
+
+    CandidateScoreInput c1 = new CandidateScoreInput();
+    c1.setTraineeId(trainee1Id);
+    c1.setEnrollmentId(enrollment1Id);
+    c1.setAppeared(true);
+    c1.setTheoryScore(new BigDecimal("25.00"));
+    c1.setPracticalScore(new BigDecimal("45.00"));
+    c1.setVivaScore(new BigDecimal("15.00"));
+
+    CandidateScoreInput c2 = new CandidateScoreInput();
+    c2.setTraineeId(trainee2Id);
+    c2.setEnrollmentId(enrollment2Id);
+    c2.setAppeared(false);
+
+    SaveAssessmentScoresRequest finReq = new SaveAssessmentScoresRequest();
+    finReq.setDraft(false);
+    finReq.setCandidates(List.of(c1, c2));
+
+    // 1. Initial finalize: Trainee 1 passes, but certificate is not issued due to pending attendance
+    ResponseEntity<String> finResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/finalize"),
+        HttpMethod.POST,
+        new HttpEntity<>(finReq, assessor1Headers),
+        String.class
+    );
+    assertThat(finResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    List<Long> initialCerts = jdbcTemplate.queryForList(
+        "SELECT certification_id FROM certifications WHERE trainee_id = ?",
+        Long.class, trainee1Id);
+    assertThat(initialCerts).isEmpty();
+
+    // 2. Trainee 1 attendance is subsequently recorded: 5 sessions PRESENT (100% attendance >= 70%)
+    jdbcTemplate.update("""
+        INSERT INTO attendance_records (enrollment_id, trainee_id, batch_id, session_date, session_sequence, attendance_status_id, marked_at)
+        VALUES (?, ?, ?, '2026-01-20', 1, 1, NOW()),
+               (?, ?, ?, '2026-01-21', 1, 1, NOW()),
+               (?, ?, ?, '2026-01-22', 1, 1, NOW()),
+               (?, ?, ?, '2026-01-23', 1, 1, NOW()),
+               (?, ?, ?, '2026-01-24', 1, 1, NOW())
+        """, enrollment1Id, trainee1Id, fixtureBatchId,
+             enrollment1Id, trainee1Id, fixtureBatchId,
+             enrollment1Id, trainee1Id, fixtureBatchId,
+             enrollment1Id, trainee1Id, fixtureBatchId,
+             enrollment1Id, trainee1Id, fixtureBatchId);
+
+    // 3. Authorized workflow: assessor calls /issue-pending endpoint
+    ResponseEntity<String> issueResp = restTemplate.exchange(
+        getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/issue-pending"),
+        HttpMethod.POST,
+        new HttpEntity<>(assessor1Headers),
+        String.class
+    );
+    assertThat(issueResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    // 4. Trainee 1 enrollment is now COMPLETED
+    Long enr1Status = jdbcTemplate.queryForObject(
+        "SELECT enrollment_status_id FROM training_enrollments WHERE enrollment_id = ?",
+        Long.class, enrollment1Id);
+    assertThat(enr1Status).isEqualTo(3L);
+
+    // 5. Certificate is now ISSUED with authentic issuing body!
+    List<Long> issuedCerts = jdbcTemplate.queryForList(
+        "SELECT certification_id FROM certifications WHERE trainee_id = ? AND enrollment_id = ?",
+        Long.class, trainee1Id, enrollment1Id);
+    assertThat(issuedCerts).hasSize(1);
+    trackedCertificationIds.add(issuedCerts.get(0));
+
+    String issuingBody = jdbcTemplate.queryForObject(
+        "SELECT issuing_body FROM certifications WHERE certification_id = ?",
+        String.class, issuedCerts.get(0));
+    assertThat(issuingBody).isEqualTo("Skill Org " + runToken);
   }
 }

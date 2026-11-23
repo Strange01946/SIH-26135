@@ -65,6 +65,8 @@ describe('Provider Center Quality Scorecards', () => {
       connectionError: null,
       personas: ['TRAINING_PROVIDER'],
       primaryPersona: 'TRAINING_PROVIDER',
+      activePersona: 'TRAINING_PROVIDER',
+      setActivePersona: vi.fn(),
       defaultLandingRoute: '/provider/dashboard',
       login: vi.fn(),
       establishSession: vi.fn(),

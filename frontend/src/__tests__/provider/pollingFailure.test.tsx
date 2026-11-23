@@ -29,6 +29,8 @@ describe('ProviderBulkImportPage — Resilient Bounded Polling Failure Handling'
       connectionError: null,
       personas: user?.authorities?.includes('ROLE_TRAINING_PROVIDER') ? ['TRAINING_PROVIDER'] : [],
       primaryPersona: user?.authorities?.includes('ROLE_TRAINING_PROVIDER') ? 'TRAINING_PROVIDER' : null,
+      activePersona: user?.authorities?.includes('ROLE_TRAINING_PROVIDER') ? 'TRAINING_PROVIDER' : null,
+      setActivePersona: vi.fn(),
       defaultLandingRoute: '/provider/dashboard',
       login: vi.fn(),
       establishSession: vi.fn(),

@@ -228,6 +228,8 @@ describe('Phase 30.3A — Registration & Onboarding Frontend Unit Tests', () => 
         connectionError: null,
         personas: ['ADMIN'],
         primaryPersona: 'ADMIN',
+        activePersona: 'ADMIN',
+        setActivePersona: vi.fn(),
         defaultLandingRoute: '/admin/dashboard',
         login: vi.fn(),
         logout: vi.fn(),

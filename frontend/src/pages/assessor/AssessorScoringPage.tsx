@@ -18,6 +18,7 @@ import {
   getAssessmentRoster,
   saveDraftScores,
   finalizeAssessment,
+  issuePendingCertificates,
   downloadCertificatePdf,
 } from '@/api/assessorApi';
 import type {
@@ -348,6 +349,28 @@ export function AssessorScoringPage(): React.JSX.Element {
     }
   };
 
+  const [issuingPending, setIssuingPending] = useState(false);
+  const hasPendingCertificates = useMemo(() => {
+    return computedCandidates.some((c) => c.outcomePreview === 'PASS' && !c.certificateNumber);
+  }, [computedCandidates]);
+
+  const handleIssuePending = async () => {
+    setIssuingPending(true);
+    setError(null);
+    setSuccessMessage(null);
+    try {
+      const resp = await issuePendingCertificates(assessmentId);
+      setSuccessMessage(
+        `Pending candidate requirements evaluated! ${resp.certificatesIssued} total certificates issued.`,
+      );
+      await loadRoster();
+    } catch (err: any) {
+      setError(err?.message || 'Failed to issue pending certificates.');
+    } finally {
+      setIssuingPending(false);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       {/* Top Breadcrumb & Actions Bar */}
@@ -370,7 +393,7 @@ export function AssessorScoringPage(): React.JSX.Element {
         </div>
 
         {/* Action Buttons */}
-        {!isFinalized && (
+        {!isFinalized ? (
           <div className="flex items-center gap-2.5">
             <button
               onClick={handleSaveDraft}
@@ -394,7 +417,19 @@ export function AssessorScoringPage(): React.JSX.Element {
               Finalize &amp; Issue Certificates
             </button>
           </div>
-        )}
+        ) : hasPendingCertificates ? (
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={handleIssuePending}
+              disabled={issuingPending}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white transition shadow-sm disabled:opacity-50"
+              title="Re-evaluate pending candidate requirements and issue certificates"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${issuingPending ? 'animate-spin' : ''}`} />
+              Issue Pending Certificates
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {/* Finalized Banner Alert */}
@@ -706,7 +741,7 @@ export function AssessorScoringPage(): React.JSX.Element {
                       {isFinalized && c.certificateNumber ? (
                         <div className="flex items-center gap-2">
                           <div className="text-xs">
-                            <span className="font-semibold text-gray-700 block">NCVET Certificate</span>
+                            <span className="font-semibold text-gray-700 block">Certificate</span>
                             <span className="font-mono text-[11px] text-emerald-700">{c.certificateNumber}</span>
                           </div>
                           {(() => {
@@ -723,6 +758,22 @@ export function AssessorScoringPage(): React.JSX.Element {
                               </button>
                             ) : null;
                           })()}
+                        </div>
+                      ) : isFinalized ? (
+                        <div className="text-xs">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium ${
+                              c.isPassFlag
+                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                : 'bg-gray-100 text-gray-500'
+                            }`}
+                          >
+                            {c.isPassFlag
+                              ? (c.certificateStatusCode === 'PENDING_ELIGIBILITY'
+                                  ? 'Pending Attendance'
+                                  : 'Pending Issuance')
+                              : 'No Certificate'}
+                          </span>
                         </div>
                       ) : (
                         <input

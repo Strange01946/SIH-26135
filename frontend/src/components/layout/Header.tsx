@@ -1,6 +1,11 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import {
+  type UserPersona,
+  formatPersonaLabel,
+  getDefaultLandingRouteForPersona,
+} from '@/api/types';
 
 interface HeaderProps {
   username?: string;
@@ -15,12 +20,45 @@ export function Header({
   onToggleMobileMenu,
   isMobileMenuOpen = false,
 }: HeaderProps): React.JSX.Element {
-  const { user, isAuthenticated, logout, primaryPersona } = useAuth();
+  const {
+    user,
+    isAuthenticated,
+    logout,
+    personas,
+    primaryPersona,
+    activePersona,
+    setActivePersona,
+  } = useAuth();
   const navigate = useNavigate();
 
+  const [roleMenuOpen, setRoleMenuOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
   const displayUsername = propUsername || user?.username;
-  const displayRole = propRole || primaryPersona || (user?.authorities?.[0] ? user.authorities[0].replace(/^ROLE_/, '') : 'User');
+  const currentPersona = activePersona || primaryPersona;
+  const displayRole =
+    propRole ||
+    (currentPersona ? formatPersonaLabel(currentPersona) : null) ||
+    (user?.authorities?.[0] ? user.authorities[0].replace(/^ROLE_/, '') : 'User');
   const showAuthInfo = Boolean(displayUsername || isAuthenticated);
+
+  // Close role selector dropdown on outside click
+  useEffect(() => {
+    if (!roleMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setRoleMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [roleMenuOpen]);
+
+  const handleSwitchRole = (selectedPersona: UserPersona) => {
+    setActivePersona(selectedPersona);
+    setRoleMenuOpen(false);
+    navigate(getDefaultLandingRouteForPersona(selectedPersona));
+  };
 
   const handleSignOut = () => {
     logout();
@@ -75,12 +113,57 @@ export function Header({
         <div className="flex items-center gap-3">
           {showAuthInfo ? (
             <div className="flex items-center gap-3 text-sm flex-shrink-0">
-              <div className="hidden sm:block text-right">
-                <div className="font-medium text-white text-xs">{displayUsername}</div>
-                <div className="text-blue-200 text-[10px] uppercase tracking-wider">
-                  {displayRole}
+              {/* Multi-role switcher dropdown or single role badge */}
+              {personas.length > 1 ? (
+                <div className="relative inline-block text-left" ref={dropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setRoleMenuOpen(!roleMenuOpen)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded bg-white/10 hover:bg-white/20 border border-white/30 text-white transition-colors focus:outline-none focus:ring-2 focus:ring-white"
+                    aria-label="Switch operational role"
+                    aria-expanded={roleMenuOpen}
+                  >
+                    <span className="text-blue-200">Role:</span>
+                    <span className="font-bold text-white">
+                      {formatPersonaLabel(currentPersona)}
+                    </span>
+                    <span className="text-[10px]">▼</span>
+                  </button>
+                  {roleMenuOpen && (
+                    <div className="absolute right-0 mt-1 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50 py-1 text-gray-800">
+                      <div className="px-3 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-100">
+                        Switch Role Context
+                      </div>
+                      {personas.map((p) => {
+                        const isCurrent = p === currentPersona;
+                        return (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => handleSwitchRole(p)}
+                            className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-navy-50 hover:text-navy ${
+                              isCurrent ? 'font-bold text-navy bg-navy-50/60' : 'text-gray-700'
+                            }`}
+                          >
+                            <span>{formatPersonaLabel(p)}</span>
+                            {isCurrent && (
+                              <span className="text-navy font-bold text-xs">✓</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              </div>
+              ) : (
+                <div className="hidden sm:block text-right">
+                  <div className="font-medium text-white text-xs">{displayUsername}</div>
+                  <div className="text-blue-200 text-[10px] uppercase tracking-wider font-semibold">
+                    {displayRole}
+                  </div>
+                </div>
+              )}
+
               <div
                 className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center font-semibold text-sm border border-white/30"
                 aria-label={`User avatar for ${displayUsername}`}

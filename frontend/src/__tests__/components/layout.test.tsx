@@ -73,8 +73,8 @@ describe('Sidebar', () => {
         <Sidebar />
       </MemoryRouter>,
     );
-    expect(screen.getByText('Dashboard')).toBeInTheDocument();
-    expect(screen.getByText('Analytics')).toBeInTheDocument();
+    expect(screen.getByText('Admin Console')).toBeInTheDocument();
+    expect(screen.getByText('Provider Console')).toBeInTheDocument();
   });
 
   it('filters nav items for ROLE_TRAINEE', () => {
@@ -83,9 +83,9 @@ describe('Sidebar', () => {
         <Sidebar currentRole="ROLE_TRAINEE" />
       </MemoryRouter>,
     );
-    expect(screen.getByText('Dashboard')).toBeInTheDocument();
-    expect(screen.queryByText('User Management')).toBeNull();
-    expect(screen.queryByText('Audit Log')).toBeNull();
+    expect(screen.getByText('Trainee Portal')).toBeInTheDocument();
+    expect(screen.queryByText('User Provisioning')).toBeNull();
+    expect(screen.queryByText('Provider Console')).toBeNull();
   });
 
   it('shows all items for ROLE_ADMIN', () => {
@@ -94,9 +94,9 @@ describe('Sidebar', () => {
         <Sidebar currentRole="ROLE_ADMIN" />
       </MemoryRouter>,
     );
-    expect(screen.getByText('User Management')).toBeInTheDocument();
-    expect(screen.getByText('Audit Log')).toBeInTheDocument();
-    expect(screen.getByText('Analytics')).toBeInTheDocument();
+    expect(screen.getByText('Admin Console')).toBeInTheDocument();
+    expect(screen.getByText('Onboarding Requests')).toBeInTheDocument();
+    expect(screen.getByText('User Provisioning')).toBeInTheDocument();
   });
 
   it('renders mobile drawer when isMobileOpen is true', () => {

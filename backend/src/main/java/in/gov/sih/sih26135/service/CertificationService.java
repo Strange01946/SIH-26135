@@ -32,6 +32,8 @@ public interface CertificationService {
 
   CertificationResponse createCertification(CreateCertificationRequest request);
 
+  CertificationResponse issuePendingCertificate(Long assessmentResultId);
+
   CertificationResponse updateCertification(Long id, UpdateCertificationRequest request);
 
   void deleteCertification(Long id);

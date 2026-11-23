@@ -199,46 +199,137 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
     return a.compareTo(b) == 0;
   }
 
-  private String resolveAuthoritativeIssuingBody(Assessment assessment) {
-    // 1. Parent Organization (if accredited awarding body / council)
+  @Override
+  public Optional<String> resolveAuthoritativeIssuingBody(Assessment assessment) {
+    if (assessment == null) {
+      return Optional.empty();
+    }
+
+    // 1. Check Training Provider's Parent Organization (Awarding Body / Ministry / Council)
     if (assessment.getTrainingBatch() != null && assessment.getTrainingBatch().getTrainingProvider() != null) {
       TrainingProvider provider = assessment.getTrainingBatch().getTrainingProvider();
       if (provider.getOrganizationId() != null && organizationRepository != null) {
-        Optional<Organization> org = organizationRepository.findById(provider.getOrganizationId());
-        if (org.isPresent() && org.get().getOrganizationName() != null && !org.get().getOrganizationName().isBlank()) {
-          return org.get().getOrganizationName().trim();
+        Optional<Organization> orgOpt = organizationRepository.findById(provider.getOrganizationId());
+        if (orgOpt.isPresent()) {
+          Organization org = orgOpt.get();
+          if (org.getDeletedAt() == null && Long.valueOf(1L).equals(org.getLifecycleStatusId())) {
+            Long typeId = org.getOrganizationTypeId();
+            // 1: CENTRAL_MINISTRY, 2: STATE_DEPARTMENT, 3: AUTONOMOUS_BODY, 4: SECTOR_SKILL_COUNCIL
+            if (typeId != null && (typeId == 1L || typeId == 2L || typeId == 3L || typeId == 4L)) {
+              if (org.getOrganizationName() != null && !org.getOrganizationName().isBlank()) {
+                return Optional.of(org.getOrganizationName().trim());
+              }
+            }
+          }
         }
       }
     }
 
-    // 2. Sector Skill Council / Awarding Body via Course Sector
+    // 2. Check Program Department Organization (e.g. Ministry / Department administering the program)
+    if (assessment.getProgram() != null && assessment.getProgram().getId() != null) {
+      try {
+        List<Map<String, Object>> orgRows = jdbcTemplate.queryForList(
+            "SELECT o.organization_name, o.organization_type_id, o.lifecycle_status_id " +
+            "FROM programs p " +
+            "JOIN departments d ON p.department_id = d.department_id " +
+            "JOIN organizations o ON d.organization_id = o.organization_id " +
+            "WHERE p.program_id = ? AND p.deleted_at IS NULL AND d.deleted_at IS NULL AND o.deleted_at IS NULL",
+            assessment.getProgram().getId()
+        );
+        if (!orgRows.isEmpty()) {
+          Map<String, Object> row = orgRows.get(0);
+          Long typeId = ((Number) row.get("organization_type_id")).longValue();
+          Long lifecycleId = ((Number) row.get("lifecycle_status_id")).longValue();
+          if (lifecycleId == 1L && (typeId == 1L || typeId == 2L || typeId == 3L || typeId == 4L)) {
+            String orgName = (String) row.get("organization_name");
+            if (orgName != null && !orgName.isBlank()) {
+              return Optional.of(orgName.trim());
+            }
+          }
+        }
+      } catch (Exception e) {
+        log.debug("Error checking program department organization: {}", e.getMessage());
+      }
+    }
+
+    // 3. Check registered Sector Skill Council Organization in authoritative organizations table
     if (assessment.getCourse() != null && assessment.getCourse().getSector() != null) {
       String sectorName = assessment.getCourse().getSector().getSectorName();
       if (sectorName != null && !sectorName.isBlank()) {
-        String cleanSector = sectorName.trim();
-        if (cleanSector.toLowerCase(Locale.ROOT).contains("council")
-            || cleanSector.toLowerCase(Locale.ROOT).contains("body")
-            || cleanSector.toLowerCase(Locale.ROOT).contains("board")) {
-          return cleanSector;
+        try {
+          List<String> matchingOrgs = jdbcTemplate.queryForList(
+              "SELECT organization_name FROM organizations " +
+              "WHERE organization_type_id = 4 AND lifecycle_status_id = 1 AND deleted_at IS NULL " +
+              "AND (LOWER(organization_name) LIKE LOWER(?) OR LOWER(organization_code) LIKE LOWER(?)) LIMIT 1",
+              String.class,
+              "%" + sectorName.trim() + "%",
+              "%" + sectorName.trim() + "%"
+          );
+          if (!matchingOrgs.isEmpty() && matchingOrgs.get(0) != null && !matchingOrgs.get(0).isBlank()) {
+            return Optional.of(matchingOrgs.get(0).trim());
+          }
+        } catch (Exception e) {
+          log.debug("Error checking sector council organization: {}", e.getMessage());
         }
-        return cleanSector + " Skill Council";
       }
     }
 
-    // 3. Provider Name
-    if (assessment.getTrainingBatch() != null && assessment.getTrainingBatch().getTrainingProvider() != null) {
-      TrainingProvider provider = assessment.getTrainingBatch().getTrainingProvider();
-      if (provider.getProviderName() != null && !provider.getProviderName().isBlank()) {
-        return provider.getProviderName().trim();
+    // NEVER invent placeholders, display name claims, or fake authority strings
+    return Optional.empty();
+  }
+
+  @Override
+  public boolean isAttendanceRequirementSatisfied(Course course, Long enrollmentId) {
+    if (enrollmentId == null) {
+      return false;
+    }
+
+    // 1. Check Course Delivery Mode
+    Long deliveryModeId = null;
+    if (course != null && course.getDeliveryMode() != null) {
+      deliveryModeId = course.getDeliveryMode().getId();
+    } else if (course != null && course.getId() != null) {
+      try {
+        deliveryModeId = jdbcTemplate.queryForObject(
+            "SELECT delivery_mode_id FROM courses WHERE course_id = ?",
+            Long.class, course.getId());
+      } catch (Exception e) {
+        log.debug("Could not determine delivery_mode_id for course {}: {}", course.getId(), e.getMessage());
       }
     }
 
-    // 4. Program
-    if (assessment.getProgram() != null && assessment.getProgram().getProgramName() != null && !assessment.getProgram().getProgramName().isBlank()) {
-      return assessment.getProgram().getProgramName().trim();
+    // Mode 2 = ONLINE (self-paced / virtual without mandatory physical classroom attendance)
+    if (deliveryModeId != null && deliveryModeId == 2L) {
+      log.info("Enrollment {}: Course delivery mode is ONLINE (2). Physical attendance requirement is not applicable.", enrollmentId);
+      return true;
     }
 
-    return "Authorized Awarding Body";
+    // 2. For OFFLINE (1), BLENDED (3), OJT (4), or unspecified: physical session attendance is mandatory!
+    Long totalSessions = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM attendance_records WHERE enrollment_id = ?",
+        Long.class, enrollmentId);
+
+    // Missing attendance evidence is NOT treated as satisfied
+    if (totalSessions == null || totalSessions == 0) {
+      log.info("Enrollment {}: Zero attendance records found for mandatory attendance course. Requirement NOT satisfied.", enrollmentId);
+      return false;
+    }
+
+    // Attendance status 1 = PRESENT, 3 = LATE, 6 = HALF_DAY (counts_as_present = 1)
+    Long attendedSessions = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM attendance_records WHERE enrollment_id = ? AND attendance_status_id IN (1, 3, 6)",
+        Long.class, enrollmentId);
+
+    double rate = (attendedSessions != null ? attendedSessions.doubleValue() : 0.0) / totalSessions.doubleValue();
+    if (rate < 0.70) {
+      log.info("Enrollment {}: Attendance rate {}/{} ({}%) is below mandatory 70% threshold. Requirement NOT satisfied.",
+          enrollmentId, attendedSessions, totalSessions, Math.round(rate * 100));
+      return false;
+    }
+
+    log.info("Enrollment {}: Attendance rate {}/{} ({}%) satisfies mandatory 70% threshold.",
+        enrollmentId, attendedSessions, totalSessions, Math.round(rate * 100));
+    return true;
   }
 
   @Override
@@ -551,6 +642,18 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
           certId = c.getId();
           certNumber = c.getCertificateNumber();
           certStatus = c.getCertificateStatus() != null ? c.getCertificateStatus().getStatusCode() : "ISSUED";
+        } else if (Boolean.TRUE.equals(isPass)) {
+          boolean attendanceMet = isAttendanceRequirementSatisfied(assessment.getCourse(), enrollmentId);
+          if (!attendanceMet) {
+            certStatus = "PENDING_ELIGIBILITY";
+          } else {
+            Optional<String> authIssuer = resolveAuthoritativeIssuingBody(assessment);
+            if (authIssuer.isEmpty()) {
+              certStatus = "PENDING_ISSUANCE";
+            } else {
+              certStatus = "ELIGIBLE";
+            }
+          }
         }
       }
 
@@ -733,7 +836,13 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
         throw new BadRequestException("Assessment is already finalized with different marks or outcomes and cannot be modified", "ASSESSMENT_ALREADY_FINALIZED");
       }
 
-      // Idempotent return without database mutations
+      // Check if any passed candidates who previously had pending requirements are NOW eligible!
+      int newlyIssued = issuePendingCertificatesInternal(assessment);
+      if (newlyIssued > 0) {
+        log.info("Idempotent finalize re-evaluation issued {} pending certificates for assessment {}.", newlyIssued, assessmentId);
+      }
+
+      // Idempotent return without database mutations to finalized marks
       log.info("Assessment {} is already finalized and identical payload received. Returning idempotent read-only response.", assessmentId);
       AssessorRosterResponse currentRoster = getAssessmentRoster(assessmentId);
       int passed = 0;
@@ -933,86 +1042,93 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
 
       AssessmentResult savedResult = assessmentResultRepository.save(result);
 
-      // Certification on Finalize for Passed candidates
-      if (!request.isDraft() && isPass) {
-        Optional<Certification> existingCert = certificationRepository.findFirstByAssessmentResultId(savedResult.getId());
-        if (existingCert.isEmpty()) {
-          existingCert = certificationRepository.findFirstByTrainingEnrollmentId(enrollment.getId());
+      // Evaluate training completion requirements
+      Course course = assessment.getCourse();
+      Program program = assessment.getProgram();
+
+      boolean attendanceMet = isAttendanceRequirementSatisfied(course, enrollment.getId());
+      boolean batchActive = true;
+      if (assessment.getTrainingBatch() != null && assessment.getTrainingBatch().getBatchStatus() != null) {
+        Long batchStatusId = assessment.getTrainingBatch().getBatchStatus().getId();
+        if (batchStatusId == 5L || batchStatusId == 6L) { // CANCELLED (5) or SUSPENDED (6)
+          batchActive = false;
         }
+      }
 
-        if (existingCert.isEmpty()) {
-          Course course = assessment.getCourse();
-          Program program = assessment.getProgram();
+      boolean trainingRequirementsCompleted = batchActive && attendanceMet;
 
-          String courseCode = course != null ? course.getCourseCode() : "CRS";
-          String certNumber = "CERT-" + courseCode + "-" + traineeId + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT);
-          String issuingBody = resolveAuthoritativeIssuingBody(assessment);
+      // 1. Training Enrollment Completion Transition (Only for passing candidates on finalized assessment)
+      if (enrollment.getEnrollmentStatus() != null) {
+        Long curStatusId = enrollment.getEnrollmentStatus().getId();
+        if (curStatusId == 1L || curStatusId == 2L) { // Only active enrollments: ENROLLED or IN_PROGRESS
+          if (!request.isDraft() && isPass && trainingRequirementsCompleted && statusCompleted != null) {
+            enrollment.setEnrollmentStatus(statusCompleted);
+            if (enrollment.getActualCompletionDate() == null) {
+              enrollment.setActualCompletionDate(today);
+            }
+            enrollment.setUpdatedAt(now);
+            trainingEnrollmentRepository.save(enrollment);
+            log.info("Enrollment {} marked COMPLETED (batch active, attendance satisfied, assessment passed).", enrollment.getId());
+          } else {
+            log.info("Enrollment {} retained status {} (batchActive={}, attendanceMet={}, isPass={}).",
+                enrollment.getId(), curStatusId, batchActive, attendanceMet, isPass);
+          }
+        } else if (curStatusId == 3L) { // Already completed: preserve historical completion date
+          if (enrollment.getActualCompletionDate() == null) {
+            enrollment.setActualCompletionDate(today);
+            enrollment.setUpdatedAt(now);
+            trainingEnrollmentRepository.save(enrollment);
+          }
+        }
+      }
 
-          Certification cert = new Certification();
-          cert.setCertificateNumber(certNumber);
-          cert.setTrainee(trainee);
-          cert.setTrainingEnrollment(enrollment);
-          cert.setCourse(course);
-          cert.setProgram(program);
-          cert.setAssessmentResult(savedResult);
-          cert.setIssuingBody(issuingBody);
-          cert.setIssueDate(today);
-          cert.setExpiryDate(today.plusYears(5));
-          cert.setCertificateStatus(statusIssued);
-          cert.setCertificateVerificationStatus(verifStatusPending);
-          cert.setVerifiedAt(null);
-          cert.setVerifiedByUserId(null);
-          cert.setCreatedAt(now);
-          cert.setUpdatedAt(now);
+      // 2. Certification on Finalize for Passed candidates (only if not draft and PASS)
+      if (!request.isDraft() && isPass) {
+        // Candidate must satisfy training completion conditions
+        boolean isTrainingCompleted = enrollment.getEnrollmentStatus() != null
+            && enrollment.getEnrollmentStatus().getId() == 3L;
 
-          certificationRepository.save(cert);
-          certsIssued++;
+        if (!isTrainingCompleted) {
+          log.info("Candidate {} passed assessment but training completion is pending (batchActive={}, attendanceMet={}). Certificate issuance deferred.",
+              traineeId, batchActive, attendanceMet);
+        } else {
+          // Check authoritative issuing body
+          Optional<String> authoritativeIssuerOpt = resolveAuthoritativeIssuingBody(assessment);
+          if (authoritativeIssuerOpt.isEmpty()) {
+            log.info("Candidate {} passed and completed training, but authoritative issuing body is pending accreditation. Certificate issuance deferred.",
+                traineeId);
+          } else {
+            // Both training completed AND authoritative issuer established -> ISSUE CERTIFICATE!
+            Optional<Certification> existingCert = certificationRepository.findFirstByAssessmentResultId(savedResult.getId());
+            if (existingCert.isEmpty()) {
+              existingCert = certificationRepository.findFirstByTrainingEnrollmentId(enrollment.getId());
+            }
 
-          // Evaluate training enrollment completion
-          if (enrollment.getEnrollmentStatus() != null) {
-            Long curStatusId = enrollment.getEnrollmentStatus().getId();
-            if (curStatusId == 1L || curStatusId == 2L) { // Only active enrollments
-              boolean meetsRequirements = true;
+            if (existingCert.isEmpty()) {
+              String courseCode = course != null ? course.getCourseCode() : "CRS";
+              String certNumber = "CERT-" + courseCode + "-" + traineeId + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT);
+              String issuingBody = authoritativeIssuerOpt.get();
 
-              // Batch status check: batch must not be CANCELLED (5) or SUSPENDED (6)
-              if (assessment.getTrainingBatch() != null && assessment.getTrainingBatch().getBatchStatus() != null) {
-                Long batchStatusId = assessment.getTrainingBatch().getBatchStatus().getId();
-                if (batchStatusId == 5L || batchStatusId == 6L) {
-                  meetsRequirements = false;
-                }
-              }
+              Certification cert = new Certification();
+              cert.setCertificateNumber(certNumber);
+              cert.setTrainee(trainee);
+              cert.setTrainingEnrollment(enrollment);
+              cert.setCourse(course);
+              cert.setProgram(program);
+              cert.setAssessmentResult(savedResult);
+              cert.setIssuingBody(issuingBody);
+              cert.setIssueDate(today);
+              cert.setExpiryDate(today.plusYears(5));
+              cert.setCertificateStatus(statusIssued);
+              cert.setCertificateVerificationStatus(verifStatusPending);
+              cert.setVerifiedAt(null);
+              cert.setVerifiedByUserId(null);
+              cert.setCreatedAt(now);
+              cert.setUpdatedAt(now);
 
-              // Attendance requirement check: if attendance records exist for this enrollment, verify minimum attendance (70%)
-              if (meetsRequirements) {
-                Long totalSessions = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM attendance_records WHERE enrollment_id = ?",
-                    Long.class, enrollment.getId());
-                if (totalSessions != null && totalSessions > 0) {
-                  Long attendedSessions = jdbcTemplate.queryForObject(
-                      "SELECT COUNT(*) FROM attendance_records WHERE enrollment_id = ? AND attendance_status_id IN (1, 3, 6)",
-                      Long.class, enrollment.getId());
-                  double rate = (attendedSessions != null ? attendedSessions.doubleValue() : 0.0) / totalSessions.doubleValue();
-                  if (rate < 0.70) {
-                    meetsRequirements = false;
-                    log.info("Enrollment {} has attendance rate {} below 70% threshold; training completion deferred", enrollment.getId(), rate);
-                  }
-                }
-              }
-
-              if (meetsRequirements && statusCompleted != null) {
-                enrollment.setEnrollmentStatus(statusCompleted);
-                if (enrollment.getActualCompletionDate() == null) {
-                  enrollment.setActualCompletionDate(today);
-                }
-                enrollment.setUpdatedAt(now);
-                trainingEnrollmentRepository.save(enrollment);
-              }
-            } else if (curStatusId == 3L) { // Already completed
-              if (enrollment.getActualCompletionDate() == null) {
-                enrollment.setActualCompletionDate(today);
-                enrollment.setUpdatedAt(now);
-                trainingEnrollmentRepository.save(enrollment);
-              }
+              certificationRepository.save(cert);
+              certsIssued++;
+              log.info("Certificate {} issued for trainee {} under authoritative body '{}'.", certNumber, traineeId, issuingBody);
             }
           }
         }
@@ -1043,6 +1159,141 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
         certsIssued,
         updatedRoster.candidates()
     );
+  }
+
+  @Override
+  @Transactional
+  public SaveAssessmentScoresResponse issuePendingCertificates(Long assessmentId) {
+    if (assessmentId == null || assessmentId <= 0) {
+      throw new BadRequestException("Assessment ID must be valid and positive");
+    }
+    Assessment assessment = assessmentRepository.findByIdForUpdate(assessmentId)
+        .orElseThrow(() -> new ResourceNotFoundException("Assessment", "id=" + assessmentId));
+
+    User caller = resolveAuthenticatedCaller();
+    if (!isAdministrativeCaller() && (assessment.getEvaluatorUserId() == null || !assessment.getEvaluatorUserId().equals(caller.getId()))) {
+      throw new AccessDeniedException("Assessment does not belong to authenticated assessor scope");
+    }
+
+    int newlyIssued = issuePendingCertificatesInternal(assessment);
+    log.info("issuePendingCertificates for assessment {} issued {} new certificates.", assessmentId, newlyIssued);
+
+    AssessorRosterResponse currentRoster = getAssessmentRoster(assessmentId);
+    int passed = 0;
+    int failed = 0;
+    int absent = 0;
+    int certs = 0;
+    for (AssessorCandidateRosterItemResponse c : currentRoster.candidates()) {
+      if (Boolean.TRUE.equals(c.isPassFlag())) passed++;
+      else if ("ABSENT".equalsIgnoreCase(c.assessmentOutcomeCode())) absent++;
+      else failed++;
+      if (c.certificateId() != null) certs++;
+    }
+    return new SaveAssessmentScoresResponse(
+        assessmentId,
+        true,
+        currentRoster.candidates().size(),
+        passed,
+        failed,
+        absent,
+        certs,
+        currentRoster.candidates()
+    );
+  }
+
+  private int issuePendingCertificatesInternal(Assessment assessment) {
+    if (assessment == null) return 0;
+    Long batchId = assessment.getTrainingBatch() != null ? assessment.getTrainingBatch().getId() : null;
+    if (batchId == null) return 0;
+
+    List<TrainingEnrollment> batchEnrollments = trainingEnrollmentRepository.findByTrainingBatchIdAndDeletedAtIsNull(batchId);
+    LocalDateTime now = LocalDateTime.now();
+    LocalDate today = LocalDate.now();
+    RefCertificateStatus statusIssued = refCertificateStatusRepository.findById(CERT_STATUS_ISSUED_ID).orElse(null);
+    RefCertificateVerificationStatus verifStatusPending = refCertificateVerificationStatusRepository.findById(CERT_VERIF_STATUS_PENDING_ID).orElse(null);
+    RefEnrollmentStatus statusCompleted = refEnrollmentStatusRepository.findById(ENROLLMENT_STATUS_COMPLETED_ID).orElse(null);
+
+    int newlyIssued = 0;
+    Course course = assessment.getCourse();
+    Program program = assessment.getProgram();
+
+    for (TrainingEnrollment enrollment : batchEnrollments) {
+      if (enrollment.getTrainee() == null) continue;
+      Long traineeId = enrollment.getTrainee().getId();
+
+      Optional<TraineeAssessment> taOpt = traineeAssessmentRepository.findByAssessmentIdAndTraineeId(assessment.getId(), traineeId);
+      if (taOpt.isEmpty()) continue;
+      TraineeAssessment ta = taOpt.get();
+
+      Optional<AssessmentResult> resOpt = assessmentResultRepository.findByTraineeAssessmentId(ta.getId());
+      if (resOpt.isEmpty()) continue;
+      AssessmentResult res = resOpt.get();
+
+      // Only passed candidates
+      boolean isPass = res.getAssessmentOutcome() != null && Boolean.TRUE.equals(res.getAssessmentOutcome().getIsPassFlag());
+      if (!isPass) continue;
+
+      // Check if already has a certificate
+      Optional<Certification> existingCert = certificationRepository.findFirstByAssessmentResultId(res.getId());
+      if (existingCert.isEmpty()) {
+        existingCert = certificationRepository.findFirstByTrainingEnrollmentId(enrollment.getId());
+      }
+      if (existingCert.isPresent()) continue;
+
+      // Check attendance & batch
+      boolean attendanceMet = isAttendanceRequirementSatisfied(course, enrollment.getId());
+      boolean batchActive = true;
+      if (assessment.getTrainingBatch() != null && assessment.getTrainingBatch().getBatchStatus() != null) {
+        Long bStatus = assessment.getTrainingBatch().getBatchStatus().getId();
+        if (bStatus == 5L || bStatus == 6L) batchActive = false;
+      }
+
+      if (!batchActive || !attendanceMet) continue;
+
+      // Mark enrollment completed if active
+      if (enrollment.getEnrollmentStatus() != null) {
+        Long curStatusId = enrollment.getEnrollmentStatus().getId();
+        if (curStatusId == 1L || curStatusId == 2L) {
+          if (statusCompleted != null) {
+            enrollment.setEnrollmentStatus(statusCompleted);
+            if (enrollment.getActualCompletionDate() == null) {
+              enrollment.setActualCompletionDate(today);
+            }
+            enrollment.setUpdatedAt(now);
+            trainingEnrollmentRepository.save(enrollment);
+          }
+        }
+      }
+
+      // Check authoritative issuer
+      Optional<String> authIssuerOpt = resolveAuthoritativeIssuingBody(assessment);
+      if (authIssuerOpt.isEmpty()) continue;
+
+      // Issue certificate!
+      String courseCode = course != null ? course.getCourseCode() : "CRS";
+      String certNumber = "CERT-" + courseCode + "-" + traineeId + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT);
+      Certification cert = new Certification();
+      cert.setCertificateNumber(certNumber);
+      cert.setTrainee(enrollment.getTrainee());
+      cert.setTrainingEnrollment(enrollment);
+      cert.setCourse(course);
+      cert.setProgram(program);
+      cert.setAssessmentResult(res);
+      cert.setIssuingBody(authIssuerOpt.get());
+      cert.setIssueDate(today);
+      cert.setExpiryDate(today.plusYears(5));
+      cert.setCertificateStatus(statusIssued);
+      cert.setCertificateVerificationStatus(verifStatusPending);
+      cert.setVerifiedAt(null);
+      cert.setVerifiedByUserId(null);
+      cert.setCreatedAt(now);
+      cert.setUpdatedAt(now);
+
+      certificationRepository.save(cert);
+      newlyIssued++;
+      log.info("Pending requirement resolved: Certificate {} issued for trainee {} under '{}'.", certNumber, traineeId, authIssuerOpt.get());
+    }
+    return newlyIssued;
   }
 
   @Override
@@ -1099,8 +1350,17 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
     String certNumber = cert.getCertificateNumber();
     String issueDate = cert.getIssueDate() != null ? cert.getIssueDate().format(DateTimeFormatter.ofPattern("dd-MMM-yyyy")) : "N/A";
     String issuingBody = cert.getIssuingBody() != null && !cert.getIssuingBody().isBlank()
-        ? cert.getIssuingBody()
-        : "Authorized Awarding Body";
+        ? cert.getIssuingBody().trim()
+        : null;
+
+    if (issuingBody == null && result != null && result.getTraineeAssessment() != null
+        && result.getTraineeAssessment().getAssessment() != null) {
+      issuingBody = resolveAuthoritativeIssuingBody(result.getTraineeAssessment().getAssessment()).orElse(null);
+    }
+
+    if (issuingBody == null || issuingBody.isBlank()) {
+      throw new BadRequestException("Certificate #" + certificationId + " has no authoritative issuing body recorded", "UNAUTHORIZED_ISSUING_BODY");
+    }
 
     String assessmentTitle = "Standard Competency Evaluation";
     if (result != null && result.getTraineeAssessment() != null && result.getTraineeAssessment().getAssessment() != null) {

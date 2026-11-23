@@ -26,6 +26,8 @@ describe('Route Guards & Persona Access Control (ProtectedRoute, RoleGuard, Pers
       connectionError: null,
       personas: [],
       primaryPersona: null,
+      activePersona: overrides.activePersona !== undefined ? overrides.activePersona : null,
+      setActivePersona: vi.fn(),
       defaultLandingRoute: '/login',
       login: vi.fn(),
       establishSession: vi.fn(),

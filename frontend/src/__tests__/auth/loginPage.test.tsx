@@ -21,6 +21,8 @@ describe('LoginPage Component', () => {
       connectionError: null,
       personas: [],
       primaryPersona: null,
+      activePersona: null,
+      setActivePersona: vi.fn(),
       defaultLandingRoute: '/admin/dashboard',
       login: mockLogin,
       establishSession: vi.fn(),

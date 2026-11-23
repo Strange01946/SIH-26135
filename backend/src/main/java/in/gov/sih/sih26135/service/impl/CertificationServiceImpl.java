@@ -7,12 +7,15 @@ import in.gov.sih.sih26135.entity.Assessment;
 import in.gov.sih.sih26135.entity.AssessmentResult;
 import in.gov.sih.sih26135.entity.Certification;
 import in.gov.sih.sih26135.entity.Course;
+import in.gov.sih.sih26135.entity.Organization;
 import in.gov.sih.sih26135.entity.Program;
 import in.gov.sih.sih26135.entity.RefCertificateStatus;
 import in.gov.sih.sih26135.entity.RefCertificateVerificationStatus;
+import in.gov.sih.sih26135.entity.RefEnrollmentStatus;
 import in.gov.sih.sih26135.entity.Trainee;
 import in.gov.sih.sih26135.entity.TraineeAssessment;
 import in.gov.sih.sih26135.entity.TrainingEnrollment;
+import in.gov.sih.sih26135.entity.TrainingProvider;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ConflictException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
@@ -20,9 +23,11 @@ import in.gov.sih.sih26135.mapper.CertificationMapper;
 import in.gov.sih.sih26135.repository.AssessmentResultRepository;
 import in.gov.sih.sih26135.repository.CertificationRepository;
 import in.gov.sih.sih26135.repository.CourseRepository;
+import in.gov.sih.sih26135.repository.OrganizationRepository;
 import in.gov.sih.sih26135.repository.ProgramRepository;
 import in.gov.sih.sih26135.repository.RefCertificateStatusRepository;
 import in.gov.sih.sih26135.repository.RefCertificateVerificationStatusRepository;
+import in.gov.sih.sih26135.repository.RefEnrollmentStatusRepository;
 import in.gov.sih.sih26135.repository.TraineeRepository;
 import in.gov.sih.sih26135.repository.TrainingEnrollmentRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
@@ -30,12 +35,22 @@ import in.gov.sih.sih26135.service.CertificationService;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Transactional(readOnly = true)
 public class CertificationServiceImpl implements CertificationService {
+
+  private static final Logger log = LoggerFactory.getLogger(CertificationServiceImpl.class);
 
   private final CertificationRepository certificationRepository;
   private final TraineeRepository traineeRepository;
@@ -47,6 +62,9 @@ public class CertificationServiceImpl implements CertificationService {
   private final RefCertificateVerificationStatusRepository refCertificateVerificationStatusRepository;
   private final UserRepository userRepository;
   private final CertificationMapper certificationMapper;
+  private final OrganizationRepository organizationRepository;
+  private final RefEnrollmentStatusRepository refEnrollmentStatusRepository;
+  private final JdbcTemplate jdbcTemplate;
 
   public CertificationServiceImpl(
       CertificationRepository certificationRepository,
@@ -59,6 +77,37 @@ public class CertificationServiceImpl implements CertificationService {
       RefCertificateVerificationStatusRepository refCertificateVerificationStatusRepository,
       UserRepository userRepository,
       CertificationMapper certificationMapper) {
+    this(
+        certificationRepository,
+        traineeRepository,
+        trainingEnrollmentRepository,
+        courseRepository,
+        programRepository,
+        assessmentResultRepository,
+        refCertificateStatusRepository,
+        refCertificateVerificationStatusRepository,
+        userRepository,
+        certificationMapper,
+        null,
+        null,
+        null);
+  }
+
+  @Autowired
+  public CertificationServiceImpl(
+      CertificationRepository certificationRepository,
+      TraineeRepository traineeRepository,
+      TrainingEnrollmentRepository trainingEnrollmentRepository,
+      CourseRepository courseRepository,
+      ProgramRepository programRepository,
+      AssessmentResultRepository assessmentResultRepository,
+      RefCertificateStatusRepository refCertificateStatusRepository,
+      RefCertificateVerificationStatusRepository refCertificateVerificationStatusRepository,
+      UserRepository userRepository,
+      CertificationMapper certificationMapper,
+      @Autowired(required = false) OrganizationRepository organizationRepository,
+      @Autowired(required = false) RefEnrollmentStatusRepository refEnrollmentStatusRepository,
+      @Autowired(required = false) JdbcTemplate jdbcTemplate) {
     this.certificationRepository = certificationRepository;
     this.traineeRepository = traineeRepository;
     this.trainingEnrollmentRepository = trainingEnrollmentRepository;
@@ -69,6 +118,9 @@ public class CertificationServiceImpl implements CertificationService {
     this.refCertificateVerificationStatusRepository = refCertificateVerificationStatusRepository;
     this.userRepository = userRepository;
     this.certificationMapper = certificationMapper;
+    this.organizationRepository = organizationRepository;
+    this.refEnrollmentStatusRepository = refEnrollmentStatusRepository;
+    this.jdbcTemplate = jdbcTemplate;
   }
 
   @Override
@@ -290,6 +342,41 @@ public class CertificationServiceImpl implements CertificationService {
       if (request.getProgramId() != null && !request.getProgramId().equals(program.getId())) {
         throw new BadRequestException("Program ID does not match authoritative program", "PROGRAM_MISMATCH");
       }
+
+      // Training completion & attendance validation
+      if (!checkAttendanceSatisfied(course, enrollment.getId())) {
+        throw new BadRequestException("Cannot issue certification: Mandatory attendance requirement not satisfied", "INSUFFICIENT_ATTENDANCE");
+      }
+      if (enrollment.getTrainingBatch() != null && enrollment.getTrainingBatch().getBatchStatus() != null) {
+        Long bStatus = enrollment.getTrainingBatch().getBatchStatus().getId();
+        if (bStatus == 5L || bStatus == 6L) {
+          throw new BadRequestException("Cannot issue certification for cancelled or suspended training batch", "INVALID_BATCH_STATUS");
+        }
+      }
+
+      // Authoritative issuer check
+      if (request.getIssuingBody() == null || request.getIssuingBody().isBlank()) {
+        Optional<String> authIssuerOpt = resolveAuthoritativeIssuer(assessment);
+        if (authIssuerOpt.isEmpty()) {
+          throw new BadRequestException("Cannot issue certification: No accredited authoritative issuing body established", "AUTHORIZED_ISSUER_REQUIRED");
+        }
+        request.setIssuingBody(authIssuerOpt.get());
+      }
+
+      // Transition active enrollment to completed
+      if (enrollment.getEnrollmentStatus() != null && (enrollment.getEnrollmentStatus().getId() == 1L || enrollment.getEnrollmentStatus().getId() == 2L)) {
+        if (refEnrollmentStatusRepository != null) {
+          RefEnrollmentStatus statusCompleted = refEnrollmentStatusRepository.findById(3L).orElse(null);
+          if (statusCompleted != null) {
+            enrollment.setEnrollmentStatus(statusCompleted);
+            if (enrollment.getActualCompletionDate() == null) {
+              enrollment.setActualCompletionDate(LocalDate.now());
+            }
+            enrollment.setUpdatedAt(LocalDateTime.now());
+            trainingEnrollmentRepository.save(enrollment);
+          }
+        }
+      }
     } else {
       if (request.getTraineeId() == null) {
         throw new BadRequestException("Trainee ID is required");
@@ -460,5 +547,190 @@ public class CertificationServiceImpl implements CertificationService {
       cert.setUpdatedAt(now);
       certificationRepository.save(cert);
     }
+  }
+
+  @Override
+  @Transactional
+  public CertificationResponse issuePendingCertificate(Long assessmentResultId) {
+    if (assessmentResultId == null) {
+      throw new BadRequestException("Assessment result ID is required");
+    }
+    AssessmentResult result = assessmentResultRepository.findById(assessmentResultId)
+        .orElseThrow(() -> new ResourceNotFoundException("AssessmentResult", "assessmentResultId=" + assessmentResultId));
+
+    if (result.getAssessmentOutcome() == null || !Boolean.TRUE.equals(result.getAssessmentOutcome().getIsPassFlag())) {
+      throw new BadRequestException("Candidate did not pass assessment", "ASSESSMENT_OUTCOME_NOT_PASS");
+    }
+
+    TraineeAssessment attempt = result.getTraineeAssessment();
+    if (attempt == null) {
+      throw new BadRequestException("Assessment result has no linked attempt", "TRAINEE_ASSESSMENT_REQUIRED");
+    }
+    TrainingEnrollment enrollment = attempt.getTrainingEnrollment();
+    if (enrollment == null) {
+      throw new BadRequestException("Assessment attempt has no linked enrollment", "ENROLLMENT_REQUIRED");
+    }
+    Assessment assessment = attempt.getAssessment();
+    if (assessment == null) {
+      throw new BadRequestException("Assessment attempt has no linked assessment", "ASSESSMENT_REQUIRED");
+    }
+
+    // Check existing certificate
+    Optional<Certification> existingCert = certificationRepository.findFirstByAssessmentResultId(assessmentResultId);
+    if (existingCert.isEmpty()) {
+      existingCert = certificationRepository.findFirstByTrainingEnrollmentId(enrollment.getId());
+    }
+    if (existingCert.isPresent()) {
+      return certificationMapper.toResponse(existingCert.get());
+    }
+
+    Course course = assessment.getCourse();
+    // Validate attendance & batch
+    boolean batchActive = true;
+    if (assessment.getTrainingBatch() != null && assessment.getTrainingBatch().getBatchStatus() != null) {
+      Long bStatus = assessment.getTrainingBatch().getBatchStatus().getId();
+      if (bStatus == 5L || bStatus == 6L) batchActive = false;
+    }
+    if (!batchActive) {
+      throw new BadRequestException("Training batch is cancelled or suspended", "INVALID_BATCH_STATUS");
+    }
+
+    boolean attendanceMet = checkAttendanceSatisfied(course, enrollment.getId());
+    if (!attendanceMet) {
+      throw new BadRequestException("Cannot issue certification: Mandatory attendance requirement not satisfied", "INSUFFICIENT_ATTENDANCE");
+    }
+
+    // Resolve authoritative issuer
+    Optional<String> authIssuerOpt = resolveAuthoritativeIssuer(assessment);
+    if (authIssuerOpt.isEmpty()) {
+      throw new BadRequestException("Cannot issue certification: No accredited authoritative issuing body established", "AUTHORIZED_ISSUER_REQUIRED");
+    }
+
+    // Mark enrollment completed if active
+    LocalDate today = LocalDate.now();
+    LocalDateTime now = LocalDateTime.now();
+    RefEnrollmentStatus statusCompleted = refEnrollmentStatusRepository != null
+        ? refEnrollmentStatusRepository.findById(3L).orElse(null)
+        : null;
+    if (enrollment.getEnrollmentStatus() != null && (enrollment.getEnrollmentStatus().getId() == 1L || enrollment.getEnrollmentStatus().getId() == 2L)) {
+      if (statusCompleted != null) {
+        enrollment.setEnrollmentStatus(statusCompleted);
+        if (enrollment.getActualCompletionDate() == null) {
+          enrollment.setActualCompletionDate(today);
+        }
+        enrollment.setUpdatedAt(now);
+        trainingEnrollmentRepository.save(enrollment);
+      }
+    }
+
+    String courseCode = course != null ? course.getCourseCode() : "CRS";
+    String certNum = "CERT-" + courseCode + "-" + attempt.getTrainee().getId() + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT);
+
+    RefCertificateStatus statusIssued = refCertificateStatusRepository.findById(1L).orElseThrow();
+    RefCertificateVerificationStatus verifStatusPending = refCertificateVerificationStatusRepository.findById(2L).orElseThrow();
+
+    Certification cert = new Certification();
+    cert.setCertificateNumber(certNum);
+    cert.setTrainee(attempt.getTrainee());
+    cert.setTrainingEnrollment(enrollment);
+    cert.setCourse(course);
+    cert.setProgram(assessment.getProgram());
+    cert.setAssessmentResult(result);
+    cert.setIssuingBody(authIssuerOpt.get());
+    cert.setIssueDate(today);
+    cert.setExpiryDate(today.plusYears(5));
+    cert.setCertificateStatus(statusIssued);
+    cert.setCertificateVerificationStatus(verifStatusPending);
+    cert.setCreatedAt(now);
+    cert.setUpdatedAt(now);
+
+    Certification saved = certificationRepository.save(cert);
+    return certificationMapper.toResponse(saved);
+  }
+
+  private boolean checkAttendanceSatisfied(Course course, Long enrollmentId) {
+    if (enrollmentId == null) return false;
+    Long deliveryModeId = null;
+    if (course != null && course.getDeliveryMode() != null) {
+      deliveryModeId = course.getDeliveryMode().getId();
+    } else if (course != null && course.getId() != null && jdbcTemplate != null) {
+      try {
+        deliveryModeId = jdbcTemplate.queryForObject("SELECT delivery_mode_id FROM courses WHERE course_id = ?", Long.class, course.getId());
+      } catch (Exception ignored) {}
+    }
+
+    if (deliveryModeId != null && deliveryModeId == 2L) {
+      return true; // Online course: physical attendance not applicable
+    }
+
+    if (jdbcTemplate == null) return true;
+    Long total = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM attendance_records WHERE enrollment_id = ?", Long.class, enrollmentId);
+    if (total == null || total == 0) return false;
+    Long attended = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM attendance_records WHERE enrollment_id = ? AND attendance_status_id IN (1, 3, 6)", Long.class, enrollmentId);
+    double rate = (attended != null ? attended.doubleValue() : 0.0) / total.doubleValue();
+    return rate >= 0.70;
+  }
+
+  private Optional<String> resolveAuthoritativeIssuer(Assessment assessment) {
+    if (assessment == null) return Optional.empty();
+
+    if (assessment.getTrainingBatch() != null && assessment.getTrainingBatch().getTrainingProvider() != null) {
+      TrainingProvider provider = assessment.getTrainingBatch().getTrainingProvider();
+      if (provider.getOrganizationId() != null && organizationRepository != null) {
+        Optional<Organization> orgOpt = organizationRepository.findById(provider.getOrganizationId());
+        if (orgOpt.isPresent()) {
+          Organization org = orgOpt.get();
+          if (org.getDeletedAt() == null && Long.valueOf(1L).equals(org.getLifecycleStatusId())) {
+            Long typeId = org.getOrganizationTypeId();
+            if (typeId != null && (typeId == 1L || typeId == 2L || typeId == 3L || typeId == 4L)) {
+              if (org.getOrganizationName() != null && !org.getOrganizationName().isBlank()) {
+                return Optional.of(org.getOrganizationName().trim());
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (assessment.getProgram() != null && assessment.getProgram().getId() != null && jdbcTemplate != null) {
+      try {
+        List<Map<String, Object>> orgRows = jdbcTemplate.queryForList(
+            "SELECT o.organization_name, o.organization_type_id, o.lifecycle_status_id " +
+            "FROM programs p JOIN departments d ON p.department_id = d.department_id " +
+            "JOIN organizations o ON d.organization_id = o.organization_id " +
+            "WHERE p.program_id = ? AND p.deleted_at IS NULL AND d.deleted_at IS NULL AND o.deleted_at IS NULL",
+            assessment.getProgram().getId()
+        );
+        if (!orgRows.isEmpty()) {
+          Map<String, Object> row = orgRows.get(0);
+          Long typeId = ((Number) row.get("organization_type_id")).longValue();
+          Long lifecycleId = ((Number) row.get("lifecycle_status_id")).longValue();
+          if (lifecycleId == 1L && (typeId == 1L || typeId == 2L || typeId == 3L || typeId == 4L)) {
+            String orgName = (String) row.get("organization_name");
+            if (orgName != null && !orgName.isBlank()) {
+              return Optional.of(orgName.trim());
+            }
+          }
+        }
+      } catch (Exception ignored) {}
+    }
+
+    if (assessment.getCourse() != null && assessment.getCourse().getSector() != null && jdbcTemplate != null) {
+      String sectorName = assessment.getCourse().getSector().getSectorName();
+      if (sectorName != null && !sectorName.isBlank()) {
+        try {
+          List<String> matchingOrgs = jdbcTemplate.queryForList(
+              "SELECT organization_name FROM organizations WHERE organization_type_id = 4 AND lifecycle_status_id = 1 AND deleted_at IS NULL " +
+              "AND (LOWER(organization_name) LIKE LOWER(?) OR LOWER(organization_code) LIKE LOWER(?)) LIMIT 1",
+              String.class, "%" + sectorName.trim() + "%", "%" + sectorName.trim() + "%"
+          );
+          if (!matchingOrgs.isEmpty() && matchingOrgs.get(0) != null && !matchingOrgs.get(0).isBlank()) {
+            return Optional.of(matchingOrgs.get(0).trim());
+          }
+        } catch (Exception ignored) {}
+      }
+    }
+
+    return Optional.empty();
   }
 }

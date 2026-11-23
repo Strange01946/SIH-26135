@@ -121,82 +121,100 @@ export type UserPersona =
 
 /**
  * Helper to compute high-level personas from backend authority strings.
- * Supports both role names (ROLE_*) and granular permission codes.
+ * Prioritizes authoritative roles (ROLE_*) to ensure strict separation between
+ * administrative actors, providers, assessors, employers, and trainees, preventing
+ * shared operational read permissions (such as trainee.read or assessment.manage)
+ * from bleeding cross-role navigation entries.
  */
 export function getUserPersonas(authorities: string[]): UserPersona[] {
   if (!Array.isArray(authorities) || authorities.length === 0) {
     return [];
   }
-  const personas: UserPersona[] = [];
   const lowerAuth = authorities.map((a) => a.toLowerCase().trim());
+  const roleAuths = lowerAuth.filter((a) => a.startsWith('role_'));
 
-  // Government Administrator
-  if (
-    lowerAuth.some((a) =>
-      [
-        'role_admin',
-        'role_super_admin',
-        'role_government_admin',
-        'role_government_officer',
-        'role_district_officer',
-        'system.manage',
-        'audit.read',
-      ].includes(a),
-    )
-  ) {
-    personas.push('ADMIN');
+  const personas: UserPersona[] = [];
+
+  // When authoritative role assignments (ROLE_*) exist, use them exclusively
+  if (roleAuths.length > 0) {
+    if (
+      roleAuths.some((r) =>
+        [
+          'role_admin',
+          'role_super_admin',
+          'role_government_admin',
+          'role_government_officer',
+          'role_district_officer',
+          'role_analyst',
+        ].includes(r),
+      )
+    ) {
+      personas.push('ADMIN');
+    }
+
+    if (
+      roleAuths.some((r) =>
+        ['role_training_provider', 'role_tp'].includes(r),
+      )
+    ) {
+      personas.push('TRAINING_PROVIDER');
+    }
+
+    if (
+      roleAuths.some((r) =>
+        ['role_assessor', 'role_verifier'].includes(r),
+      )
+    ) {
+      personas.push('ASSESSOR');
+    }
+
+    if (
+      roleAuths.some((r) =>
+        ['role_employer'].includes(r),
+      )
+    ) {
+      personas.push('EMPLOYER');
+    }
+
+    if (
+      roleAuths.some((r) =>
+        ['role_trainee'].includes(r),
+      )
+    ) {
+      personas.push('TRAINEE');
+    }
+
+    return personas;
   }
 
-  // Training Provider
+  // Fallback for isolated unit tests / mocks without explicit ROLE_* prefixes
+  if (lowerAuth.includes('system.manage')) {
+    personas.push('ADMIN');
+  }
   if (
     lowerAuth.some((a) =>
-      [
-        'role_training_provider',
-        'role_tp',
-        'course.manage',
-        'enrollment.manage',
-        'batch.manage',
-      ].includes(a),
+      ['course.manage', 'enrollment.manage', 'batch.manage'].includes(a),
     )
   ) {
     personas.push('TRAINING_PROVIDER');
   }
-
-  // Assessor / Verifier
   if (
     lowerAuth.some((a) =>
-      [
-        'role_assessor',
-        'role_verifier',
-        'assessment.manage',
-        'verification.manage',
-      ].includes(a),
+      ['assessment.manage', 'verification.manage'].includes(a),
     )
   ) {
     personas.push('ASSESSOR');
   }
-
-  // Employer
   if (
     lowerAuth.some((a) =>
-      [
-        'role_employer',
-        'placement.manage',
-        'employment.manage',
-      ].includes(a),
+      ['placement.manage', 'employment.manage'].includes(a),
     )
   ) {
     personas.push('EMPLOYER');
   }
-
-  // Trainee
   if (
-    lowerAuth.some((a) =>
-      [
-        'role_trainee',
-        'trainee.read',
-      ].includes(a),
-    )
+    lowerAuth.includes('trainee.read') &&
+    personas.length === 0
   ) {
     personas.push('TRAINEE');
   }
@@ -205,15 +223,53 @@ export function getUserPersonas(authorities: string[]): UserPersona[] {
 }
 
 /**
+ * Returns the default dashboard route for a specific user persona.
+ */
+export function getDefaultLandingRouteForPersona(persona: UserPersona): string {
+  switch (persona) {
+    case 'ADMIN':
+      return '/admin/dashboard';
+    case 'TRAINING_PROVIDER':
+      return '/provider/dashboard';
+    case 'ASSESSOR':
+      return '/assessor/dashboard';
+    case 'EMPLOYER':
+      return '/employer/dashboard';
+    case 'TRAINEE':
+      return '/trainee/dashboard';
+    default:
+      return '/dashboard';
+  }
+}
+
+/**
+ * Returns human-readable display label for a user persona.
+ */
+export function formatPersonaLabel(persona: UserPersona | null | undefined): string {
+  switch (persona) {
+    case 'ADMIN':
+      return 'Administrator';
+    case 'TRAINING_PROVIDER':
+      return 'Training Provider';
+    case 'ASSESSOR':
+      return 'Assessor';
+    case 'EMPLOYER':
+      return 'Employer';
+    case 'TRAINEE':
+      return 'Trainee';
+    default:
+      return 'User';
+  }
+}
+
+/**
  * Returns the default dashboard route for a user based on granted authorities.
  */
 export function getDefaultLandingRoute(authorities: string[]): string {
   const personas = getUserPersonas(authorities);
-  if (personas.includes('ADMIN')) return '/admin/dashboard';
-  if (personas.includes('TRAINING_PROVIDER')) return '/provider/dashboard';
-  if (personas.includes('ASSESSOR')) return '/assessor/dashboard';
-  if (personas.includes('EMPLOYER')) return '/employer/dashboard';
-  if (personas.includes('TRAINEE')) return '/trainee/dashboard';
+  if (personas.length > 0) {
+    return getDefaultLandingRouteForPersona(personas[0]);
+  }
   return '/dashboard';
 }
 

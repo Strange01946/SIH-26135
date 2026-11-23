@@ -244,6 +244,16 @@ VALUES ('ENR-T1-$runToken', $trainee1Id, $courseId, $providerId, $centerId, $bat
 "@
 $enrollment1Id = (Invoke-MysqlQuery "SELECT enrollment_id FROM training_enrollments WHERE enrollment_number = 'ENR-T1-$runToken';").Trim()
 
+# Attendance records for Trainee 1 (5 sessions PRESENT -> 100% attendance >= 70%)
+Invoke-MysqlQuery @"
+INSERT INTO attendance_records (enrollment_id, trainee_id, batch_id, session_date, session_sequence, attendance_status_id, marked_at)
+VALUES ($enrollment1Id, $trainee1Id, $batchId, '2026-01-10', 1, 1, NOW()),
+       ($enrollment1Id, $trainee1Id, $batchId, '2026-01-11', 1, 1, NOW()),
+       ($enrollment1Id, $trainee1Id, $batchId, '2026-01-12', 1, 1, NOW()),
+       ($enrollment1Id, $trainee1Id, $batchId, '2026-01-13', 1, 1, NOW()),
+       ($enrollment1Id, $trainee1Id, $batchId, '2026-01-14', 1, 1, NOW());
+"@
+
 # Trainee 2 (Will Fail - Linked to trainee_user2)
 Invoke-MysqlQuery @"
 INSERT INTO trainees (user_id, registration_number, first_name, last_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
@@ -256,6 +266,16 @@ INSERT INTO training_enrollments (enrollment_number, trainee_id, course_id, prov
 VALUES ('ENR-T2-$runToken', $trainee2Id, $courseId, $providerId, $centerId, $batchId, $programId, 1, CURDATE(), NOW(), NOW());
 "@
 $enrollment2Id = (Invoke-MysqlQuery "SELECT enrollment_id FROM training_enrollments WHERE enrollment_number = 'ENR-T2-$runToken';").Trim()
+
+# Attendance records for Trainee 2 (5 sessions PRESENT -> 100% attendance >= 70%, but Trainee 2 will fail assessment)
+Invoke-MysqlQuery @"
+INSERT INTO attendance_records (enrollment_id, trainee_id, batch_id, session_date, session_sequence, attendance_status_id, marked_at)
+VALUES ($enrollment2Id, $trainee2Id, $batchId, '2026-01-10', 1, 1, NOW()),
+       ($enrollment2Id, $trainee2Id, $batchId, '2026-01-11', 1, 1, NOW()),
+       ($enrollment2Id, $trainee2Id, $batchId, '2026-01-12', 1, 1, NOW()),
+       ($enrollment2Id, $trainee2Id, $batchId, '2026-01-13', 1, 1, NOW()),
+       ($enrollment2Id, $trainee2Id, $batchId, '2026-01-14', 1, 1, NOW());
+"@
 
 # Trainee 3 (Will Be Absent)
 Invoke-MysqlQuery @"
@@ -1068,44 +1088,555 @@ try {
 }
 
 # -------------------------------------------------------------------------
-# Scenario 27: Reverse-Dependency Database Teardown
+# Scenario 27: PASS Candidate With No Authorized Awarding Body
 # -------------------------------------------------------------------------
+$asBId = $null
+$trainee4Id = $null
+$enr4Id = $null
+$orgBId = $null
+$batchBId = $null
 try {
-    if ($certId) {
-        Invoke-MysqlQuery "DELETE FROM certifications WHERE certification_id = $certId;"
-    }
-    Invoke-MysqlQuery "DELETE FROM assessment_results WHERE trainee_id IN ($trainee1Id, $trainee2Id, $trainee3Id);"
-    Invoke-MysqlQuery "DELETE FROM trainee_assessments WHERE assessment_id = $assessmentId;"
-    Invoke-MysqlQuery "DELETE FROM assessments WHERE assessment_id = $assessmentId;"
-    Invoke-MysqlQuery "DELETE FROM training_enrollments WHERE enrollment_id IN ($enrollment1Id, $enrollment2Id, $enrollment3Id);"
-    Invoke-MysqlQuery "DELETE FROM trainees WHERE trainee_id IN ($trainee1Id, $trainee2Id, $trainee3Id);"
-    Invoke-MysqlQuery "DELETE FROM training_batches WHERE batch_id = $batchId;"
-    Invoke-MysqlQuery "DELETE FROM training_centers WHERE center_id = $centerId;"
-    Invoke-MysqlQuery "DELETE FROM training_providers WHERE provider_id = $providerId;"
-    Invoke-MysqlQuery "DELETE FROM programs WHERE program_id = $programId;"
-    Invoke-MysqlQuery "DELETE FROM schemes WHERE scheme_id = $schemeId;"
-    Invoke-MysqlQuery "DELETE FROM departments WHERE department_id = $deptId;"
-    Invoke-MysqlQuery "DELETE FROM organizations WHERE organization_id = $orgId;"
-    Invoke-MysqlQuery "DELETE FROM courses WHERE course_id = $courseId;"
-    Invoke-MysqlQuery "DELETE FROM sectors WHERE sector_id = $sectorId;"
-    Invoke-MysqlQuery "DELETE FROM user_roles WHERE user_id IN ($assessor1Id, $assessor2Id, $trainee1UserId, $trainee2UserId);"
-    Invoke-MysqlQuery "DELETE FROM users WHERE user_id IN ($assessor1Id, $assessor2Id, $trainee1UserId, $trainee2UserId);"
+    # Organization with type 5 (TRAINING_PROVIDER - not an accredited awarding body)
+    Invoke-MysqlQuery @"
+INSERT INTO organizations (organization_code, organization_name, organization_type_id, lifecycle_status_id, created_at, updated_at)
+VALUES ('ORG-NOAUTH-$runToken', 'Private Training Hub $runToken', 5, 1, NOW(), NOW());
+"@
+    $orgBId = (Invoke-MysqlQuery "SELECT organization_id FROM organizations WHERE organization_code = 'ORG-NOAUTH-$runToken';").Trim()
 
-    Record-Result 27 "Reverse-Dependency Database Teardown" $true "All tracked test fixtures deleted cleanly from SIH26135_TEST"
+    Invoke-MysqlQuery @"
+INSERT INTO departments (organization_id, department_code, department_name, lifecycle_status_id, created_at, updated_at)
+VALUES ($orgBId, 'DEP-NOAUTH-$runToken', 'Tech Vocational $runToken', 1, NOW(), NOW());
+"@
+    $deptBId = (Invoke-MysqlQuery "SELECT department_id FROM departments WHERE department_code = 'DEP-NOAUTH-$runToken';").Trim()
+
+    Invoke-MysqlQuery @"
+INSERT INTO programs (program_code, program_name, department_id, scheme_id, lifecycle_status_id, created_at, updated_at)
+VALUES ('PRG-NOAUTH-$runToken', 'Self-Financed Skill $runToken', $deptBId, $schemeId, 1, NOW(), NOW());
+"@
+    $progBId = (Invoke-MysqlQuery "SELECT program_id FROM programs WHERE program_code = 'PRG-NOAUTH-$runToken';").Trim()
+
+    Invoke-MysqlQuery @"
+INSERT INTO training_providers (provider_code, provider_name, registration_number, organization_type_id, organization_id, state_id, district_id, accreditation_status_id, lifecycle_status_id, created_at, updated_at)
+VALUES ('PRV-NOAUTH-$runToken', 'Vocational Skill Center $runToken', 'REG-NOAUTH-$runToken', 5, $orgBId, 101, 1001, 1, 1, NOW(), NOW());
+"@
+    $prvBId = (Invoke-MysqlQuery "SELECT provider_id FROM training_providers WHERE provider_code = 'PRV-NOAUTH-$runToken';").Trim()
+
+    Invoke-MysqlQuery @"
+INSERT INTO training_batches (batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at)
+VALUES ('BAT-NOAUTH-$runToken', $courseId, $prvBId, $centerId, $progBId, '2026-01-01', 30, 1, NOW(), NOW());
+"@
+    $batchBId = (Invoke-MysqlQuery "SELECT batch_id FROM training_batches WHERE batch_code = 'BAT-NOAUTH-$runToken';").Trim()
+
+    Invoke-MysqlQuery @"
+INSERT INTO trainees (registration_number, first_name, last_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
+VALUES ('REG-T4-$runToken', 'Vikram', 'Singh', 1, 101, 1001, 1, 1, NOW(), NOW());
+"@
+    $trainee4Id = (Invoke-MysqlQuery "SELECT trainee_id FROM trainees WHERE registration_number = 'REG-T4-$runToken';").Trim()
+
+    Invoke-MysqlQuery @"
+INSERT INTO training_enrollments (enrollment_number, trainee_id, course_id, provider_id, center_id, batch_id, program_id, enrollment_status_id, enrollment_date, created_at, updated_at)
+VALUES ('ENR-T4-$runToken', $trainee4Id, $courseId, $prvBId, $centerId, $batchBId, $progBId, 1, CURDATE(), NOW(), NOW());
+"@
+    $enr4Id = (Invoke-MysqlQuery "SELECT enrollment_id FROM training_enrollments WHERE enrollment_number = 'ENR-T4-$runToken';").Trim()
+
+    # Trainee 4 has 100% attendance (5 sessions PRESENT)
+    Invoke-MysqlQuery @"
+INSERT INTO attendance_records (enrollment_id, trainee_id, batch_id, session_date, session_sequence, attendance_status_id, marked_at)
+VALUES ($enr4Id, $trainee4Id, $batchBId, '2026-01-10', 1, 1, NOW()),
+       ($enr4Id, $trainee4Id, $batchBId, '2026-01-11', 1, 1, NOW()),
+       ($enr4Id, $trainee4Id, $batchBId, '2026-01-12', 1, 1, NOW()),
+       ($enr4Id, $trainee4Id, $batchBId, '2026-01-13', 1, 1, NOW()),
+       ($enr4Id, $trainee4Id, $batchBId, '2026-01-14', 1, 1, NOW());
+"@
+
+    # Assessment assigned to Assessor 1
+    Invoke-MysqlQuery @"
+INSERT INTO assessments (assessment_code, assessment_name, course_id, batch_id, program_id, assessment_type_id, maximum_score, pass_score, assessment_date, evaluator_user_id, evaluator_name, lifecycle_status_id, created_at, updated_at)
+VALUES ('ASM-NOAUTH-$runToken', 'Solar Tech Evaluation $runToken', $courseId, $batchBId, $progBId, 1, 100.00, 50.00, CURDATE(), $assessor1Id, 'Assessor Evaluator', 1, NOW(), NOW());
+"@
+    $asBId = (Invoke-MysqlQuery "SELECT assessment_id FROM assessments WHERE assessment_code = 'ASM-NOAUTH-$runToken';").Trim()
+
+    # Finalize with passing score
+    $finBBody = @{
+        isDraft = $false
+        candidates = @(
+            @{
+                traineeId = [int64]$trainee4Id
+                enrollmentId = [int64]$enr4Id
+                appeared = $true
+                theoryScore = 25.00
+                practicalScore = 45.00
+                vivaScore = 15.00
+                remarks = "Strong pass"
+            }
+        )
+    } | ConvertTo-Json
+
+    $finBRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$asBId/finalize" -Method "Post" -Body $finBBody -Headers $headers1
+    if ($finBRes.StatusCode -eq 200) {
+        $t4Outcome = (Invoke-MysqlQuery "SELECT ar.assessment_outcome_id FROM assessment_results ar JOIN trainee_assessments ta ON ar.trainee_assessment_id = ta.trainee_assessment_id WHERE ta.assessment_id = $asBId AND ta.trainee_id = $trainee4Id;").Trim()
+        $t4CertCount = (Invoke-MysqlQuery "SELECT COUNT(*) FROM certifications WHERE trainee_id = $trainee4Id;").Trim()
+        $t4EnrStatus = (Invoke-MysqlQuery "SELECT enrollment_status_id FROM training_enrollments WHERE enrollment_id = $enr4Id;").Trim()
+
+        $rosterB = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$asBId/roster" -Method "Get" -Headers $headers1
+        $rBJson = $rosterB.Content | ConvertFrom-Json
+        $t4RosterItem = $rBJson.data.candidates[0]
+        $t4CertStatus = $t4RosterItem.certificateStatusCode
+
+        if ([int]$t4Outcome -eq 2 -and [int]$t4CertCount -eq 0 -and [int]$t4EnrStatus -eq 3 -and $t4CertStatus -eq "PENDING_ISSUANCE") {
+            Record-Result 27 "PASS Candidate With No Authorized Awarding Body" $true "Candidate passed, training completed, 0 certs issued under unaccredited org; roster reflects PENDING_ISSUANCE"
+        } else {
+            Record-Result 27 "PASS Candidate With No Authorized Awarding Body" $false "Outcome=$t4Outcome, CertCount=$t4CertCount, EnrStatus=$t4EnrStatus, RosterStatus=$t4CertStatus"
+        }
+    } else {
+        Record-Result 27 "PASS Candidate With No Authorized Awarding Body" $false "HTTP $($finBRes.StatusCode): $($finBRes.Content)"
+    }
 } catch {
-    Record-Result 27 "Reverse-Dependency Database Teardown" $false $_.Exception.Message
+    Record-Result 27 "PASS Candidate With No Authorized Awarding Body" $false $_.Exception.Message
 }
 
 # -------------------------------------------------------------------------
-# Scenario 28: Post-Test Authoritative Trainee 1005143L Invariant Preservation
+# Scenario 28: PASS Candidate With Insufficient Attendance (< 70%)
+# -------------------------------------------------------------------------
+$asCId = $null
+$trainee5Id = $null
+$enr5Id = $null
+$batchCId = $null
+try {
+    Invoke-MysqlQuery @"
+INSERT INTO training_batches (batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at)
+VALUES ('BAT-LOWATT-$runToken', $courseId, $providerId, $centerId, $programId, '2026-01-01', 30, 1, NOW(), NOW());
+"@
+    $batchCId = (Invoke-MysqlQuery "SELECT batch_id FROM training_batches WHERE batch_code = 'BAT-LOWATT-$runToken';").Trim()
+
+    Invoke-MysqlQuery @"
+INSERT INTO trainees (registration_number, first_name, last_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
+VALUES ('REG-T5-$runToken', 'Deepak', 'Yadav', 1, 101, 1001, 1, 1, NOW(), NOW());
+"@
+    $trainee5Id = (Invoke-MysqlQuery "SELECT trainee_id FROM trainees WHERE registration_number = 'REG-T5-$runToken';").Trim()
+
+    Invoke-MysqlQuery @"
+INSERT INTO training_enrollments (enrollment_number, trainee_id, course_id, provider_id, center_id, batch_id, program_id, enrollment_status_id, enrollment_date, created_at, updated_at)
+VALUES ('ENR-T5-$runToken', $trainee5Id, $courseId, $providerId, $centerId, $batchCId, $programId, 1, CURDATE(), NOW(), NOW());
+"@
+    $enr5Id = (Invoke-MysqlQuery "SELECT enrollment_id FROM training_enrollments WHERE enrollment_number = 'ENR-T5-$runToken';").Trim()
+
+    # Trainee 5 attendance: 1 PRESENT, 3 ABSENT (25% < 70%)
+    Invoke-MysqlQuery @"
+INSERT INTO attendance_records (enrollment_id, trainee_id, batch_id, session_date, session_sequence, attendance_status_id, marked_at)
+VALUES ($enr5Id, $trainee5Id, $batchCId, '2026-01-10', 1, 1, NOW()),
+       ($enr5Id, $trainee5Id, $batchCId, '2026-01-11', 1, 2, NOW()),
+       ($enr5Id, $trainee5Id, $batchCId, '2026-01-12', 1, 2, NOW()),
+       ($enr5Id, $trainee5Id, $batchCId, '2026-01-13', 1, 2, NOW());
+"@
+
+    Invoke-MysqlQuery @"
+INSERT INTO assessments (assessment_code, assessment_name, course_id, batch_id, program_id, assessment_type_id, maximum_score, pass_score, assessment_date, evaluator_user_id, evaluator_name, lifecycle_status_id, created_at, updated_at)
+VALUES ('ASM-LOWATT-$runToken', 'Solar Tech Low Att $runToken', $courseId, $batchCId, $programId, 1, 100.00, 50.00, CURDATE(), $assessor1Id, 'Assessor Evaluator', 1, NOW(), NOW());
+"@
+    $asCId = (Invoke-MysqlQuery "SELECT assessment_id FROM assessments WHERE assessment_code = 'ASM-LOWATT-$runToken';").Trim()
+
+    $finCBody = @{
+        isDraft = $false
+        candidates = @(
+            @{
+                traineeId = [int64]$trainee5Id
+                enrollmentId = [int64]$enr5Id
+                appeared = $true
+                theoryScore = 25.00
+                practicalScore = 45.00
+                vivaScore = 15.00
+                remarks = "Passed test but attendance low"
+            }
+        )
+    } | ConvertTo-Json
+
+    $finCRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$asCId/finalize" -Method "Post" -Body $finCBody -Headers $headers1
+    if ($finCRes.StatusCode -eq 200) {
+        $t5Outcome = (Invoke-MysqlQuery "SELECT ar.assessment_outcome_id FROM assessment_results ar JOIN trainee_assessments ta ON ar.trainee_assessment_id = ta.trainee_assessment_id WHERE ta.assessment_id = $asCId AND ta.trainee_id = $trainee5Id;").Trim()
+        $t5CertCount = (Invoke-MysqlQuery "SELECT COUNT(*) FROM certifications WHERE trainee_id = $trainee5Id;").Trim()
+        $t5EnrStatus = (Invoke-MysqlQuery "SELECT enrollment_status_id FROM training_enrollments WHERE enrollment_id = $enr5Id;").Trim()
+
+        $rosterC = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$asCId/roster" -Method "Get" -Headers $headers1
+        $rCJson = $rosterC.Content | ConvertFrom-Json
+        $t5RosterItem = $rCJson.data.candidates[0]
+        $t5CertStatus = $t5RosterItem.certificateStatusCode
+
+        if ([int]$t5Outcome -eq 2 -and [int]$t5CertCount -eq 0 -and [int]$t5EnrStatus -eq 1 -and $t5CertStatus -eq "PENDING_ELIGIBILITY") {
+            Record-Result 28 "PASS Candidate With Insufficient Attendance" $true "Candidate passed, enrollment remains ENROLLED (1), 0 certs issued; roster reflects PENDING_ELIGIBILITY"
+        } else {
+            Record-Result 28 "PASS Candidate With Insufficient Attendance" $false "Outcome=$t5Outcome, CertCount=$t5CertCount, EnrStatus=$t5EnrStatus, RosterStatus=$t5CertStatus"
+        }
+    } else {
+        Record-Result 28 "PASS Candidate With Insufficient Attendance" $false "HTTP $($finCRes.StatusCode): $($finCRes.Content)"
+    }
+} catch {
+    Record-Result 28 "PASS Candidate With Insufficient Attendance" $false $_.Exception.Message
+}
+
+# -------------------------------------------------------------------------
+# Scenario 29: PASS Candidate With Zero Attendance Records on OFFLINE Course
+# -------------------------------------------------------------------------
+$asDId = $null
+$trainee6Id = $null
+$enr6Id = $null
+$batchDId = $null
+try {
+    Invoke-MysqlQuery @"
+INSERT INTO training_batches (batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at)
+VALUES ('BAT-NOATT-$runToken', $courseId, $providerId, $centerId, $programId, '2026-01-01', 30, 1, NOW(), NOW());
+"@
+    $batchDId = (Invoke-MysqlQuery "SELECT batch_id FROM training_batches WHERE batch_code = 'BAT-NOATT-$runToken';").Trim()
+
+    Invoke-MysqlQuery @"
+INSERT INTO trainees (registration_number, first_name, last_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
+VALUES ('REG-T6-$runToken', 'Kavita', 'Gupta', 2, 101, 1001, 1, 1, NOW(), NOW());
+"@
+    $trainee6Id = (Invoke-MysqlQuery "SELECT trainee_id FROM trainees WHERE registration_number = 'REG-T6-$runToken';").Trim()
+
+    Invoke-MysqlQuery @"
+INSERT INTO training_enrollments (enrollment_number, trainee_id, course_id, provider_id, center_id, batch_id, program_id, enrollment_status_id, enrollment_date, created_at, updated_at)
+VALUES ('ENR-T6-$runToken', $trainee6Id, $courseId, $providerId, $centerId, $batchDId, $programId, 1, CURDATE(), NOW(), NOW());
+"@
+    $enr6Id = (Invoke-MysqlQuery "SELECT enrollment_id FROM training_enrollments WHERE enrollment_number = 'ENR-T6-$runToken';").Trim()
+
+    # ZERO attendance records inserted for Trainee 6! Course delivery mode is OFFLINE (1).
+
+    Invoke-MysqlQuery @"
+INSERT INTO assessments (assessment_code, assessment_name, course_id, batch_id, program_id, assessment_type_id, maximum_score, pass_score, assessment_date, evaluator_user_id, evaluator_name, lifecycle_status_id, created_at, updated_at)
+VALUES ('ASM-NOATT-$runToken', 'Solar Tech No Att $runToken', $courseId, $batchDId, $programId, 1, 100.00, 50.00, CURDATE(), $assessor1Id, 'Assessor Evaluator', 1, NOW(), NOW());
+"@
+    $asDId = (Invoke-MysqlQuery "SELECT assessment_id FROM assessments WHERE assessment_code = 'ASM-NOATT-$runToken';").Trim()
+
+    $finDBody = @{
+        isDraft = $false
+        candidates = @(
+            @{
+                traineeId = [int64]$trainee6Id
+                enrollmentId = [int64]$enr6Id
+                appeared = $true
+                theoryScore = 25.00
+                practicalScore = 45.00
+                vivaScore = 15.00
+                remarks = "Passed test with 0 attendance recorded"
+            }
+        )
+    } | ConvertTo-Json
+
+    $finDRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$asDId/finalize" -Method "Post" -Body $finDBody -Headers $headers1
+    if ($finDRes.StatusCode -eq 200) {
+        $t6Outcome = (Invoke-MysqlQuery "SELECT ar.assessment_outcome_id FROM assessment_results ar JOIN trainee_assessments ta ON ar.trainee_assessment_id = ta.trainee_assessment_id WHERE ta.assessment_id = $asDId AND ta.trainee_id = $trainee6Id;").Trim()
+        $t6CertCount = (Invoke-MysqlQuery "SELECT COUNT(*) FROM certifications WHERE trainee_id = $trainee6Id;").Trim()
+        $t6EnrStatus = (Invoke-MysqlQuery "SELECT enrollment_status_id FROM training_enrollments WHERE enrollment_id = $enr6Id;").Trim()
+
+        $rosterD = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$asDId/roster" -Method "Get" -Headers $headers1
+        $rDJson = $rosterD.Content | ConvertFrom-Json
+        $t6RosterItem = $rDJson.data.candidates[0]
+        $t6CertStatus = $t6RosterItem.certificateStatusCode
+
+        if ([int]$t6Outcome -eq 2 -and [int]$t6CertCount -eq 0 -and [int]$t6EnrStatus -eq 1 -and $t6CertStatus -eq "PENDING_ELIGIBILITY") {
+            Record-Result 29 "PASS Candidate With Zero Attendance Records on OFFLINE Course" $true "Candidate passed, missing attendance not assumed satisfied; enrollment remains ENROLLED (1), 0 certs; roster reflects PENDING_ELIGIBILITY"
+        } else {
+            Record-Result 29 "PASS Candidate With Zero Attendance Records on OFFLINE Course" $false "Outcome=$t6Outcome, CertCount=$t6CertCount, EnrStatus=$t6EnrStatus, RosterStatus=$t6CertStatus"
+        }
+    } else {
+        Record-Result 29 "PASS Candidate With Zero Attendance Records on OFFLINE Course" $false "HTTP $($finDRes.StatusCode): $($finDRes.Content)"
+    }
+} catch {
+    Record-Result 29 "PASS Candidate With Zero Attendance Records on OFFLINE Course" $false $_.Exception.Message
+}
+
+# -------------------------------------------------------------------------
+# Scenario 30: PASS Candidate on ONLINE Course (Attendance Not Applicable)
+# -------------------------------------------------------------------------
+$asEId = $null
+$trainee7Id = $null
+$enr7Id = $null
+$courseEId = $null
+$batchEId = $null
+$certEId = $null
+try {
+    # Create ONLINE course (delivery_mode_id = 2)
+    Invoke-MysqlQuery @"
+INSERT INTO courses (course_code, course_name, sector_id, duration_hours, delivery_mode_id, lifecycle_status_id, created_at, updated_at)
+VALUES ('CRS-ONL-$runToken', 'Online Solar Fundamentals $runToken', $sectorId, 40, 2, 1, NOW(), NOW());
+"@
+    $courseEId = (Invoke-MysqlQuery "SELECT course_id FROM courses WHERE course_code = 'CRS-ONL-$runToken';").Trim()
+
+    Invoke-MysqlQuery @"
+INSERT INTO training_batches (batch_code, course_id, provider_id, center_id, program_id, start_date, capacity, batch_status_id, created_at, updated_at)
+VALUES ('BAT-ONL-$runToken', $courseEId, $providerId, $centerId, $programId, '2026-01-01', 30, 1, NOW(), NOW());
+"@
+    $batchEId = (Invoke-MysqlQuery "SELECT batch_id FROM training_batches WHERE batch_code = 'BAT-ONL-$runToken';").Trim()
+
+    Invoke-MysqlQuery @"
+INSERT INTO trainees (registration_number, first_name, last_name, gender_id, state_id, district_id, current_employment_status_id, profile_status_id, created_at, updated_at)
+VALUES ('REG-T7-$runToken', 'Neha', 'Patel', 2, 101, 1001, 1, 1, NOW(), NOW());
+"@
+    $trainee7Id = (Invoke-MysqlQuery "SELECT trainee_id FROM trainees WHERE registration_number = 'REG-T7-$runToken';").Trim()
+
+    Invoke-MysqlQuery @"
+INSERT INTO training_enrollments (enrollment_number, trainee_id, course_id, provider_id, center_id, batch_id, program_id, enrollment_status_id, enrollment_date, created_at, updated_at)
+VALUES ('ENR-T7-$runToken', $trainee7Id, $courseEId, $providerId, $centerId, $batchEId, $programId, 1, CURDATE(), NOW(), NOW());
+"@
+    $enr7Id = (Invoke-MysqlQuery "SELECT enrollment_id FROM training_enrollments WHERE enrollment_number = 'ENR-T7-$runToken';").Trim()
+
+    # ZERO attendance records for Trainee 7 on ONLINE course!
+    Invoke-MysqlQuery @"
+INSERT INTO assessments (assessment_code, assessment_name, course_id, batch_id, program_id, assessment_type_id, maximum_score, pass_score, assessment_date, evaluator_user_id, evaluator_name, lifecycle_status_id, created_at, updated_at)
+VALUES ('ASM-ONL-$runToken', 'Online Solar Exam $runToken', $courseEId, $batchEId, $programId, 1, 100.00, 50.00, CURDATE(), $assessor1Id, 'Assessor Evaluator', 1, NOW(), NOW());
+"@
+    $asEId = (Invoke-MysqlQuery "SELECT assessment_id FROM assessments WHERE assessment_code = 'ASM-ONL-$runToken';").Trim()
+
+    $finEBody = @{
+        isDraft = $false
+        candidates = @(
+            @{
+                traineeId = [int64]$trainee7Id
+                enrollmentId = [int64]$enr7Id
+                appeared = $true
+                theoryScore = 25.00
+                practicalScore = 45.00
+                vivaScore = 15.00
+                remarks = "Online course pass"
+            }
+        )
+    } | ConvertTo-Json
+
+    $finERes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$asEId/finalize" -Method "Post" -Body $finEBody -Headers $headers1
+    if ($finERes.StatusCode -eq 200) {
+        $t7Outcome = (Invoke-MysqlQuery "SELECT ar.assessment_outcome_id FROM assessment_results ar JOIN trainee_assessments ta ON ar.trainee_assessment_id = ta.trainee_assessment_id WHERE ta.assessment_id = $asEId AND ta.trainee_id = $trainee7Id;").Trim()
+        $t7CertCount = (Invoke-MysqlQuery "SELECT COUNT(*) FROM certifications WHERE trainee_id = $trainee7Id;").Trim()
+        $t7EnrStatus = (Invoke-MysqlQuery "SELECT enrollment_status_id FROM training_enrollments WHERE enrollment_id = $enr7Id;").Trim()
+
+        if ([int]$t7Outcome -eq 2 -and [int]$t7CertCount -eq 1 -and [int]$t7EnrStatus -eq 3) {
+            $certEId = (Invoke-MysqlQuery "SELECT certification_id FROM certifications WHERE trainee_id = $trainee7Id;").Trim()
+            Record-Result 30 "PASS Candidate on ONLINE Course (Attendance Not Applicable)" $true "ONLINE course candidate passed: physical attendance not applicable; enrollment completed and certificate ISSUED"
+        } else {
+            Record-Result 30 "PASS Candidate on ONLINE Course (Attendance Not Applicable)" $false "Outcome=$t7Outcome, CertCount=$t7CertCount, EnrStatus=$t7EnrStatus"
+        }
+    } else {
+        Record-Result 30 "PASS Candidate on ONLINE Course (Attendance Not Applicable)" $false "HTTP $($finERes.StatusCode): $($finERes.Content)"
+    }
+} catch {
+    Record-Result 30 "PASS Candidate on ONLINE Course (Attendance Not Applicable)" $false $_.Exception.Message
+}
+
+# -------------------------------------------------------------------------
+# Scenario 31: Authorized Workflow: Pending Candidate Becomes Eligible & Receives Certificate
+# -------------------------------------------------------------------------
+$certDId = $null
+try {
+    # Record attendance records for Trainee 6 from Scenario 29: 5 sessions PRESENT (100% >= 70%)
+    Invoke-MysqlQuery @"
+INSERT INTO attendance_records (enrollment_id, trainee_id, batch_id, session_date, session_sequence, attendance_status_id, marked_at)
+VALUES ($enr6Id, $trainee6Id, $batchDId, '2026-01-10', 1, 1, NOW()),
+       ($enr6Id, $trainee6Id, $batchDId, '2026-01-11', 1, 1, NOW()),
+       ($enr6Id, $trainee6Id, $batchDId, '2026-01-12', 1, 1, NOW()),
+       ($enr6Id, $trainee6Id, $batchDId, '2026-01-13', 1, 1, NOW()),
+       ($enr6Id, $trainee6Id, $batchDId, '2026-01-14', 1, 1, NOW());
+"@
+
+    # Authorized Assessor triggers issue-pending on the assessment
+    $issuePendingRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$asDId/issue-pending" -Method "Post" -Body "{}" -Headers $headers1
+    if ($issuePendingRes.StatusCode -eq 200) {
+        $t6EnrStatusAfter = (Invoke-MysqlQuery "SELECT enrollment_status_id FROM training_enrollments WHERE enrollment_id = $enr6Id;").Trim()
+        $t6CertCountAfter = (Invoke-MysqlQuery "SELECT COUNT(*) FROM certifications WHERE trainee_id = $trainee6Id;").Trim()
+
+        if ([int]$t6EnrStatusAfter -eq 3 -and [int]$t6CertCountAfter -eq 1) {
+            $certDId = (Invoke-MysqlQuery "SELECT certification_id FROM certifications WHERE trainee_id = $trainee6Id;").Trim()
+            $issuingBodyD = (Invoke-MysqlQuery "SELECT issuing_body FROM certifications WHERE certification_id = $certDId;").Trim()
+
+            # Verify PDF download for Trainee 6
+            $pdfDRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certifications/$certDId/download" -Method "Get" -Headers $headers1
+            $pdfDContent = if ($pdfDRes.Content -is [byte[]]) {
+                [System.Text.Encoding]::ASCII.GetString($pdfDRes.Content)
+            } elseif ($pdfDRes.Content -is [string]) {
+                $pdfDRes.Content
+            } else {
+                [System.Text.Encoding]::ASCII.GetString($pdfDRes.Raw.RawContent)
+            }
+            $pdfDValid = $pdfDContent.StartsWith("%PDF-1.4") -and $pdfDContent.Contains("%%EOF") -and $pdfDContent.Contains($issuingBodyD)
+
+            if ($pdfDValid) {
+                Record-Result 31 "Authorized Workflow: Pending Candidate Becomes Eligible & Receives Certificate" $true "Pending candidate requirements resolved; /issue-pending completed enrollment, issued certificate under '$issuingBodyD', valid PDF stream"
+            } else {
+                Record-Result 31 "Authorized Workflow: Pending Candidate Becomes Eligible & Receives Certificate" $false "PDF validation failed for issued certificate $certDId"
+            }
+        } else {
+            Record-Result 31 "Authorized Workflow: Pending Candidate Becomes Eligible & Receives Certificate" $false "EnrStatus=$t6EnrStatusAfter, CertCount=$t6CertCountAfter"
+        }
+    } else {
+        Record-Result 31 "Authorized Workflow: Pending Candidate Becomes Eligible & Receives Certificate" $false "HTTP $($issuePendingRes.StatusCode): $($issuePendingRes.Content)"
+    }
+} catch {
+    Record-Result 31 "Authorized Workflow: Pending Candidate Becomes Eligible & Receives Certificate" $false $_.Exception.Message
+}
+
+# -------------------------------------------------------------------------
+# Scenario 32: Idempotent Re-issuance & Zero Duplicate Issuance
+# -------------------------------------------------------------------------
+try {
+    # Call /issue-pending again on assessment D
+    $reIssueRes = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$asDId/issue-pending" -Method "Post" -Body "{}" -Headers $headers1
+    if ($reIssueRes.StatusCode -eq 200) {
+        $t6CertCountRecheck = (Invoke-MysqlQuery "SELECT COUNT(*) FROM certifications WHERE trainee_id = $trainee6Id;").Trim()
+        if ([int]$t6CertCountRecheck -eq 1) {
+            Record-Result 32 "Idempotent Re-issuance & Zero Duplicate Issuance" $true "Re-triggering /issue-pending safely returned HTTP 200 with zero duplicate certificates (count=1)"
+        } else {
+            Record-Result 32 "Idempotent Re-issuance & Zero Duplicate Issuance" $false "Duplicate certificates generated! Count=$t6CertCountRecheck"
+        }
+    } else {
+        Record-Result 32 "Idempotent Re-issuance & Zero Duplicate Issuance" $false "HTTP $($reIssueRes.StatusCode): $($reIssueRes.Content)"
+    }
+} catch {
+    Record-Result 32 "Idempotent Re-issuance & Zero Duplicate Issuance" $false $_.Exception.Message
+}
+
+# -------------------------------------------------------------------------
+# Scenario 33: Cross-Role Consistent Status Visibility
+# -------------------------------------------------------------------------
+try {
+    # Assessor view of roster
+    $assessorRoster = Invoke-SafeRequest -Uri "$baseUrl/api/v1/assessor/assessments/$assessmentId/roster" -Method "Get" -Headers $headers1
+    $arJson = $assessorRoster.Content | ConvertFrom-Json
+    $t1InRoster = $null
+    foreach ($cand in $arJson.data.candidates) {
+        if ($cand.traineeId -eq [int64]$trainee1Id) {
+            $t1InRoster = $cand
+            break
+        }
+    }
+
+    # Trainee view of certifications
+    $traineeQuery = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certifications?enrollmentId=$enrollment1Id" -Method "Get" -Headers $trainee1Headers
+    $tqJson = $traineeQuery.Content | ConvertFrom-Json
+    $t1CertInTraineeView = $tqJson.data[0]
+
+    # Admin view of certifications
+    $adminToken = $null
+    $adminLogin = Invoke-SafeRequest -Uri "$baseUrl/api/v1/auth/login" -Method "Post" -Body (@{ usernameOrEmail = "admin_user"; password = "RawPassword123" } | ConvertTo-Json)
+    if ($adminLogin.StatusCode -eq 200) {
+        $adminToken = ($adminLogin.Content | ConvertFrom-Json).data.accessToken
+    }
+    $adminHeaders = @{ "Authorization" = "Bearer $adminToken"; "Content-Type" = "application/json" }
+    $adminCertQuery = Invoke-SafeRequest -Uri "$baseUrl/api/v1/certifications/$certId" -Method "Get" -Headers $adminHeaders
+    $adminCertJson = ($adminCertQuery.Content | ConvertFrom-Json).data
+
+    $rosterPass = $t1InRoster.isPassFlag -eq $true -and $t1InRoster.certificateId -eq [int64]$certId
+    $traineePass = $t1CertInTraineeView.id -eq [int64]$certId -and $t1CertInTraineeView.certificateStatusCode -eq "ISSUED"
+    $adminPass = $adminCertJson.id -eq [int64]$certId -and $adminCertJson.certificateStatusCode -eq "ISSUED"
+
+    if ($rosterPass -and $traineePass -and $adminPass) {
+        Record-Result 33 "Cross-Role Consistent Status Visibility" $true "Assessor roster, Trainee self-service, and Admin query all reflect identical authoritative ISSUED state"
+    } else {
+        Record-Result 33 "Cross-Role Consistent Status Visibility" $false "RosterPass=$rosterPass, TraineePass=$traineePass, AdminPass=$adminPass"
+    }
+} catch {
+    Record-Result 33 "Cross-Role Consistent Status Visibility" $false $_.Exception.Message
+}
+
+# -------------------------------------------------------------------------
+# Scenario 34: Reverse-Dependency Database Teardown
+# -------------------------------------------------------------------------
+try {
+    # Certifications
+    $allCertIds = @($certId, $certDId, $certEId) | Where-Object { $_ -ne $null -and $_ -ne "" }
+    if ($allCertIds.Count -gt 0) {
+        $certListStr = $allCertIds -join ","
+        Invoke-MysqlQuery "DELETE FROM certifications WHERE certification_id IN ($certListStr);"
+    }
+
+    # Assessment Results & Trainee Assessments
+    $allAsmIds = @($assessmentId, $asBId, $asCId, $asDId, $asEId) | Where-Object { $_ -ne $null -and $_ -ne "" }
+    if ($allAsmIds.Count -gt 0) {
+        $asmListStr = $allAsmIds -join ","
+        Invoke-MysqlQuery "DELETE FROM assessment_results WHERE trainee_assessment_id IN (SELECT trainee_assessment_id FROM trainee_assessments WHERE assessment_id IN ($asmListStr));"
+        Invoke-MysqlQuery "DELETE FROM trainee_assessments WHERE assessment_id IN ($asmListStr);"
+        Invoke-MysqlQuery "DELETE FROM assessments WHERE assessment_id IN ($asmListStr);"
+    }
+
+    # Attendance Records
+    $allEnrIds = @($enrollment1Id, $enrollment2Id, $enrollment3Id, $enr4Id, $enr5Id, $enr6Id, $enr7Id) | Where-Object { $_ -ne $null -and $_ -ne "" }
+    if ($allEnrIds.Count -gt 0) {
+        $enrListStr = $allEnrIds -join ","
+        Invoke-MysqlQuery "DELETE FROM attendance_records WHERE enrollment_id IN ($enrListStr);"
+        Invoke-MysqlQuery "DELETE FROM training_enrollments WHERE enrollment_id IN ($enrListStr);"
+    }
+
+    # Trainees
+    $allTraineeIds = @($trainee1Id, $trainee2Id, $trainee3Id, $trainee4Id, $trainee5Id, $trainee6Id, $trainee7Id) | Where-Object { $_ -ne $null -and $_ -ne "" }
+    if ($allTraineeIds.Count -gt 0) {
+        $traineeListStr = $allTraineeIds -join ","
+        Invoke-MysqlQuery "DELETE FROM trainees WHERE trainee_id IN ($traineeListStr);"
+    }
+
+    # Batches
+    $allBatchIds = @($batchId, $batchBId, $batchCId, $batchDId, $batchEId) | Where-Object { $_ -ne $null -and $_ -ne "" }
+    if ($allBatchIds.Count -gt 0) {
+        $batchListStr = $allBatchIds -join ","
+        Invoke-MysqlQuery "DELETE FROM training_batches WHERE batch_id IN ($batchListStr);"
+    }
+
+    # Centers
+    if ($centerId) {
+        Invoke-MysqlQuery "DELETE FROM training_centers WHERE center_id = $centerId;"
+    }
+
+    # Providers
+    $allPrvIds = @($providerId, $prvBId) | Where-Object { $_ -ne $null -and $_ -ne "" }
+    if ($allPrvIds.Count -gt 0) {
+        $prvListStr = $allPrvIds -join ","
+        Invoke-MysqlQuery "DELETE FROM training_providers WHERE provider_id IN ($prvListStr);"
+    }
+
+    # Programs, Schemes, Departments, Organizations, Courses, Sectors
+    $allProgIds = @($programId, $progBId) | Where-Object { $_ -ne $null -and $_ -ne "" }
+    if ($allProgIds.Count -gt 0) {
+        $progListStr = $allProgIds -join ","
+        Invoke-MysqlQuery "DELETE FROM programs WHERE program_id IN ($progListStr);"
+    }
+    if ($schemeId) {
+        Invoke-MysqlQuery "DELETE FROM schemes WHERE scheme_id = $schemeId;"
+    }
+    $allDeptIds = @($deptId, $deptBId) | Where-Object { $_ -ne $null -and $_ -ne "" }
+    if ($allDeptIds.Count -gt 0) {
+        $deptListStr = $allDeptIds -join ","
+        Invoke-MysqlQuery "DELETE FROM departments WHERE department_id IN ($deptListStr);"
+    }
+    $allOrgIds = @($orgId, $orgBId) | Where-Object { $_ -ne $null -and $_ -ne "" }
+    if ($allOrgIds.Count -gt 0) {
+        $orgListStr = $allOrgIds -join ","
+        Invoke-MysqlQuery "DELETE FROM organizations WHERE organization_id IN ($orgListStr);"
+    }
+    $allCourseIds = @($courseId, $courseEId) | Where-Object { $_ -ne $null -and $_ -ne "" }
+    if ($allCourseIds.Count -gt 0) {
+        $courseListStr = $allCourseIds -join ","
+        Invoke-MysqlQuery "DELETE FROM courses WHERE course_id IN ($courseListStr);"
+    }
+    if ($sectorId) {
+        Invoke-MysqlQuery "DELETE FROM sectors WHERE sector_id = $sectorId;"
+    }
+
+    # Users & User Roles
+    Invoke-MysqlQuery "DELETE FROM user_roles WHERE user_id IN ($assessor1Id, $assessor2Id, $trainee1UserId, $trainee2UserId);"
+    Invoke-MysqlQuery "DELETE FROM users WHERE user_id IN ($assessor1Id, $assessor2Id, $trainee1UserId, $trainee2UserId);"
+
+    Record-Result 34 "Reverse-Dependency Database Teardown" $true "All tracked test fixtures and attendance records deleted cleanly from SIH26135_TEST"
+} catch {
+    Record-Result 34 "Reverse-Dependency Database Teardown" $false $_.Exception.Message
+}
+
+# -------------------------------------------------------------------------
+# Scenario 35: Post-Test Authoritative Trainee 1005143L Invariant Preservation
 # -------------------------------------------------------------------------
 $postTraineeCount = Invoke-MysqlQuery "SELECT COUNT(*) FROM trainees WHERE trainee_id = 1005143 AND deleted_at IS NULL;"
 $postConsentCount = Invoke-MysqlQuery "SELECT COUNT(*) FROM trainee_consents WHERE trainee_id = 1005143 AND consent_status_id = 1;"
 
 if ([int]$postTraineeCount.Trim() -eq 1 -and [int]$postConsentCount.Trim() -eq 5) {
-    Record-Result 28 "Post-Test Authoritative Trainee 1005143L Invariant Preservation" $true "Trainee 1005143L retained exactly 5 active granted DPDP consents."
+    Record-Result 35 "Post-Test Authoritative Trainee 1005143L Invariant Preservation" $true "Trainee 1005143L retained exactly 5 active granted DPDP consents."
 } else {
-    Record-Result 28 "Post-Test Authoritative Trainee 1005143L Invariant Preservation" $false "Invariant violated! Found trainee=$postTraineeCount, consents=$postConsentCount"
+    Record-Result 35 "Post-Test Authoritative Trainee 1005143L Invariant Preservation" $false "Invariant violated! Found trainee=$postTraineeCount, consents=$postConsentCount"
 }
 
 # -------------------------------------------------------------------------

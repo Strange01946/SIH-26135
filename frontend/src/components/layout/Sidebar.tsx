@@ -4,223 +4,167 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import type { UserPersona, UserRole } from '@/api/types';
 
-interface NavItem {
+export interface NavItem {
   label: string;
   to: string;
   icon: string;
-  personas?: UserPersona[];
-  roles?: UserRole[];
+  persona: UserPersona;
 }
 
-const NAV_ITEMS: NavItem[] = [
-  // General / Persona Dashboards
-  { label: 'Dashboard', to: '/dashboard', icon: '🏠' },
+export const NAV_ITEMS: NavItem[] = [
+  // Admin Persona Console
   {
     label: 'Admin Console',
     to: '/admin/dashboard',
     icon: '🛡️',
-    personas: ['ADMIN'],
-    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin'],
+    persona: 'ADMIN',
   },
   {
     label: 'Onboarding Requests',
     to: '/admin/onboarding',
     icon: '📥',
-    personas: ['ADMIN'],
-    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin'],
+    persona: 'ADMIN',
   },
   {
-    label: 'Provision Users',
+    label: 'User Provisioning',
     to: '/admin/users',
     icon: '👤',
-    personas: ['ADMIN'],
-    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin'],
+    persona: 'ADMIN',
   },
+
+  // Training Provider Persona Console
   {
     label: 'Provider Console',
     to: '/provider/dashboard',
     icon: '🏫',
-    personas: ['TRAINING_PROVIDER'],
-    roles: ['ROLE_TRAINING_PROVIDER', 'ROLE_training_provider'],
+    persona: 'TRAINING_PROVIDER',
   },
   {
     label: 'Training Centers',
     to: '/provider/centers',
     icon: '🏢',
-    personas: ['TRAINING_PROVIDER'],
-    roles: ['ROLE_TRAINING_PROVIDER', 'ROLE_training_provider'],
+    persona: 'TRAINING_PROVIDER',
   },
   {
     label: 'Approved Courses',
     to: '/provider/courses',
     icon: '📚',
-    personas: ['TRAINING_PROVIDER'],
-    roles: ['ROLE_TRAINING_PROVIDER', 'ROLE_training_provider'],
+    persona: 'TRAINING_PROVIDER',
   },
   {
     label: 'Batch Management',
     to: '/provider/batches',
     icon: '👥',
-    personas: ['TRAINING_PROVIDER'],
-    roles: ['ROLE_TRAINING_PROVIDER', 'ROLE_training_provider'],
+    persona: 'TRAINING_PROVIDER',
   },
   {
     label: 'Candidate Enrollment',
     to: '/provider/enrollment',
     icon: '✍️',
-    personas: ['TRAINING_PROVIDER'],
-    roles: ['ROLE_TRAINING_PROVIDER', 'ROLE_training_provider'],
+    persona: 'TRAINING_PROVIDER',
   },
   {
     label: 'Bulk Ingestion',
     to: '/provider/imports',
     icon: '📥',
-    personas: ['TRAINING_PROVIDER'],
-    roles: ['ROLE_TRAINING_PROVIDER', 'ROLE_training_provider'],
+    persona: 'TRAINING_PROVIDER',
   },
   {
     label: 'Import Quarantine',
     to: '/provider/quarantine',
     icon: '⚠️',
-    personas: ['TRAINING_PROVIDER'],
-    roles: ['ROLE_TRAINING_PROVIDER', 'ROLE_training_provider'],
+    persona: 'TRAINING_PROVIDER',
   },
   {
     label: 'Quality Remediation',
     to: '/provider/data-quality',
     icon: '🔍',
-    personas: ['TRAINING_PROVIDER'],
-    roles: ['ROLE_TRAINING_PROVIDER', 'ROLE_training_provider'],
+    persona: 'TRAINING_PROVIDER',
   },
   {
     label: 'Center Scorecards',
     to: '/provider/scorecards',
     icon: '📊',
-    personas: ['TRAINING_PROVIDER'],
-    roles: ['ROLE_TRAINING_PROVIDER', 'ROLE_training_provider'],
+    persona: 'TRAINING_PROVIDER',
   },
+
+  // Assessor Persona Console
   {
     label: 'Assessor Console',
     to: '/assessor/dashboard',
     icon: '⚖️',
-    personas: ['ASSESSOR'],
-    roles: ['ROLE_ASSESSOR', 'ROLE_verifier'],
+    persona: 'ASSESSOR',
   },
+
+  // Employer Persona Console
   {
     label: 'Employer Console',
     to: '/employer/dashboard',
     icon: '💼',
-    personas: ['EMPLOYER'],
-    roles: ['ROLE_EMPLOYER', 'ROLE_employer'],
+    persona: 'EMPLOYER',
   },
+
+  // Trainee Persona Console
   {
     label: 'Trainee Portal',
     to: '/trainee/dashboard',
     icon: '🎓',
-    personas: ['TRAINEE'],
-    roles: ['ROLE_TRAINEE', 'ROLE_trainee'],
+    persona: 'TRAINEE',
   },
   {
     label: 'My Training & Attendance',
     to: '/trainee/training',
     icon: '📖',
-    personas: ['TRAINEE'],
-    roles: ['ROLE_TRAINEE', 'ROLE_trainee'],
+    persona: 'TRAINEE',
   },
   {
     label: 'DPDP Privacy & Consent',
     to: '/trainee/consent',
     icon: '🔒',
-    personas: ['TRAINEE'],
-    roles: ['ROLE_TRAINEE', 'ROLE_trainee'],
+    persona: 'TRAINEE',
   },
   {
     label: 'Assessments & Certificates',
     to: '/trainee/assessments',
     icon: '📜',
-    personas: ['TRAINEE'],
-    roles: ['ROLE_TRAINEE', 'ROLE_trainee'],
+    persona: 'TRAINEE',
   },
   {
     label: 'Career Journey & Surveys',
     to: '/trainee/journey',
     icon: '🚀',
-    personas: ['TRAINEE'],
-    roles: ['ROLE_TRAINEE', 'ROLE_trainee'],
-  },
-
-  // Operational Sections
-  {
-    label: 'Trainees',
-    to: '/trainees',
-    icon: '👥',
-    personas: ['ADMIN', 'TRAINING_PROVIDER', 'ASSESSOR'],
-    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin', 'ROLE_TRAINING_PROVIDER', 'ROLE_training_provider', 'ROLE_ASSESSOR', 'ROLE_verifier'],
-  },
-  {
-    label: 'Training Batches',
-    to: '/batches',
-    icon: '📚',
-    personas: ['ADMIN', 'TRAINING_PROVIDER'],
-    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin', 'ROLE_TRAINING_PROVIDER', 'ROLE_training_provider'],
-  },
-  {
-    label: 'Assessments',
-    to: '/assessments',
-    icon: '📝',
-    personas: ['ADMIN', 'ASSESSOR'],
-    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin', 'ROLE_ASSESSOR', 'ROLE_verifier'],
-  },
-  {
-    label: 'Placements',
-    to: '/placements',
-    icon: '🤝',
-    personas: ['ADMIN', 'EMPLOYER', 'TRAINING_PROVIDER'],
-    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin', 'ROLE_EMPLOYER', 'ROLE_employer', 'ROLE_TRAINING_PROVIDER', 'ROLE_training_provider'],
-  },
-  {
-    label: 'Employment',
-    to: '/employment',
-    icon: '🏢',
-    personas: ['ADMIN', 'EMPLOYER'],
-    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin', 'ROLE_EMPLOYER', 'ROLE_employer'],
-  },
-  {
-    label: 'Analytics',
-    to: '/analytics',
-    icon: '📊',
-    personas: ['ADMIN'],
-    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin'],
-  },
-  {
-    label: 'Data Quality',
-    to: '/data-quality',
-    icon: '🔍',
-    personas: ['ADMIN'],
-    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin'],
-  },
-  {
-    label: 'Bulk Import',
-    to: '/import',
-    icon: '📤',
-    personas: ['ADMIN', 'TRAINING_PROVIDER'],
-    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin', 'ROLE_TRAINING_PROVIDER', 'ROLE_training_provider'],
-  },
-  {
-    label: 'Audit Log',
-    to: '/audit',
-    icon: '📋',
-    personas: ['ADMIN'],
-    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin'],
-  },
-  {
-    label: 'User Management',
-    to: '/users',
-    icon: '⚙️',
-    personas: ['ADMIN'],
-    roles: ['ROLE_ADMIN', 'ROLE_super_admin', 'ROLE_government_admin'],
+    persona: 'TRAINEE',
   },
 ];
+
+function resolvePersonaFromRole(roleStr: string): UserPersona | null {
+  const normalized = roleStr.toUpperCase().replace(/^ROLE_/, '');
+  if (
+    [
+      'ADMIN',
+      'SUPER_ADMIN',
+      'GOVERNMENT_ADMIN',
+      'GOVERNMENT_OFFICER',
+      'DISTRICT_OFFICER',
+      'ANALYST',
+    ].includes(normalized)
+  ) {
+    return 'ADMIN';
+  }
+  if (['TRAINING_PROVIDER', 'TP'].includes(normalized)) {
+    return 'TRAINING_PROVIDER';
+  }
+  if (['ASSESSOR', 'VERIFIER'].includes(normalized)) {
+    return 'ASSESSOR';
+  }
+  if (['EMPLOYER'].includes(normalized)) {
+    return 'EMPLOYER';
+  }
+  if (['TRAINEE'].includes(normalized)) {
+    return 'TRAINEE';
+  }
+  return null;
+}
 
 interface SidebarProps {
   currentRole?: UserRole | string;
@@ -235,7 +179,7 @@ export function Sidebar({
   isMobileOpen = false,
   onCloseMobile,
 }: SidebarProps): React.JSX.Element {
-  const { user, personas } = useAuth();
+  const { user, activePersona, primaryPersona } = useAuth();
 
   // Handle ESC key to close mobile drawer
   useEffect(() => {
@@ -251,37 +195,26 @@ export function Sidebar({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isMobileOpen, onCloseMobile]);
 
-  // Determine item visibility
+  // Determine effective persona strictly to eliminate cross-role navigation leakage
+  let effectivePersona: UserPersona | null = null;
+  if (currentRole) {
+    effectivePersona = resolvePersonaFromRole(currentRole);
+  } else if (activePersona) {
+    effectivePersona = activePersona;
+  } else if (primaryPersona) {
+    effectivePersona = primaryPersona;
+  }
+
+  // Filter items strictly by effective persona
   const visibleItems = NAV_ITEMS.filter((item) => {
-    // Prop override for isolated testing
-    if (currentRole) {
-      if (!item.roles && !item.personas) return true;
-      const roleStr = currentRole.toUpperCase();
-      if (roleStr === 'ROLE_TRAINEE' || roleStr === 'TRAINEE') {
-        return item.personas?.includes('TRAINEE') || item.to === '/dashboard';
-      }
-      if (roleStr === 'ROLE_ADMIN' || roleStr === 'ADMIN') {
-        return true;
-      }
-      const personaFromRole = roleStr.replace(/^ROLE_/, '');
-      return (
-        item.roles?.some((r) => r.toUpperCase() === roleStr) ||
-        item.personas?.some((p) => p === currentRole || p === personaFromRole)
-      );
+    if (effectivePersona) {
+      return item.persona === effectivePersona;
     }
-
-    // If authenticated, check user's actual personas and authorities
-    if (user) {
-      if (!item.personas && !item.roles) return true;
-      const matchesPersona = item.personas?.some((p) => personas.includes(p));
-      const matchesRole = item.roles?.some((r) =>
-        user.authorities.some((a) => a.toLowerCase() === r.toLowerCase()),
-      );
-      return Boolean(matchesPersona || matchesRole);
-    }
-
     // Standalone / unauthenticated test view: show all items
-    return true;
+    if (!user && !currentRole) {
+      return true;
+    }
+    return false;
   });
 
   const navList = (
