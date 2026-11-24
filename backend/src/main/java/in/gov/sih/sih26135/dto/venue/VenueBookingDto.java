@@ -18,8 +18,9 @@ public final class VenueBookingDto {
   public record NewBooking(
       @Positive Long centerId, @Valid TemporaryVenue temporaryVenue,
       @NotBlank @Size(max = 32) String batchCode,
-      @Positive long courseId, @Positive long programId, @Positive int seats,
-      @NotEmpty @Size(max = 366) List<@NotNull @Valid SessionRequest> sessions) {}
+      @Positive int seats,
+      @NotEmpty @Size(max = 366) List<@NotNull @Valid SessionRequest> sessions,
+      @Positive Long requirementId, @Size(max = 600) String skillsToTeach, @Size(max = 1500) String trainingNotes) {}
 
   public record Reschedule(@NotEmpty @Size(max = 366) List<@NotNull @Valid SessionRequest> sessions) {}
 
@@ -46,10 +47,10 @@ public final class VenueBookingDto {
   public record Booking(
       long id, long providerId, String providerName, Long centerId, Long batchId,
       Long replacesBookingId, String venueType, String status,
-      String batchCode, long courseId, String courseName, long programId, String programName,
+      String batchCode, Long courseId, String courseName, Long programId, String programName,
       int seats, String venueName, String venueAddress, long stateId, long districtId, int venueCapacity,
       String premisesPermission, String decisionNote, LocalDateTime createdAt, LocalDateTime reviewedAt,
-      String batchStatus) {}
+      String batchStatus, Long requirementId, String skillsToTeach, String trainingNotes) {}
 
   public record Session(LocalDateTime startsAt, LocalDateTime endsAt, LocalDateTime reservedAt, LocalDateTime releasedAt) {}
 

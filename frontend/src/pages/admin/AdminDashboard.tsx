@@ -33,11 +33,12 @@ function consoleAccess(user: AuthenticatedUserResponse | null) {
     && !has('role_training_provider', 'role_employer', 'role_trainee')
     && (has('role_government_officer', 'role_district_officer')
       ? user.districtId != null : has('role_government_admin', 'role_state_admin'));
+  const scopedOnboarding = !organisationScoped && user?.stateId != null
+    && (has('role_district_officer') ? user.districtId != null : has('role_state_admin') && user.districtId == null);
   return {
     national,
     outcomes: national && has('analytics.read'),
-    // The onboarding API returns a nationwide list. Only render its preview in a nationwide admin session.
-    onboarding: national && centralAdmin,
+    onboarding: (national && centralAdmin) || scopedOnboarding,
     operations: (national || assignedOperations)
       && has('analytics.read', 'audit.read', 'system.manage', 'system.event.read', 'system.event.manage'),
     careers: national && centralAdmin && has('employment.manage'),
@@ -65,6 +66,7 @@ export function AdminDashboard() {
     { show: access.users, title: 'User provisioning', to: '/admin/users', detail: 'Review accounts and provision roles within your permissions.' },
     { show: access.centers, title: 'Training center management', to: '/admin/centers', detail: 'Register centers for training providers and manage their details and operational status.' },
     { show: access.venueReview, title: 'Venue booking review', to: '/admin/venue-bookings', detail: 'Review temporary locations, approve session requests and manage shared availability.' },
+    { show: access.venueReview, title: 'Training Requirements', to: '/admin/training-requirements', detail: 'Publish training needs and select providers.' },
     { show: access.delivery, title: 'Communication delivery logs', to: '/communication?view=logs', detail: 'Review outreach delivery and consent outcomes using masked recipient details.' },
     { show: access.audit, title: 'Audit trail', to: '/audit?view=audit', detail: 'Trace recorded changes and inspect entity state differences.' },
     { show: access.incidents, title: 'System incidents', to: '/audit?view=events', detail: 'Trace errors and warnings by correlation ID.' },

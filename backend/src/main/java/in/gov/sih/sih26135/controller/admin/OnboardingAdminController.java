@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 @RestController
 @RequestMapping("/api/v1/admin/onboarding")
-@PreAuthorize("hasAnyAuthority('user.manage', 'ROLE_super_admin', 'ROLE_government_admin', 'ROLE_government_officer')")
+@PreAuthorize(OnboardingAdminService.VIEW_ACCESS)
 public class OnboardingAdminController {
 
   private final OnboardingAdminService onboardingAdminService;
@@ -34,7 +34,8 @@ public class OnboardingAdminController {
     this.onboardingAdminService = onboardingAdminService;
   }
 
-  @Operation(summary = "List Onboarding Applications", description = "Retrieve list of onboarding applications with optional status filter")
+  @Operation(summary = "List Onboarding Applications",
+      description = "List applications by optional status. State administrators and district officers see only their assigned jurisdiction.")
   @GetMapping("/applications")
   public ResponseEntity<ApiResponse<List<OnboardingApplicationResponse>>> getApplications(
       @RequestParam(value = "status", required = false) String status) {
@@ -42,7 +43,7 @@ public class OnboardingAdminController {
     return ResponseEntity.ok(ApiResponse.ok(applications));
   }
 
-  @Operation(summary = "Get Onboarding Application Details", description = "Retrieve single application by ID")
+  @Operation(summary = "Get Onboarding Application Details", description = "Retrieve an application in the reviewer's permitted jurisdiction.")
   @GetMapping("/applications/{id}")
   public ResponseEntity<ApiResponse<OnboardingApplicationResponse>> getApplicationById(
       @PathVariable @Positive Long id) {
@@ -50,9 +51,9 @@ public class OnboardingAdminController {
     return ResponseEntity.ok(ApiResponse.ok(application));
   }
 
-  @Operation(summary = "Approve Application", description = "Approve onboarding application, activate user, and grant accreditation")
+  @Operation(summary = "Approve Application", description = "Approve a pending application in the permitted jurisdiction and activate the portal account.")
   @PostMapping("/applications/{id}/approve")
-  @PreAuthorize("hasAnyAuthority('user.manage', 'ROLE_super_admin', 'ROLE_government_admin')")
+  @PreAuthorize(OnboardingAdminService.REVIEW_ACCESS)
   public ResponseEntity<ApiResponse<OnboardingApplicationResponse>> approveApplication(
       @PathVariable @Positive Long id,
       @AuthenticationPrincipal UserPrincipal principal) {
@@ -61,9 +62,9 @@ public class OnboardingAdminController {
     return ResponseEntity.ok(ApiResponse.success("Application approved successfully", response));
   }
 
-  @Operation(summary = "Reject Application", description = "Reject onboarding application with reason and disable user")
+  @Operation(summary = "Reject Application", description = "Reject a pending application in the permitted jurisdiction and disable the portal account.")
   @PostMapping("/applications/{id}/reject")
-  @PreAuthorize("hasAnyAuthority('user.manage', 'ROLE_super_admin', 'ROLE_government_admin')")
+  @PreAuthorize(OnboardingAdminService.REVIEW_ACCESS)
   public ResponseEntity<ApiResponse<OnboardingApplicationResponse>> rejectApplication(
       @PathVariable @Positive Long id,
       @RequestBody(required = false) Map<String, String> body,

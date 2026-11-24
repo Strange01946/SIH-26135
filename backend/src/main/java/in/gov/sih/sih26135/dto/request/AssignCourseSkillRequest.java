@@ -5,8 +5,11 @@ public class AssignCourseSkillRequest {
 
   private Long courseId;
   @NotNull(message = "Skill ID is required")
+  @Positive
   private Long skillId;
+  @NotNull @Positive
   private Long taughtSkillLevelId;
+  @NotNull @Positive
   private Long skillImportanceId;
   private Boolean isCoreSkill = false;
 

@@ -16,6 +16,9 @@ const operations = [
   ['post', '/api/v1/auth/login'], ['post', '/api/v1/auth/refresh'], ['get', '/api/v1/auth/me'],
   ['post', '/api/v1/auth/register/trainee'], ['post', '/api/v1/auth/register/training-provider'],
   ['post', '/api/v1/auth/register/employer'],
+  ['get', '/api/v1/admin/onboarding/applications'], ['get', '/api/v1/admin/onboarding/applications/{id}'],
+  ['post', '/api/v1/admin/onboarding/applications/{id}/approve'], ['post', '/api/v1/admin/onboarding/applications/{id}/reject'],
+  ['get', '/api/v1/courses'], ['get', '/api/v1/courses/{id}'],
   ['get', '/api/v1/dashboards/kpis'], ['get', '/api/v1/dashboards/geography'],
   ['get', '/api/v1/training-centers'],
   ['put', '/api/v1/training-centers/{id}'], ['delete', '/api/v1/training-centers/{id}'],
@@ -27,6 +30,11 @@ const operations = [
   ['get', '/api/v1/venue-bookings/venues/{centerId}/availability'],
   ['post', '/api/v1/venue-bookings/venues/{centerId}/blackouts'],
   ['delete', '/api/v1/venue-bookings/venues/{centerId}/blackouts/{blackoutId}'],
+  ['get', '/api/v1/training-requirements/government'], ['post', '/api/v1/training-requirements/government'],
+  ['get', '/api/v1/training-requirements/government/{id}'], ['post', '/api/v1/training-requirements/government/{id}/select'],
+  ['post', '/api/v1/training-requirements/government/{id}/centre'],
+  ['get', '/api/v1/training-requirements/open'], ['get', '/api/v1/training-requirements/my-applications'],
+  ['get', '/api/v1/training-requirements/{id}'], ['post', '/api/v1/training-requirements/{id}/applications'],
   ['get', '/api/v1/training-batches'], ['put', '/api/v1/training-batches/{id}/status'], ['post', '/api/v1/training-enrollments'],
   ['get', '/api/v1/assessor/assessments/{id}/roster'], ['post', '/api/v1/assessor/assessments/{id}/finalize'],
   ['get', '/api/v1/certifications/{id}/download'], ['get', '/api/v1/employer/verifications/pending'],
@@ -51,6 +59,13 @@ export async function checkContract({ liveUrl } = {}) {
     }
     assert(!verified.paths?.['/api/v1/training-centers']?.post, 'Direct center creation must stay disabled');
     assert(!verified.paths?.['/api/v1/training-batches']?.post, 'Direct batch creation must stay disabled');
+    assert(!verified.paths?.['/api/v1/courses']?.post && !verified.paths?.['/api/v1/courses/{id}']?.put
+      && !verified.paths?.['/api/v1/courses/{id}']?.delete, 'Course reporting references must be read-only over HTTP');
+    for (const name of ['Publish', 'NewBooking']) {
+      const fields = verified.components.schemas[name].properties;
+      assert(fields.skillsToTeach && !fields.courseId && !fields.programId, name + ' must use skills as its training input');
+    }
+    assert(verified.components.schemas.Publish.required.includes('centerId'), 'Government training must require a fixed center');
     for (const name of ['RegisterTraineeRequest', 'RegisterTrainingProviderRequest', 'NewSharedVenue']) {
       assert(verified.components?.schemas?.[name]?.required?.includes('pincode'), name + ' must require a PIN code');
     }

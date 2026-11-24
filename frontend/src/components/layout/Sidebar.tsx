@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import type { UserPersona, UserRole } from '@/api/types';
+import { onboardingViewAuthorities } from '@/api/adminApi';
 
 export interface NavItem {
   label: string;
@@ -38,8 +39,10 @@ export const NAV_ITEMS: NavItem[] = [
       'GOVERNMENT_ADMIN',
       'STATE_ADMIN',
       'GOVERNMENT_OFFICER',
+      'DISTRICT_OFFICER',
       'ADMIN',
     ],
+    authorities: onboardingViewAuthorities,
   },
   {
     label: 'User Provisioning',
@@ -59,6 +62,13 @@ export const NAV_ITEMS: NavItem[] = [
     icon: '🏢',
     personas: ['SUPER_ADMIN', 'GOVERNMENT_ADMIN'],
     authorities: ['center.manage'],
+  },
+  {
+    label: 'Training Requirements',
+    to: '/admin/training-requirements',
+    icon: '📋',
+    personas: ['SUPER_ADMIN', 'GOVERNMENT_ADMIN', 'STATE_ADMIN', 'DISTRICT_OFFICER'],
+    authorities: ['venue.booking.review'],
   },
   {
     label: 'Venue Bookings',
@@ -114,10 +124,11 @@ export const NAV_ITEMS: NavItem[] = [
     authorities: ['venue.booking.request'],
   },
   {
-    label: 'Approved Courses',
-    to: '/provider/courses',
-    icon: '📚',
+    label: 'Training Opportunities',
+    to: '/provider/training-opportunities',
+    icon: '📋',
     persona: 'TRAINING_PROVIDER',
+    authorities: ['venue.booking.request'],
   },
   {
     label: 'Batch Management',

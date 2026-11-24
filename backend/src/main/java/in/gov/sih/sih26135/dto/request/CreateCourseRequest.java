@@ -11,13 +11,19 @@ public class CreateCourseRequest {
   private String courseName;
   @Size(max = 65535, message = "description cannot exceed 65535 characters")
   private String description;
+  @NotNull @Positive
   private Long sectorId;
+  @Positive
   private Long industryId;
+  @Positive
   private Long qualificationLevelId;
-  @PositiveOrZero(message = "durationHours must be greater than or equal to 0")
+  @Positive(message = "durationHours must be greater than 0")
   private Integer durationHours;
+  @Positive(message = "durationDays must be greater than 0")
   private Integer durationDays;
+  @NotNull @Positive
   private Long deliveryModeId;
+  @NotNull @Positive
   private Long lifecycleStatusId;
 
   public CreateCourseRequest() {

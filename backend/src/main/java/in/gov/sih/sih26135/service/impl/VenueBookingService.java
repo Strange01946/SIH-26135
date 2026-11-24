@@ -1,11 +1,12 @@
 package in.gov.sih.sih26135.service.impl;
 
+import in.gov.sih.sih26135.dto.venue.TrainingRequirementDto.Application;
+import in.gov.sih.sih26135.dto.venue.TrainingRequirementDto.Requirement;
 import in.gov.sih.sih26135.dto.venue.VenueBookingDto.*;
 import in.gov.sih.sih26135.entity.User;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ConflictException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
-import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.ActiveGeography;
 import in.gov.sih.sih26135.service.AuditLogService;
 import java.sql.ResultSet;
@@ -13,11 +14,13 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import org.springframework.dao.DuplicateKeyException;
@@ -25,7 +28,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,15 +39,18 @@ public class VenueBookingService {
   private static final String TEMPORARY = "TEMPORARY";
   private static final String PENDING = "PENDING";
   private static final String APPROVED = "APPROVED";
+  private static final String GOVERNMENT_BATCH_PREFIX = "GOV-REQ-";
 
   private static final String BOOKING_SELECT = """
-      SELECT b.*, p.provider_name, c.course_name, pr.program_name, bs.status_code AS batch_status
+      SELECT b.*, p.provider_name, c.course_name, pr.program_name, bs.status_code AS batch_status,
+        bp.requirement_id,bp.skills_to_teach,bp.training_notes
       FROM venue_bookings b
       JOIN training_providers p ON p.provider_id=b.provider_id
-      JOIN courses c ON c.course_id=b.course_id
-      JOIN programs pr ON pr.program_id=b.program_id
+      LEFT JOIN courses c ON c.course_id=b.course_id
+      LEFT JOIN programs pr ON pr.program_id=b.program_id
       LEFT JOIN training_batches tb ON tb.batch_id=b.batch_id
       LEFT JOIN ref_batch_status bs ON bs.batch_status_id=tb.batch_status_id
+      LEFT JOIN venue_booking_training_plans bp ON bp.booking_id=b.booking_id
       """;
   private static final String VENUE_SELECT = """
       SELECT center_id,center_code,center_name,address_line1,state_id,district_id,operational_capacity,
@@ -56,22 +61,26 @@ public class VenueBookingService {
       rs.getLong("booking_id"), rs.getLong("provider_id"), rs.getString("provider_name"),
       nullableLong(rs, "center_id"), nullableLong(rs, "batch_id"), nullableLong(rs, "replaces_booking_id"),
       rs.getString("venue_type"), rs.getString("booking_status"), rs.getString("batch_code"),
-      rs.getLong("course_id"), rs.getString("course_name"), rs.getLong("program_id"), rs.getString("program_name"),
+      nullableLong(rs, "course_id"), rs.getString("course_name"), nullableLong(rs, "program_id"), rs.getString("program_name"),
       rs.getInt("seats"), rs.getString("venue_name"), rs.getString("venue_address"), rs.getLong("state_id"),
       rs.getLong("district_id"), rs.getInt("venue_capacity"), rs.getString("premises_permission"),
-      rs.getString("decision_note"), dateTime(rs, "created_at"), dateTime(rs, "reviewed_at"), rs.getString("batch_status"));
+      rs.getString("decision_note"), dateTime(rs, "created_at"), dateTime(rs, "reviewed_at"), rs.getString("batch_status"),
+      nullableLong(rs, "requirement_id"), rs.getString("skills_to_teach"), rs.getString("training_notes"));
 
   private record Venue(SharedVenue details, String type, Long providerId, boolean active) {}
   private record BookableBatch(long id, String status, LocalDate startDate, boolean removed) {}
 
   private final JdbcTemplate jdbc;
-  private final WorkflowSecurityScopeValidator security;
+  private final TrainingWorkflowAccess access;
   private final AuditLogService audits;
+  private final SkillsTrainingReporting reporting;
 
-  public VenueBookingService(JdbcTemplate jdbc, WorkflowSecurityScopeValidator security, AuditLogService audits) {
+  public VenueBookingService(JdbcTemplate jdbc, TrainingWorkflowAccess access, AuditLogService audits,
+      SkillsTrainingReporting reporting) {
     this.jdbc = jdbc;
-    this.security = security;
+    this.access = access;
     this.audits = audits;
+    this.reporting = reporting;
   }
 
   public List<SharedVenue> sharedVenues(Long state, Long district, int page, int size) {
@@ -110,7 +119,7 @@ public class VenueBookingService {
     if (!from.isBefore(to) || to.isAfter(from.plusDays(93))) {
       throw invalid("Select a date range of up to 93 days.", "VENUE_CALENDAR_RANGE_INVALID");
     }
-    boolean canManage = hasAuthority("venue.shared.manage") && !scope.isProviderScoped();
+    boolean canManage = TrainingWorkflowAccess.hasAuthority("venue.shared.manage") && !scope.isProviderScoped();
     return jdbc.query("""
         SELECT s.starts_at,s.ends_at,NULL AS blackout_id,NULL AS reason
         FROM venue_booking_sessions s JOIN venue_bookings b ON b.booking_id=s.booking_id
@@ -202,13 +211,24 @@ public class VenueBookingService {
   @Transactional
   public Details request(NewBooking request) {
     long providerId = providerScope().trainingProviderId();
+    if (request.requirementId() != null) {
+      throw invalid("Government training slots are reserved when a reviewer approves an application.",
+          "TRAINING_GOVERNMENT_BOOKING_REQUIRED");
+    }
     LocalDateTime now = now();
     List<SessionRequest> sessions = validateSessions(request.sessions(), now);
     if ((request.centerId() == null) == (request.temporaryVenue() == null)) {
       throw invalid("Select one shared center or propose one temporary location.", "VENUE_TYPE_REQUIRED");
     }
-    validateProviderAndCourse(providerId, request.courseId(), request.programId());
+    String skills = text(request.skillsToTeach());
+    if (skills == null) {
+      throw invalid("Enter the skills you will teach.", "TRAINING_SKILLS_REQUIRED");
+    }
+    validateProvider(providerId);
     String code = request.batchCode().trim();
+    if (code.toUpperCase(Locale.ROOT).startsWith(GOVERNMENT_BATCH_PREFIX)) {
+      throw invalid("Batch codes beginning with GOV-REQ- are reserved for government training.", "TRAINING_BATCH_CODE_RESERVED");
+    }
     ensureBatchCodeAvailable(code);
     TemporaryVenue temporary = request.temporaryVenue();
     SharedVenue venue;
@@ -228,16 +248,50 @@ public class VenueBookingService {
       checkAvailability(venue.id(), sessions, 0, now);
     }
     validateSeats(request.seats(), venue.capacity());
-    long id = insert("""
-        INSERT INTO venue_bookings(provider_id,center_id,venue_type,batch_code,course_id,program_id,seats,
-          venue_name,venue_address,state_id,district_id,venue_capacity,premises_permission,requested_by)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, providerId, request.centerId(), kind, code, request.courseId(), request.programId(), request.seats(),
-        venue.name(), venue.address(), venue.stateId(), venue.districtId(), venue.capacity(),
-        temporary != null ? temporary.permissionToUse().trim() : null, actor().getId());
-    insertSessions(id, sessions);
-    auditBooking("CREATE", id, null, PENDING, null);
+    long id = createPending(providerId, venue, kind, code, request.seats(),
+        temporary != null ? temporary.permissionToUse().trim() : null, null, skills, text(request.trainingNotes()), sessions);
     return detailsFor(booking(id, false));
+  }
+
+  SharedVenue lockGovernmentCentre(long centerId, long stateId, long districtId, int seats) {
+    Venue center = venue(centerId, true);
+    if (!SHARED.equals(center.type()) || !center.active()) throw unavailable();
+    SharedVenue details = center.details();
+    if (details.stateId() != stateId || details.districtId() != districtId) {
+      throw invalid("Choose a shared center in the requirement's district.", "TRAINING_VENUE_OUTSIDE_AREA");
+    }
+    validateSeats(seats, details.capacity());
+    return details;
+  }
+
+  long reserveGovernmentTraining(Requirement requirement, Application application) {
+    LocalDateTime now = now();
+    SharedVenue centre = lockGovernmentCentre(requirement.centerId(), requirement.stateId(), requirement.districtId(),
+        requirement.seats());
+    List<SessionRequest> sessions = validateSessions(application.startDate().datesUntil(application.endDate().plusDays(1))
+        .map(day -> new SessionRequest(day.atTime(application.dailyStartTime()), day.atTime(application.dailyEndTime())))
+        .toList(), now);
+    long id = createPending(application.providerId(), centre, SHARED, GOVERNMENT_BATCH_PREFIX + requirement.id(),
+        requirement.seats(), null, requirement.id(), requirement.skillsToTeach(), application.deliveryNotes(), sessions);
+    decide(booking(id, false), true, null, now, sessions);
+    return id;
+  }
+
+  private long createPending(long providerId, SharedVenue venue, String kind, String code, int seats,
+      String permission, Long requirementId, String skills, String notes, List<SessionRequest> sessions) {
+    long id = insert("""
+        INSERT INTO venue_bookings(provider_id,center_id,venue_type,batch_code,seats,
+          venue_name,venue_address,state_id,district_id,venue_capacity,premises_permission,requested_by)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        """, providerId, SHARED.equals(kind) ? venue.id() : null, kind, code, seats,
+        venue.name(), venue.address(), venue.stateId(), venue.districtId(), venue.capacity(),
+        permission, actor().getId());
+    insertSessions(id, sessions);
+    jdbc.update("""
+        INSERT INTO venue_booking_training_plans(booking_id,requirement_id,skills_to_teach,training_notes) VALUES (?,?,?,?)
+        """, id, requirementId, skills, notes);
+    auditBooking("CREATE", id, null, PENDING, null);
+    return id;
   }
 
   @Transactional
@@ -255,6 +309,7 @@ public class VenueBookingService {
       throw conflict("There is already a rescheduling request awaiting review.", "VENUE_RESCHEDULE_PENDING");
     }
     List<SessionRequest> sessions = validateSessions(request.sessions(), now);
+    validateAssignedSessions(existing, sessions);
     checkAvailability(existing.centerId(), sessions, existing.id(), now);
     long replacement = insert("""
         INSERT INTO venue_bookings(provider_id,center_id,batch_id,replaces_booking_id,venue_type,batch_code,course_id,
@@ -264,6 +319,10 @@ public class VenueBookingService {
         FROM venue_bookings WHERE booking_id=?
         """, actor().getId(), id);
     insertSessions(replacement, sessions);
+    jdbc.update("""
+        INSERT INTO venue_booking_training_plans(booking_id,requirement_id,skills_to_teach,training_notes)
+        SELECT ?,requirement_id,skills_to_teach,training_notes FROM venue_booking_training_plans WHERE booking_id=?
+        """, replacement, id);
     auditBooking("CREATE", replacement, null, PENDING, null);
     return detailsFor(booking(replacement, false));
   }
@@ -279,27 +338,44 @@ public class VenueBookingService {
       throw invalid("Enter a reason for declining this booking.", "VENUE_REASON_REQUIRED");
     }
     LocalDateTime now = now();
+    List<SessionRequest> sessions = List.of();
+    if (request.approved()) {
+      sessions = validateSessions(detailsFor(pending).sessions().stream()
+          .map(s -> new SessionRequest(s.startsAt(), s.endsAt())).toList(), now);
+      validateAssignedSessions(pending, sessions);
+    }
+    return decide(pending, request.approved(), reason, now, sessions);
+  }
+
+  private Details decide(Booking pending, boolean approved, String reason, LocalDateTime now, List<SessionRequest> sessions) {
+    long id = pending.id();
     Long centerId = pending.centerId();
     Long batchId = pending.batchId();
-    if (request.approved()) {
-      var sessions = validateSessions(detailsFor(pending).sessions().stream()
-          .map(s -> new SessionRequest(s.startsAt(), s.endsAt())).toList(), now);
-      validateProviderAndCourse(pending.providerId(), pending.courseId(), pending.programId());
+    Long courseId = pending.courseId();
+    Long programId = pending.programId();
+    if (approved) {
+      validateProvider(pending.providerId());
       ActiveGeography.validate(jdbc, pending.stateId(), pending.districtId());
       centerId = approveVenue(pending);
       if (pending.replacesBookingId() != null) {
         rescheduleApprovedBatch(pending.replacesBookingId(), centerId, sessions, now);
       } else {
         checkAvailability(centerId, sessions, 0, now);
-        batchId = createBatch(pending, centerId, sessions);
+        if (courseId == null || programId == null) {
+          var reference = reporting.forApprovedSkills(pending.skillsToTeach());
+          courseId = reference.courseId();
+          programId = reference.programId();
+        }
+        batchId = createBatch(pending, centerId, courseId, programId, sessions);
       }
       jdbc.update("UPDATE venue_booking_sessions SET reserved_at=? WHERE booking_id=?", now, id);
     }
-    String decision = request.approved() ? APPROVED : "REJECTED";
+    String decision = approved ? APPROVED : "REJECTED";
     jdbc.update("""
-        UPDATE venue_bookings SET booking_status=?,center_id=?,batch_id=?,decision_note=?,reviewed_by=?,reviewed_at=?
+        UPDATE venue_bookings SET booking_status=?,center_id=?,batch_id=?,course_id=?,program_id=?,decision_note=?,reviewed_by=?,reviewed_at=?
         WHERE booking_id=?
-        """, decision, centerId, batchId, reason, actor().getId(), now, id);
+        """, decision, centerId, batchId, courseId, programId, reason, actor().getId(), now, id);
+    if (!approved) releaseLegacyPendingBooking(pending);
     auditBooking("STATUS_CHANGE", id, PENDING, decision, reason);
     return detailsFor(booking(id, false));
   }
@@ -346,6 +422,7 @@ public class VenueBookingService {
     Booking booking = lockBooking(id, providerScope());
     if (PENDING.equals(booking.status()) && request.action() == CloseAction.CANCEL) {
       jdbc.update("UPDATE venue_bookings SET booking_status='CANCELLED' WHERE booking_id=?", id);
+      releaseLegacyPendingBooking(booking);
       auditBooking("STATUS_CHANGE", id, PENDING, "CANCELLED", text(request.reason()));
       return detailsFor(booking(id, false));
     }
@@ -378,14 +455,14 @@ public class VenueBookingService {
     return detailsFor(booking(id, false));
   }
 
-  private long createBatch(Booking pending, long centerId, List<SessionRequest> sessions) {
+  private long createBatch(Booking pending, long centerId, long courseId, long programId, List<SessionRequest> sessions) {
     ensureBatchCodeAvailable(pending.batchCode());
     long batchId;
     try {
       batchId = insert("""
           INSERT INTO training_batches(batch_code,course_id,provider_id,center_id,program_id,start_date,end_date,capacity,batch_status_id)
           SELECT ?,?,?,?,?,?,?,?,batch_status_id FROM ref_batch_status WHERE status_code='PLANNED'
-          """, pending.batchCode(), pending.courseId(), pending.providerId(), centerId, pending.programId(),
+          """, pending.batchCode(), courseId, pending.providerId(), centerId, programId,
           sessions.get(0).startsAt().toLocalDate(), sessions.get(sessions.size() - 1).endsAt().toLocalDate(), pending.seats());
     } catch (DuplicateKeyException ex) {
       throw conflict("Batch code already exists", "BATCH_CODE_ALREADY_EXISTS");
@@ -409,7 +486,7 @@ public class VenueBookingService {
   }
 
   private Booking booking(long id, boolean lock) {
-    return jdbc.query(BOOKING_SELECT + " WHERE b.booking_id=?" + (lock ? " FOR UPDATE" : ""), BOOKING_ROW, id)
+    return jdbc.query(BOOKING_SELECT + " WHERE b.booking_id=?" + (lock ? " FOR UPDATE OF b" : ""), BOOKING_ROW, id)
         .stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("VenueBooking", "id"));
   }
 
@@ -515,21 +592,43 @@ public class VenueBookingService {
         """, Long.class, batchId, now).isEmpty();
   }
 
-  private void validateProviderAndCourse(long provider, long course, long program) {
-    if (!Boolean.TRUE.equals(jdbc.queryForObject("""
-        SELECT EXISTS(SELECT 1 FROM training_providers p JOIN ref_accreditation_status a USING (accreditation_status_id)
-          WHERE provider_id=? AND lifecycle_status_id=1 AND deleted_at IS NULL
-            AND a.status_code NOT IN ('SUSPENDED','EXPIRED','REVOKED'))
-        """, Boolean.class, provider))) {
+  private void validateProvider(long provider) {
+    if (!access.eligibleProvider(provider)) {
       throw invalid("The training provider is unavailable for venue booking.", "VENUE_PROVIDER_INELIGIBLE");
     }
-    if (!Boolean.TRUE.equals(jdbc.queryForObject("""
-        SELECT EXISTS(SELECT 1 FROM course_programs cp
-          JOIN courses c ON c.course_id=cp.course_id AND c.deleted_at IS NULL AND c.lifecycle_status_id=1
-          JOIN programs p ON p.program_id=cp.program_id AND p.deleted_at IS NULL AND p.lifecycle_status_id=1
-          WHERE cp.course_id=? AND cp.program_id=?)
-        """, Boolean.class, course, program))) {
-      throw invalid("Select an active course and its linked program.", "COURSE_PROGRAM_MISMATCH");
+  }
+
+  private void validateAssignedSessions(Booking booking, List<SessionRequest> sessions) {
+    if (booking.requirementId() == null) return;
+    var windows = jdbc.query("""
+        SELECT CASE WHEN r.center_id IS NULL THEN a.start_date ELSE r.earliest_date END AS start_date,
+          CASE WHEN r.center_id IS NULL THEN a.end_date ELSE r.latest_date END AS end_date,
+          CASE WHEN r.center_id IS NULL THEN a.daily_start_time ELSE r.daily_start_time END AS start_time,
+          CASE WHEN r.center_id IS NULL THEN a.daily_end_time ELSE r.daily_end_time END AS end_time
+        FROM training_requirements r JOIN training_requirement_applications a ON a.requirement_id=r.requirement_id
+        WHERE r.requirement_id=? AND r.selected_provider_id=? AND a.provider_id=? AND a.application_status='SELECTED'
+        """, (rs, row) -> new TrainingWindow(rs.getObject("start_date", LocalDate.class), rs.getObject("end_date", LocalDate.class),
+            rs.getObject("start_time", LocalTime.class), rs.getObject("end_time", LocalTime.class)),
+        booking.requirementId(), booking.providerId(), booking.providerId());
+    TrainingWindow window = windows.stream().findFirst()
+        .orElseThrow(() -> new ResourceNotFoundException("TrainingRequirement", "id"));
+    for (SessionRequest session : sessions) {
+      LocalDate day = session.startsAt().toLocalDate();
+      if (!day.equals(session.endsAt().toLocalDate()) || day.isBefore(window.startDate()) || day.isAfter(window.endDate())
+          || session.startsAt().toLocalTime().isBefore(window.startTime()) || session.endsAt().toLocalTime().isAfter(window.endTime())) {
+        throw invalid("Book sessions within the assigned training dates and times.", "TRAINING_BOOKING_OUTSIDE_WINDOW");
+      }
+    }
+  }
+
+  private record TrainingWindow(LocalDate startDate, LocalDate endDate, LocalTime startTime, LocalTime endTime) {}
+
+  private void releaseLegacyPendingBooking(Booking pending) {
+    if (pending.requirementId() != null && pending.replacesBookingId() == null) {
+      jdbc.update("""
+          UPDATE training_requirements SET root_booking_id=NULL
+          WHERE requirement_id=? AND root_booking_id=? AND center_id IS NULL
+          """, pending.requirementId(), pending.id());
     }
   }
 
@@ -547,29 +646,15 @@ public class VenueBookingService {
   }
 
   private TrainingTenantScopeSupport.CallerScope readScope() {
-    return hasAuthority("venue.booking.request") ? providerScope() : reviewerScope();
+    return TrainingWorkflowAccess.hasAuthority("venue.booking.request") ? providerScope() : reviewerScope();
   }
 
   private TrainingTenantScopeSupport.CallerScope providerScope() {
-    var scope = TrainingTenantScopeSupport.resolveCallerScope(security, jdbc);
-    if (!scope.isProviderScoped() || !hasAuthority("ROLE_training_provider")) {
-      throw new AccessDeniedException("Training provider access is required");
-    }
-    actor();
-    return scope;
+    return access.providerScope();
   }
 
   private TrainingTenantScopeSupport.CallerScope reviewerScope() {
-    var scope = TrainingTenantScopeSupport.resolveCallerScope(security, jdbc);
-    boolean authorizedRole = scope.nationwideUnrestricted()
-        ? hasAuthority("ROLE_super_admin") || hasAuthority("ROLE_government_admin")
-        : (hasAuthority("ROLE_district_officer") && scope.districtId() != null)
-          || (hasAuthority("ROLE_state_admin") && scope.isStateScoped());
-    if (!authorizedRole || scope.isProviderScoped()) {
-      throw new AccessDeniedException("An authorized venue reviewer is required");
-    }
-    actor();
-    return scope;
+    return access.reviewerScope();
   }
 
   private static void requireReadAccess(TrainingTenantScopeSupport.CallerScope scope, Booking booking) {
@@ -587,14 +672,7 @@ public class VenueBookingService {
   }
 
   private User actor() {
-    return security.resolveAuthenticatedUser()
-        .filter(user -> user.getDeletedAt() == null && Long.valueOf(2L).equals(user.getUserStatusId()))
-        .orElseThrow(() -> new AccessDeniedException("Active user account required"));
-  }
-
-  private static boolean hasAuthority(String code) {
-    return SecurityContextHolder.getContext().getAuthentication().getAuthorities().stream()
-        .anyMatch(authority -> code.equals(authority.getAuthority()));
+    return access.actor();
   }
 
   private long insert(String sql, Object... values) {

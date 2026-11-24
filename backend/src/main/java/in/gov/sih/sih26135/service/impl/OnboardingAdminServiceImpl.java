@@ -27,14 +27,19 @@ import in.gov.sih.sih26135.repository.RoleRepository;
 import in.gov.sih.sih26135.repository.TrainingProviderRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
 import in.gov.sih.sih26135.repository.UserRoleRepository;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.ActiveGeography;
 import in.gov.sih.sih26135.service.OnboardingAdminService;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -72,6 +77,7 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
   private final PasswordEncoder passwordEncoder;
   private final JdbcTemplate jdbcTemplate;
   private final OrganizationRepository organizationRepository;
+  private final WorkflowSecurityScopeValidator securityScope;
 
   public OnboardingAdminServiceImpl(
       OnboardingApplicationRepository onboardingApplicationRepository,
@@ -85,7 +91,8 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
       UserMapper userMapper,
       PasswordEncoder passwordEncoder,
       JdbcTemplate jdbcTemplate,
-      OrganizationRepository organizationRepository) {
+      OrganizationRepository organizationRepository,
+      WorkflowSecurityScopeValidator securityScope) {
     this.onboardingApplicationRepository = onboardingApplicationRepository;
     this.userRepository = userRepository;
     this.userRoleRepository = userRoleRepository;
@@ -98,13 +105,19 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
     this.passwordEncoder = passwordEncoder;
     this.jdbcTemplate = jdbcTemplate;
     this.organizationRepository = organizationRepository;
+    this.securityScope = securityScope;
   }
 
   @Override
   public List<OnboardingApplicationResponse> getApplications(String status) {
+    String selectedStatus = status == null || status.isBlank() ? null : status.trim().toUpperCase(Locale.ROOT);
+    Jurisdiction jurisdiction = reviewJurisdiction();
     List<OnboardingApplication> applications;
-    if (status != null && !status.isBlank()) {
-      applications = onboardingApplicationRepository.findByStatusOrderByCreatedAtDesc(status.trim().toUpperCase());
+    if (jurisdiction != null) {
+      applications = onboardingApplicationRepository.findInJurisdiction(
+          jurisdiction.stateId(), jurisdiction.districtId(), selectedStatus);
+    } else if (selectedStatus != null) {
+      applications = onboardingApplicationRepository.findByStatusOrderByCreatedAtDesc(selectedStatus);
     } else {
       applications = onboardingApplicationRepository.findAllByOrderByCreatedAtDesc();
     }
@@ -113,17 +126,52 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
 
   @Override
   public OnboardingApplicationResponse getApplicationById(Long id) {
-    OnboardingApplication app = onboardingApplicationRepository.findById(id)
+    Jurisdiction jurisdiction = reviewJurisdiction();
+    OnboardingApplication app = (jurisdiction == null ? onboardingApplicationRepository.findById(id)
+        : onboardingApplicationRepository.findByIdInJurisdiction(id, jurisdiction.stateId(), jurisdiction.districtId()))
         .orElseThrow(() -> new ResourceNotFoundException("OnboardingApplication", "id"));
     return mapToResponse(app);
+  }
+
+  private record Jurisdiction(Long stateId, Long districtId) {}
+
+  private Jurisdiction reviewJurisdiction() {
+    var authorities = SecurityContextHolder.getContext().getAuthentication().getAuthorities();
+    boolean districtOfficer = authorities.contains(new SimpleGrantedAuthority("ROLE_district_officer"));
+    boolean stateAdmin = authorities.contains(new SimpleGrantedAuthority("ROLE_state_admin"));
+    if (!districtOfficer && !stateAdmin) {
+      return null;
+    }
+
+    User reviewer = securityScope.resolveAuthenticatedUser()
+        .filter(user -> user.getDeletedAt() == null && STATUS_ACTIVE_ID.equals(user.getUserStatusId()))
+        .orElseThrow(() -> new AccessDeniedException("Onboarding reviewer account is inactive"));
+    Long stateId = reviewer.getStateId();
+    Long districtId = reviewer.getDistrictId();
+    if (stateId == null || districtOfficer != (districtId != null)
+        || reviewer.getTrainingProviderId() != null || reviewer.getEmployerId() != null) {
+      throw new AccessDeniedException("Onboarding reviewer lacks a valid jurisdiction");
+    }
+    try {
+      ActiveGeography.validate(jdbcTemplate, stateId, districtId);
+    } catch (BadRequestException ex) {
+      throw new AccessDeniedException("Onboarding reviewer lacks a valid jurisdiction", ex);
+    }
+    return new Jurisdiction(stateId, districtId);
+  }
+
+  private OnboardingApplication lockApplicationForReview(Long id) {
+    Jurisdiction jurisdiction = reviewJurisdiction();
+    return (jurisdiction == null ? onboardingApplicationRepository.findByIdForUpdate(id)
+        : onboardingApplicationRepository.findByIdInJurisdictionForUpdate(id, jurisdiction.stateId(), jurisdiction.districtId()))
+        .orElseThrow(() -> new ResourceNotFoundException("OnboardingApplication", "id"));
   }
 
   @Override
   @Transactional
   public OnboardingApplicationResponse approveApplication(Long id, Long reviewerUserId) {
     // Acquire pessimistic row lock to prevent concurrent approval/rejection races
-    OnboardingApplication app = onboardingApplicationRepository.findByIdForUpdate(id)
-        .orElseThrow(() -> new ResourceNotFoundException("OnboardingApplication", "id"));
+    OnboardingApplication app = lockApplicationForReview(id);
 
     if (!"PENDING".equalsIgnoreCase(app.getStatus())) {
       throw new BadRequestException("Only PENDING applications can be approved", "APPLICATION_ALREADY_PROCESSED");
@@ -203,8 +251,7 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
   @Transactional
   public OnboardingApplicationResponse rejectApplication(Long id, String reason, Long reviewerUserId) {
     // Acquire pessimistic row lock to prevent concurrent approval/rejection races
-    OnboardingApplication app = onboardingApplicationRepository.findByIdForUpdate(id)
-        .orElseThrow(() -> new ResourceNotFoundException("OnboardingApplication", "id"));
+    OnboardingApplication app = lockApplicationForReview(id);
 
     if (!"PENDING".equalsIgnoreCase(app.getStatus())) {
       throw new BadRequestException("Only PENDING applications can be rejected", "APPLICATION_ALREADY_PROCESSED");

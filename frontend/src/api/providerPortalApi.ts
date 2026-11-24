@@ -12,7 +12,6 @@ import type { PagedResponse } from './types';
 import { apiBaseUrl } from '@/lib/demoEnvironment';
 import type {
   TrainingCenter,
-  Course,
   TrainingBatch,
   ChangeBatchStatusPayload,
   TrainingEnrollmentItem,
@@ -80,46 +79,6 @@ export async function getTrainingCenters(params?: {
 
 export async function getTrainingCenterById(id: number): Promise<TrainingCenter> {
   return apiGet<TrainingCenter>(`/api/v1/training-centers/${id}`);
-}
-
-// ---------------------------------------------------------------------------
-// 2. Courses Directory
-// ---------------------------------------------------------------------------
-
-export async function getCourses(params?: {
-  sectorId?: number;
-  industryId?: number;
-  deliveryModeId?: number;
-  code?: string;
-  page?: number;
-  size?: number;
-  sort?: string;
-  direction?: string;
-}): Promise<PagedResponse<Course>> {
-  const code = params?.code?.trim();
-  if (code) {
-    try {
-      const course = await apiGet<Course>('/api/v1/courses', { params: { code } });
-      const content = course && (!params?.sectorId || course.sectorId === params.sectorId) ? [course] : [];
-      return { content, page: 0, size: 1, totalElements: content.length, totalPages: content.length,
-        first: true, last: true, hasNext: false, hasPrevious: false };
-    } catch (error) {
-      if ((error as ApiError)?.status !== 404) throw error;
-      return { content: [], page: 0, size: 1, totalElements: 0, totalPages: 0,
-        first: true, last: true, hasNext: false, hasPrevious: false };
-    }
-  }
-  return apiGetPaged<Course>('/api/v1/courses', { params });
-}
-
-export type BatchProgramOption = Required<components['schemas']['BatchProgramOption']>;
-
-export async function getBatchProgramOptions(courseId: number, signal?: AbortSignal) {
-  return apiGet<BatchProgramOption[]>(`/api/v1/provider/courses/${courseId}/programs`, { signal });
-}
-
-export async function getCourseById(id: number): Promise<Course> {
-  return apiGet<Course>(`/api/v1/courses/${id}`);
 }
 
 // ---------------------------------------------------------------------------

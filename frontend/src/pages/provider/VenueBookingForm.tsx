@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { getBatchProgramOptions, getCourses } from '@/api/providerPortalApi';
+import { useMutation } from '@tanstack/react-query';
 import type { RegistrationReferenceData } from '@/api/registrationApi';
 import type { ApiError } from '@/api/types';
 import { requestVenue, rescheduleBooking, type BookingDetails, type SessionInput, type SharedVenue } from '@/api/venueBookingApi';
@@ -21,7 +20,9 @@ type SessionDraft = SessionInput & { key: number };
 let nextDraftKey = 0;
 const makeDraft = (startsAt = '', endsAt = ''): SessionDraft => ({ key: ++nextDraftKey, startsAt, endsAt });
 
-function ScheduleFields({ sessions, onChange }: { sessions: SessionDraft[]; onChange: (sessions: SessionDraft[]) => void }) {
+function ScheduleFields({ sessions, onChange }: {
+  sessions: SessionDraft[]; onChange: (sessions: SessionDraft[]) => void;
+}) {
   const [first, setFirst] = useState('');
   const [last, setLast] = useState('');
   const [startTime, setStartTime] = useState('09:00');
@@ -100,19 +101,15 @@ export function VenueBookingForm({ draft, geography, onClose, onSaved }: {
   onSaved: (detail: BookingDetails) => void;
 }) {
   const [sessions, setSessions] = useState(() => [makeDraft()]);
-  const [coursePage, setCoursePage] = useState(0);
-  const [courseId, setCourseId] = useState(0);
-  const [programId, setProgramId] = useState(0);
   const [batchCode, setBatchCode] = useState('');
   const [seats, setSeats] = useState('');
-  const [temporary, setTemporary] = useState({ name: '', address: '', stateId: 0, districtId: 0, capacity: 0, permissionToUse: '' });
+  const [skillsToTeach, setSkillsToTeach] = useState('');
+  const [trainingNotes, setTrainingNotes] = useState('');
+  const [temporary, setTemporary] = useState({
+    name: '', address: '', stateId: 0, districtId: 0,
+    capacity: 0, permissionToUse: '',
+  });
   const [validation, setValidation] = useState('');
-  const courses = useQuery({ queryKey: ['venue-bookings', 'courses', coursePage],
-    queryFn: () => getCourses({ page: coursePage, size: 25, sort: 'name', direction: 'ASC' }),
-    enabled: draft.kind !== 'reschedule' });
-  const programs = useQuery({ queryKey: ['provider', 'batch-programs', courseId],
-    queryFn: ({ signal }) => getBatchProgramOptions(courseId, signal),
-    enabled: draft.kind !== 'reschedule' && courseId > 0 });
   const save = useMutation<BookingDetails, ApiError>({
     mutationFn: () => {
       const slots = sessions.map(({ startsAt, endsAt }) => ({ startsAt, endsAt }));
@@ -120,7 +117,9 @@ export function VenueBookingForm({ draft, geography, onClose, onSaved }: {
       return requestVenue({
         centerId: draft.kind === 'shared' ? draft.venue.id : undefined,
         temporaryVenue: draft.kind === 'temporary' ? temporary : undefined,
-        batchCode: batchCode.trim(), courseId, programId, seats: Number(seats), sessions: slots,
+        batchCode: batchCode.trim(), seats: Number(seats), sessions: slots,
+        skillsToTeach: skillsToTeach.trim(),
+        trainingNotes: trainingNotes.trim() || undefined,
       });
     },
     onSuccess: onSaved,
@@ -131,8 +130,12 @@ export function VenueBookingForm({ draft, geography, onClose, onSaved }: {
   function submit(event: FormEvent) {
     event.preventDefault();
     if (save.isPending) return;
-    if (draft.kind !== 'reschedule' && (!courseId || !programId || !batchCode.trim())) {
-      setValidation('Enter a batch code and choose a course and program.');
+    if (draft.kind !== 'reschedule' && !batchCode.trim()) {
+      setValidation('Enter a batch code.');
+      return;
+    }
+    if (draft.kind !== 'reschedule' && !skillsToTeach.trim()) {
+      setValidation('Enter the skills you will teach.');
       return;
     }
     if (draft.kind === 'temporary' && (!temporary.stateId || !temporary.districtId)) {
@@ -147,6 +150,7 @@ export function VenueBookingForm({ draft, geography, onClose, onSaved }: {
     <Modal open title={title} className="max-w-3xl" onClose={() => { if (!save.isPending) onClose(); }}>
       <form onSubmit={submit} className="space-y-4 p-5">
         <fieldset className="space-y-4" disabled={save.isPending}>
+          {draft.kind !== 'reschedule' && <p className="text-sm font-medium text-slate-700">Provider-initiated training</p>}
           {draft.kind === 'shared' && <p>{draft.venue.name} · {draft.venue.capacity} seats</p>}
           {draft.kind === 'reschedule' && <p className="text-sm text-slate-600">
             {draft.name}. Enter the replacement schedule for future sessions. Existing reservations remain held during review.
@@ -158,7 +162,8 @@ export function VenueBookingForm({ draft, geography, onClose, onSaved }: {
               <label className="form-label">Address *<input className="form-input" required maxLength={200} value={temporary.address}
                 onChange={e => setTemporary({ ...temporary, address: e.target.value })} /></label>
               <StateDistrictFields prefix="temporary-venue" reference={geography} required stateId={temporary.stateId}
-                districtId={temporary.districtId} onChange={(stateId, districtId) => setTemporary({ ...temporary, stateId, districtId })} />
+                districtId={temporary.districtId}
+                onChange={(stateId, districtId) => setTemporary({ ...temporary, stateId, districtId })} />
               <label className="form-label">Venue seating capacity *<input type="number" min={1} max={2147483647} required
                 className="form-input" value={temporary.capacity || ''} onChange={e => setTemporary({ ...temporary, capacity: Number(e.target.value) })} /></label>
               <label className="form-label">Premises permission reference *<input className="form-input" required maxLength={400}
@@ -172,30 +177,14 @@ export function VenueBookingForm({ draft, geography, onClose, onSaved }: {
               <label className="form-label">Requested seats *<input className="form-input" type="number" required min={1}
                 max={draft.kind === 'shared' ? draft.venue.capacity : temporary.capacity || 2147483647}
                 value={seats} onChange={e => setSeats(e.target.value)} /></label>
-              <div>
-                <label className="form-label" htmlFor="venue-booking-course">Course *</label>
-                <select id="venue-booking-course" className="form-input" required value={courseId || ''}
-                  onChange={e => { setCourseId(Number(e.target.value)); setProgramId(0); }}>
-                  <option value="">Select a course</option>
-                  {courses.data?.content.map(course => <option key={course.id} value={course.id}>{course.courseName}</option>)}
-                </select>
-                {(courses.data?.hasPrevious || courses.data?.hasNext) && <div className="mt-1 flex gap-3 text-sm">
-                  <button type="button" className="underline disabled:opacity-50" disabled={!courses.data?.hasPrevious}
-                    onClick={() => { setCoursePage(coursePage - 1); setCourseId(0); setProgramId(0); }}>Previous courses</button>
-                  <button type="button" className="underline disabled:opacity-50" disabled={!courses.data?.hasNext}
-                    onClick={() => { setCoursePage(coursePage + 1); setCourseId(0); setProgramId(0); }}>Next courses</button>
-                </div>}
-                {courses.isError && <button type="button" className="underline" onClick={() => void courses.refetch()}>Retry courses</button>}
-              </div>
-              <div>
-                <label className="form-label" htmlFor="venue-booking-program">Program *</label>
-                <select id="venue-booking-program" className="form-input" required disabled={!courseId || programs.isPending} value={programId || ''}
-                  onChange={e => setProgramId(Number(e.target.value))}>
-                  <option value="">Select a linked program</option>
-                  {programs.data?.map(program => <option key={program.id} value={program.id}>{program.name}</option>)}
-                </select>
-                {programs.isError && <button type="button" className="underline" onClick={() => void programs.refetch()}>Retry programs</button>}
-              </div>
+              <label className="form-label sm:col-span-2">Skills to teach *
+                <textarea className="form-input" required rows={2} maxLength={600} value={skillsToTeach}
+                  onChange={e => setSkillsToTeach(e.target.value)} />
+              </label>
+              <label className="form-label sm:col-span-2">Training notes and equipment needs
+                <textarea className="form-input" rows={2} maxLength={1500} value={trainingNotes}
+                  onChange={e => setTrainingNotes(e.target.value)} />
+              </label>
             </div>
           )}
           <ScheduleFields sessions={sessions} onChange={setSessions} />

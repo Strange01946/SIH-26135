@@ -10,16 +10,20 @@ import org.springframework.security.access.prepost.PreAuthorize;
 
 public interface OnboardingAdminService {
 
-  @PreAuthorize("hasAnyAuthority('user.manage', 'ROLE_super_admin', 'ROLE_government_admin', 'ROLE_government_officer')")
+  String REVIEW_ACCESS = "hasAnyAuthority('user.manage', 'ROLE_super_admin', 'ROLE_government_admin', "
+      + "'ROLE_state_admin', 'ROLE_district_officer')";
+  String VIEW_ACCESS = REVIEW_ACCESS + " or hasAuthority('ROLE_government_officer')";
+
+  @PreAuthorize(VIEW_ACCESS)
   List<OnboardingApplicationResponse> getApplications(String status);
 
-  @PreAuthorize("hasAnyAuthority('user.manage', 'ROLE_super_admin', 'ROLE_government_admin', 'ROLE_government_officer')")
+  @PreAuthorize(VIEW_ACCESS)
   OnboardingApplicationResponse getApplicationById(Long id);
 
-  @PreAuthorize("hasAnyAuthority('user.manage', 'ROLE_super_admin', 'ROLE_government_admin')")
+  @PreAuthorize(REVIEW_ACCESS)
   OnboardingApplicationResponse approveApplication(Long id, Long reviewerUserId);
 
-  @PreAuthorize("hasAnyAuthority('user.manage', 'ROLE_super_admin', 'ROLE_government_admin')")
+  @PreAuthorize(REVIEW_ACCESS)
   OnboardingApplicationResponse rejectApplication(Long id, String reason, Long reviewerUserId);
 
   @PreAuthorize("hasAnyAuthority('user.manage', 'ROLE_super_admin', 'ROLE_government_admin', 'ROLE_government_officer')")

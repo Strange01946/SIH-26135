@@ -7,6 +7,15 @@ const roles = {
   assessor: 'assessor', employer: 'employer', trainee: 'trainee',
   applicant: 'training_provider', district: 'district_officer',
 };
+const publicOrganizations = {
+  provider_registration: 'training_provider',
+  employer_registration: 'employer',
+  onboarding_district_provider: 'training_provider',
+  onboarding_district_employer: 'employer',
+  onboarding_state_provider: 'training_provider',
+  onboarding_state_employer: 'employer',
+  onboarding_outside_provider: 'training_provider',
+};
 
 function passwordHash(password) {
   const nonce = randomBytes(16);
@@ -19,7 +28,7 @@ function passwordHash(password) {
 
 export function fixtureNames(id) {
   assertRunId(id);
-  const names = [...Object.keys(roles), 'registered', 'invalid_registration', 'invalid_provisioning', 'provider_registration', 'employer_registration'];
+  const names = [...Object.keys(roles), 'registered', 'invalid_registration', 'invalid_provisioning', ...Object.keys(publicOrganizations)];
   return Object.fromEntries(names.map((name) => [name, id + '_' + name]));
 }
 
@@ -33,14 +42,15 @@ export function seedFixtures(id) {
   const uploadCandidate = id + '-upload';
   const batchCode = id + '-venue-enroll';
   const reference = sql(`
-    SELECT cp.course_id,cp.program_id,s.state_id,c.sector_id
-    FROM course_programs cp JOIN courses c USING (course_id) JOIN programs p USING (program_id)
-    JOIN states s ON s.deleted_at IS NULL AND s.lifecycle_status_id=1
-    WHERE c.deleted_at IS NULL AND c.lifecycle_status_id=1 AND p.deleted_at IS NULL AND p.lifecycle_status_id=1
-    ORDER BY cp.course_id,cp.program_id,s.state_id LIMIT 1;
+    SELECT
+      (SELECT program_id FROM programs WHERE deleted_at IS NULL AND lifecycle_status_id=1 ORDER BY program_id LIMIT 1),
+      (SELECT state_id FROM states WHERE deleted_at IS NULL AND lifecycle_status_id=1 ORDER BY state_id LIMIT 1),
+      (SELECT sector_id FROM sectors WHERE deleted_at IS NULL AND lifecycle_status_id=1 ORDER BY sector_id LIMIT 1),
+      (SELECT delivery_mode_id FROM ref_delivery_mode ORDER BY sort_order,delivery_mode_id LIMIT 1);
   `).split('\t').map(Number);
-  assert(reference.length === 4 && reference.every((value) => Number.isSafeInteger(value) && value > 0), 'Active reference course, program, state and sector');
-  const [course, program, state, sector] = reference;
+  assert(reference.length === 4 && reference.every((value) => Number.isSafeInteger(value) && value > 0),
+    'Active program, state, sector and delivery mode for the fixture course');
+  const [program, state, sector, deliveryMode] = reference;
   const insertUsers = Object.entries(roles).map(([name, role]) => `
     INSERT INTO users (username,email,password_hash,password_algo,user_status_id,training_provider_id,employer_id,state_id,district_id)
     VALUES (${quote(users[name])},${quote(users[name] + '@example.invalid')},${hash},'argon2id',${name === 'applicant' ? 1 : 2},
@@ -51,6 +61,10 @@ export function seedFixtures(id) {
   `).join('\n');
   const data = sql(`
     START TRANSACTION;
+    INSERT INTO courses(course_code,course_name,sector_id,delivery_mode_id,lifecycle_status_id)
+      VALUES ('${id}-fixture-course','Fixture training course ${id}',${sector},${deliveryMode},1);
+    SET @course=LAST_INSERT_ID();
+    INSERT INTO course_programs(course_id,program_id) VALUES (@course,${program});
     INSERT INTO districts(state_id,district_code,district_name,lifecycle_status_id)
       VALUES (${state},${quote(id)},${quote('Smoke district ' + id)},1);
     SET @district=LAST_INSERT_ID();
@@ -95,18 +109,18 @@ export function seedFixtures(id) {
       VALUES (@trainee,1,1,'Smoke processing','1.0',NOW()-INTERVAL 1 DAY),
              (@prospect,1,1,'Smoke enrollment','1.0',NOW()-INTERVAL 1 DAY);
     INSERT INTO training_batches(batch_code,course_id,provider_id,center_id,program_id,start_date,end_date,capacity,batch_status_id)
-      VALUES ('${id}-assess-batch',${course},@provider,@center,${program},CURDATE()-INTERVAL 30 DAY,CURDATE()-INTERVAL 1 DAY,10,3);
+      VALUES ('${id}-assess-batch',@course,@provider,@center,${program},CURDATE()-INTERVAL 30 DAY,CURDATE()-INTERVAL 1 DAY,10,3);
     SET @batch=LAST_INSERT_ID();
     INSERT INTO training_enrollments(enrollment_number,trainee_id,course_id,provider_id,center_id,batch_id,program_id,
       enrollment_status_id,enrollment_date,start_date)
-      VALUES ('${id}-assess-enroll',@trainee,${course},@provider,@center,@batch,${program},1,CURDATE()-INTERVAL 30 DAY,CURDATE()-INTERVAL 30 DAY);
+      VALUES ('${id}-assess-enroll',@trainee,@course,@provider,@center,@batch,${program},1,CURDATE()-INTERVAL 30 DAY,CURDATE()-INTERVAL 30 DAY);
     SET @enrollment=LAST_INSERT_ID();
     INSERT INTO attendance_records(enrollment_id,trainee_id,batch_id,session_date,session_sequence,attendance_status_id,marked_at)
       SELECT @enrollment,@trainee,@batch,CURDATE()-INTERVAL days.n DAY,1,1,NOW()
       FROM (SELECT 5 AS n UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) days;
     INSERT INTO assessments(assessment_code,assessment_name,course_id,batch_id,program_id,assessment_type_id,maximum_score,pass_score,
       assessment_date,evaluator_user_id,evaluator_name,lifecycle_status_id)
-      VALUES ('${id}-assessment','Smoke Solar Assessment',${course},@batch,${program},1,100,50,CURDATE(),@u_assessor,'Smoke assessor',1);
+      VALUES ('${id}-assessment','Smoke Solar Assessment',@course,@batch,${program},1,100,50,CURDATE(),@u_assessor,'Smoke assessor',1);
     SET @assessment=LAST_INSERT_ID();
     INSERT INTO employment_records(employment_number,trainee_id,enrollment_id,employer_id,job_role_id,engagement_type_id,
       employment_spell_status_id,start_date,starting_salary,salary_frequency_id,work_state_id,work_district_id,
@@ -138,10 +152,11 @@ export function seedFixtures(id) {
     SELECT @district,@provider,@center,@employer,@trainee,@prospect,@assessment,@request,@task,@version,@question,
       CURDATE()+INTERVAL 2 DAY,CURDATE()+INTERVAL 28 DAY,
       (SELECT district_code FROM districts WHERE district_id=@district),
-      (SELECT state_code FROM states WHERE state_id=${state}),@application;
+      (SELECT state_code FROM states WHERE state_id=${state}),@application,@course;
   `).split('\t');
   const [district, provider, center, employer, trainee, prospect, assessment, request, task, version, question] = data.slice(0, 11).map(Number);
-  assert([district, provider, center, employer, trainee, prospect, assessment, request, task, version, question]
+  const course = Number(data[16]);
+  assert([district, provider, center, employer, trainee, prospect, assessment, request, task, version, question, course]
     .every((value) => Number.isSafeInteger(value) && value > 0), 'All run-scoped fixture IDs were created');
   return { id, users, password, candidateCode, enrollmentCandidate, uploadCandidate, batchCode,
     course, program, state, district, provider, center, employer, trainee, prospect, assessment, request, task, version, question,
@@ -153,7 +168,19 @@ export function cleanFixtures(id) {
   const names = fixtureNames(id);
   const users = Object.values(names).map(quote).join(',');
   const publicRegistrants = [names.registered, names.invalid_registration].map(quote).join(',');
-  const publicOrganizations = [names.provider_registration, names.employer_registration].map(quote).join(',');
+  const publicOrganizationUsers = Object.keys(publicOrganizations).map((name) => quote(names[name])).join(',');
+  const publicOrganizationNames = Object.keys(publicOrganizations).map((name) => quote(id + '-' + name.replaceAll('_', '-'))).join(',');
+  const collectPublicOrganizations = Object.entries(publicOrganizations).map(([name, type]) => `
+    SET @${name}_entity=(SELECT ${type}_id FROM users WHERE username=${quote(names[name])});
+    SET @${name}_org=(SELECT CONCAT('ONB-',application_id) FROM onboarding_applications JOIN users USING (user_id)
+      WHERE username=${quote(names[name])});
+  `).join('\n');
+  const removePublicOrganizations = Object.entries(publicOrganizations).map(([name, type]) => {
+    const entityType = type === 'training_provider' ? 'provider' : 'employer';
+    const organizationName = quote(id + '-' + name.replaceAll('_', '-'));
+    return `DELETE FROM ${type}s WHERE ${entityType}_id=@${name}_entity AND ${entityType}_name=${organizationName};`;
+  }).join('\n');
+  const publicOrganizationCodes = Object.keys(publicOrganizations).map((name) => '@' + name + '_org').join(',');
   const candidates = ['learner', 'enroll', 'upload'].map((name) => quote(id + '-' + name)).join(',');
   const rows = sql(`
     START TRANSACTION;
@@ -165,12 +192,7 @@ export function cleanFixtures(id) {
     SET @survey=(SELECT survey_id FROM surveys WHERE survey_code='${id}-survey');
     SET @template=(SELECT survey_template_id FROM survey_templates WHERE template_code='${id}-template');
     SET @campaign=(SELECT followup_campaign_id FROM followup_campaigns WHERE campaign_code='${id}-campaign');
-    SET @registered_provider=(SELECT training_provider_id FROM users WHERE username=${quote(names.provider_registration)});
-    SET @registered_employer=(SELECT employer_id FROM users WHERE username=${quote(names.employer_registration)});
-    SET @provider_org_code=(SELECT CONCAT('ONB-',application_id) FROM onboarding_applications JOIN users USING (user_id)
-      WHERE username=${quote(names.provider_registration)});
-    SET @employer_org_code=(SELECT CONCAT('ONB-',application_id) FROM onboarding_applications JOIN users USING (user_id)
-      WHERE username=${quote(names.employer_registration)});
+    ${collectPublicOrganizations}
     SET @venue_shared=(SELECT center_id FROM training_centers WHERE center_code='${id}-shared');
     SET @venue_shared_admin=(SELECT center_id FROM training_centers WHERE center_code='${id}-center-admin' AND venue_type='SHARED');
     SET @venue_enrollment=(SELECT center_id FROM venue_bookings WHERE batch_code='${id}-venue-enroll'
@@ -178,9 +200,20 @@ export function cleanFixtures(id) {
     SET @venue_race=(SELECT center_id FROM training_centers WHERE center_code='${id}-shared-race');
     SET @venue_temporary=(SELECT center_id FROM venue_bookings WHERE batch_code='${id}-venue-temp'
       AND venue_type='TEMPORARY' AND center_id IS NOT NULL LIMIT 1);
+    CREATE TEMPORARY TABLE fixture_government_bookings AS
+      SELECT DISTINCT CONCAT('GOV-REQ-',requirement_id) AS batch_code FROM training_requirements
+      WHERE LEFT(title,LENGTH('${id}-requirement-'))='${id}-requirement-';
+    UPDATE training_requirements SET root_booking_id=NULL WHERE LEFT(title,LENGTH('${id}-requirement-'))='${id}-requirement-';
     DELETE FROM venue_blackouts WHERE center_id IN (@venue_shared,@venue_race);
+    DELETE vb FROM venue_blackouts vb JOIN training_centers tc USING(center_id)
+      WHERE LEFT(tc.center_code,LENGTH('${id}-gov-lab-'))='${id}-gov-lab-';
+    DELETE b FROM venue_bookings b JOIN fixture_government_bookings f USING(batch_code) WHERE b.replaces_booking_id IS NOT NULL;
+    DELETE b FROM venue_bookings b JOIN fixture_government_bookings f USING(batch_code);
     DELETE FROM venue_bookings WHERE LEFT(batch_code,LENGTH('${id}-venue-'))='${id}-venue-' AND replaces_booking_id IS NOT NULL;
     DELETE FROM venue_bookings WHERE LEFT(batch_code,LENGTH('${id}-venue-'))='${id}-venue-';
+    DELETE a FROM training_requirement_applications a JOIN training_requirements r USING (requirement_id)
+      WHERE LEFT(r.title,LENGTH('${id}-requirement-'))='${id}-requirement-';
+    DELETE FROM training_requirements WHERE LEFT(title,LENGTH('${id}-requirement-'))='${id}-requirement-';
     DELETE l FROM audit_logs l JOIN users u ON u.user_id=l.actor_user_id WHERE u.username IN (${users});
     DELETE l FROM system_event_logs l JOIN users u ON u.user_id=l.actor_user_id WHERE u.username IN (${users});
     DELETE r FROM import_records r JOIN import_batches b USING (import_batch_id) JOIN users u ON u.user_id=b.initiated_by_user_id WHERE u.username IN (${users});
@@ -211,6 +244,7 @@ export function cleanFixtures(id) {
     DELETE a FROM attendance_records a JOIN trainees t USING (trainee_id) WHERE t.registration_number IN (${candidates});
     DELETE e FROM training_enrollments e JOIN trainees t USING (trainee_id) WHERE e.provider_id=@provider AND t.registration_number IN (${candidates});
     DELETE FROM training_batches WHERE LEFT(batch_code,LENGTH('${id}-venue-'))='${id}-venue-';
+    DELETE b FROM training_batches b JOIN fixture_government_bookings f USING(batch_code);
     DELETE FROM training_batches WHERE provider_id=@provider AND batch_code IN ('${id}-assess-batch','${id}-create');
     DELETE c FROM trainee_consents c JOIN trainees t USING (trainee_id) WHERE t.registration_number IN (${candidates});
     DELETE FROM trainees WHERE registration_number IN (${candidates});
@@ -219,21 +253,27 @@ export function cleanFixtures(id) {
     DELETE t FROM trainees t JOIN users u ON u.user_id=t.user_id WHERE u.username IN (${publicRegistrants});
     DELETE a FROM onboarding_applications a JOIN users u ON u.user_id=a.user_id
       WHERE a.application_number='${id}-application' AND u.username=${quote(fixtureNames(id).applicant)};
-    DELETE a FROM onboarding_applications a JOIN users u USING (user_id) WHERE u.username IN (${publicOrganizations});
+    DELETE a FROM onboarding_applications a JOIN users u USING (user_id) WHERE u.username IN (${publicOrganizationUsers});
     DELETE ur FROM user_roles ur JOIN users u USING (user_id) WHERE u.username IN (${users});
     DELETE FROM users WHERE username IN (${users});
     DELETE FROM training_centers WHERE center_id IN (@venue_shared,@venue_race,@venue_temporary,@venue_shared_admin,@venue_enrollment);
+    DELETE FROM training_centers WHERE LEFT(center_code,LENGTH('${id}-gov-lab-'))='${id}-gov-lab-';
     DELETE FROM training_centers WHERE provider_id=@provider AND center_code IN ('${id}-center','${id}-center-provider');
     DELETE c FROM training_centers c JOIN training_providers p USING (provider_id)
       WHERE c.center_code='${id}-center-admin' AND p.provider_code='${id}-outsider';
     DELETE FROM training_providers WHERE provider_code IN ('${id}-provider','${id}-outsider');
     DELETE FROM employers WHERE employer_id=@employer AND employer_code='${id}-employer';
-    DELETE FROM training_providers WHERE provider_id=@registered_provider AND provider_name='${id}-provider-registration';
-    DELETE FROM employers WHERE employer_id=@registered_employer AND employer_name='${id}-employer-registration';
-    DELETE FROM organizations WHERE organization_code IN ('${id}-provider','${id}-outsider','${id}-employer',@provider_org_code,@employer_org_code);
+    ${removePublicOrganizations}
+    DELETE FROM organizations WHERE organization_code IN ('${id}-provider','${id}-outsider','${id}-employer',${publicOrganizationCodes});
     DELETE FROM job_roles WHERE job_role_code='${id}-role';
+    DELETE c FROM courses c JOIN sectors s USING(sector_id)
+      WHERE s.sector_code='SKILLS-UNCLASSIFIED' AND c.course_code LIKE 'SKL-%'
+        AND LEFT(LOWER(c.description),LENGTH('${id} '))='${id} ';
+    DELETE FROM courses WHERE course_code='${id}-fixture-course';
     DELETE FROM districts WHERE district_code='${id}';
     COMMIT;
+    SET @remaining_government_bookings=(SELECT COUNT(*) FROM venue_bookings JOIN fixture_government_bookings USING(batch_code));
+    SET @remaining_government_batches=(SELECT COUNT(*) FROM training_batches JOIN fixture_government_bookings USING(batch_code));
     SELECT (SELECT COUNT(*) FROM users WHERE username IN (${users})) +
       (SELECT COUNT(*) FROM trainees WHERE registration_number IN (${candidates})) +
       (SELECT COUNT(*) FROM training_providers WHERE provider_code IN ('${id}-provider','${id}-outsider')) +
@@ -241,7 +281,16 @@ export function cleanFixtures(id) {
       (SELECT COUNT(*) FROM venue_bookings WHERE LEFT(batch_code,LENGTH('${id}-venue-'))='${id}-venue-') +
       (SELECT COUNT(*) FROM training_batches WHERE LEFT(batch_code,LENGTH('${id}-venue-'))='${id}-venue-') +
       (SELECT COUNT(*) FROM training_centers WHERE center_id IN (@venue_shared,@venue_race,@venue_temporary,@venue_shared_admin,@venue_enrollment)) +
-      (SELECT COUNT(*) FROM districts WHERE district_code='${id}');
+      (SELECT COUNT(*) FROM training_centers WHERE LEFT(center_code,LENGTH('${id}-gov-lab-'))='${id}-gov-lab-') +
+      @remaining_government_bookings + @remaining_government_batches +
+      (SELECT COUNT(*) FROM training_requirements WHERE LEFT(title,LENGTH('${id}-requirement-'))='${id}-requirement-') +
+      (SELECT COUNT(*) FROM districts WHERE district_code='${id}') +
+      (SELECT COUNT(*) FROM courses WHERE course_code='${id}-fixture-course') +
+      (SELECT COUNT(*) FROM courses c JOIN sectors s USING(sector_id)
+        WHERE s.sector_code='SKILLS-UNCLASSIFIED' AND c.course_code LIKE 'SKL-%'
+          AND LEFT(LOWER(c.description),LENGTH('${id} '))='${id} ') +
+      (SELECT COUNT(*) FROM training_providers WHERE provider_name IN (${publicOrganizationNames})) +
+      (SELECT COUNT(*) FROM employers WHERE employer_name IN (${publicOrganizationNames}));
   `);
   assert.equal(rows, '0', 'Run-scoped fixtures removed');
 }

@@ -97,9 +97,10 @@ describe('Navigation, Layout & Multi-Persona Sidebar Filtering', () => {
   // 3. Multi-Persona Sidebar Filtering
   describe('Persona Navigation Filtering', () => {
     it('renders admin operational links for Government Administrator persona', () => {
+      setupAuth({ id: 1, username: 'government_admin', authorities: ['ROLE_government_admin', 'user.manage'] });
       render(
         <MemoryRouter>
-          <Sidebar currentRole="ROLE_ADMIN" />
+          <Sidebar currentRole="ROLE_government_admin" />
         </MemoryRouter>,
       );
 
@@ -115,7 +116,7 @@ describe('Navigation, Layout & Multi-Persona Sidebar Filtering', () => {
     });
 
     it('renders training provider links for Training Provider persona', () => {
-      setupAuth({ id: 2, username: 'provider', authorities: ['ROLE_training_provider', 'center.manage'] });
+      setupAuth({ id: 2, username: 'provider', authorities: ['ROLE_training_provider', 'center.manage', 'venue.booking.request'] });
       render(
         <MemoryRouter>
           <Sidebar currentRole="ROLE_TRAINING_PROVIDER" />
@@ -124,7 +125,7 @@ describe('Navigation, Layout & Multi-Persona Sidebar Filtering', () => {
 
       expect(screen.getByText('Provider Console')).toBeInTheDocument();
       expect(screen.getByText('Training Centers')).toBeInTheDocument();
-      expect(screen.getByText('Approved Courses')).toBeInTheDocument();
+      expect(screen.getByText('Training Opportunities')).toBeInTheDocument();
       expect(screen.getByText('Batch Management')).toBeInTheDocument();
       expect(screen.getByText('Candidate Enrollment')).toBeInTheDocument();
       expect(screen.getByText('Bulk Ingestion')).toBeInTheDocument();

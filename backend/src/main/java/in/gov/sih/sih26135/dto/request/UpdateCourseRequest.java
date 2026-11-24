@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.request;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.*;
 
 public class UpdateCourseRequest {
@@ -7,14 +8,23 @@ public class UpdateCourseRequest {
   private String courseName;
   @Size(max = 65535, message = "description cannot exceed 65535 characters")
   private String description;
-  private Long sectorId;
+  @Positive private Long sectorId;
+  @Positive @Schema(types = {"integer", "null"}, format = "int64")
   private Long industryId;
+  @Positive @Schema(types = {"integer", "null"}, format = "int64")
   private Long qualificationLevelId;
-  @PositiveOrZero(message = "durationHours must be greater than or equal to 0")
+  @Positive(message = "durationHours must be greater than 0")
+  @Schema(types = {"integer", "null"}, format = "int32")
   private Integer durationHours;
+  @Positive(message = "durationDays must be greater than 0")
+  @Schema(types = {"integer", "null"}, format = "int32")
   private Integer durationDays;
-  private Long deliveryModeId;
-  private Long lifecycleStatusId;
+  @Positive private Long deliveryModeId;
+  @Positive private Long lifecycleStatusId;
+  private boolean industryIdProvided;
+  private boolean qualificationLevelIdProvided;
+  private boolean durationHoursProvided;
+  private boolean durationDaysProvided;
 
   public UpdateCourseRequest() {
   }
@@ -32,10 +42,10 @@ public class UpdateCourseRequest {
     this.courseName = courseName;
     this.description = description;
     this.sectorId = sectorId;
-    this.industryId = industryId;
-    this.qualificationLevelId = qualificationLevelId;
-    this.durationHours = durationHours;
-    this.durationDays = durationDays;
+    if (industryId != null) setIndustryId(industryId);
+    if (qualificationLevelId != null) setQualificationLevelId(qualificationLevelId);
+    if (durationHours != null) setDurationHours(durationHours);
+    if (durationDays != null) setDurationDays(durationDays);
     this.deliveryModeId = deliveryModeId;
     this.lifecycleStatusId = lifecycleStatusId;
   }
@@ -70,7 +80,10 @@ public class UpdateCourseRequest {
 
   public void setIndustryId(Long industryId) {
     this.industryId = industryId;
+    this.industryIdProvided = true;
   }
+
+  public boolean hasIndustryId() { return industryIdProvided; }
 
   public Long getQualificationLevelId() {
     return qualificationLevelId;
@@ -78,7 +91,10 @@ public class UpdateCourseRequest {
 
   public void setQualificationLevelId(Long qualificationLevelId) {
     this.qualificationLevelId = qualificationLevelId;
+    this.qualificationLevelIdProvided = true;
   }
+
+  public boolean hasQualificationLevelId() { return qualificationLevelIdProvided; }
 
   public Integer getDurationHours() {
     return durationHours;
@@ -86,7 +102,10 @@ public class UpdateCourseRequest {
 
   public void setDurationHours(Integer durationHours) {
     this.durationHours = durationHours;
+    this.durationHoursProvided = true;
   }
+
+  public boolean hasDurationHours() { return durationHoursProvided; }
 
   public Integer getDurationDays() {
     return durationDays;
@@ -94,7 +113,10 @@ public class UpdateCourseRequest {
 
   public void setDurationDays(Integer durationDays) {
     this.durationDays = durationDays;
+    this.durationDaysProvided = true;
   }
+
+  public boolean hasDurationDays() { return durationDaysProvided; }
 
   public Long getDeliveryModeId() {
     return deliveryModeId;

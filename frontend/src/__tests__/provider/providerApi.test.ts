@@ -3,7 +3,6 @@ import { requestVenue } from '@/api/venueBookingApi';
 import * as client from '@/api/client';
 import {
   getTrainingCenters,
-  getCourses,
   updateTrainingBatchStatus,
   searchTraineeByRegNumber,
   createTrainingEnrollment,
@@ -56,35 +55,9 @@ describe('providerPortalApi', () => {
     expect(result).toEqual(mockPaged);
   });
 
-  it('fetches approved courses', async () => {
-    const mockPaged = {
-      content: [{ id: 101, courseName: 'Solar Technician', courseCode: 'SOL-01', durationHours: 120 }],
-      totalElements: 1,
-      page: 0,
-      size: 20,
-      totalPages: 1,
-      first: true,
-      last: true,
-      hasNext: false,
-      hasPrevious: false,
-    };
-    vi.mocked(client.apiGetPaged).mockResolvedValue(mockPaged);
-
-    const result = await getCourses({ page: 0, size: 20 });
-    expect(client.apiGetPaged).toHaveBeenCalledWith('/api/v1/courses', {
-      params: {
-        page: 0,
-        size: 20,
-        code: undefined,
-        sector: undefined,
-      },
-    });
-    expect(result).toEqual(mockPaged);
-  });
-
   it('requests a booked batch through the venue workflow', async () => {
     const payload = {
-      batchCode: 'BATCH-2026-001', centerId: 1, courseId: 101, programId: 10, seats: 30,
+      batchCode: 'BATCH-2026-001', centerId: 1, seats: 30, skillsToTeach: 'Equipment inspection',
       sessions: [{ startsAt: '2027-06-01T09:00:00', endsAt: '2027-06-01T11:00:00' }],
     };
     const mockResponse = { booking: { id: 50, status: 'PENDING' }, sessions: payload.sessions };

@@ -126,7 +126,7 @@ export function ProviderBatchesPage(): React.JSX.Element {
                 <thead>
                   <tr className="border-b border-gray-200 text-xs font-semibold text-gray-600 bg-gray-50">
                     <th className="py-3 px-3">Batch Code</th>
-                    <th className="py-3 px-3">Course</th>
+                    <th className="py-3 px-3">Training topic</th>
                     <th className="py-3 px-3">Training Center</th>
                     <th className="py-3 px-3">Schedule</th>
                     <th className="py-3 px-3">Authoritative Seat Occupancy</th>
@@ -149,7 +149,7 @@ export function ProviderBatchesPage(): React.JSX.Element {
                           {batch.batchCode}
                         </td>
                         <td className="py-3 px-3 text-gray-800">
-                          <div className="font-medium">{batch.courseName || `Course #${batch.courseId}`}</div>
+                          <div className="font-medium">{batch.courseName || `Training #${batch.courseId}`}</div>
                           {batch.courseCode && (
                             <span className="text-[11px] text-gray-500 font-mono">{batch.courseCode}</span>
                           )}

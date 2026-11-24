@@ -177,7 +177,7 @@ describe('Phase 30.6B — Role Recovery, Navigation Isolation & Context Switchin
 
     it('training provider sees ONLY Provider console links', () => {
       setupAuth({
-        user: { id: 30, username: 'tp_user', authorities: ['ROLE_training_provider', 'center.manage'] },
+        user: { id: 30, username: 'tp_user', authorities: ['ROLE_training_provider', 'center.manage', 'venue.booking.request'] },
         personas: ['TRAINING_PROVIDER'],
         primaryPersona: 'TRAINING_PROVIDER',
         activePersona: 'TRAINING_PROVIDER',
@@ -192,7 +192,7 @@ describe('Phase 30.6B — Role Recovery, Navigation Isolation & Context Switchin
       // Provider items present
       expect(screen.getByText('Provider Console')).toBeInTheDocument();
       expect(screen.getByText('Training Centers')).toBeInTheDocument();
-      expect(screen.getByText('Approved Courses')).toBeInTheDocument();
+      expect(screen.getByText('Training Opportunities')).toBeInTheDocument();
       expect(screen.getByText('Batch Management')).toBeInTheDocument();
       expect(screen.getByText('Candidate Enrollment')).toBeInTheDocument();
       expect(screen.getByText('Bulk Ingestion')).toBeInTheDocument();

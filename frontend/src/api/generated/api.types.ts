@@ -628,22 +628,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/courses/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getById_36"];
-        put: operations["updateCourse"];
-        post?: never;
-        delete: operations["deleteCourse"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/consents/{id}/status": {
         parameters: {
             query?: never;
@@ -667,7 +651,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_37"];
+        get: operations["getById_36"];
         put: operations["updateConsentStatus_1"];
         post?: never;
         delete?: never;
@@ -683,7 +667,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_38"];
+        get: operations["getById_37"];
         put: operations["updateCommunicationLog"];
         post?: never;
         delete: operations["deleteCommunicationLog"];
@@ -699,7 +683,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_39"];
+        get: operations["getById_38"];
         put: operations["updateCertification"];
         post?: never;
         delete: operations["deleteCertification"];
@@ -715,7 +699,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_40"];
+        get: operations["getById_39"];
         put: operations["updateCertification_1"];
         post?: never;
         delete: operations["deleteCertification_1"];
@@ -731,7 +715,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_41"];
+        get: operations["getById_40"];
         put: operations["updateAttendanceRecord"];
         post?: never;
         delete: operations["deleteAttendanceRecord"];
@@ -747,7 +731,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_42"];
+        get: operations["getById_41"];
         put: operations["updateAssessment_1"];
         post?: never;
         delete: operations["deleteAssessment_1"];
@@ -763,7 +747,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_43"];
+        get: operations["getById_42"];
         put: operations["updateAssessmentResult"];
         post?: never;
         delete: operations["deleteAssessmentResult"];
@@ -779,7 +763,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_44"];
+        get: operations["getById_43"];
         put: operations["updateAssessmentResult_1"];
         post?: never;
         delete: operations["deleteAssessmentResult_1"];
@@ -1318,6 +1302,70 @@ export interface paths {
         get: operations["getUserRoles"];
         put?: never;
         post: operations["assignRole"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-requirements/{id}/applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["applyForTrainingRequirement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-requirements/government": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listGovernmentRequirements"];
+        put?: never;
+        post: operations["publishTrainingRequirement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-requirements/government/{id}/select": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["selectTrainingProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-requirements/government/{id}/centre": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["setTrainingCentre"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2308,22 +2356,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/courses": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getCourses"];
-        put?: never;
-        post: operations["createCourse"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/consents": {
         parameters: {
             query?: never;
@@ -2890,7 +2922,7 @@ export interface paths {
         put?: never;
         /**
          * Reject Application
-         * @description Reject onboarding application with reason and disable user
+         * @description Reject a pending application in the permitted jurisdiction and disable the portal account.
          */
         post: operations["rejectApplication"];
         delete?: never;
@@ -2910,7 +2942,7 @@ export interface paths {
         put?: never;
         /**
          * Approve Application
-         * @description Approve onboarding application, activate user, and grant accreditation
+         * @description Approve a pending application in the permitted jurisdiction and activate the portal account.
          */
         post: operations["approveApplication"];
         delete?: never;
@@ -3159,6 +3191,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/training-requirements/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["providerRequirementDetails"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-requirements/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["openTrainingRequirements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-requirements/my-applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["myTrainingApplications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-requirements/government/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["governmentRequirementDetails"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/training-centers": {
         parameters: {
             query?: never;
@@ -3222,7 +3318,7 @@ export interface paths {
          * Get Training Batch by ID
          * @description Retrieves training batch details by primary key identifier.
          */
-        get: operations["getById_45"];
+        get: operations["getById_44"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3286,7 +3382,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_46"];
+        get: operations["getById_45"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3359,22 +3455,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/provider/courses/{courseId}/programs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getBatchProgramOptions"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/provider/centers/{centerId}/scorecard": {
         parameters: {
             query?: never;
@@ -3414,7 +3494,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_47"];
+        get: operations["getById_46"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3798,7 +3878,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_48"];
+        get: operations["getById_47"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4195,6 +4275,38 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getAttritionDashboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getCourses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getById_48"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5575,7 +5687,7 @@ export interface paths {
         };
         /**
          * List Onboarding Applications
-         * @description Retrieve list of onboarding applications with optional status filter
+         * @description List applications by optional status. State administrators and district officers see only their assigned jurisdiction.
          */
         get: operations["getApplications"];
         put?: never;
@@ -5595,7 +5707,7 @@ export interface paths {
         };
         /**
          * Get Onboarding Application Details
-         * @description Retrieve single application by ID
+         * @description Retrieve an application in the reviewer's permitted jurisdiction.
          */
         get: operations["getApplicationById"];
         put?: never;
@@ -9257,97 +9369,6 @@ export interface components {
             /** Format: date-time */
             updatedAt?: string;
         };
-        UpdateCourseRequest: {
-            courseName?: string;
-            description?: string;
-            /** Format: int64 */
-            sectorId?: number;
-            /** Format: int64 */
-            industryId?: number;
-            /** Format: int64 */
-            qualificationLevelId?: number;
-            /** Format: int32 */
-            durationHours?: number;
-            /** Format: int32 */
-            durationDays?: number;
-            /** Format: int64 */
-            deliveryModeId?: number;
-            /** Format: int64 */
-            lifecycleStatusId?: number;
-        };
-        /** @description Standard generic envelope for REST API responses */
-        ApiResponseCourseResponse: {
-            /**
-             * @description Whether the request completed successfully
-             * @example true
-             */
-            success?: boolean;
-            /**
-             * @description Machine-readable status or error code
-             * @example SUCCESS
-             */
-            code?: string;
-            /**
-             * @description Human-readable result or status message
-             * @example Operation completed successfully
-             */
-            message?: string;
-            /** @description Payload data of type T */
-            data?: components["schemas"]["CourseResponse"];
-            /**
-             * Format: date-time
-             * @description UTC ISO-8601 timestamp of response generation
-             * @example 2026-11-19T18:00:00Z
-             */
-            timestamp?: string;
-            /**
-             * @description Request URI path
-             * @example /api/v1/trainees
-             */
-            path?: string;
-            /**
-             * @description Unique correlation identifier for request tracing across services
-             * @example c8f9b2a1-0000-4000-a000-000000000001
-             */
-            correlationId?: string;
-        };
-        CourseResponse: {
-            /** Format: int64 */
-            id?: number;
-            courseCode?: string;
-            courseName?: string;
-            description?: string;
-            /** Format: int64 */
-            sectorId?: number;
-            sectorCode?: string;
-            sectorName?: string;
-            /** Format: int64 */
-            industryId?: number;
-            industryCode?: string;
-            industryName?: string;
-            /** Format: int64 */
-            qualificationLevelId?: number;
-            qualificationLevelCode?: string;
-            qualificationLevelName?: string;
-            /** Format: int32 */
-            nsqfLevel?: number;
-            /** Format: int32 */
-            durationHours?: number;
-            /** Format: int32 */
-            durationDays?: number;
-            /** Format: int64 */
-            deliveryModeId?: number;
-            deliveryModeCode?: string;
-            deliveryModeName?: string;
-            /** Format: int64 */
-            lifecycleStatusId?: number;
-            /** Format: date-time */
-            createdAt?: string;
-            /** Format: date-time */
-            updatedAt?: string;
-            /** Format: date-time */
-            deletedAt?: string;
-        };
         UpdateTraineeConsentStatusRequest: {
             /** Format: int64 */
             consentStatusId?: number;
@@ -10758,13 +10779,13 @@ export interface components {
             centerId?: number;
             temporaryVenue?: components["schemas"]["TemporaryVenue"];
             batchCode: string;
-            /** Format: int64 */
-            courseId?: number;
-            /** Format: int64 */
-            programId?: number;
             /** Format: int32 */
             seats?: number;
             sessions: components["schemas"]["SessionRequest"][];
+            /** Format: int64 */
+            requirementId?: number;
+            skillsToTeach?: string;
+            trainingNotes?: string;
         };
         SessionRequest: {
             /** Format: date-time */
@@ -10857,6 +10878,10 @@ export interface components {
             /** Format: date-time */
             reviewedAt?: string;
             batchStatus?: string;
+            /** Format: int64 */
+            requirementId?: number;
+            skillsToTeach?: string;
+            trainingNotes?: string;
         };
         Details: {
             booking?: components["schemas"]["Booking"];
@@ -11068,6 +11093,171 @@ export interface components {
             assignedAt?: string;
             /** Format: int64 */
             assignedByUserId?: number;
+        };
+        Apply: {
+            /** Format: date */
+            startDate: string;
+            /** Format: date */
+            endDate: string;
+            dailyStartTime: string;
+            dailyEndTime: string;
+            deliveryNotes?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseApplication: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Application"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        Application: {
+            /** Format: int64 */
+            id?: number;
+            /** Format: int64 */
+            requirementId?: number;
+            requirementTitle?: string;
+            /** Format: int64 */
+            providerId?: number;
+            providerName?: string;
+            status?: string;
+            /** Format: date */
+            startDate?: string;
+            /** Format: date */
+            endDate?: string;
+            dailyStartTime?: string;
+            dailyEndTime?: string;
+            deliveryNotes?: string;
+            /** Format: date-time */
+            submittedAt?: string;
+        };
+        Publish: {
+            title: string;
+            skillsToTeach: string;
+            description?: string;
+            /** Format: int64 */
+            stateId?: number;
+            /** Format: int64 */
+            districtId?: number;
+            /** Format: int64 */
+            centerId: number;
+            /** Format: int32 */
+            seats?: number;
+            /** Format: date */
+            earliestDate: string;
+            /** Format: date */
+            latestDate: string;
+            dailyStartTime: string;
+            dailyEndTime: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseRequirement: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Requirement"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        Requirement: {
+            /** Format: int64 */
+            id?: number;
+            title?: string;
+            skillsToTeach?: string;
+            description?: string;
+            /** Format: int64 */
+            stateId?: number;
+            stateName?: string;
+            /** Format: int64 */
+            districtId?: number;
+            districtName?: string;
+            /** Format: int32 */
+            seats?: number;
+            /** Format: int64 */
+            centerId?: number;
+            centerName?: string;
+            centerAddress?: string;
+            /** Format: date */
+            earliestDate?: string;
+            /** Format: date */
+            latestDate?: string;
+            dailyStartTime?: string;
+            dailyEndTime?: string;
+            status?: string;
+            acceptingApplications?: boolean;
+            /** Format: int64 */
+            selectedProviderId?: number;
+            selectedProviderName?: string;
+            /** Format: date-time */
+            publishedAt?: string;
+            /** Format: date-time */
+            selectedAt?: string;
+            /** Format: int64 */
+            bookingId?: number;
+            bookingStatus?: string;
+        };
+        SelectProvider: {
+            /** Format: int64 */
+            applicationId?: number;
+        };
+        SetCentre: {
+            /** Format: int64 */
+            centerId: number;
         };
         CreateTrainingProviderRequest: {
             providerCode: string;
@@ -12323,25 +12513,6 @@ export interface components {
             remarks?: string;
             /** Format: date-time */
             createdAt?: string;
-        };
-        CreateCourseRequest: {
-            courseCode: string;
-            courseName: string;
-            description?: string;
-            /** Format: int64 */
-            sectorId?: number;
-            /** Format: int64 */
-            industryId?: number;
-            /** Format: int64 */
-            qualificationLevelId?: number;
-            /** Format: int32 */
-            durationHours?: number;
-            /** Format: int32 */
-            durationDays?: number;
-            /** Format: int64 */
-            deliveryModeId?: number;
-            /** Format: int64 */
-            lifecycleStatusId?: number;
         };
         CreateTraineeConsentRequest: {
             /** Format: int64 */
@@ -13629,6 +13800,119 @@ export interface components {
             correlationId?: string;
         };
         /** @description Standard generic envelope for REST API responses */
+        ApiResponseRequirementDetails: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["RequirementDetails"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        RequirementDetails: {
+            requirement?: components["schemas"]["Requirement"];
+            applications?: components["schemas"]["Application"][];
+            myApplication?: components["schemas"]["Application"];
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseListRequirement: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Requirement"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseListApplication: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Application"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
         ApiResponsePagedResponseTrainingEnrollmentResponse: {
             /**
              * @description Whether the request completed successfully
@@ -14662,48 +14946,6 @@ export interface components {
              * @example c8f9b2a1-0000-4000-a000-000000000001
              */
             correlationId?: string;
-        };
-        /** @description Standard generic envelope for REST API responses */
-        ApiResponseListBatchProgramOption: {
-            /**
-             * @description Whether the request completed successfully
-             * @example true
-             */
-            success?: boolean;
-            /**
-             * @description Machine-readable status or error code
-             * @example SUCCESS
-             */
-            code?: string;
-            /**
-             * @description Human-readable result or status message
-             * @example Operation completed successfully
-             */
-            message?: string;
-            /** @description Payload data of type T */
-            data?: components["schemas"]["BatchProgramOption"][];
-            /**
-             * Format: date-time
-             * @description UTC ISO-8601 timestamp of response generation
-             * @example 2026-11-19T18:00:00Z
-             */
-            timestamp?: string;
-            /**
-             * @description Request URI path
-             * @example /api/v1/trainees
-             */
-            path?: string;
-            /**
-             * @description Unique correlation identifier for request tracing across services
-             * @example c8f9b2a1-0000-4000-a000-000000000001
-             */
-            correlationId?: string;
-        };
-        BatchProgramOption: {
-            /** Format: int64 */
-            id?: number;
-            code?: string;
-            name?: string;
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseCenterScorecardResponse: {
@@ -18093,6 +18335,79 @@ export interface components {
             avgDurationDays?: number;
             avgOpenPeriodDurationDays?: number;
             reemploymentRatePct?: number;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseCourseResponse: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["CourseResponse"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        CourseResponse: {
+            /** Format: int64 */
+            id?: number;
+            courseCode?: string;
+            courseName?: string;
+            description?: string;
+            /** Format: int64 */
+            sectorId?: number;
+            sectorCode?: string;
+            sectorName?: string;
+            /** Format: int64 */
+            industryId?: number;
+            industryCode?: string;
+            industryName?: string;
+            /** Format: int64 */
+            qualificationLevelId?: number;
+            qualificationLevelCode?: string;
+            qualificationLevelName?: string;
+            /** Format: int32 */
+            nsqfLevel?: number;
+            /** Format: int32 */
+            durationHours?: number;
+            /** Format: int32 */
+            durationDays?: number;
+            /** Format: int64 */
+            deliveryModeId?: number;
+            deliveryModeCode?: string;
+            deliveryModeName?: string;
+            /** Format: int64 */
+            lifecycleStatusId?: number;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+            /** Format: date-time */
+            deletedAt?: string;
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseListTraineeConsentResponse: {
@@ -24860,76 +25175,6 @@ export interface operations {
             };
         };
     };
-    getById_36: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseCourseResponse"];
-                };
-            };
-        };
-    };
-    updateCourse: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateCourseRequest"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseCourseResponse"];
-                };
-            };
-        };
-    };
-    deleteCourse: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
-                };
-            };
-        };
-    };
     updateConsentStatus: {
         parameters: {
             query?: never;
@@ -24958,7 +25203,7 @@ export interface operations {
             };
         };
     };
-    getById_37: {
+    getById_36: {
         parameters: {
             query?: never;
             header?: never;
@@ -25008,7 +25253,7 @@ export interface operations {
             };
         };
     };
-    getById_38: {
+    getById_37: {
         parameters: {
             query?: never;
             header?: never;
@@ -25078,7 +25323,7 @@ export interface operations {
             };
         };
     };
-    getById_39: {
+    getById_38: {
         parameters: {
             query?: never;
             header?: never;
@@ -25148,7 +25393,7 @@ export interface operations {
             };
         };
     };
-    getById_40: {
+    getById_39: {
         parameters: {
             query?: never;
             header?: never;
@@ -25218,7 +25463,7 @@ export interface operations {
             };
         };
     };
-    getById_41: {
+    getById_40: {
         parameters: {
             query?: never;
             header?: never;
@@ -25288,7 +25533,7 @@ export interface operations {
             };
         };
     };
-    getById_42: {
+    getById_41: {
         parameters: {
             query?: never;
             header?: never;
@@ -25358,7 +25603,7 @@ export interface operations {
             };
         };
     };
-    getById_43: {
+    getById_42: {
         parameters: {
             query?: never;
             header?: never;
@@ -25428,7 +25673,7 @@ export interface operations {
             };
         };
     };
-    getById_44: {
+    getById_43: {
         parameters: {
             query?: never;
             header?: never;
@@ -26432,6 +26677,131 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseUserRoleResponse"];
+                };
+            };
+        };
+    };
+    applyForTrainingRequirement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Apply"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseApplication"];
+                };
+            };
+        };
+    };
+    listGovernmentRequirements: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListRequirement"];
+                };
+            };
+        };
+    };
+    publishTrainingRequirement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Publish"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseRequirement"];
+                };
+            };
+        };
+    };
+    selectTrainingProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelectProvider"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseRequirement"];
+                };
+            };
+        };
+    };
+    setTrainingCentre: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetCentre"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseRequirement"];
                 };
             };
         };
@@ -29112,59 +29482,6 @@ export interface operations {
             };
         };
     };
-    getCourses: {
-        parameters: {
-            query?: {
-                code?: string;
-                sectorId?: number;
-                industryId?: number;
-                deliveryModeId?: number;
-                page?: number;
-                size?: number;
-                sort?: string;
-                direction?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseObject"];
-                };
-            };
-        };
-    };
-    createCourse: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateCourseRequest"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseCourseResponse"];
-                };
-            };
-        };
-    };
     getConsents: {
         parameters: {
             query?: {
@@ -30696,6 +31013,98 @@ export interface operations {
             };
         };
     };
+    providerRequirementDetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseRequirementDetails"];
+                };
+            };
+        };
+    };
+    openTrainingRequirements: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+                stateId?: number;
+                districtId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListRequirement"];
+                };
+            };
+        };
+    };
+    myTrainingApplications: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListApplication"];
+                };
+            };
+        };
+    };
+    governmentRequirementDetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseRequirementDetails"];
+                };
+            };
+        };
+    };
     getTrainingCenters: {
         parameters: {
             query?: {
@@ -30776,7 +31185,7 @@ export interface operations {
             };
         };
     };
-    getById_45: {
+    getById_44: {
         parameters: {
             query?: never;
             header?: never;
@@ -30872,7 +31281,7 @@ export interface operations {
             };
         };
     };
-    getById_46: {
+    getById_45: {
         parameters: {
             query?: never;
             header?: never;
@@ -30992,28 +31401,6 @@ export interface operations {
             };
         };
     };
-    getBatchProgramOptions: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                courseId: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseListBatchProgramOption"];
-                };
-            };
-        };
-    };
     getCenterScorecard: {
         parameters: {
             query?: never;
@@ -31058,7 +31445,7 @@ export interface operations {
             };
         };
     };
-    getById_47: {
+    getById_46: {
         parameters: {
             query?: never;
             header?: never;
@@ -31635,7 +32022,7 @@ export interface operations {
             };
         };
     };
-    getById_48: {
+    getById_47: {
         parameters: {
             query?: never;
             header?: never;
@@ -32296,6 +32683,57 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseAttritionDashboardResponse"];
+                };
+            };
+        };
+    };
+    getCourses: {
+        parameters: {
+            query?: {
+                code?: string;
+                sectorId?: number;
+                industryId?: number;
+                deliveryModeId?: number;
+                page?: number;
+                size?: number;
+                sort?: string;
+                direction?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseObject"];
+                };
+            };
+        };
+    };
+    getById_48: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCourseResponse"];
                 };
             };
         };

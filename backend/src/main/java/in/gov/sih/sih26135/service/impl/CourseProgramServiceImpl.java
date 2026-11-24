@@ -17,6 +17,7 @@ import in.gov.sih.sih26135.repository.TrainingBatchRepository;
 import in.gov.sih.sih26135.service.CourseProgramService;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,18 +30,21 @@ public class CourseProgramServiceImpl implements CourseProgramService {
   private final ProgramRepository programRepository;
   private final TrainingBatchRepository trainingBatchRepository;
   private final CourseProgramMapper courseProgramMapper;
+  private final JdbcTemplate jdbc;
 
   public CourseProgramServiceImpl(
       CourseProgramRepository courseProgramRepository,
       CourseRepository courseRepository,
       ProgramRepository programRepository,
       TrainingBatchRepository trainingBatchRepository,
-      CourseProgramMapper courseProgramMapper) {
+      CourseProgramMapper courseProgramMapper,
+      JdbcTemplate jdbc) {
     this.courseProgramRepository = courseProgramRepository;
     this.courseRepository = courseRepository;
     this.programRepository = programRepository;
     this.trainingBatchRepository = trainingBatchRepository;
     this.courseProgramMapper = courseProgramMapper;
+    this.jdbc = jdbc;
   }
 
   @Override
@@ -56,11 +60,14 @@ public class CourseProgramServiceImpl implements CourseProgramService {
       throw new BadRequestException("Program ID is required");
     }
 
-    Course course = courseRepository.findById(request.getCourseId())
+    Course course = courseRepository.findAvailableByIdForUpdate(request.getCourseId())
         .orElseThrow(() -> new ResourceNotFoundException("Course", "courseId"));
 
     Program program = programRepository.findById(request.getProgramId())
         .orElseThrow(() -> new ResourceNotFoundException("Program", "programId"));
+    if (program.getDeletedAt() != null || !Long.valueOf(1L).equals(program.getLifecycleStatusId())) {
+      throw new BadRequestException("Link the course to an active program.", "INVALID_COURSE_PROGRAM");
+    }
 
     if (courseProgramRepository.existsByCourseIdAndProgramId(request.getCourseId(), request.getProgramId())) {
       throw new ConflictException("Course is already assigned to this program", "COURSE_PROGRAM_ALREADY_EXISTS");
@@ -83,12 +90,20 @@ public class CourseProgramServiceImpl implements CourseProgramService {
       throw new BadRequestException("Program ID is required");
     }
 
+    courseRepository.findAvailableByIdForUpdate(courseId)
+        .orElseThrow(() -> new ResourceNotFoundException("Course", "courseId"));
     CourseProgram cp = courseProgramRepository.findById(new CourseProgramId(courseId, programId))
         .orElseThrow(() -> new ResourceNotFoundException("CourseProgram", "courseId and programId"));
 
-    if (trainingBatchRepository.existsByCourseIdAndProgramId(courseId, programId)) {
+    if (trainingBatchRepository.existsByCourseIdAndProgramId(courseId, programId)
+        || Boolean.TRUE.equals(jdbc.queryForObject("""
+            SELECT EXISTS(SELECT 1 FROM venue_bookings
+              WHERE course_id = ? AND program_id = ? AND booking_status = 'PENDING')
+            OR EXISTS(SELECT 1 FROM training_requirements
+              WHERE course_id = ? AND program_id = ? AND latest_date >= CURRENT_DATE())
+            """, Boolean.class, courseId, programId, courseId, programId))) {
       throw new ConflictException(
-          "Cannot remove course from program because training batches exist for this combination",
+          "This course and program are linked to training history or pending bookings.",
           "COURSE_PROGRAM_IN_USE"
       );
     }

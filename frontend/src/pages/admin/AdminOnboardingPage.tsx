@@ -1,29 +1,28 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import React, { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   listOnboardingApplications,
   approveOnboardingApplication,
   rejectOnboardingApplication,
   pendingOnboardingKey,
+  onboardingReviewAuthorities,
 } from '@/api/adminApi';
 import type { OnboardingApplicationResponse } from '@/api/registrationApi';
 import { useAuth } from '@/context/AuthContext';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import type { ApiError } from '@/api/types';
 
-export function AdminOnboardingPage(): React.JSX.Element {
-  const { user, hasRole, hasAuthority } = useAuth();
-  const queryClient = useQueryClient();
-  const canApproveOrReject =
-    hasRole('ROLE_super_admin') ||
-    hasRole('ROLE_government_admin') ||
-    hasRole('ROLE_ADMIN') ||
-    hasRole('ADMIN') ||
-    hasAuthority('user.manage');
+const applicationQueueKey = ['admin', 'onboarding', 'applications'] as const;
 
-  const [applications, setApplications] = useState<OnboardingApplicationResponse[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string>('PENDING');
-  const [loading, setLoading] = useState(true);
+export function AdminOnboardingPage(): React.JSX.Element {
+  const { user, hasAuthority } = useAuth();
+  const queryClient = useQueryClient();
+  const canApproveOrReject = onboardingReviewAuthorities.some(hasAuthority);
+  const districtOfficer = hasAuthority('role_district_officer');
+  const stateAdmin = hasAuthority('role_state_admin');
+  const jurisdiction = districtOfficer ? user?.districtId : stateAdmin ? user?.stateId : undefined;
+
+  const [statusFilter, setStatusFilter] = useState('PENDING');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -32,23 +31,20 @@ export function AdminOnboardingPage(): React.JSX.Element {
   const [rejectionReason, setRejectionReason] = useState('');
   const [processingId, setProcessingId] = useState<number | null>(null);
 
-  const fetchApplications = useCallback(async () => {
-    setLoading(true);
-    setErrorMsg(null);
-    try {
-      const data = await listOnboardingApplications(statusFilter === 'ALL' ? undefined : statusFilter);
-      setApplications(data);
-    } catch (err) {
-      const apiErr = err as ApiError;
-      setErrorMsg(apiErr.message || 'Failed to load onboarding applications.');
-    } finally {
-      setLoading(false);
-    }
-  }, [statusFilter]);
+  const applicationsQuery = useQuery({
+    queryKey: [...applicationQueueKey, user?.id, user?.stateId, user?.districtId, statusFilter],
+    queryFn: ({ signal }) => listOnboardingApplications(statusFilter === 'ALL' ? undefined : statusFilter, signal),
+    staleTime: 0,
+  });
+  const applications = applicationsQuery.data ?? [];
+  const loading = applicationsQuery.isFetching;
+  const queueError = applicationsQuery.error as ApiError | null;
+  const errorMessage = errorMsg ?? (queueError && (queueError.message || 'Failed to load onboarding applications.'));
 
-  useEffect(() => {
-    fetchApplications();
-  }, [fetchApplications]);
+  const refreshOnboarding = () => {
+    void queryClient.invalidateQueries({ queryKey: pendingOnboardingKey });
+    void queryClient.invalidateQueries({ queryKey: applicationQueueKey });
+  };
 
   const handleApprove = async (app: OnboardingApplicationResponse) => {
     if (!window.confirm(`Are you sure you want to approve onboarding for "${app.organizationName}"? This will activate the admin user account.`)) {
@@ -60,9 +56,8 @@ export function AdminOnboardingPage(): React.JSX.Element {
     setSuccessMsg(null);
     try {
       await approveOnboardingApplication(app.applicationId);
-      void queryClient.invalidateQueries({ queryKey: pendingOnboardingKey });
       setSuccessMsg(`Application for "${app.organizationName}" approved successfully.`);
-      await fetchApplications();
+      refreshOnboarding();
     } catch (err) {
       const apiErr = err as ApiError;
       setErrorMsg(apiErr.message || 'Failed to approve application.');
@@ -80,11 +75,10 @@ export function AdminOnboardingPage(): React.JSX.Element {
     setSuccessMsg(null);
     try {
       await rejectOnboardingApplication(rejectModalApp.applicationId, rejectionReason.trim());
-      void queryClient.invalidateQueries({ queryKey: pendingOnboardingKey });
       setSuccessMsg(`Application for "${rejectModalApp.organizationName}" rejected.`);
       setRejectModalApp(null);
       setRejectionReason('');
-      await fetchApplications();
+      refreshOnboarding();
     } catch (err) {
       const apiErr = err as ApiError;
       setErrorMsg(apiErr.message || 'Failed to reject application.');
@@ -102,9 +96,9 @@ export function AdminOnboardingPage(): React.JSX.Element {
             <h1 className="text-2xl font-bold tracking-tight text-navy">
               Organisation Onboarding Requests
             </h1>
-            {user?.stateId != null && (
+            {jurisdiction != null && (
               <span className="text-xs bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded border border-indigo-200 font-medium">
-                State Jurisdiction (ID: {user.stateId})
+                {districtOfficer ? 'District' : 'State or territory'} jurisdiction (ID {jurisdiction})
               </span>
             )}
           </div>
@@ -115,8 +109,9 @@ export function AdminOnboardingPage(): React.JSX.Element {
 
         {/* Filter Controls */}
         <div className="flex items-center gap-3">
-          <label className="text-xs font-semibold text-gray-700">Filter Status:</label>
+          <label htmlFor="onboarding-status" className="text-xs font-semibold text-gray-700">Filter status</label>
           <select
+            id="onboarding-status"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             className="px-3 py-1.5 border rounded-md text-sm bg-white shadow-sm focus:ring-1 focus:ring-navy focus:outline-none"
@@ -129,7 +124,10 @@ export function AdminOnboardingPage(): React.JSX.Element {
 
           <button
             type="button"
-            onClick={fetchApplications}
+            onClick={() => {
+              setErrorMsg(null);
+              void applicationsQuery.refetch();
+            }}
             disabled={loading}
             className="btn-secondary text-xs px-3 py-1.5"
           >
@@ -144,9 +142,9 @@ export function AdminOnboardingPage(): React.JSX.Element {
           {successMsg}
         </div>
       )}
-      {errorMsg && (
+      {errorMessage && (
         <div className="p-4 rounded-md bg-red-50 border border-red-200 text-sm text-red-800">
-          {errorMsg}
+          {errorMessage}
         </div>
       )}
 
@@ -156,7 +154,7 @@ export function AdminOnboardingPage(): React.JSX.Element {
           <LoadingSpinner size="lg" />
           <span className="text-sm text-gray-500">Loading onboarding requests...</span>
         </div>
-      ) : applications.length === 0 ? (
+      ) : queueError ? null : applications.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-lg border border-dashed p-8">
           <p className="text-gray-500 text-sm">No applications found matching the selected filter ({statusFilter}).</p>
         </div>
@@ -266,8 +264,9 @@ export function AdminOnboardingPage(): React.JSX.Element {
 
             <form onSubmit={handleRejectConfirm} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Reason for Rejection *</label>
+                <label htmlFor="onboarding-rejection-reason" className="block text-xs font-medium text-gray-700 mb-1">Reason for Rejection *</label>
                 <textarea
+                  id="onboarding-rejection-reason"
                   required
                   rows={3}
                   value={rejectionReason}

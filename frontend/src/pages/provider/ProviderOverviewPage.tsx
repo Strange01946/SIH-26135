@@ -4,7 +4,6 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import {
   getTrainingCenters,
-  getCourses,
   getTrainingBatches,
   getTrainingEnrollments,
 } from '@/api/providerPortalApi';
@@ -21,20 +20,14 @@ export function ProviderOverviewPage(): React.JSX.Element {
     enabled: !!providerId,
   });
 
-  // 2. Fetch courses count
-  const coursesQuery = useQuery({
-    queryKey: ['provider', 'courses'],
-    queryFn: () => getCourses({ size: 5 }),
-  });
-
-  // 3. Fetch batches
+  // 2. Fetch batches
   const batchesQuery = useQuery({
     queryKey: ['provider', 'batches', providerId],
     queryFn: () => getTrainingBatches({ providerId, size: 5, sort: 'id', direction: 'DESC' }),
     enabled: !!providerId,
   });
 
-  // 4. Fetch enrollments count
+  // 3. Fetch enrollments count
   const enrollmentsQuery = useQuery({
     queryKey: ['provider', 'enrollments', providerId],
     queryFn: () => getTrainingEnrollments({ providerId, size: 5 }),
@@ -100,23 +93,22 @@ export function ProviderOverviewPage(): React.JSX.Element {
           <p className="text-xs text-gray-500 mt-1">Operational training locations</p>
         </Link>
 
-        {/* Courses Metric */}
         <Link
-          to="/provider/courses"
+          to="/provider/training-opportunities"
           className="card p-5 hover:border-navy hover:shadow-md transition-all group"
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-              Approved Courses
+              Training Opportunities
             </span>
             <span className="text-xl group-hover:scale-110 transition-transform" aria-hidden="true">
-              📚
+              📋
             </span>
           </div>
           <div className="text-2xl font-bold text-navy">
-            {coursesQuery.isLoading ? '...' : (coursesQuery.data?.totalElements ?? 0)}
+            Browse requests
           </div>
-          <p className="text-xs text-gray-500 mt-1">National skill curriculum catalog</p>
+          <p className="text-xs text-gray-500 mt-1">Apply to deliver government-requested training</p>
         </Link>
 
         {/* Batches Metric */}

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { getRegistrationReferenceData } from '@/api/registrationApi';
 import { updateTrainingBatchStatus } from '@/api/providerPortalApi';
+import { trainingRequirementsKey } from '@/api/trainingRequirementApi';
 import type { ApiError } from '@/api/types';
 import { closeBooking, getBookingDetails, getBookings, reviewBooking,
   type BookingDetails, type BookingStatus, type SharedVenue } from '@/api/venueBookingApi';
@@ -96,7 +97,7 @@ function BookingRecord({ id, admin, onDraft, onDecision }: {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id="booking-detail-title" className="section-title">{booking.batchCode} · {booking.venueName}</h2>
-          <p className="text-sm text-slate-600">{booking.providerName} · {booking.courseName} · {booking.programName}</p>
+          <p className="text-sm text-slate-600">{booking.providerName}</p>
           <p className="text-sm text-slate-600">{booking.venueAddress} · {booking.seats} requested seats of {booking.venueCapacity}</p>
         </div>
         <div className="text-right text-sm">
@@ -105,6 +106,11 @@ function BookingRecord({ id, admin, onDraft, onDecision }: {
         </div>
       </div>
       {booking.replacesBookingId && <p className="text-sm">Postponement of booking {booking.replacesBookingId}</p>}
+      {booking.requirementId && <p className="text-sm">Government training requirement #{booking.requirementId}</p>}
+      {!booking.requirementId && booking.skillsToTeach && <p className="text-sm">Provider-initiated training</p>}
+      {booking.skillsToTeach && <p className="whitespace-pre-wrap text-sm"><strong>Skills to teach</strong> · {booking.skillsToTeach}</p>}
+      {!booking.skillsToTeach && booking.courseName && <p className="text-sm"><strong>Training topic</strong> · {booking.courseName}</p>}
+      {booking.trainingNotes && <p className="whitespace-pre-wrap text-sm"><strong>Training notes</strong> · {booking.trainingNotes}</p>}
       {booking.premisesPermission && <p className="text-sm">Premises permission · {booking.premisesPermission}</p>}
       {booking.decisionNote && <p className="rounded bg-slate-50 p-3 text-sm">{booking.decisionNote}</p>}
       <div>
@@ -144,10 +150,11 @@ export function VenueBookingsPage({ admin = false }: { admin?: boolean }) {
   const { user, hasAuthority } = useAuth();
   const queryClient = useQueryClient();
   const [search] = useSearchParams();
+  const bookingId = Number(search.get('booking'));
   const [directory, setDirectory] = useState(search.get('view') === 'shared');
   const [status, setStatus] = useState<BookingStatus | ''>(admin ? 'PENDING' : '');
   const [page, setPage] = useState(0);
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number | null>(() => bookingId > 0 && Number.isSafeInteger(bookingId) ? bookingId : null);
   const [draft, setDraft] = useState<BookingDraft | null>(null);
   const [decision, setDecision] = useState<{ details: BookingDetails; action: Decision } | null>(null);
   const [notice, setNotice] = useState('');
@@ -166,6 +173,7 @@ export function VenueBookingsPage({ admin = false }: { admin?: boolean }) {
     void queryClient.invalidateQueries({ queryKey: ['training-centers', 'directory'] });
     void queryClient.invalidateQueries({ queryKey: ['provider', 'centers'] });
     void queryClient.invalidateQueries({ queryKey: ['provider', 'batches'] });
+    void queryClient.invalidateQueries({ queryKey: trainingRequirementsKey });
   }
 
   function requestShared(venue: SharedVenue) {
@@ -197,8 +205,10 @@ export function VenueBookingsPage({ admin = false }: { admin?: boolean }) {
         </div>
         {notice && <p role="status" className="rounded border border-green-200 bg-green-50 p-3 text-sm text-green-800">{notice}</p>}
         {geography.isError && <ErrorState title="Could not load location options" error={geography.error} onRetry={() => void geography.refetch()} />}
-        {directory ? (scopedGeography ? <SharedVenueDirectory geography={scopedGeography} manager={admin && hasAuthority('venue.shared.manage')}
-          onRequest={admin ? undefined : requestShared} /> : <LoadingSpinner label="Loading locations" />) : <>
+        {directory ? (scopedGeography ? <SharedVenueDirectory
+          geography={scopedGeography} manager={admin && hasAuthority('venue.shared.manage')}
+          onRequest={admin ? undefined : requestShared} />
+          : <LoadingSpinner label="Loading locations" />) : <>
           <section className="card space-y-4 p-5" aria-label={admin ? 'Venue review queue' : 'Provider venue bookings'}>
             <label className="form-label max-w-xs">Booking status
               <select className="form-input" value={status} onChange={event => { setStatus(event.target.value as BookingStatus | ''); setPage(0); setSelected(null); }}>
@@ -230,7 +240,8 @@ export function VenueBookingsPage({ admin = false }: { admin?: boolean }) {
           {selected && <BookingRecord key={selected} id={selected} admin={admin} onDraft={setDraft}
             onDecision={(details, action) => setDecision({ details, action })} />}
         </>}
-        {draft && scopedGeography && <VenueBookingForm draft={draft} geography={scopedGeography} onClose={() => setDraft(null)}
+        {draft && scopedGeography && <VenueBookingForm draft={draft} geography={scopedGeography}
+          onClose={() => setDraft(null)}
           onSaved={details => saved(details, 'Request submitted for review.')} />}
         {decision && <BookingDecision details={decision.details} action={decision.action} onClose={() => setDecision(null)}
           onSaved={details => saved(details, 'Booking updated.')} />}

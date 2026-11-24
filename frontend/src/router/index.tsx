@@ -9,6 +9,7 @@ import { NotFoundPage } from '@/pages/NotFound';
 import { PendingFeaturePage } from '@/pages/placeholder/PlaceholderPage';
 import { PageLoading } from '@/components/feedback/LoadingSpinner';
 import { localEvaluatorEnabled } from '@/lib/demoEnvironment';
+import { onboardingViewAuthorities } from '@/api/adminApi';
 const EvaluatorGuide = React.lazy(() => import('@/evaluator/EvaluatorGuide'));
 const ExecutiveMisPage = React.lazy(() => import('@/pages/analytics/ExecutiveMisPage'));
 const SpecializedAnalyticsPage = React.lazy(() => import('@/pages/analytics/SpecializedAnalyticsPage'));
@@ -19,13 +20,13 @@ const RegistrationPage = React.lazy(() => import('@/pages/auth/RegistrationPage'
 const AdminOnboardingPage = React.lazy(() => import('@/pages/admin/AdminOnboardingPage').then((module) => ({ default: module.AdminOnboardingPage })));
 const AdminUsersPage = React.lazy(() => import('@/pages/admin/AdminUsersPage').then((module) => ({ default: module.AdminUsersPage })));
 const AdminCareersPage = React.lazy(() => import('@/pages/admin/AdminCareersPage').then((module) => ({ default: module.AdminCareersPage })));
+const TrainingRequirementsPage = React.lazy(() => import('@/pages/training/TrainingRequirementsPage').then((module) => ({ default: module.TrainingRequirementsPage })));
 const AdminDashboard = React.lazy(() => import('@/pages/admin/AdminDashboard').then((module) => ({ default: module.AdminDashboard })));
 const AssessorWorkbenchPage = React.lazy(() => import('@/pages/assessor/AssessorWorkbenchPage').then((module) => ({ default: module.AssessorWorkbenchPage })));
 const AssessorScoringPage = React.lazy(() => import('@/pages/assessor/AssessorScoringPage').then((module) => ({ default: module.AssessorScoringPage })));
 const ProviderOverviewPage = React.lazy(() => import('@/pages/provider/ProviderOverviewPage').then((module) => ({ default: module.ProviderOverviewPage })));
 const ProviderCentersPage = React.lazy(() => import('@/pages/provider/ProviderCentersPage').then((module) => ({ default: module.ProviderCentersPage })));
 const VenueBookingsPage = React.lazy(() => import('@/pages/provider/VenueBookingsPage').then((module) => ({ default: module.VenueBookingsPage })));
-const ProviderCoursesPage = React.lazy(() => import('@/pages/provider/ProviderCoursesPage').then((module) => ({ default: module.ProviderCoursesPage })));
 const ProviderBatchesPage = React.lazy(() => import('@/pages/provider/ProviderBatchesPage').then((module) => ({ default: module.ProviderBatchesPage })));
 const ProviderEnrollmentPage = React.lazy(() => import('@/pages/provider/ProviderEnrollmentPage').then((module) => ({ default: module.ProviderEnrollmentPage })));
 const ProviderBulkImportPage = React.lazy(() => import('@/pages/provider/ProviderBulkImportPage').then((module) => ({ default: module.ProviderBulkImportPage })));
@@ -207,16 +208,22 @@ export function AppRouter(): React.JSX.Element {
             element={<RoleGuard allowedPersonas={['ADMIN']} />}
           >
             <Route path="dashboard" element={<AdminDashboard />} />
-            <Route path="onboarding" element={<AdminOnboardingPage />} />
+            <Route path="onboarding" element={
+              <RoleGuard allowedAuthorities={onboardingViewAuthorities}><AdminOnboardingPage /></RoleGuard>
+            } />
             <Route path="users" element={<AdminUsersPage />} />
             <Route path="venue-bookings" element={
               <RoleGuard allowedAuthorities={['venue.booking.review']}><VenueBookingsPage admin /></RoleGuard>
+            } />
+            <Route path="training-requirements" element={
+              <RoleGuard allowedAuthorities={['venue.booking.review']}><TrainingRequirementsPage government /></RoleGuard>
             } />
             <Route path="centers" element={
               <RoleGuard allowedPersonas={['SUPER_ADMIN', 'GOVERNMENT_ADMIN']}>
                 <RoleGuard allowedAuthorities={['center.manage']}><ProviderCentersPage admin /></RoleGuard>
               </RoleGuard>
             } />
+            <Route path="courses" element={<Navigate to="/admin/training-requirements" replace />} />
             <Route path="careers" element={
               <RoleGuard allowedPersonas={['SUPER_ADMIN', 'GOVERNMENT_ADMIN']}>
                 <RoleGuard allowedAuthorities={['employment.manage']}><AdminCareersPage /></RoleGuard>
@@ -233,10 +240,13 @@ export function AppRouter(): React.JSX.Element {
             <Route path="venue-bookings" element={
               <RoleGuard allowedAuthorities={['venue.booking.request']}><VenueBookingsPage /></RoleGuard>
             } />
+            <Route path="training-opportunities" element={
+              <RoleGuard allowedAuthorities={['venue.booking.request']}><TrainingRequirementsPage /></RoleGuard>
+            } />
             <Route path="centers" element={
               <RoleGuard allowedAuthorities={['center.manage']}><ProviderCentersPage /></RoleGuard>
             } />
-            <Route path="courses" element={<ProviderCoursesPage />} />
+            <Route path="courses" element={<Navigate to="/provider/training-opportunities" replace />} />
             <Route path="batches" element={<ProviderBatchesPage />} />
             <Route path="enrollment" element={<ProviderEnrollmentPage />} />
             <Route path="imports" element={<ProviderBulkImportPage />} />

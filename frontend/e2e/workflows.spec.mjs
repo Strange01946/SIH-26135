@@ -31,7 +31,7 @@ test('provider enrolls a trainee in a batch created through an approved venue', 
   await expect(page.getByRole('link', { name: 'Request a training venue' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create New Batch' })).toHaveCount(0);
   const venueRequests = '/api/v1/venue-bookings';
-  const payload = { batchCode: run.batchCode, courseId: run.course, programId: run.program, seats: 10,
+  const payload = { batchCode: run.batchCode, seats: 10, skillsToTeach: run.id + ' Inspect worksite equipment',
     temporaryVenue: { name: 'Enrollment fixture lab', address: 'Temporary training fixture',
       stateId: run.state, districtId: run.district, capacity: 15, permissionToUse: 'Test venue approval' },
     sessions: [{ startsAt: run.starts + 'T09:00:00', endsAt: run.starts + 'T11:00:00' }],
@@ -65,7 +65,8 @@ test('provider enrolls a trainee in a batch created through an approved venue', 
     page.getByRole('button', { name: 'Confirm Candidate Enrollment' }).click()]);
   const enrollment = await expectJson(accepted, 'POST', enrollments, 201, ['id', 'traineeId', 'batchId']);
   expect(enrollment).toMatchObject({ traineeId: run.prospect, batchId: batch.id, providerId: run.provider });
-  expect(sql(`SELECT COUNT(*) FROM training_enrollments WHERE enrollment_id=${enrollment.id} AND trainee_id=${run.prospect};`)).toBe('1');
+  expect(sql(`SELECT course_id,program_id FROM training_enrollments WHERE enrollment_id=${enrollment.id} AND trainee_id=${run.prospect};`))
+    .toBe([details.courseId, details.programId].join('\t'));
 });
 
 test('assessor validates marks, finalizes and downloads the issued certificate', async ({ page, smoke }) => {

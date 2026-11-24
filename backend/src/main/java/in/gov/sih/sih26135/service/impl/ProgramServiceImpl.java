@@ -154,6 +154,7 @@ public class ProgramServiceImpl implements ProgramService {
     Program program = programRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("Program", "id"));
 
+    SkillsTrainingReporting.requireEditable(program.getProgramCode());
     LocalDate prospectiveStartDate = request.getStartDate() != null ? request.getStartDate() : program.getStartDate();
     LocalDate prospectiveEndDate = request.getEndDate() != null ? request.getEndDate() : program.getEndDate();
     if (prospectiveStartDate != null && prospectiveEndDate != null && prospectiveEndDate.isBefore(prospectiveStartDate)) {
@@ -209,6 +210,7 @@ public class ProgramServiceImpl implements ProgramService {
     Program program = programRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("Program", "id"));
 
+    SkillsTrainingReporting.requireEditable(program.getProgramCode());
     LocalDateTime now = LocalDateTime.now();
     program.setDeletedAt(now);
     program.setUpdatedAt(now);

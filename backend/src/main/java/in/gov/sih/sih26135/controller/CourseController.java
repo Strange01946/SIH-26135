@@ -4,9 +4,6 @@ import org.springframework.validation.annotation.Validated;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Max;
-import jakarta.validation.Valid;
-import in.gov.sih.sih26135.dto.request.CreateCourseRequest;
-import in.gov.sih.sih26135.dto.request.UpdateCourseRequest;
 import in.gov.sih.sih26135.dto.response.CourseResponse;
 import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.response.PagedResponse;
@@ -14,26 +11,18 @@ import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.service.CourseService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import jakarta.servlet.http.HttpServletRequest;
-import java.util.List;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 /**
- * REST controller for managing Course domain resources.
+ * Read access to training identifiers used by historical records and reporting.
  *
  * <p>Base Route: /api/v1/courses
- * Consumes: CreateCourseRequest, UpdateCourseRequest
  * Produces: CourseResponse enveloped in ApiResponse
  */
 @Validated
@@ -102,46 +91,4 @@ public class CourseController {
     return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(courses)));
   }
 
-  /**
-   * Creates a new course record.
-   *
-   * @param request course creation payload
-   * @param httpRequest HTTP servlet request for URI extraction
-   * @return 201 Created with created CourseResponse enveloped in ApiResponse
-   */
-  @PostMapping
-  public ResponseEntity<ApiResponse<CourseResponse>> createCourse(
-      @Valid @RequestBody CreateCourseRequest request,
-      HttpServletRequest httpRequest) {
-    CourseResponse response = courseService.createCourse(request);
-    return ResponseEntity.status(HttpStatus.CREATED)
-        .body(ApiResponse.success("Course created successfully", response, httpRequest.getRequestURI()));
-  }
-
-  /**
-   * Updates an existing course record.
-   *
-   * @param id primary key identifier of the course to update
-   * @param request course update payload
-   * @return 200 OK with updated CourseResponse enveloped in ApiResponse
-   */
-  @PutMapping("/{id}")
-  public ResponseEntity<ApiResponse<CourseResponse>> updateCourse(
-      @PathVariable @Positive Long id,
-      @Valid @RequestBody UpdateCourseRequest request) {
-    CourseResponse response = courseService.updateCourse(id, request);
-    return ResponseEntity.ok(ApiResponse.success("Course updated successfully", response));
-  }
-
-  /**
-   * Soft-deletes a course record.
-   *
-   * @param id primary key identifier of the course to delete
-   * @return 200 OK with success confirmation message
-   */
-  @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteCourse(@PathVariable @Positive Long id) {
-    courseService.deleteCourse(id);
-    return ResponseEntity.ok(ApiResponse.success("Course deleted successfully"));
-  }
 }

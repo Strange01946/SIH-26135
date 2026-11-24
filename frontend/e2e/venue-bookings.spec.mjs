@@ -48,14 +48,9 @@ async function fillSessions(dialog, sessions) {
 async function fillBatch(dialog, run, code) {
   await dialog.getByLabel('Batch code *', { exact: true }).fill(code);
   await dialog.getByLabel('Requested seats *', { exact: true }).fill('12');
-  const course = dialog.getByLabel('Course *', { exact: true });
-  await expect(course.locator('option').nth(1)).toBeAttached();
-  for (let attempts = 0; await course.locator(`option[value="${run.course}"]`).count() === 0 && attempts < 12; attempts++) {
-    await dialog.getByRole('button', { name: 'Next courses' }).click();
-    await expect(course.locator('option').nth(1)).toBeAttached();
-  }
-  await course.selectOption(String(run.course));
-  await dialog.getByLabel('Program *', { exact: true }).selectOption(String(run.program));
+  await dialog.getByLabel('Skills to teach *', { exact: true }).fill(run.id + ' Fault identification and safe equipment handling');
+  await expect(dialog.getByLabel('Course *', { exact: true })).toHaveCount(0);
+  await expect(dialog.getByLabel('Program *', { exact: true })).toHaveCount(0);
 }
 
 test('district approval, rescheduling and cancellation reuse one shared center and preserve the batch', async ({ page, request, smoke }) => {
@@ -100,7 +95,8 @@ test('district approval, rescheduling and cancellation reuse one shared center a
   await expect(page.getByText(/Unavailable$/)).toBeVisible();
   await expect(page.getByText(/Scheduled lab maintenance/)).toHaveCount(0);
   const blocked = await request.post(api, { headers: providerHeaders, data: {
-    centerId: venue.id, batchCode: code, courseId: run.course, programId: run.program, seats: 12, sessions: [closure],
+    centerId: venue.id, batchCode: code, seats: 12, sessions: [closure],
+    skillsToTeach: 'Fault identification',
   } });
   expect(blocked.status()).toBe(409);
   expect((await blocked.json()).code).toBe('VENUE_SLOT_UNAVAILABLE');
@@ -110,6 +106,10 @@ test('district approval, rescheduling and cancellation reuse one shared center a
   await fillSessions(bookingDialog, original);
   const requested = await action(page, smoke, 'POST', api, 'Submit request', 201);
   expect(requested.booking).toMatchObject({ providerId: run.provider, centerId: venue.id, status: 'PENDING', batchId: null });
+  expect(requested.booking).toMatchObject({
+    requirementId: null, courseId: null, programId: null,
+    skillsToTeach: run.id + ' Fault identification and safe equipment handling',
+  });
   expect(sql(`SELECT COUNT(*) FROM training_batches WHERE batch_code=${quote(code)};`)).toBe('0');
   const id = requested.booking.id;
   const otherHeaders = await userHeaders(request, smoke, 'outsider');
@@ -168,7 +168,12 @@ test('concurrent approvals reserve a shared slot exactly once and let the next p
   expect(created.status()).toBe(201);
   const centerId = (await created.json()).data.id;
   const slot = session(20);
-  const reqPayload = { centerId, courseId: run.course, programId: run.program, seats: 12, sessions: [slot] };
+  const reqPayload = { centerId, seats: 12, sessions: [slot], skillsToTeach: run.id + ' Lab safety' };
+  const missingSkills = await request.post(api, { headers: providerA, data: {
+    ...reqPayload, batchCode: run.id + '-venue-skills', skillsToTeach: ' ',
+  } });
+  expect(missingSkills.status()).toBe(400);
+  expect((await missingSkills.json()).code).toBe('TRAINING_SKILLS_REQUIRED');
   const tooLarge = await request.post(api, { headers: providerA, data: {
     ...reqPayload, batchCode: run.id + '-venue-size', seats: 21,
   } });

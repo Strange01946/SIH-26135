@@ -2483,70 +2483,6 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseDataQualityIssueResponse"
-  /api/v1/courses/{id}:
-    get:
-      tags:
-      - course-controller
-      operationId: getById_36
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-          format: int64
-          exclusiveMinimum: 0
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ApiResponseCourseResponse"
-    put:
-      tags:
-      - course-controller
-      operationId: updateCourse
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-          format: int64
-          exclusiveMinimum: 0
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateCourseRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ApiResponseCourseResponse"
-    delete:
-      tags:
-      - course-controller
-      operationId: deleteCourse
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-          format: int64
-          exclusiveMinimum: 0
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ApiResponseVoid"
   /api/v1/consents/{id}/status:
     put:
       tags:
@@ -2584,7 +2520,7 @@ paths:
     get:
       tags:
       - consent-controller
-      operationId: getById_37
+      operationId: getById_36
       parameters:
       - name: id
         in: path
@@ -2636,7 +2572,7 @@ paths:
     get:
       tags:
       - communication-log-controller
-      operationId: getById_38
+      operationId: getById_37
       parameters:
       - name: id
         in: path
@@ -2700,7 +2636,7 @@ paths:
     get:
       tags:
       - certification-controller
-      operationId: getById_39
+      operationId: getById_38
       parameters:
       - name: id
         in: path
@@ -2764,7 +2700,7 @@ paths:
     get:
       tags:
       - certification-controller
-      operationId: getById_40
+      operationId: getById_39
       parameters:
       - name: id
         in: path
@@ -2828,7 +2764,7 @@ paths:
     get:
       tags:
       - attendance-record-controller
-      operationId: getById_41
+      operationId: getById_40
       parameters:
       - name: id
         in: path
@@ -2892,7 +2828,7 @@ paths:
     get:
       tags:
       - assessment-controller
-      operationId: getById_42
+      operationId: getById_41
       parameters:
       - name: id
         in: path
@@ -2956,7 +2892,7 @@ paths:
     get:
       tags:
       - assessment-result-controller
-      operationId: getById_43
+      operationId: getById_42
       parameters:
       - name: id
         in: path
@@ -3020,7 +2956,7 @@ paths:
     get:
       tags:
       - assessment-result-controller
-      operationId: getById_44
+      operationId: getById_43
       parameters:
       - name: id
         in: path
@@ -3926,6 +3862,131 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseUserRoleResponse"
+  /api/v1/training-requirements/{id}/applications:
+    post:
+      tags:
+      - training-requirement-controller
+      operationId: applyForTrainingRequirement
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Apply"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseApplication"
+  /api/v1/training-requirements/government:
+    get:
+      tags:
+      - training-requirement-controller
+      operationId: listGovernmentRequirements
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+          minimum: 0
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+          maximum: 50
+          minimum: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListRequirement"
+    post:
+      tags:
+      - training-requirement-controller
+      operationId: publishTrainingRequirement
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Publish"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseRequirement"
+  /api/v1/training-requirements/government/{id}/select:
+    post:
+      tags:
+      - training-requirement-controller
+      operationId: selectTrainingProvider
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SelectProvider"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseRequirement"
+  /api/v1/training-requirements/government/{id}/centre:
+    post:
+      tags:
+      - training-requirement-controller
+      operationId: setTrainingCentre
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetCentre"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseRequirement"
   /api/v1/training-providers:
     get:
       tags:
@@ -7668,91 +7729,6 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseDataQualityIssueEventResponse"
-  /api/v1/courses:
-    get:
-      tags:
-      - course-controller
-      operationId: getCourses
-      parameters:
-      - name: code
-        in: query
-        required: false
-        schema:
-          type: string
-      - name: sectorId
-        in: query
-        required: false
-        schema:
-          type: integer
-          format: int64
-          exclusiveMinimum: 0
-      - name: industryId
-        in: query
-        required: false
-        schema:
-          type: integer
-          format: int64
-          exclusiveMinimum: 0
-      - name: deliveryModeId
-        in: query
-        required: false
-        schema:
-          type: integer
-          format: int64
-          exclusiveMinimum: 0
-      - name: page
-        in: query
-        required: false
-        schema:
-          type: integer
-          format: int32
-          default: 0
-          minimum: 0
-      - name: size
-        in: query
-        required: false
-        schema:
-          type: integer
-          format: int32
-          default: 20
-          maximum: 100
-          minimum: 1
-      - name: sort
-        in: query
-        required: false
-        schema:
-          type: string
-          default: id
-      - name: direction
-        in: query
-        required: false
-        schema:
-          type: string
-          default: ASC
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ApiResponseObject"
-    post:
-      tags:
-      - course-controller
-      operationId: createCourse
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateCourseRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ApiResponseCourseResponse"
   /api/v1/consents:
     get:
       tags:
@@ -9022,7 +8998,8 @@ paths:
       tags:
       - Onboarding Administration
       summary: Reject Application
-      description: Reject onboarding application with reason and disable user
+      description: Reject a pending application in the permitted jurisdiction and
+        disable the portal account.
       operationId: rejectApplication
       parameters:
       - name: id
@@ -9051,7 +9028,8 @@ paths:
       tags:
       - Onboarding Administration
       summary: Approve Application
-      description: "Approve onboarding application, activate user, and grant accreditation"
+      description: Approve a pending application in the permitted jurisdiction and
+        activate the portal account.
       operationId: approveApplication
       parameters:
       - name: id
@@ -9442,6 +9420,120 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseListBusySlot"
+  /api/v1/training-requirements/{id}:
+    get:
+      tags:
+      - training-requirement-controller
+      operationId: providerRequirementDetails
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseRequirementDetails"
+  /api/v1/training-requirements/open:
+    get:
+      tags:
+      - training-requirement-controller
+      operationId: openTrainingRequirements
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+          minimum: 0
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+          maximum: 50
+          minimum: 1
+      - name: stateId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      - name: districtId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListRequirement"
+  /api/v1/training-requirements/my-applications:
+    get:
+      tags:
+      - training-requirement-controller
+      operationId: myTrainingApplications
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+          minimum: 0
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+          maximum: 50
+          minimum: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListApplication"
+  /api/v1/training-requirements/government/{id}:
+    get:
+      tags:
+      - training-requirement-controller
+      operationId: governmentRequirementDetails
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseRequirementDetails"
   /api/v1/training-centers:
     get:
       tags:
@@ -9615,7 +9707,7 @@ paths:
       - Training Batches
       summary: Get Training Batch by ID
       description: Retrieves training batch details by primary key identifier.
-      operationId: getById_45
+      operationId: getById_44
       parameters:
       - name: id
         in: path
@@ -9711,7 +9803,7 @@ paths:
     get:
       tags:
       - system-event-log-controller
-      operationId: getById_46
+      operationId: getById_45
       parameters:
       - name: id
         in: path
@@ -9870,28 +9962,6 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseListDataQualityIssueEventResponse"
-  /api/v1/provider/courses/{courseId}/programs:
-    get:
-      tags:
-      - provider-batch-options-controller
-      operationId: getBatchProgramOptions
-      parameters:
-      - name: courseId
-        in: path
-        required: true
-        schema:
-          type: integer
-          format: int64
-          exclusiveMinimum: 0
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ApiResponseListBatchProgramOption"
-      security:
-      - bearerAuth: []
   /api/v1/provider/centers/{centerId}/scorecard:
     get:
       tags:
@@ -9936,7 +10006,7 @@ paths:
     get:
       tags:
       - permission-controller
-      operationId: getById_47
+      operationId: getById_46
       parameters:
       - name: id
         in: path
@@ -10712,7 +10782,7 @@ paths:
     get:
       tags:
       - data-quality-issue-event-controller
-      operationId: getById_48
+      operationId: getById_47
       parameters:
       - name: id
         in: path
@@ -11703,6 +11773,94 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseAttritionDashboardResponse"
+  /api/v1/courses:
+    get:
+      tags:
+      - course-controller
+      operationId: getCourses
+      parameters:
+      - name: code
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: sectorId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      - name: industryId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      - name: deliveryModeId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+          minimum: 0
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+          maximum: 100
+          minimum: 1
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          default: id
+      - name: direction
+        in: query
+        required: false
+        schema:
+          type: string
+          default: ASC
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseObject"
+  /api/v1/courses/{id}:
+    get:
+      tags:
+      - course-controller
+      operationId: getById_48
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseCourseResponse"
   /api/v1/communication/templates:
     get:
       tags:
@@ -14582,7 +14740,8 @@ paths:
       tags:
       - Onboarding Administration
       summary: List Onboarding Applications
-      description: Retrieve list of onboarding applications with optional status filter
+      description: List applications by optional status. State administrators and
+        district officers see only their assigned jurisdiction.
       operationId: getApplications
       parameters:
       - name: status
@@ -14602,7 +14761,7 @@ paths:
       tags:
       - Onboarding Administration
       summary: Get Onboarding Application Details
-      description: Retrieve single application by ID
+      description: Retrieve an application in the reviewer's permitted jurisdiction.
       operationId: getApplicationById
       parameters:
       - name: id
@@ -19526,131 +19685,6 @@ components:
         updatedAt:
           type: string
           format: date-time
-    UpdateCourseRequest:
-      type: object
-      properties:
-        courseName:
-          type: string
-          maxLength: 200
-          minLength: 0
-        description:
-          type: string
-          maxLength: 65535
-          minLength: 0
-        sectorId:
-          type: integer
-          format: int64
-        industryId:
-          type: integer
-          format: int64
-        qualificationLevelId:
-          type: integer
-          format: int64
-        durationHours:
-          type: integer
-          format: int32
-        durationDays:
-          type: integer
-          format: int32
-        deliveryModeId:
-          type: integer
-          format: int64
-        lifecycleStatusId:
-          type: integer
-          format: int64
-    ApiResponseCourseResponse:
-      type: object
-      description: Standard generic envelope for REST API responses
-      properties:
-        success:
-          type: boolean
-          description: Whether the request completed successfully
-          example: true
-        code:
-          type: string
-          description: Machine-readable status or error code
-          example: SUCCESS
-        message:
-          type: string
-          description: Human-readable result or status message
-          example: Operation completed successfully
-        data:
-          $ref: "#/components/schemas/CourseResponse"
-          description: Payload data of type T
-        timestamp:
-          type: string
-          format: date-time
-          description: UTC ISO-8601 timestamp of response generation
-          example: 2026-11-19T18:00:00Z
-        path:
-          type: string
-          description: Request URI path
-          example: /api/v1/trainees
-        correlationId:
-          type: string
-          description: Unique correlation identifier for request tracing across services
-          example: c8f9b2a1-0000-4000-a000-000000000001
-    CourseResponse:
-      type: object
-      properties:
-        id:
-          type: integer
-          format: int64
-        courseCode:
-          type: string
-        courseName:
-          type: string
-        description:
-          type: string
-        sectorId:
-          type: integer
-          format: int64
-        sectorCode:
-          type: string
-        sectorName:
-          type: string
-        industryId:
-          type: integer
-          format: int64
-        industryCode:
-          type: string
-        industryName:
-          type: string
-        qualificationLevelId:
-          type: integer
-          format: int64
-        qualificationLevelCode:
-          type: string
-        qualificationLevelName:
-          type: string
-        nsqfLevel:
-          type: integer
-          format: int32
-        durationHours:
-          type: integer
-          format: int32
-        durationDays:
-          type: integer
-          format: int32
-        deliveryModeId:
-          type: integer
-          format: int64
-        deliveryModeCode:
-          type: string
-        deliveryModeName:
-          type: string
-        lifecycleStatusId:
-          type: integer
-          format: int64
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
-        deletedAt:
-          type: string
-          format: date-time
     UpdateTraineeConsentStatusRequest:
       type: object
       properties:
@@ -21601,12 +21635,6 @@ components:
           type: string
           maxLength: 32
           minLength: 0
-        courseId:
-          type: integer
-          format: int64
-        programId:
-          type: integer
-          format: int64
         seats:
           type: integer
           format: int32
@@ -21616,6 +21644,17 @@ components:
             $ref: "#/components/schemas/SessionRequest"
           maxItems: 366
           minItems: 0
+        requirementId:
+          type: integer
+          format: int64
+        skillsToTeach:
+          type: string
+          maxLength: 600
+          minLength: 0
+        trainingNotes:
+          type: string
+          maxLength: 1500
+          minLength: 0
       required:
       - batchCode
       - sessions
@@ -21754,6 +21793,13 @@ components:
           type: string
           format: date-time
         batchStatus:
+          type: string
+        requirementId:
+          type: integer
+          format: int64
+        skillsToTeach:
+          type: string
+        trainingNotes:
           type: string
     Details:
       type: object
@@ -22063,6 +22109,246 @@ components:
         assignedByUserId:
           type: integer
           format: int64
+    Apply:
+      type: object
+      properties:
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        dailyStartTime:
+          type: string
+        dailyEndTime:
+          type: string
+        deliveryNotes:
+          type: string
+          maxLength: 1500
+          minLength: 0
+      required:
+      - dailyEndTime
+      - dailyStartTime
+      - endDate
+      - startDate
+    ApiResponseApplication:
+      type: object
+      description: Standard generic envelope for REST API responses
+      properties:
+        success:
+          type: boolean
+          description: Whether the request completed successfully
+          example: true
+        code:
+          type: string
+          description: Machine-readable status or error code
+          example: SUCCESS
+        message:
+          type: string
+          description: Human-readable result or status message
+          example: Operation completed successfully
+        data:
+          $ref: "#/components/schemas/Application"
+          description: Payload data of type T
+        timestamp:
+          type: string
+          format: date-time
+          description: UTC ISO-8601 timestamp of response generation
+          example: 2026-11-19T18:00:00Z
+        path:
+          type: string
+          description: Request URI path
+          example: /api/v1/trainees
+        correlationId:
+          type: string
+          description: Unique correlation identifier for request tracing across services
+          example: c8f9b2a1-0000-4000-a000-000000000001
+    Application:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        requirementId:
+          type: integer
+          format: int64
+        requirementTitle:
+          type: string
+        providerId:
+          type: integer
+          format: int64
+        providerName:
+          type: string
+        status:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        dailyStartTime:
+          type: string
+        dailyEndTime:
+          type: string
+        deliveryNotes:
+          type: string
+        submittedAt:
+          type: string
+          format: date-time
+    Publish:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 150
+          minLength: 0
+        skillsToTeach:
+          type: string
+          maxLength: 600
+          minLength: 0
+        description:
+          type: string
+          maxLength: 1500
+          minLength: 0
+        stateId:
+          type: integer
+          format: int64
+        districtId:
+          type: integer
+          format: int64
+        centerId:
+          type: integer
+          format: int64
+        seats:
+          type: integer
+          format: int32
+        earliestDate:
+          type: string
+          format: date
+        latestDate:
+          type: string
+          format: date
+        dailyStartTime:
+          type: string
+        dailyEndTime:
+          type: string
+      required:
+      - centerId
+      - dailyEndTime
+      - dailyStartTime
+      - earliestDate
+      - latestDate
+      - skillsToTeach
+      - title
+    ApiResponseRequirement:
+      type: object
+      description: Standard generic envelope for REST API responses
+      properties:
+        success:
+          type: boolean
+          description: Whether the request completed successfully
+          example: true
+        code:
+          type: string
+          description: Machine-readable status or error code
+          example: SUCCESS
+        message:
+          type: string
+          description: Human-readable result or status message
+          example: Operation completed successfully
+        data:
+          $ref: "#/components/schemas/Requirement"
+          description: Payload data of type T
+        timestamp:
+          type: string
+          format: date-time
+          description: UTC ISO-8601 timestamp of response generation
+          example: 2026-11-19T18:00:00Z
+        path:
+          type: string
+          description: Request URI path
+          example: /api/v1/trainees
+        correlationId:
+          type: string
+          description: Unique correlation identifier for request tracing across services
+          example: c8f9b2a1-0000-4000-a000-000000000001
+    Requirement:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        skillsToTeach:
+          type: string
+        description:
+          type: string
+        stateId:
+          type: integer
+          format: int64
+        stateName:
+          type: string
+        districtId:
+          type: integer
+          format: int64
+        districtName:
+          type: string
+        seats:
+          type: integer
+          format: int32
+        centerId:
+          type: integer
+          format: int64
+        centerName:
+          type: string
+        centerAddress:
+          type: string
+        earliestDate:
+          type: string
+          format: date
+        latestDate:
+          type: string
+          format: date
+        dailyStartTime:
+          type: string
+        dailyEndTime:
+          type: string
+        status:
+          type: string
+        acceptingApplications:
+          type: boolean
+        selectedProviderId:
+          type: integer
+          format: int64
+        selectedProviderName:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+        selectedAt:
+          type: string
+          format: date-time
+        bookingId:
+          type: integer
+          format: int64
+        bookingStatus:
+          type: string
+    SelectProvider:
+      type: object
+      properties:
+        applicationId:
+          type: integer
+          format: int64
+    SetCentre:
+      type: object
+      properties:
+        centerId:
+          type: integer
+          format: int64
+      required:
+      - centerId
     CreateTrainingProviderRequest:
       type: object
       properties:
@@ -24031,45 +24317,6 @@ components:
         createdAt:
           type: string
           format: date-time
-    CreateCourseRequest:
-      type: object
-      properties:
-        courseCode:
-          type: string
-          maxLength: 32
-          minLength: 0
-        courseName:
-          type: string
-          maxLength: 200
-          minLength: 0
-        description:
-          type: string
-          maxLength: 65535
-          minLength: 0
-        sectorId:
-          type: integer
-          format: int64
-        industryId:
-          type: integer
-          format: int64
-        qualificationLevelId:
-          type: integer
-          format: int64
-        durationHours:
-          type: integer
-          format: int32
-        durationDays:
-          type: integer
-          format: int32
-        deliveryModeId:
-          type: integer
-          format: int64
-        lifecycleStatusId:
-          type: integer
-          format: int64
-      required:
-      - courseCode
-      - courseName
     CreateTraineeConsentRequest:
       type: object
       properties:
@@ -25859,6 +26106,117 @@ components:
           type: string
           description: Unique correlation identifier for request tracing across services
           example: c8f9b2a1-0000-4000-a000-000000000001
+    ApiResponseRequirementDetails:
+      type: object
+      description: Standard generic envelope for REST API responses
+      properties:
+        success:
+          type: boolean
+          description: Whether the request completed successfully
+          example: true
+        code:
+          type: string
+          description: Machine-readable status or error code
+          example: SUCCESS
+        message:
+          type: string
+          description: Human-readable result or status message
+          example: Operation completed successfully
+        data:
+          $ref: "#/components/schemas/RequirementDetails"
+          description: Payload data of type T
+        timestamp:
+          type: string
+          format: date-time
+          description: UTC ISO-8601 timestamp of response generation
+          example: 2026-11-19T18:00:00Z
+        path:
+          type: string
+          description: Request URI path
+          example: /api/v1/trainees
+        correlationId:
+          type: string
+          description: Unique correlation identifier for request tracing across services
+          example: c8f9b2a1-0000-4000-a000-000000000001
+    RequirementDetails:
+      type: object
+      properties:
+        requirement:
+          $ref: "#/components/schemas/Requirement"
+        applications:
+          type: array
+          items:
+            $ref: "#/components/schemas/Application"
+        myApplication:
+          $ref: "#/components/schemas/Application"
+    ApiResponseListRequirement:
+      type: object
+      description: Standard generic envelope for REST API responses
+      properties:
+        success:
+          type: boolean
+          description: Whether the request completed successfully
+          example: true
+        code:
+          type: string
+          description: Machine-readable status or error code
+          example: SUCCESS
+        message:
+          type: string
+          description: Human-readable result or status message
+          example: Operation completed successfully
+        data:
+          type: array
+          description: Payload data of type T
+          items:
+            $ref: "#/components/schemas/Requirement"
+        timestamp:
+          type: string
+          format: date-time
+          description: UTC ISO-8601 timestamp of response generation
+          example: 2026-11-19T18:00:00Z
+        path:
+          type: string
+          description: Request URI path
+          example: /api/v1/trainees
+        correlationId:
+          type: string
+          description: Unique correlation identifier for request tracing across services
+          example: c8f9b2a1-0000-4000-a000-000000000001
+    ApiResponseListApplication:
+      type: object
+      description: Standard generic envelope for REST API responses
+      properties:
+        success:
+          type: boolean
+          description: Whether the request completed successfully
+          example: true
+        code:
+          type: string
+          description: Machine-readable status or error code
+          example: SUCCESS
+        message:
+          type: string
+          description: Human-readable result or status message
+          example: Operation completed successfully
+        data:
+          type: array
+          description: Payload data of type T
+          items:
+            $ref: "#/components/schemas/Application"
+        timestamp:
+          type: string
+          format: date-time
+          description: UTC ISO-8601 timestamp of response generation
+          example: 2026-11-19T18:00:00Z
+        path:
+          type: string
+          description: Request URI path
+          example: /api/v1/trainees
+        correlationId:
+          type: string
+          description: Unique correlation identifier for request tracing across services
+          example: c8f9b2a1-0000-4000-a000-000000000001
     ApiResponsePagedResponseTrainingEnrollmentResponse:
       type: object
       description: Standard generic envelope for REST API responses
@@ -26872,50 +27230,6 @@ components:
           type: string
           description: Unique correlation identifier for request tracing across services
           example: c8f9b2a1-0000-4000-a000-000000000001
-    ApiResponseListBatchProgramOption:
-      type: object
-      description: Standard generic envelope for REST API responses
-      properties:
-        success:
-          type: boolean
-          description: Whether the request completed successfully
-          example: true
-        code:
-          type: string
-          description: Machine-readable status or error code
-          example: SUCCESS
-        message:
-          type: string
-          description: Human-readable result or status message
-          example: Operation completed successfully
-        data:
-          type: array
-          description: Payload data of type T
-          items:
-            $ref: "#/components/schemas/BatchProgramOption"
-        timestamp:
-          type: string
-          format: date-time
-          description: UTC ISO-8601 timestamp of response generation
-          example: 2026-11-19T18:00:00Z
-        path:
-          type: string
-          description: Request URI path
-          example: /api/v1/trainees
-        correlationId:
-          type: string
-          description: Unique correlation identifier for request tracing across services
-          example: c8f9b2a1-0000-4000-a000-000000000001
-    BatchProgramOption:
-      type: object
-      properties:
-        id:
-          type: integer
-          format: int64
-        code:
-          type: string
-        name:
-          type: string
     ApiResponseCenterScorecardResponse:
       type: object
       description: Standard generic envelope for REST API responses
@@ -30949,6 +31263,99 @@ components:
           type: number
         reemploymentRatePct:
           type: number
+    ApiResponseCourseResponse:
+      type: object
+      description: Standard generic envelope for REST API responses
+      properties:
+        success:
+          type: boolean
+          description: Whether the request completed successfully
+          example: true
+        code:
+          type: string
+          description: Machine-readable status or error code
+          example: SUCCESS
+        message:
+          type: string
+          description: Human-readable result or status message
+          example: Operation completed successfully
+        data:
+          $ref: "#/components/schemas/CourseResponse"
+          description: Payload data of type T
+        timestamp:
+          type: string
+          format: date-time
+          description: UTC ISO-8601 timestamp of response generation
+          example: 2026-11-19T18:00:00Z
+        path:
+          type: string
+          description: Request URI path
+          example: /api/v1/trainees
+        correlationId:
+          type: string
+          description: Unique correlation identifier for request tracing across services
+          example: c8f9b2a1-0000-4000-a000-000000000001
+    CourseResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        courseCode:
+          type: string
+        courseName:
+          type: string
+        description:
+          type: string
+        sectorId:
+          type: integer
+          format: int64
+        sectorCode:
+          type: string
+        sectorName:
+          type: string
+        industryId:
+          type: integer
+          format: int64
+        industryCode:
+          type: string
+        industryName:
+          type: string
+        qualificationLevelId:
+          type: integer
+          format: int64
+        qualificationLevelCode:
+          type: string
+        qualificationLevelName:
+          type: string
+        nsqfLevel:
+          type: integer
+          format: int32
+        durationHours:
+          type: integer
+          format: int32
+        durationDays:
+          type: integer
+          format: int32
+        deliveryModeId:
+          type: integer
+          format: int64
+        deliveryModeCode:
+          type: string
+        deliveryModeName:
+          type: string
+        lifecycleStatusId:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
     ApiResponseListTraineeConsentResponse:
       type: object
       description: Standard generic envelope for REST API responses

@@ -14,21 +14,22 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import in.gov.sih.sih26135.MysqlConnectionTest;
 import in.gov.sih.sih26135.dto.auth.LoginRequest;
-import in.gov.sih.sih26135.dto.request.CreateCourseRequest;
 import in.gov.sih.sih26135.dto.request.CreateEmployerRequest;
 import in.gov.sih.sih26135.dto.request.CreateJobPostingRequest;
 import in.gov.sih.sih26135.dto.request.CreateTraineeRequest;
 import in.gov.sih.sih26135.dto.request.CreateTrainingBatchRequest;
 import in.gov.sih.sih26135.dto.request.UpdateCourseRequest;
 import in.gov.sih.sih26135.dto.request.UpdateEmployerRequest;
+import in.gov.sih.sih26135.dto.venue.TrainingRequirementDto.Publish;
 import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.security.jwt.JwtTokenProvider;
-import in.gov.sih.sih26135.service.CourseService;
+import in.gov.sih.sih26135.service.impl.TrainingRequirementService;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Set;
 import javax.sql.DataSource;
@@ -66,6 +67,7 @@ import org.springframework.test.web.servlet.MvcResult;
 @AutoConfigureMockMvc
 @DisplayName("Phase 26.13 — Validation & Pagination Regression Testing")
 public class ValidationAndPaginationRegressionTest {
+  private static final String TRAINING_REQUIREMENTS = "/api/v1/training-requirements/government";
 
   @Autowired
   private DataSource dataSource;
@@ -83,7 +85,7 @@ public class ValidationAndPaginationRegressionTest {
   private JwtTokenProvider jwtTokenProvider;
 
   @SpyBean
-  private CourseService courseService;
+  private TrainingRequirementService trainingRequirements;
 
   private String adminToken;
 
@@ -105,9 +107,11 @@ public class ValidationAndPaginationRegressionTest {
         1L,
         "admin",
         List.of(
+            "ROLE_super_admin",
             "ROLE_ADMIN",
             "ADMIN",
             "course.manage",
+            "venue.booking.review",
             "trainee.read",
             "trainee.write",
             "placement.manage",
@@ -181,14 +185,11 @@ public class ValidationAndPaginationRegressionTest {
     }
 
     @Test
-    @DisplayName("CreateCourseRequest - Multiple simultaneous violations are alphabetically sorted in error details")
-    void testCreateCourseRequest_multipleViolationsAlphabeticalOrder() throws Exception {
-      CreateCourseRequest request = new CreateCourseRequest();
-      request.setCourseCode(""); // violation 1
-      request.setCourseName(""); // violation 2
-      request.setDurationHours(-1); // violation 3
+    @DisplayName("Training requirement - Multiple violations are sorted in error details")
+    void testPublish_multipleViolationsAlphabeticalOrder() throws Exception {
+      Publish request = publication("", "", 0);
 
-      mockMvc.perform(post("/api/v1/courses")
+      mockMvc.perform(post(TRAINING_REQUIREMENTS)
               .header(HttpHeaders.AUTHORIZATION, adminToken)
               .contentType(MediaType.APPLICATION_JSON)
               .content(objectMapper.writeValueAsString(request)))
@@ -196,9 +197,9 @@ public class ValidationAndPaginationRegressionTest {
           .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
           .andExpect(jsonPath("$.details").isArray())
           .andExpect(jsonPath("$.details", org.hamcrest.Matchers.hasSize(3)))
-          .andExpect(jsonPath("$.details[0]").value(org.hamcrest.Matchers.containsString("courseCode")))
-          .andExpect(jsonPath("$.details[1]").value(org.hamcrest.Matchers.containsString("courseName")))
-          .andExpect(jsonPath("$.details[2]").value(org.hamcrest.Matchers.containsString("durationHours")));
+          .andExpect(jsonPath("$.details[0]").value(org.hamcrest.Matchers.containsString("seats")))
+          .andExpect(jsonPath("$.details[1]").value(org.hamcrest.Matchers.containsString("skillsToTeach")))
+          .andExpect(jsonPath("$.details[2]").value(org.hamcrest.Matchers.containsString("title")));
     }
 
     @Test
@@ -218,74 +219,73 @@ public class ValidationAndPaginationRegressionTest {
     }
 
     @Test
-    @DisplayName("CreateCourseRequest - Missing required fields rejected with VALIDATION_ERROR")
-    void testCreateCourseRequest_missingRequiredFieldsRejected() throws Exception {
-      CreateCourseRequest request = new CreateCourseRequest();
-      request.setCourseCode(null);
-      request.setCourseName("");
-
-      mockMvc.perform(post("/api/v1/courses")
+    @DisplayName("Training requirement - Missing fields return VALIDATION_ERROR")
+    void testPublish_missingRequiredFieldsRejected() throws Exception {
+      mockMvc.perform(post(TRAINING_REQUIREMENTS)
               .header(HttpHeaders.AUTHORIZATION, adminToken)
               .contentType(MediaType.APPLICATION_JSON)
-              .content(objectMapper.writeValueAsString(request)))
+              .content("{}"))
           .andExpect(status().isBadRequest())
           .andExpect(jsonPath("$.status").value(400))
           .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
           .andExpect(jsonPath("$.details").isArray())
-          .andExpect(jsonPath("$.details[0]").value(org.hamcrest.Matchers.containsString("courseCode")))
-          .andExpect(jsonPath("$.details[1]").value(org.hamcrest.Matchers.containsString("courseName")));
+          .andExpect(jsonPath("$.details[0]").value(org.hamcrest.Matchers.containsString("centerId")))
+          .andExpect(jsonPath("$.details[1]").value(org.hamcrest.Matchers.containsString("dailyEndTime")))
+          .andExpect(jsonPath("$.details[2]").value(org.hamcrest.Matchers.containsString("dailyStartTime")))
+          .andExpect(jsonPath("$.details[3]").value(org.hamcrest.Matchers.containsString("districtId")))
+          .andExpect(jsonPath("$.details[4]").value(org.hamcrest.Matchers.containsString("earliestDate")))
+          .andExpect(jsonPath("$.details[5]").value(org.hamcrest.Matchers.containsString("latestDate")))
+          .andExpect(jsonPath("$.details[6]").value(org.hamcrest.Matchers.containsString("seats")))
+          .andExpect(jsonPath("$.details[7]").value(org.hamcrest.Matchers.containsString("skillsToTeach")))
+          .andExpect(jsonPath("$.details[8]").value(org.hamcrest.Matchers.containsString("stateId")))
+          .andExpect(jsonPath("$.details[9]").value(org.hamcrest.Matchers.containsString("title")));
 
-      // Verify controller business logic was NOT executed
-      verify(courseService, never()).createCourse(any());
+      verify(trainingRequirements, never()).publish(any());
     }
 
     @Test
-    @DisplayName("CreateCourseRequest - Field exceeding max length rejected")
-    void testCreateCourseRequest_oversizedCourseCodeRejected() throws Exception {
-      CreateCourseRequest request = new CreateCourseRequest();
-      request.setCourseCode("A".repeat(33)); // Max is 32
-      request.setCourseName("Valid Course Name");
+    @DisplayName("Training requirement - Oversized skills description is rejected")
+    void testPublish_oversizedSkillsRejected() throws Exception {
+      Publish request = publication("Equipment training", "A".repeat(601), 12);
 
-      mockMvc.perform(post("/api/v1/courses")
+      mockMvc.perform(post(TRAINING_REQUIREMENTS)
               .header(HttpHeaders.AUTHORIZATION, adminToken)
               .contentType(MediaType.APPLICATION_JSON)
               .content(objectMapper.writeValueAsString(request)))
           .andExpect(status().isBadRequest())
           .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
-          .andExpect(jsonPath("$.details[0]").value(org.hamcrest.Matchers.containsString("courseCode")));
+          .andExpect(jsonPath("$.details[0]").value(org.hamcrest.Matchers.containsString("skillsToTeach")));
 
-      verify(courseService, never()).createCourse(any());
+      verify(trainingRequirements, never()).publish(any());
     }
 
     @Test
-    @DisplayName("CreateCourseRequest - Negative durationHours rejected with PositiveOrZero constraint")
-    void testCreateCourseRequest_negativeDurationHoursRejected() throws Exception {
-      CreateCourseRequest request = new CreateCourseRequest();
-      request.setCourseCode("CRS-VAL-99");
-      request.setCourseName("Validation Course");
-      request.setDurationHours(-5); // Must be >= 0
+    @DisplayName("Training requirement - Negative seat count is rejected")
+    void testPublish_negativeSeatsRejected() throws Exception {
+      Publish request = publication("Equipment training", "Safety and operation", -5);
 
-      mockMvc.perform(post("/api/v1/courses")
+      mockMvc.perform(post(TRAINING_REQUIREMENTS)
               .header(HttpHeaders.AUTHORIZATION, adminToken)
               .contentType(MediaType.APPLICATION_JSON)
               .content(objectMapper.writeValueAsString(request)))
           .andExpect(status().isBadRequest())
           .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
-          .andExpect(jsonPath("$.details[0]").value(org.hamcrest.Matchers.containsString("durationHours")));
+          .andExpect(jsonPath("$.details[0]").value(org.hamcrest.Matchers.containsString("seats")));
 
-      verify(courseService, never()).createCourse(any());
+      verify(trainingRequirements, never()).publish(any());
     }
 
     @Test
-    @DisplayName("CreateCourseRequest - Boundary values: courseCode exactly 32 chars and durationHours = 0 accepted by validator")
-    void testCreateCourseRequest_boundaryValuesAccepted() {
-      CreateCourseRequest request = new CreateCourseRequest();
-      request.setCourseCode("C".repeat(32)); // exactly max length
-      request.setCourseName("Valid Boundary Course");
-      request.setDurationHours(0); // minimum allowed boundary
-
-      Set<ConstraintViolation<CreateCourseRequest>> violations = validator.validate(request);
+    @DisplayName("Training requirement - Maximum text lengths and a single seat are valid")
+    void testPublish_boundaryValuesAccepted() {
+      Publish request = publication("T".repeat(150), "S".repeat(600), 1);
+      Set<ConstraintViolation<Publish>> violations = validator.validate(request);
       assertThat(violations).isEmpty();
+    }
+
+    private Publish publication(String title, String skills, int seats) {
+      LocalDate day = LocalDate.of(2099, 6, 1);
+      return new Publish(title, skills, null, 1, 1, 1L, seats, day, day, LocalTime.of(9, 0), LocalTime.of(12, 0));
     }
 
     @Test
@@ -700,9 +700,9 @@ public class ValidationAndPaginationRegressionTest {
     @Test
     @DisplayName("Malformed JSON - Broken syntax (missing closing brace) returns HTTP 400 MALFORMED_JSON")
     void testMalformedJson_syntaxErrorReturnsMalformedJson() throws Exception {
-      String brokenJson = "{\"courseCode\": \"CRS-01\", \"courseName\": \"Broken JSON\"";
+      String brokenJson = "{\"title\": \"Equipment training\", \"skillsToTeach\": \"Broken JSON\"";
 
-      mockMvc.perform(post("/api/v1/courses")
+      mockMvc.perform(post(TRAINING_REQUIREMENTS)
               .header(HttpHeaders.AUTHORIZATION, adminToken)
               .contentType(MediaType.APPLICATION_JSON)
               .content(brokenJson))
@@ -711,13 +711,13 @@ public class ValidationAndPaginationRegressionTest {
           .andExpect(jsonPath("$.code").value("MALFORMED_JSON"))
           .andExpect(jsonPath("$.message").value("Malformed or unreadable request body"));
 
-      verify(courseService, never()).createCourse(any());
+      verify(trainingRequirements, never()).publish(any());
     }
 
     @Test
     @DisplayName("Empty Request Body - Empty string with application/json returns HTTP 400 MALFORMED_JSON")
     void testEmptyRequestBody_returnsMalformedJson() throws Exception {
-      mockMvc.perform(post("/api/v1/courses")
+      mockMvc.perform(post(TRAINING_REQUIREMENTS)
               .header(HttpHeaders.AUTHORIZATION, adminToken)
               .contentType(MediaType.APPLICATION_JSON)
               .content(""))
@@ -726,15 +726,15 @@ public class ValidationAndPaginationRegressionTest {
           .andExpect(jsonPath("$.code").value("MALFORMED_JSON"))
           .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("body")));
 
-      verify(courseService, never()).createCourse(any());
+      verify(trainingRequirements, never()).publish(any());
     }
 
     @Test
     @DisplayName("Type Conversion Error - String supplied where integer expected in JSON returns HTTP 400 MALFORMED_JSON")
     void testTypeConversion_stringWhereNumberExpectedReturnsMalformedJson() throws Exception {
-      String invalidTypeJson = "{\"courseCode\":\"CRS-99\",\"courseName\":\"Valid Name\",\"durationHours\":\"not-a-number\"}";
+      String invalidTypeJson = "{\"title\":\"Equipment training\",\"seats\":\"not-a-number\"}";
 
-      mockMvc.perform(post("/api/v1/courses")
+      mockMvc.perform(post(TRAINING_REQUIREMENTS)
               .header(HttpHeaders.AUTHORIZATION, adminToken)
               .contentType(MediaType.APPLICATION_JSON)
               .content(invalidTypeJson))
@@ -742,7 +742,7 @@ public class ValidationAndPaginationRegressionTest {
           .andExpect(jsonPath("$.status").value(400))
           .andExpect(jsonPath("$.code").value("MALFORMED_JSON"));
 
-      verify(courseService, never()).createCourse(any());
+      verify(trainingRequirements, never()).publish(any());
     }
 
     @Test
@@ -797,10 +797,10 @@ public class ValidationAndPaginationRegressionTest {
     @Test
     @DisplayName("Security & Privacy - Error responses never leak stack traces or internal class names")
     void testSecurityPrivacy_noStackTraceOrInternalDetailsLeaked() throws Exception {
-      MvcResult result = mockMvc.perform(post("/api/v1/courses")
+      MvcResult result = mockMvc.perform(post(TRAINING_REQUIREMENTS)
               .header(HttpHeaders.AUTHORIZATION, adminToken)
               .contentType(MediaType.APPLICATION_JSON)
-              .content("{\"durationHours\": \"not-a-number\"}"))
+              .content("{\"seats\": \"not-a-number\"}"))
           .andExpect(status().isBadRequest())
           .andReturn();
 

@@ -19,10 +19,10 @@ export type NewBooking = {
   centerId?: number;
   temporaryVenue?: TemporaryVenue;
   batchCode: string;
-  courseId: number;
-  programId: number;
   seats: number;
   sessions: SessionInput[];
+  skillsToTeach?: string;
+  trainingNotes?: string;
 };
 export type BusySlot = SessionInput & { blackoutId?: number | null; reason?: string | null };
 export type Booking = {
@@ -35,10 +35,10 @@ export type Booking = {
   venueType: 'SHARED' | 'TEMPORARY';
   status: BookingStatus;
   batchCode: string;
-  courseId: number;
-  courseName: string;
-  programId: number;
-  programName: string;
+  courseId?: number | null;
+  courseName?: string | null;
+  programId?: number | null;
+  programName?: string | null;
   seats: number;
   venueName: string;
   venueAddress?: string | null;
@@ -50,6 +50,9 @@ export type Booking = {
   createdAt: string;
   reviewedAt?: string | null;
   batchStatus?: string | null;
+  requirementId?: number | null;
+  skillsToTeach?: string | null;
+  trainingNotes?: string | null;
 };
 export type BookingDetails = { booking: Booking; sessions: Session[] };
 

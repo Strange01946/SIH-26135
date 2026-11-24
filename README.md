@@ -139,7 +139,11 @@ Configure the following environment variables (do not commit secrets):
 
 ### Build & Test Commands
 
-Run `node database/install-test-venue-bookings.mjs` from the repository root before starting the local demo backend. The installer uses the test database credentials and applies the schema to `SIH26135_TEST`. Other deployments can apply [the venue booking schema](database/phase-21-training-venue-bookings.sql) and [the two-type centre constraint](database/phase-22-remove-dedicated-centers.sql) after the existing schema and role seeds. The second migration requires any legacy dedicated rows to be resolved first.
+Run `node database/install-test-venue-bookings.mjs` from the repository root before starting the local demo backend. The installer uses the test database credentials and applies the schema to `SIH26135_TEST`. Other deployments can apply [the venue booking schema](database/phase-21-training-venue-bookings.sql), [the two-type centre constraint](database/phase-22-remove-dedicated-centers.sql), [the training requirements schema](database/phase-23-training-requirements.sql), [the skills-first training migration](database/phase-24-skills-first-training.sql), and [the government training centre migration](database/phase-25-government-training-centres.sql) in order after the existing schema and role seeds. Resolve any legacy dedicated rows before applying the second migration.
+
+Government reviewers publish training needs and select an active shared centre in **Training Requirements**. State Administrators cover their assigned state or union territory and District Officers cover their assigned district. Providers apply through **Training Opportunities** with proposed daily sessions. Selecting a provider reserves those sessions, creates the batch, and records the application decisions in one transaction. Reviewers can assign a centre to older requirements that have no centre or booking.
+
+Providers can submit their own training plans through **Venue Bookings** by describing the skills to teach. Venue approval creates the batch and supplies the internal references used by enrollment, assessments, and outcome reporting.
 
 Execute the following commands from the `backend/` directory:
 

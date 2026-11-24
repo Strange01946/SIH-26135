@@ -79,11 +79,12 @@ test('admin console shows live outcomes and updates the pending queue after appr
   await expect(history.getByRole('option', { name: /Smoke Solar Services/ })).toHaveCount(1);
 });
 
-test('admin console gives district officers scoped operations and omits national queues', async ({ page, request, smoke }) => {
+test('admin console gives district officers scoped operations and an onboarding queue', async ({ page, request, smoke }) => {
   const seen = [];
   page.on('request', (entry) => seen.push(new URL(entry.url()).pathname));
-  const [qualityResponse, importResponse, auth] = await Promise.all([
-    smoke.waitApi('GET', quality), smoke.waitApi('GET', imports), smoke.signIn('district', '/admin/dashboard'),
+  const [qualityResponse, importResponse, onboardingResponse, auth] = await Promise.all([
+    smoke.waitApi('GET', quality), smoke.waitApi('GET', imports), smoke.waitApi('GET', onboarding),
+    smoke.signIn('district', '/admin/dashboard'),
   ]);
   await expect(page.getByRole('heading', { name: 'District Skill Officer Console' })).toBeVisible();
   await expect(page.getByText(`District ${smoke.run.district}`, { exact: true })).toBeVisible();
@@ -91,12 +92,15 @@ test('admin console gives district officers scoped operations and omits national
   expect(importResponse.status()).toBe(200);
   await expect(page.getByRole('region', { name: 'Data quality', exact: true }).getByText('Active issues')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Skilling outcomes' })).toHaveCount(0);
-  await expect(page.getByRole('region', { name: 'Organisation onboarding' })).toHaveCount(0);
+  expect(onboardingResponse.status()).toBe(200);
+  const pending = (await onboardingResponse.json()).data;
+  const queue = page.getByRole('region', { name: 'Organisation onboarding' });
+  if (pending.length === 0) await expect(queue.getByText('No pending applications.')).toBeVisible();
+  else await expect(queue.locator('dd')).toHaveText(display(pending.length));
   expect(seen).not.toContain(kpis);
-  expect(seen).not.toContain(onboarding);
   const headers = { Authorization: `Bearer ${auth.accessToken}` };
   expect((await request.get(kpis, { headers })).status()).toBe(403);
-  expect((await request.get(onboarding, { headers })).status()).toBe(403);
+  expect((await request.get(onboarding + '/' + smoke.run.application, { headers })).status()).toBe(200);
 });
 
 test('admin console retries one failed card while other live sections remain usable', async ({ page, smoke }) => {

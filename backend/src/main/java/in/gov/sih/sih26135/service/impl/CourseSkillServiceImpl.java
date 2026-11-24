@@ -69,15 +69,18 @@ public class CourseSkillServiceImpl implements CourseSkillService {
       throw new BadRequestException("Skill importance ID is required");
     }
 
+    Course course = courseRepository.findAvailableByIdForUpdate(request.getCourseId())
+        .orElseThrow(() -> new ResourceNotFoundException("Course", "courseId"));
+
     if (courseSkillRepository.existsByCourseIdAndSkillId(request.getCourseId(), request.getSkillId())) {
       throw new ConflictException("Course skill mapping already exists", "COURSE_SKILL_ALREADY_EXISTS");
     }
 
-    Course course = courseRepository.findById(request.getCourseId())
-        .orElseThrow(() -> new ResourceNotFoundException("Course", "courseId"));
-
     Skill skill = skillRepository.findById(request.getSkillId())
         .orElseThrow(() -> new ResourceNotFoundException("Skill", "skillId"));
+    if (skill.getDeletedAt() != null || !Long.valueOf(1L).equals(skill.getLifecycleStatusId())) {
+      throw new BadRequestException("Link the course to an active skill.", "INVALID_COURSE_SKILL");
+    }
 
     SkillLevel taughtSkillLevel = skillLevelRepository.findById(request.getTaughtSkillLevelId())
         .orElseThrow(() -> new ResourceNotFoundException("SkillLevel", "taughtSkillLevelId"));
@@ -107,6 +110,8 @@ public class CourseSkillServiceImpl implements CourseSkillService {
       throw new BadRequestException("Course skill update request cannot be null");
     }
 
+    courseRepository.findAvailableByIdForUpdate(courseId)
+        .orElseThrow(() -> new ResourceNotFoundException("Course", "courseId"));
     CourseSkill courseSkill = courseSkillRepository.findById(new CourseSkillId(courseId, skillId))
         .orElseThrow(() -> new ResourceNotFoundException("CourseSkill", "courseId and skillId"));
 
@@ -141,6 +146,8 @@ public class CourseSkillServiceImpl implements CourseSkillService {
       throw new BadRequestException("Skill ID is required");
     }
 
+    courseRepository.findAvailableByIdForUpdate(courseId)
+        .orElseThrow(() -> new ResourceNotFoundException("Course", "courseId"));
     CourseSkill courseSkill = courseSkillRepository.findById(new CourseSkillId(courseId, skillId))
         .orElseThrow(() -> new ResourceNotFoundException("CourseSkill", "courseId and skillId"));
 

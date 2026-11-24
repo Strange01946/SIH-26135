@@ -22,6 +22,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +36,7 @@ public class CourseServiceImpl implements CourseService {
   private final RefQualificationLevelRepository refQualificationLevelRepository;
   private final RefDeliveryModeRepository refDeliveryModeRepository;
   private final CourseMapper courseMapper;
+  private final JdbcTemplate jdbc;
 
   public CourseServiceImpl(
       CourseRepository courseRepository,
@@ -42,13 +44,15 @@ public class CourseServiceImpl implements CourseService {
       IndustryRepository industryRepository,
       RefQualificationLevelRepository refQualificationLevelRepository,
       RefDeliveryModeRepository refDeliveryModeRepository,
-      CourseMapper courseMapper) {
+      CourseMapper courseMapper,
+      JdbcTemplate jdbc) {
     this.courseRepository = courseRepository;
     this.sectorRepository = sectorRepository;
     this.industryRepository = industryRepository;
     this.refQualificationLevelRepository = refQualificationLevelRepository;
     this.refDeliveryModeRepository = refDeliveryModeRepository;
     this.courseMapper = courseMapper;
+    this.jdbc = jdbc;
   }
 
   @Override
@@ -60,7 +64,7 @@ public class CourseServiceImpl implements CourseService {
 
   @Override
   public CourseResponse getByCode(String courseCode) {
-    Course course = courseRepository.findByCourseCode(courseCode)
+    Course course = courseRepository.findByCourseCodeAndDeletedAtIsNull(courseCode)
         .orElseThrow(() -> new ResourceNotFoundException("Course", "courseCode"));
     return courseMapper.toResponse(course);
   }
@@ -138,6 +142,7 @@ public class CourseServiceImpl implements CourseService {
     if (request.getLifecycleStatusId() == null) {
       throw new BadRequestException("Lifecycle status ID is required");
     }
+    validateLifecycleStatus(request.getLifecycleStatusId());
 
     String courseCode = request.getCourseCode().trim();
     if (courseRepository.existsByCourseCode(courseCode)) {
@@ -192,18 +197,18 @@ public class CourseServiceImpl implements CourseService {
       throw new BadRequestException("Course update request cannot be null");
     }
 
-    Course course = courseRepository.findById(id)
+    Course course = courseRepository.findAvailableByIdForUpdate(id)
         .orElseThrow(() -> new ResourceNotFoundException("Course", "id"));
 
-    if (request.getDurationHours() != null) {
-      if (request.getDurationHours() <= 0) {
+    if (request.hasDurationHours()) {
+      if (request.getDurationHours() != null && request.getDurationHours() <= 0) {
         throw new BadRequestException("Duration hours must be greater than 0", "INVALID_DURATION_HOURS");
       }
       course.setDurationHours(request.getDurationHours());
     }
 
-    if (request.getDurationDays() != null) {
-      if (request.getDurationDays() <= 0) {
+    if (request.hasDurationDays()) {
+      if (request.getDurationDays() != null && request.getDurationDays() <= 0) {
         throw new BadRequestException("Duration days must be greater than 0", "INVALID_DURATION_DAYS");
       }
       course.setDurationDays(request.getDurationDays());
@@ -215,14 +220,15 @@ public class CourseServiceImpl implements CourseService {
       course.setSector(sector);
     }
 
-    if (request.getIndustryId() != null) {
-      Industry industry = industryRepository.findById(request.getIndustryId())
+    if (request.hasIndustryId()) {
+      Industry industry = request.getIndustryId() == null ? null : industryRepository.findById(request.getIndustryId())
           .orElseThrow(() -> new ResourceNotFoundException("Industry", "industryId"));
       course.setIndustry(industry);
     }
 
-    if (request.getQualificationLevelId() != null) {
-      RefQualificationLevel qualificationLevel = refQualificationLevelRepository.findById(request.getQualificationLevelId())
+    if (request.hasQualificationLevelId()) {
+      RefQualificationLevel qualificationLevel = request.getQualificationLevelId() == null ? null
+          : refQualificationLevelRepository.findById(request.getQualificationLevelId())
           .orElseThrow(() -> new ResourceNotFoundException("RefQualificationLevel", "qualificationLevelId"));
       course.setQualificationLevel(qualificationLevel);
     }
@@ -233,13 +239,17 @@ public class CourseServiceImpl implements CourseService {
       course.setDeliveryMode(deliveryMode);
     }
 
-    if (request.getCourseName() != null && !request.getCourseName().isBlank()) {
+    if (request.getCourseName() != null) {
+      if (request.getCourseName().isBlank()) {
+        throw new BadRequestException("Course name is required");
+      }
       course.setCourseName(request.getCourseName().trim());
     }
     if (request.getDescription() != null) {
       course.setDescription(request.getDescription().trim());
     }
     if (request.getLifecycleStatusId() != null) {
+      validateLifecycleStatus(request.getLifecycleStatusId());
       course.setLifecycleStatusId(request.getLifecycleStatusId());
     }
 
@@ -251,12 +261,35 @@ public class CourseServiceImpl implements CourseService {
   @Override
   @Transactional
   public void deleteCourse(Long id) {
-    Course course = courseRepository.findById(id)
+    Course course = courseRepository.findAvailableByIdForUpdate(id)
         .orElseThrow(() -> new ResourceNotFoundException("Course", "id"));
 
+    if (Boolean.TRUE.equals(jdbc.queryForObject("""
+        SELECT EXISTS(SELECT 1 FROM training_batches WHERE course_id = ?)
+          OR EXISTS(SELECT 1 FROM training_enrollments WHERE course_id = ?)
+          OR EXISTS(SELECT 1 FROM assessments WHERE course_id = ?)
+          OR EXISTS(SELECT 1 FROM certifications WHERE course_id = ?)
+          OR EXISTS(SELECT 1 FROM placement_records WHERE course_id = ?)
+          OR EXISTS(SELECT 1 FROM surveys WHERE course_id = ?)
+          OR EXISTS(SELECT 1 FROM followup_campaigns WHERE course_id = ?)
+          OR EXISTS(SELECT 1 FROM skill_gap_assessments WHERE course_id = ?)
+          OR EXISTS(SELECT 1 FROM training_requirements WHERE course_id = ?)
+          OR EXISTS(SELECT 1 FROM venue_bookings WHERE course_id = ? AND booking_status = 'PENDING')
+        """, Boolean.class, id, id, id, id, id, id, id, id, id, id))) {
+      throw new ConflictException("Course has training history or pending bookings. Set it to inactive to retire it.",
+          "COURSE_IN_USE");
+    }
     LocalDateTime now = LocalDateTime.now();
     course.setDeletedAt(now);
     course.setUpdatedAt(now);
     courseRepository.save(course);
+  }
+
+  private void validateLifecycleStatus(Long id) {
+    if (!Boolean.TRUE.equals(jdbc.queryForObject(
+        "SELECT EXISTS(SELECT 1 FROM ref_lifecycle_status WHERE lifecycle_status_id = ? AND is_active = 1)",
+        Boolean.class, id))) {
+      throw new BadRequestException("Select a valid course status.", "INVALID_COURSE_STATUS");
+    }
   }
 }

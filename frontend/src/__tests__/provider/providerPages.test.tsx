@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { ProviderOverviewPage } from '@/pages/provider/ProviderOverviewPage';
 import { ProviderCentersPage } from '@/pages/provider/ProviderCentersPage';
-import { ProviderCoursesPage } from '@/pages/provider/ProviderCoursesPage';
 import { ProviderBatchesPage } from '@/pages/provider/ProviderBatchesPage';
 import { ProviderEnrollmentPage } from '@/pages/provider/ProviderEnrollmentPage';
 import { ProviderBulkImportPage } from '@/pages/provider/ProviderBulkImportPage';
@@ -75,12 +74,12 @@ describe('Training Provider Portal Frontend Components', () => {
 
   describe('Sidebar Navigation for Training Provider', () => {
     it('renders all Phase 30.4 provider navigation links', () => {
-      setupAuth({ ...mockUser, authorities: [...mockUser.authorities, 'center.manage'] });
+      setupAuth({ ...mockUser, authorities: [...mockUser.authorities, 'center.manage', 'venue.booking.request'] });
       renderWithProviders(<Sidebar />);
 
       expect(screen.getByText('Provider Console')).toBeInTheDocument();
       expect(screen.getByText('Training Centers')).toBeInTheDocument();
-      expect(screen.getByText('Approved Courses')).toBeInTheDocument();
+      expect(screen.getByText('Training Opportunities')).toBeInTheDocument();
       expect(screen.getByText('Batch Management')).toBeInTheDocument();
       expect(screen.getByText('Candidate Enrollment')).toBeInTheDocument();
       expect(screen.getByText('Bulk Ingestion')).toBeInTheDocument();
@@ -93,18 +92,6 @@ describe('Training Provider Portal Frontend Components', () => {
       vi.mocked(providerApi.getTrainingCenters).mockResolvedValue({
         content: [{ id: 1, centerName: 'Delhi Hub', centerCode: 'TC-01', providerId: 5, stateId: 1, districtId: 2 }],
         totalElements: 3,
-        page: 0,
-        size: 5,
-        totalPages: 1,
-        first: true,
-        last: true,
-        hasNext: false,
-        hasPrevious: false,
-      });
-
-      vi.mocked(providerApi.getCourses).mockResolvedValue({
-        content: [{ id: 1, courseName: 'Solar Technician', courseCode: 'SOL-01', durationHours: 120, sectorName: 'Green Energy' }],
-        totalElements: 5,
         page: 0,
         size: 5,
         totalPages: 1,
@@ -197,39 +184,6 @@ describe('Training Provider Portal Frontend Components', () => {
     });
   });
 
-  describe('ProviderCoursesPage', () => {
-    it('renders approved courses catalog', async () => {
-      vi.mocked(providerApi.getCourses).mockResolvedValue({
-        content: [
-          {
-            id: 101,
-            courseName: 'Electric Vehicle Maintenance Specialist',
-            courseCode: 'CRS-EV-01',
-            durationHours: 160,
-            sectorName: 'Automotive',
-          },
-        ],
-        totalElements: 1,
-        page: 0,
-        size: 10,
-        totalPages: 1,
-        first: true,
-        last: true,
-        hasNext: false,
-        hasPrevious: false,
-      });
-
-      renderWithProviders(<ProviderCoursesPage />);
-
-      expect(screen.getByText('Approved Courses Directory')).toBeInTheDocument();
-      await waitFor(() => {
-        expect(screen.getByText('Electric Vehicle Maintenance Specialist')).toBeInTheDocument();
-        expect(screen.getByText('CRS-EV-01')).toBeInTheDocument();
-        expect(screen.getByText('Automotive')).toBeInTheDocument();
-      });
-    });
-  });
-
   describe('ProviderBatchesPage', () => {
     it('displays batches and opens create batch modal', async () => {
       vi.mocked(providerApi.getTrainingBatches).mockResolvedValue({
@@ -260,18 +214,6 @@ describe('Training Provider Portal Frontend Components', () => {
 
       vi.mocked(providerApi.getTrainingCenters).mockResolvedValue({
         content: [{ id: 1, centerName: 'Main Campus', centerCode: 'TC-01', providerId: 5, stateId: 1, districtId: 2 }],
-        totalElements: 1,
-        page: 0,
-        size: 100,
-        totalPages: 1,
-        first: true,
-        last: true,
-        hasNext: false,
-        hasPrevious: false,
-      });
-
-      vi.mocked(providerApi.getCourses).mockResolvedValue({
-        content: [{ id: 101, courseName: 'EV Tech', courseCode: 'EV-01', durationHours: 100 }],
         totalElements: 1,
         page: 0,
         size: 100,

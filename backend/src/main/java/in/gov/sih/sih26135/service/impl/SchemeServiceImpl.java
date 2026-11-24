@@ -117,6 +117,7 @@ public class SchemeServiceImpl implements SchemeService {
     Scheme scheme = schemeRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("Scheme", "id"));
 
+    SkillsTrainingReporting.requireEditable(scheme.getSchemeCode());
     LocalDate prospectiveStartDate = request.getStartDate() != null ? request.getStartDate() : scheme.getStartDate();
     LocalDate prospectiveEndDate = request.getEndDate() != null ? request.getEndDate() : scheme.getEndDate();
     if (prospectiveStartDate != null && prospectiveEndDate != null && prospectiveEndDate.isBefore(prospectiveStartDate)) {
@@ -166,6 +167,7 @@ public class SchemeServiceImpl implements SchemeService {
     Scheme scheme = schemeRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("Scheme", "id"));
 
+    SkillsTrainingReporting.requireEditable(scheme.getSchemeCode());
     LocalDateTime now = LocalDateTime.now();
     scheme.setDeletedAt(now);
     scheme.setUpdatedAt(now);

@@ -61,6 +61,10 @@ export async function listOnboardingApplications(
 }
 
 export const pendingOnboardingKey = ['admin', 'onboarding', 'pending'] as const;
+export const onboardingReviewAuthorities = [
+  'user.manage', 'role_super_admin', 'role_government_admin', 'role_state_admin', 'role_district_officer',
+];
+export const onboardingViewAuthorities = [...onboardingReviewAuthorities, 'role_government_officer'];
 
 export function getAdminImportMetrics(signal?: AbortSignal) {
   return apiGet<components['schemas']['OperationalImportMetricsResponse']>('/api/v1/operational/import-metrics', { signal });

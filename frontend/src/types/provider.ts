@@ -39,9 +39,11 @@ export interface Course {
   sectorName?: string;
   industryId?: number;
   industryName?: string;
+  qualificationLevelId?: number;
   deliveryModeId?: number;
   deliveryModeName?: string;
   durationHours?: number;
+  durationDays?: number;
   nsqfLevel?: number;
   description?: string;
   lifecycleStatusId?: number;
