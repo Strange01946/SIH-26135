@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RegistrationPage } from '@/pages/auth/RegistrationPage';
 import { AdminOnboardingPage } from '@/pages/admin/AdminOnboardingPage';
 import { AdminUsersPage } from '@/pages/admin/AdminUsersPage';
@@ -38,6 +39,7 @@ describe('Phase 30.3A — Registration & Onboarding Frontend Unit Tests', () => 
 
       expect(screen.getByText('Candidate / Trainee Self-Registration')).toBeInTheDocument();
       expect(screen.getByPlaceholderText('e.g. ramesh_kumar')).toBeInTheDocument();
+      expect(screen.getByLabelText(/PIN Code/i)).toBeRequired();
     });
 
     it('switches tabs and displays Training Provider application form', async () => {
@@ -52,6 +54,7 @@ describe('Phase 30.3A — Registration & Onboarding Frontend Unit Tests', () => 
 
       expect(screen.getByText('Training Provider Onboarding Application')).toBeInTheDocument();
       expect(screen.getByText(/Registration \/ NSDC Number \*/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/PIN Code/i)).toBeRequired();
     });
 
     it('validates password match on candidate submission', async () => {
@@ -73,6 +76,11 @@ describe('Phase 30.3A — Registration & Onboarding Frontend Unit Tests', () => 
 
       const firstNameInput = screen.getByLabelText(/First Name \*/i);
       await userEvent.type(firstNameInput, 'Rahul');
+      await userEvent.selectOptions(screen.getByLabelText(/Gender/), '1');
+      await userEvent.click(screen.getByRole('checkbox', { name: /I agree to the use of my information/i }));
+      await userEvent.selectOptions(screen.getByLabelText(/State or union territory/i), '101');
+      await userEvent.selectOptions(screen.getByLabelText(/District/i), '1001');
+      await userEvent.type(screen.getByLabelText(/PIN Code/i), '110001');
 
       const submitBtn = screen.getByRole('button', { name: /Complete Candidate Registration/i });
       fireEvent.click(submitBtn);
@@ -110,13 +118,15 @@ describe('Phase 30.3A — Registration & Onboarding Frontend Unit Tests', () => 
       await userEvent.type(screen.getByLabelText(/Institution \/ Provider Name \*/i), 'Global Skill Institute');
       await userEvent.type(screen.getByLabelText(/Registration \/ NSDC Number \*/i), 'NSDC-2026-99');
       await userEvent.type(screen.getByLabelText(/Authorized Contact Person \*/i), 'Director Sharma');
-      await userEvent.type(screen.getByLabelText(/Official Contact Email \*/i), 'director@globalskill.edu');
       await userEvent.type(screen.getByLabelText(/Portal Login Username \*/i), 'director_sharma');
-      await userEvent.type(screen.getByLabelText(/Account Recovery Email \*/i), 'director@globalskill.edu');
+      await userEvent.type(screen.getByLabelText(/Account Email \*/i), 'director@globalskill.edu');
 
       const passwords = screen.getAllByLabelText(/Password \*/i);
       await userEvent.type(passwords[0], 'ValidPassword123!');
       await userEvent.type(screen.getByLabelText(/Confirm Password \*/i), 'ValidPassword123!');
+      await userEvent.selectOptions(screen.getByLabelText(/State or union territory/i), '101');
+      await userEvent.selectOptions(screen.getByLabelText(/District/i), '1001');
+      await userEvent.type(screen.getByLabelText(/PIN Code/i), '110001');
 
       fireEvent.click(screen.getByRole('button', { name: /Submit Training Provider Application/i }));
 
@@ -124,6 +134,9 @@ describe('Phase 30.3A — Registration & Onboarding Frontend Unit Tests', () => 
         expect(screen.getByText('Application Submitted Successfully')).toBeInTheDocument();
         expect(screen.getByText('APP-TP-999888')).toBeInTheDocument();
         expect(screen.getByText('PENDING APPROVAL')).toBeInTheDocument();
+        expect(registrationApi.registerTrainingProvider).toHaveBeenCalledWith(expect.objectContaining({
+          email: 'director@globalskill.edu', contactEmail: undefined, pincode: '110001',
+        }));
       });
     });
 
@@ -162,6 +175,26 @@ describe('Phase 30.3A — Registration & Onboarding Frontend Unit Tests', () => 
 
   describe('AdminOnboardingPage Component', () => {
     it('renders onboarding requests table and allows approval', async () => {
+      vi.spyOn(AuthContextModule, 'useAuth').mockReturnValue({
+        user: { id: 1, username: 'admin_user', authorities: ['ROLE_super_admin'] } as any,
+        isAuthenticated: true,
+        isInitializing: false,
+        connectionError: null,
+        personas: ['SUPER_ADMIN'],
+        primaryPersona: 'SUPER_ADMIN',
+        activePersona: 'SUPER_ADMIN',
+        setActivePersona: vi.fn(),
+        defaultLandingRoute: '/admin/dashboard',
+        login: vi.fn(),
+        logout: vi.fn(),
+        establishSession: vi.fn(),
+        refreshProfile: vi.fn(),
+        retrySession: vi.fn(),
+        hasRole: vi.fn((role) => role === 'ROLE_super_admin' || role === 'ROLE_ADMIN'),
+        hasAnyRole: vi.fn(),
+        hasAuthority: vi.fn((auth) => auth === 'user.manage'),
+      });
+
       const mockApps: registrationApi.OnboardingApplicationResponse[] = [
         {
           applicationId: 10,
@@ -187,9 +220,9 @@ describe('Phase 30.3A — Registration & Onboarding Frontend Unit Tests', () => 
       vi.spyOn(window, 'confirm').mockReturnValue(true);
 
       render(
-        <MemoryRouter>
-          <AdminOnboardingPage />
-        </MemoryRouter>
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter><AdminOnboardingPage /></MemoryRouter>
+        </QueryClientProvider>
       );
 
       await waitFor(() => {

@@ -6,6 +6,7 @@ import {
   apiDownload,
 } from './client';
 import type { PagedResponse } from './types';
+import type { components, paths } from './generated/api.types';
 import type {
   TraineeProfile,
   TrainingEnrollment,
@@ -15,9 +16,6 @@ import type {
   UpdateTraineeConsentStatusPayload,
   AssessmentResult,
   Certification,
-  SurveyResponse,
-  CreateSurveyResponsePayload,
-  CreateSurveyResponseAnswerPayload,
   TraineeOutcomeSummary,
   TraineeSkillGapProfile,
 } from '@/types/trainee';
@@ -198,7 +196,7 @@ export async function getTraineeOutcomeSummary(
 /**
  * Retrieves trainee skill gap and recommendation profile.
  * Backend route: GET /api/v1/workflows/skill-gap-remediation/profile?traineeId={traineeId}
- * Accessible by: assessment.manage or enrollment.manage
+ * Trainees can read their own profile. Staff access is tenant-scoped.
  */
 export async function getTraineeSkillGapProfile(
   traineeId: number,
@@ -241,45 +239,39 @@ export async function rejectSkillGapRecommendation(
   );
 }
 
-/**
- * Retrieves survey responses for a trainee.
- * Backend route: GET /api/v1/survey-responses?traineeId={traineeId}
- * Requires administrative authority: survey.manage (HTTP 403 for candidate ROLE_trainee).
- */
-export async function getTraineeSurveyResponses(
-  traineeId: number,
-  page = 0,
-  size = 20,
-): Promise<PagedResponse<SurveyResponse>> {
-  return apiGetPaged<SurveyResponse>('/api/v1/survey-responses', {
-    params: { traineeId, page, size },
-  });
+const FOLLOWUP_SURVEYS = '/api/v1/trainees/me/followup-surveys';
+
+type SurveySchemas = components['schemas'];
+export type FollowupAnswer = SurveySchemas['Answer'];
+type FollowupAssignment = Required<Pick<SurveySchemas['Assignment'], 'taskId' | 'name'>> & Pick<SurveySchemas['Assignment'], 'closesOn'>;
+type FollowupSubmission = Required<Pick<SurveySchemas['Submission'], 'id' | 'name'>> & Pick<SurveySchemas['Submission'], 'submittedAt'>;
+interface FollowupOverview {
+  assignments: FollowupAssignment[];
+  recentSubmissions: FollowupSubmission[];
 }
 
-/**
- * Submits a survey response header.
- * Backend route: POST /api/v1/survey-responses
- * Requires administrative authority: survey.manage (HTTP 403 for candidate ROLE_trainee).
- */
-export async function submitSurveyResponse(
-  payload: CreateSurveyResponsePayload,
-): Promise<SurveyResponse> {
-  return apiPost<CreateSurveyResponsePayload, SurveyResponse>(
-    '/api/v1/survey-responses',
-    payload,
-  );
+export type FollowupQuestion = Required<Omit<SurveySchemas['Question'], 'options'>> & { options: Required<SurveySchemas['Option']>[] };
+
+export type FollowupQuestionnaire = Required<Pick<SurveySchemas['Questionnaire'], 'versionId'>> & {
+  assignment: FollowupAssignment;
+  questions: FollowupQuestion[];
+};
+type FollowupSubmitRequest = paths['/api/v1/trainees/me/followup-surveys/{taskId}/responses']['post']['requestBody']['content']['application/json'];
+
+export function getFollowupSurveys(signal?: AbortSignal) {
+  return apiGet<FollowupOverview & Required<Pick<SurveySchemas['Overview'], 'followupConsentGranted'>>>(FOLLOWUP_SURVEYS, { signal });
 }
 
-/**
- * Submits an individual question answer for a survey response.
- * Backend route: POST /api/v1/survey-response-answers
- * Requires administrative authority: survey.manage (HTTP 403 for candidate ROLE_trainee).
- */
-export async function submitSurveyResponseAnswer(
-  payload: CreateSurveyResponseAnswerPayload,
-): Promise<any> {
-  return apiPost<CreateSurveyResponseAnswerPayload, any>(
-    '/api/v1/survey-response-answers',
-    payload,
-  );
+export function getFollowupQuestionnaire(taskId: number, signal?: AbortSignal) {
+  return apiGet<FollowupQuestionnaire>(`${FOLLOWUP_SURVEYS}/${taskId}`, { signal });
+}
+
+export function submitFollowupQuestionnaire(taskId: number, payload: FollowupSubmitRequest) {
+  return apiPost<FollowupSubmitRequest, FollowupSubmission>(`${FOLLOWUP_SURVEYS}/${taskId}/responses`, payload);
+}
+
+export type EmploymentPeriod = SurveySchemas['EmploymentPeriod'] & { id: number };
+
+export function getEmploymentHistory(page: number, signal?: AbortSignal) {
+  return apiGetPaged<EmploymentPeriod>('/api/v1/trainees/me/employment-history', { params: { page }, signal });
 }

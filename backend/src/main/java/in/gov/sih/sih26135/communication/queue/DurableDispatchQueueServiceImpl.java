@@ -181,7 +181,7 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
     // 7. Resolve channel and purpose numeric IDs
     long channelId = mapChannelToId(command.channel());
     long purposeId = mapPurposeToId(command.purpose());
-    String deliveryMode = properties.isDemoMode() ? "DEMO" : "LIVE";
+    String deliveryMode = properties.getEffectiveModeName();
 
     // 8. Insert PENDING job into database
     KeyHolder keyHolder = new GeneratedKeyHolder();
@@ -295,14 +295,15 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
     }
     String effectiveWorkerId = (workerId != null && !workerId.isBlank()) ? workerId : "worker-" + Thread.currentThread().getName();
 
-    // 1. Concurrency-safe atomic claim with lease increment and scheduled_at check
+    // Bind the claim to the original mode so a demo job can never acquire a live worker.
     int rowsClaimed = jdbcTemplate.update(
         "UPDATE communication_dispatch_jobs SET job_status = ?, lease_version = lease_version + 1, locked_at = NOW(), locked_by = ?, updated_at = NOW() "
-            + "WHERE job_id = ? AND (scheduled_at IS NULL OR scheduled_at <= NOW()) AND job_status = ?",
+            + "WHERE job_id = ? AND (scheduled_at IS NULL OR scheduled_at <= NOW()) AND job_status = ? AND delivery_mode = ?",
         STATUS_PROCESSING,
         effectiveWorkerId,
         jobId,
-        STATUS_PENDING
+        STATUS_PENDING,
+        properties.getEffectiveModeName()
     );
 
     if (rowsClaimed == 0) {
@@ -847,6 +848,9 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
     if (!STATUS_DEAD_LETTER.equalsIgnoreCase(job.jobStatus())) {
       throw new BadRequestException("Job is not in DEAD_LETTER status (current: " + job.jobStatus() + ")", "JOB_NOT_DEAD_LETTER");
     }
+    if (!properties.getEffectiveModeName().equals(job.deliveryMode())) {
+      throw new BadRequestException("Job delivery mode does not match the configured worker", "JOB_DELIVERY_MODE_MISMATCH");
+    }
 
     // 1. Authoritative DPDP consent check before re-enqueuing
     String channelCode = job.channel().name();
@@ -937,9 +941,11 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
 
       // 2. Fetch due pending jobs
       List<Long> dueJobIds = jdbcTemplate.query(
-          "SELECT job_id FROM communication_dispatch_jobs WHERE job_status = ? AND scheduled_at <= NOW() ORDER BY scheduled_at ASC LIMIT 20",
+          "SELECT job_id FROM communication_dispatch_jobs WHERE job_status = ? AND delivery_mode = ? "
+              + "AND scheduled_at <= NOW() ORDER BY scheduled_at ASC LIMIT 20",
           (rs, rowNum) -> rs.getLong("job_id"),
-          STATUS_PENDING
+          STATUS_PENDING,
+          properties.getEffectiveModeName()
       );
 
       for (Long jobId : dueJobIds) {

@@ -110,6 +110,8 @@ The SIH-26135 platform operates under strict schema freeze and isolation guarant
 
 ## Backend Configuration & Getting Started
 
+After creating the schema, install the [India geography reference directory](database/reference/README.md) in the catalog that the backend will use. Registration, provisioning, employer vacancies and MIS read this directory from MySQL.
+
 ### Prerequisites
 - **Java:** JDK 17 or higher
 - **Build Tool:** Apache Maven 3.9+
@@ -137,7 +139,9 @@ Configure the following environment variables (do not commit secrets):
 
 ### Build & Test Commands
 
-Execute all commands from the `backend/` directory:
+Run `node database/install-test-venue-bookings.mjs` from the repository root before starting the local demo backend. The installer uses the test database credentials and applies the schema to `SIH26135_TEST`. Other deployments can apply [the venue booking schema](database/phase-21-training-venue-bookings.sql) and [the two-type centre constraint](database/phase-22-remove-dedicated-centers.sql) after the existing schema and role seeds. The second migration requires any legacy dedicated rows to be resolved first.
+
+Execute the following commands from the `backend/` directory:
 
 ```bash
 cd backend

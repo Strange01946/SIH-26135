@@ -10,6 +10,7 @@ export interface TrainingCenter {
   providerId: number;
   providerCode?: string;
   providerName?: string;
+  venueType?: 'SHARED' | 'TEMPORARY';
   stateId: number;
   stateName?: string;
   districtId: number;
@@ -17,6 +18,8 @@ export interface TrainingCenter {
   addressLine1?: string;
   addressLine2?: string;
   pincode?: string;
+  locationId?: number;
+  operationalCapacity?: number;
   contactPersonName?: string;
   contactEmail?: string;
   contactPhone?: string;
@@ -24,6 +27,7 @@ export interface TrainingCenter {
   lifecycleStatusCode?: string;
   createdAt?: string;
   updatedAt?: string;
+  deletedAt?: string;
 }
 
 export interface Course {
@@ -71,18 +75,6 @@ export interface TrainingBatch {
   batchStatusName?: string;
   createdAt?: string;
   updatedAt?: string;
-}
-
-export interface CreateBatchPayload {
-  batchCode: string;
-  courseId: number;
-  providerId: number;
-  centerId: number;
-  programId?: number;
-  startDate: string;
-  endDate: string;
-  capacity: number;
-  batchStatusId?: number;
 }
 
 export interface ChangeBatchStatusPayload {

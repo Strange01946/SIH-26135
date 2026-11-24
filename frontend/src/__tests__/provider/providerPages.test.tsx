@@ -75,6 +75,7 @@ describe('Training Provider Portal Frontend Components', () => {
 
   describe('Sidebar Navigation for Training Provider', () => {
     it('renders all Phase 30.4 provider navigation links', () => {
+      setupAuth({ ...mockUser, authorities: [...mockUser.authorities, 'center.manage'] });
       renderWithProviders(<Sidebar />);
 
       expect(screen.getByText('Provider Console')).toBeInTheDocument();
@@ -281,6 +282,7 @@ describe('Training Provider Portal Frontend Components', () => {
         hasPrevious: false,
       });
 
+      setupAuth({ ...mockUser, authorities: [...mockUser.authorities, 'venue.booking.request'] });
       renderWithProviders(<ProviderBatchesPage />);
 
       expect(screen.getByText('Training Batches Workbench')).toBeInTheDocument();
@@ -289,12 +291,9 @@ describe('Training Provider Portal Frontend Components', () => {
         expect(screen.getByText('FULL')).toBeInTheDocument();
       });
 
-      // Click Create Batch button
-      const createBtn = screen.getByRole('button', { name: /Create New Batch/i });
-      fireEvent.click(createBtn);
-
-      expect(screen.getByText('Create Training Batch')).toBeInTheDocument();
-      expect(screen.getByText('Authorized Training Center *')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /Request a training venue/i }))
+        .toHaveAttribute('href', '/provider/venue-bookings?view=shared');
+      expect(screen.queryByRole('button', { name: /Create New Batch/i })).toBeNull();
     });
   });
 
@@ -424,6 +423,7 @@ describe('Training Provider Portal Frontend Components', () => {
 
       const createObjectURLSpy = vi.spyOn(window.URL, 'createObjectURL').mockReturnValue('blob:mock-url');
       const revokeObjectURLSpy = vi.spyOn(window.URL, 'revokeObjectURL').mockImplementation(() => {});
+      const downloadClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
 
       renderWithProviders(<ProviderQuarantinePage />, '/provider/quarantine?batchId=99');
 
@@ -437,12 +437,14 @@ describe('Training Provider Portal Frontend Components', () => {
       await waitFor(() => {
         expect(providerApi.downloadQuarantineExport).toHaveBeenCalledWith(99, true);
         expect(createObjectURLSpy).toHaveBeenCalledWith(mockBlob);
+        expect(downloadClick).toHaveBeenCalledOnce();
         expect(revokeObjectURLSpy).toHaveBeenCalledWith('blob:mock-url');
         expect(screen.getByText(/Quarantine CSV exported successfully/i)).toBeInTheDocument();
       });
 
       createObjectURLSpy.mockRestore();
       revokeObjectURLSpy.mockRestore();
+      downloadClick.mockRestore();
     });
   });
 });

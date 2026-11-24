@@ -6,13 +6,16 @@ import in.gov.sih.sih26135.entity.Trainee;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.repository.TraineeRepository;
 import in.gov.sih.sih26135.response.ApiResponse;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import java.util.List;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,18 +32,22 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 @RestController
 @RequestMapping("/api/v1/communication/templates")
-@PreAuthorize("hasAnyAuthority('communication.manage', 'survey.manage', 'system.manage')")
+@PreAuthorize("hasAnyAuthority('communication.manage', 'survey.manage', 'system.manage')"
+    + " or (hasAuthority('ROLE_assessor') and hasAuthority('assessment.manage'))")
 public class CommunicationTemplateController {
 
   private final CommunicationTemplateService templateService;
   private final TraineeRepository traineeRepository;
+  private final WorkflowSecurityScopeValidator scope;
 
   @Autowired
   public CommunicationTemplateController(
       CommunicationTemplateService templateService,
-      TraineeRepository traineeRepository) {
+      TraineeRepository traineeRepository,
+      WorkflowSecurityScopeValidator scope) {
     this.templateService = templateService;
     this.traineeRepository = traineeRepository;
+    this.scope = scope;
   }
 
   /**
@@ -72,10 +79,16 @@ public class CommunicationTemplateController {
   public ResponseEntity<ApiResponse<CommunicationTemplateRegistry.RenderedTemplate>> renderTemplate(
       @PathVariable @NotBlank String templateCode,
       @RequestParam(name = "traineeId", required = false) @Positive Long traineeId,
-      @RequestBody(required = false) Map<String, String> parameters) {
+      @RequestBody(required = false) Map<String, String> parameters,
+      Authentication authentication) {
 
     Trainee trainee = null;
     if (traineeId != null) {
+      if (authentication.getAuthorities().stream().noneMatch(authority ->
+          List.of("communication.manage", "survey.manage", "system.manage").contains(authority.getAuthority()))) {
+        throw new AccessDeniedException("Only communication staff can preview with a trainee record");
+      }
+      scope.validateTraineeScope(traineeId);
       trainee = traineeRepository.findById(traineeId)
           .orElseThrow(() -> new ResourceNotFoundException("Trainee", "id"));
     }

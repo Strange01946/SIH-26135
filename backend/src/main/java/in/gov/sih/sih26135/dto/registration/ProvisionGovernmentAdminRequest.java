@@ -23,8 +23,8 @@ public class ProvisionGovernmentAdminRequest {
 
   @NotBlank(message = "Role code is required")
   @Pattern(
-      regexp = "^(government_admin|government_officer|district_officer|analyst)$",
-      message = "Role code must be one of: government_admin, government_officer, district_officer, analyst"
+      regexp = "^(government_admin|state_admin|government_officer|district_officer|analyst)$",
+      message = "Select a supported government role"
   )
   private String roleCode;
 

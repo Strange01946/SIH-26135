@@ -6,8 +6,6 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.ChangeBatchStatusRequest;
-import in.gov.sih.sih26135.dto.request.CreateTrainingBatchRequest;
-import in.gov.sih.sih26135.dto.request.UpdateTrainingBatchRequest;
 import in.gov.sih.sih26135.dto.response.TrainingBatchResponse;
 import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.response.PagedResponse;
@@ -18,14 +16,10 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -137,55 +131,6 @@ public class TrainingBatchController {
   }
 
   /**
-   * Creates a new training batch record.
-   *
-   * @param request training batch creation payload
-   * @param httpRequest HTTP servlet request for URI extraction
-   * @return 201 Created with created TrainingBatchResponse enveloped in ApiResponse
-   */
-  @Operation(
-      summary = "Create Training Batch",
-      description = "Creates a new training batch associated with a course, provider, and training center.",
-      security = @SecurityRequirement(name = "bearerAuth"),
-      responses = {
-          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Training batch created successfully"),
-          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed or invalid date sequence")
-      }
-  )
-  @PostMapping
-  public ResponseEntity<ApiResponse<TrainingBatchResponse>> createBatch(
-      @Valid @RequestBody CreateTrainingBatchRequest request,
-      HttpServletRequest httpRequest) {
-    TrainingBatchResponse response = trainingBatchService.createBatch(request);
-    return ResponseEntity.status(HttpStatus.CREATED)
-        .body(ApiResponse.success("Training batch created successfully", response, httpRequest.getRequestURI()));
-  }
-
-  /**
-   * Updates an existing training batch record.
-   *
-   * @param id primary key identifier of the training batch to update
-   * @param request training batch update payload
-   * @return 200 OK with updated TrainingBatchResponse enveloped in ApiResponse
-   */
-  @Operation(
-      summary = "Update Training Batch",
-      description = "Updates details, capacity, and dates of an existing training batch.",
-      security = @SecurityRequirement(name = "bearerAuth"),
-      responses = {
-          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Training batch updated successfully"),
-          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Training batch not found")
-      }
-  )
-  @PutMapping("/{id}")
-  public ResponseEntity<ApiResponse<TrainingBatchResponse>> updateBatch(
-      @PathVariable @Positive Long id,
-      @Valid @RequestBody UpdateTrainingBatchRequest request) {
-    TrainingBatchResponse response = trainingBatchService.updateBatch(id, request);
-    return ResponseEntity.ok(ApiResponse.success("Training batch updated successfully", response));
-  }
-
-  /**
    * Updates the lifecycle status of a training batch.
    *
    * @param id primary key identifier of the training batch
@@ -207,26 +152,5 @@ public class TrainingBatchController {
       @Valid @RequestBody ChangeBatchStatusRequest request) {
     TrainingBatchResponse response = trainingBatchService.updateBatchStatus(id, request);
     return ResponseEntity.ok(ApiResponse.success("Training batch status updated successfully", response));
-  }
-
-  /**
-   * Soft-deletes a training batch record.
-   *
-   * @param id primary key identifier of the training batch to delete
-   * @return 200 OK with success confirmation message
-   */
-  @Operation(
-      summary = "Delete Training Batch",
-      description = "Soft-deletes an existing training batch by ID.",
-      security = @SecurityRequirement(name = "bearerAuth"),
-      responses = {
-          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Training batch deleted successfully"),
-          @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Training batch not found")
-      }
-  )
-  @DeleteMapping("/{id}")
-  public ResponseEntity<ApiResponse<Void>> deleteBatch(@PathVariable @Positive Long id) {
-    trainingBatchService.deleteBatch(id);
-    return ResponseEntity.ok(ApiResponse.success("Training batch deleted successfully"));
   }
 }

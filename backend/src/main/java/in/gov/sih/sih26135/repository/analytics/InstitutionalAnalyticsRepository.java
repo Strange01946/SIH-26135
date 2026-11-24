@@ -80,7 +80,10 @@ public class InstitutionalAnalyticsRepository {
                THEN ROUND(AVG(sp.first_recorded_salary), 2)
                ELSE NULL END AS avg_starting_wage
         FROM vw_salary_progression_fact sp
-        WHERE sp.course_id IS NOT NULL AND sp.first_recorded_salary IS NOT NULL
+        JOIN salary_history sh ON sh.employment_id = sp.employment_id AND sh.effective_from = sp.first_salary_effective_from
+        JOIN ref_salary_frequency sf ON sf.salary_frequency_id = sh.salary_frequency_id
+        JOIN trainees tr ON tr.trainee_id = sp.trainee_id AND tr.deleted_at IS NULL
+        WHERE sp.course_id IS NOT NULL AND sh.currency_code = 'INR' AND sf.frequency_code = 'MONTHLY'
         GROUP BY sp.course_id
       ) wage ON wage.course_id = c.course_id
       WHERE c.deleted_at IS NULL
@@ -241,7 +244,9 @@ public class InstitutionalAnalyticsRepository {
                  ELSE NULL END AS avg_starting_wage
           FROM vw_salary_progression_fact sp
           JOIN vw_enrollment_outcome_fact v_sal ON v_sal.enrollment_id = sp.enrollment_id
-          WHERE sp.first_recorded_salary IS NOT NULL
+          JOIN salary_history sh ON sh.employment_id = sp.employment_id AND sh.effective_from = sp.first_salary_effective_from
+          JOIN ref_salary_frequency sf ON sf.salary_frequency_id = sh.salary_frequency_id
+          WHERE sh.currency_code = 'INR' AND sf.frequency_code = 'MONTHLY'
         """ + salaryFilter.getSqlFragment() + """
           GROUP BY v_sal.course_id
         ) wage ON wage.course_id = c.course_id

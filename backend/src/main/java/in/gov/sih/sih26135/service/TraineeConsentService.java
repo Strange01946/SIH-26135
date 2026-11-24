@@ -3,6 +3,8 @@ package in.gov.sih.sih26135.service;
 import in.gov.sih.sih26135.dto.request.CreateTraineeConsentRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTraineeConsentStatusRequest;
 import in.gov.sih.sih26135.dto.response.TraineeConsentResponse;
+import in.gov.sih.sih26135.entity.Trainee;
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface TraineeConsentService {
@@ -16,6 +18,9 @@ public interface TraineeConsentService {
   List<TraineeConsentResponse> getConsentsByTraineeAndStatus(Long traineeId, Long consentStatusId);
 
   TraineeConsentResponse createConsent(CreateTraineeConsentRequest request, Long actorUserId);
+
+  /** Records the explicit core grant for the trainee and owner created in the registration transaction. */
+  void recordRegistrationConsent(Trainee trainee, Long ownerUserId, LocalDateTime grantedAt);
 
   TraineeConsentResponse updateConsentStatus(Long consentId, UpdateTraineeConsentStatusRequest request, Long actorUserId);
 

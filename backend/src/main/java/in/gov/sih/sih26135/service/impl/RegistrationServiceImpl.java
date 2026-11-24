@@ -17,6 +17,7 @@ import in.gov.sih.sih26135.entity.Trainee;
 import in.gov.sih.sih26135.entity.TrainingProvider;
 import in.gov.sih.sih26135.entity.User;
 import in.gov.sih.sih26135.entity.UserRole;
+import in.gov.sih.sih26135.event.CommunicationTriggerEvent;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ConflictException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
@@ -31,11 +32,14 @@ import in.gov.sih.sih26135.repository.TraineeRepository;
 import in.gov.sih.sih26135.repository.TrainingProviderRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
 import in.gov.sih.sih26135.repository.UserRoleRepository;
+import in.gov.sih.sih26135.service.ActiveGeography;
 import in.gov.sih.sih26135.service.RegistrationService;
+import in.gov.sih.sih26135.service.TraineeConsentService;
 import in.gov.sih.sih26135.service.auth.AuthenticationService;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,6 +75,7 @@ public class RegistrationServiceImpl implements RegistrationService {
   private final PasswordEncoder passwordEncoder;
   private final AuthenticationService authenticationService;
   private final JdbcTemplate jdbcTemplate;
+  private final TraineeConsentService traineeConsentService;
 
   public RegistrationServiceImpl(
       UserRepository userRepository,
@@ -86,7 +91,8 @@ public class RegistrationServiceImpl implements RegistrationService {
       SectorRepository sectorRepository,
       PasswordEncoder passwordEncoder,
       AuthenticationService authenticationService,
-      JdbcTemplate jdbcTemplate) {
+      JdbcTemplate jdbcTemplate,
+      TraineeConsentService traineeConsentService) {
     this.userRepository = userRepository;
     this.userRoleRepository = userRoleRepository;
     this.roleRepository = roleRepository;
@@ -101,6 +107,7 @@ public class RegistrationServiceImpl implements RegistrationService {
     this.passwordEncoder = passwordEncoder;
     this.authenticationService = authenticationService;
     this.jdbcTemplate = jdbcTemplate;
+    this.traineeConsentService = traineeConsentService;
   }
 
   @Override
@@ -108,6 +115,14 @@ public class RegistrationServiceImpl implements RegistrationService {
   public AuthResponse registerTrainee(RegisterTraineeRequest request) {
     if (request == null) {
       throw new BadRequestException("Registration request cannot be null");
+    }
+    ActiveGeography.validate(jdbcTemplate, request.getStateId(), request.getDistrictId());
+    if (!Boolean.TRUE.equals(request.getDataProcessingConsent())) {
+      throw new BadRequestException("Core data processing consent is required", "REGISTRATION_CONSENT_REQUIRED");
+    }
+    if (request.getGenderId() == null || !Boolean.TRUE.equals(jdbcTemplate.queryForObject(
+        "SELECT EXISTS(SELECT 1 FROM ref_gender WHERE gender_id = ?)", Boolean.class, request.getGenderId()))) {
+      throw new BadRequestException("Select a valid gender option", "INVALID_GENDER");
     }
 
     String username = request.getUsername().trim();
@@ -148,23 +163,25 @@ public class RegistrationServiceImpl implements RegistrationService {
     trainee.setRegistrationNumber(regNum);
     trainee.setUser(savedUser);
     trainee.setFirstName(request.getFirstName().trim());
-    trainee.setMiddleName(request.getMiddleName() != null ? request.getMiddleName().trim() : null);
-    trainee.setLastName(request.getLastName() != null ? request.getLastName().trim() : null);
+    trainee.setMiddleName(optionalText(request.getMiddleName()));
+    trainee.setLastName(optionalText(request.getLastName()));
     trainee.setDateOfBirth(request.getDateOfBirth());
-    trainee.setGenderId(request.getGenderId() != null ? request.getGenderId() : 1L);
+    trainee.setGenderId(request.getGenderId());
     trainee.setEmail(email);
-    trainee.setPhone(request.getPhone());
+    trainee.setPhone(optionalText(request.getPhone()));
     trainee.setStateId(request.getStateId());
     trainee.setDistrictId(request.getDistrictId());
-    trainee.setAddressLine1(request.getAddressLine1());
-    trainee.setAddressLine2(request.getAddressLine2());
-    trainee.setPincode(request.getPincode());
+    trainee.setAddressLine1(optionalText(request.getAddressLine1()));
+    trainee.setAddressLine2(optionalText(request.getAddressLine2()));
+    trainee.setPincode(optionalText(request.getPincode()));
     trainee.setEducationLevelId(request.getEducationLevelId());
-    trainee.setCurrentEmploymentStatusId(request.getCurrentEmploymentStatusId() != null ? request.getCurrentEmploymentStatusId() : 1L);
+    trainee.setCurrentEmploymentStatusId(request.getCurrentEmploymentStatusId() != null ? request.getCurrentEmploymentStatusId()
+        : jdbcTemplate.queryForObject("SELECT employment_status_id FROM ref_employment_status WHERE status_code = 'UNKNOWN'", Long.class));
     trainee.setProfileStatusId(3L); // Active
     trainee.setCreatedAt(now);
     trainee.setUpdatedAt(now);
-    traineeRepository.save(trainee);
+    Trainee savedTrainee = traineeRepository.save(trainee);
+    traineeConsentService.recordRegistrationConsent(savedTrainee, savedUser.getId(), now);
 
     log.info("Successfully registered trainee: username={}, traineeId={}, regNumber={}", username, trainee.getId(), regNum);
 
@@ -178,6 +195,7 @@ public class RegistrationServiceImpl implements RegistrationService {
     if (request == null) {
       throw new BadRequestException("Training provider registration request cannot be null");
     }
+    ActiveGeography.validate(jdbcTemplate, request.getStateId(), request.getDistrictId());
 
     String username = request.getUsername().trim();
     String email = request.getEmail().trim().toLowerCase();
@@ -221,15 +239,15 @@ public class RegistrationServiceImpl implements RegistrationService {
     provider.setProviderCode(providerCode);
     provider.setProviderName(request.getProviderName().trim());
     provider.setRegistrationNumber(regNumber);
-    provider.setOrganizationTypeId(request.getOrganizationTypeId() != null ? request.getOrganizationTypeId() : 5L);
+    provider.setOrganizationTypeId(organizationType(request.getOrganizationTypeId(), "TRAINING_PROVIDER"));
     provider.setContactPersonName(request.getContactPersonName().trim());
-    provider.setContactEmail(request.getContactEmail().trim());
-    provider.setContactPhone(request.getContactPhone());
+    provider.setContactEmail(contactEmail(request.getContactEmail(), email));
+    provider.setContactPhone(optionalText(request.getContactPhone()));
     provider.setStateId(request.getStateId());
     provider.setDistrictId(request.getDistrictId());
-    provider.setAddressLine1(request.getAddressLine1());
-    provider.setAddressLine2(request.getAddressLine2());
-    provider.setPincode(request.getPincode());
+    provider.setAddressLine1(optionalText(request.getAddressLine1()));
+    provider.setAddressLine2(optionalText(request.getAddressLine2()));
+    provider.setPincode(optionalText(request.getPincode()));
 
     RefAccreditationStatus appliedStatus = refAccreditationStatusRepository.findById(2L)
         .orElseGet(() -> refAccreditationStatusRepository.findById(1L).orElse(null));
@@ -275,6 +293,7 @@ public class RegistrationServiceImpl implements RegistrationService {
     if (request == null) {
       throw new BadRequestException("Employer registration request cannot be null");
     }
+    ActiveGeography.validate(jdbcTemplate, request.getStateId(), request.getDistrictId());
 
     String username = request.getUsername().trim();
     String email = request.getEmail().trim().toLowerCase();
@@ -285,13 +304,16 @@ public class RegistrationServiceImpl implements RegistrationService {
     if (userRepository.existsByEmail(email)) {
       throw new ConflictException("Email is already registered", "EMAIL_ALREADY_EXISTS");
     }
-    if (request.getRegistrationNumber() != null && !request.getRegistrationNumber().isBlank()) {
-      if (employerRepository.findByRegistrationNumber(request.getRegistrationNumber().trim()).isPresent()) {
+    String registrationNumber = optionalText(request.getRegistrationNumber());
+    String gstin = optionalText(request.getGstin());
+    if (gstin != null) gstin = gstin.toUpperCase(Locale.ROOT);
+    if (registrationNumber != null) {
+      if (employerRepository.findByRegistrationNumber(registrationNumber).isPresent()) {
         throw new ConflictException("Registration number already registered", "REGISTRATION_NUMBER_EXISTS");
       }
     }
-    if (request.getGstin() != null && !request.getGstin().isBlank()) {
-      if (employerRepository.findByGstin(request.getGstin().trim()).isPresent()) {
+    if (gstin != null) {
+      if (employerRepository.findByGstin(gstin).isPresent()) {
         throw new ConflictException("GSTIN already registered", "GSTIN_EXISTS");
       }
     }
@@ -323,9 +345,9 @@ public class RegistrationServiceImpl implements RegistrationService {
     String employerCode = "EMP-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase();
     employer.setEmployerCode(employerCode);
     employer.setEmployerName(request.getEmployerName().trim());
-    employer.setRegistrationNumber(request.getRegistrationNumber() != null ? request.getRegistrationNumber().trim() : null);
-    employer.setGstin(request.getGstin() != null ? request.getGstin().trim() : null);
-    employer.setOrganizationTypeId(request.getOrganizationTypeId() != null ? request.getOrganizationTypeId() : 1L);
+    employer.setRegistrationNumber(registrationNumber);
+    employer.setGstin(gstin);
+    employer.setOrganizationTypeId(organizationType(request.getOrganizationTypeId(), "EMPLOYER"));
     if (request.getIndustryId() != null) {
       industryRepository.findById(request.getIndustryId()).ifPresent(employer::setIndustry);
     }
@@ -333,13 +355,13 @@ public class RegistrationServiceImpl implements RegistrationService {
       sectorRepository.findById(request.getSectorId()).ifPresent(employer::setSector);
     }
     employer.setContactPersonName(request.getContactPersonName().trim());
-    employer.setContactEmail(request.getContactEmail().trim());
-    employer.setContactPhone(request.getContactPhone());
+    employer.setContactEmail(contactEmail(request.getContactEmail(), email));
+    employer.setContactPhone(optionalText(request.getContactPhone()));
     employer.setStateId(request.getStateId());
     employer.setDistrictId(request.getDistrictId());
-    employer.setAddressLine1(request.getAddressLine1());
-    employer.setAddressLine2(request.getAddressLine2());
-    employer.setPincode(request.getPincode());
+    employer.setAddressLine1(optionalText(request.getAddressLine1()));
+    employer.setAddressLine2(optionalText(request.getAddressLine2()));
+    employer.setPincode(optionalText(request.getPincode()));
 
     RefRecordVerificationStatus pendingStatus = refRecordVerificationStatusRepository.findById(3L)
         .orElseGet(() -> refRecordVerificationStatusRepository.findById(1L).orElse(null));
@@ -379,6 +401,20 @@ public class RegistrationServiceImpl implements RegistrationService {
     return response;
   }
 
+  private static String optionalText(String value) {
+    return value == null || value.isBlank() ? null : value.strip();
+  }
+
+  private static String contactEmail(String value, String accountEmail) {
+    String supplied = optionalText(value);
+    return supplied == null ? accountEmail : supplied.toLowerCase(Locale.ROOT);
+  }
+
+  private Long organizationType(Long supplied, String defaultCode) {
+    return supplied != null ? supplied : jdbcTemplate.queryForObject(
+        "SELECT organization_type_id FROM ref_organization_type WHERE type_code = ?", Long.class, defaultCode);
+  }
+
   @Override
   public ApplicationStatusResponse getApplicationStatus(String applicationNumber) {
     if (applicationNumber == null || applicationNumber.isBlank()) {
@@ -392,7 +428,7 @@ public class RegistrationServiceImpl implements RegistrationService {
         app.getApplicationNumber(),
         app.getApplicantType(),
         app.getOrganizationName(),
-        app.getContactEmail(),
+        CommunicationTriggerEvent.maskRecipient(app.getContactEmail()),
         app.getStatus(),
         app.getRejectionReason(),
         app.getCreatedAt(),
@@ -422,41 +458,10 @@ public class RegistrationServiceImpl implements RegistrationService {
     }
     response.setGenders(genders);
 
-    // States
-    List<ReferenceItem> states = new ArrayList<>();
-    try {
-      jdbcTemplate.query("SELECT state_id, state_code, state_name FROM states ORDER BY state_name", (rs) -> {
-        states.add(new ReferenceItem(rs.getLong("state_id"), rs.getString("state_code"), rs.getString("state_name")));
-      });
-    } catch (Exception e) {
-      log.warn("Could not query states: {}", e.getMessage());
-    }
-    if (states.isEmpty()) {
-      states.add(new ReferenceItem(101L, "DL", "Delhi"));
-      states.add(new ReferenceItem(102L, "MH", "Maharashtra"));
-      states.add(new ReferenceItem(103L, "KA", "Karnataka"));
-      states.add(new ReferenceItem(104L, "TN", "Tamil Nadu"));
-      states.add(new ReferenceItem(105L, "UP", "Uttar Pradesh"));
-    }
-    response.setStates(states);
-
-    // Districts
-    List<ReferenceItem> districts = new ArrayList<>();
-    try {
-      jdbcTemplate.query("SELECT district_id, state_id, district_name FROM districts WHERE deleted_at IS NULL ORDER BY district_name", (rs) -> {
-        districts.add(new ReferenceItem(rs.getLong("district_id"), String.valueOf(rs.getLong("district_id")), rs.getString("district_name"), rs.getLong("state_id")));
-      });
-    } catch (Exception e) {
-      log.warn("Could not query districts: {}", e.getMessage());
-    }
-    if (districts.isEmpty()) {
-      districts.add(new ReferenceItem(1001L, "1001", "New Delhi", 101L));
-      districts.add(new ReferenceItem(1002L, "1002", "Mumbai City", 102L));
-      districts.add(new ReferenceItem(1003L, "1003", "Bengaluru Urban", 103L));
-      districts.add(new ReferenceItem(1004L, "1004", "Chennai", 104L));
-      districts.add(new ReferenceItem(1005L, "1005", "Lucknow", 105L));
-    }
-    response.setDistricts(districts);
+    response.setStates(jdbcTemplate.query("SELECT s.state_id, s.state_code, s.state_name " + ActiveGeography.STATES
+        + " ORDER BY s.state_name", (rs, row) -> new ReferenceItem(rs.getLong(1), rs.getString(2), rs.getString(3))));
+    response.setDistricts(jdbcTemplate.query("SELECT d.district_id, d.district_name, d.state_id " + ActiveGeography.DISTRICTS
+        + " ORDER BY d.district_name", (rs, row) -> new ReferenceItem(rs.getLong(1), rs.getString(1), rs.getString(2), rs.getLong(3))));
 
     // Organization Types
     List<ReferenceItem> orgTypes = new ArrayList<>();

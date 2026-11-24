@@ -68,7 +68,7 @@ describe('Phase 30.6B — Role Recovery, Navigation Isolation & Context Switchin
       ];
       const personas = getUserPersonas(adminAuthorities);
 
-      expect(personas).toEqual(['ADMIN']);
+      expect(personas).toEqual(['SUPER_ADMIN']);
       expect(personas).not.toContain('TRAINEE');
       expect(personas).not.toContain('ASSESSOR');
       expect(personas).not.toContain('TRAINING_PROVIDER');
@@ -76,14 +76,14 @@ describe('Phase 30.6B — Role Recovery, Navigation Isolation & Context Switchin
 
     it('legitimate multi-role user: receives multiple personas strictly from role codes', () => {
       const multiRoleAuthorities = [
-        'ROLE_admin',
+        'ROLE_super_admin',
         'ROLE_assessor',
         'trainee.read',
         'assessment.manage',
       ];
       const personas = getUserPersonas(multiRoleAuthorities);
 
-      expect(personas).toContain('ADMIN');
+      expect(personas).toContain('SUPER_ADMIN');
       expect(personas).toContain('ASSESSOR');
       expect(personas).not.toContain('TRAINEE');
       expect(personas).toHaveLength(2);
@@ -177,7 +177,7 @@ describe('Phase 30.6B — Role Recovery, Navigation Isolation & Context Switchin
 
     it('training provider sees ONLY Provider console links', () => {
       setupAuth({
-        user: { id: 30, username: 'tp_user', authorities: ['ROLE_training_provider'] },
+        user: { id: 30, username: 'tp_user', authorities: ['ROLE_training_provider', 'center.manage'] },
         personas: ['TRAINING_PROVIDER'],
         primaryPersona: 'TRAINING_PROVIDER',
         activePersona: 'TRAINING_PROVIDER',
@@ -290,6 +290,182 @@ describe('Phase 30.6B — Role Recovery, Navigation Isolation & Context Switchin
 
       expect(mockSetActivePersona).toHaveBeenCalledWith('ASSESSOR');
       expect(await screen.findByText('Assessor Destination')).toBeInTheDocument();
+    });
+  });
+
+  describe('4. Operational Route Alias & Roadmap Routing', () => {
+    function setupAuthMock(
+      persona: 'ADMIN' | 'TRAINING_PROVIDER' | 'ASSESSOR' | 'TRAINEE',
+      authorities: string[],
+    ) {
+      vi.spyOn(authContext, 'useAuth').mockReturnValue({
+        user: { id: 99, username: 'mock_user', authorities },
+        isAuthenticated: true,
+        isInitializing: false,
+        connectionError: null,
+        personas: [persona],
+        primaryPersona: persona,
+        activePersona: persona,
+        setActivePersona: vi.fn(),
+        defaultLandingRoute:
+          persona === 'ADMIN'
+            ? '/admin/dashboard'
+            : persona === 'TRAINING_PROVIDER'
+              ? '/provider/dashboard'
+              : persona === 'ASSESSOR'
+                ? '/assessor/dashboard'
+                : '/trainee/dashboard',
+        login: vi.fn(),
+        establishSession: vi.fn(),
+        logout: vi.fn(),
+        refreshProfile: vi.fn(),
+        retrySession: vi.fn(),
+        hasRole: (r: string) => authorities.some((a) => a.toLowerCase().includes(r.toLowerCase())),
+        hasAnyRole: (roles: string[]) =>
+          roles.some((r) => authorities.some((a) => a.toLowerCase().includes(r.toLowerCase()))),
+        hasAuthority: (a: string) => authorities.includes(a),
+      });
+    }
+
+    it('admin visiting /batches renders truthful Phase 30.11 roadmap component', async () => {
+      setupAuthMock('ADMIN', ['ROLE_admin']);
+      const { AppRouter } = await import('@/router/index');
+
+      render(
+        <MemoryRouter initialEntries={['/batches']}>
+          <AppRouter />
+        </MemoryRouter>,
+      );
+
+      expect(
+        await screen.findByRole('heading', { name: /Administrative Training Batches Oversight/i }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/Planned Capability Roadmap · Phase 30.11/i),
+      ).toBeInTheDocument();
+      expect(screen.getByText('SIH-BATCH-ADMIN')).toBeInTheDocument();
+    });
+
+    it('admin visiting /assessments renders truthful Phase 30.11 roadmap component', async () => {
+      setupAuthMock('ADMIN', ['ROLE_admin']);
+      const { AppRouter } = await import('@/router/index');
+
+      render(
+        <MemoryRouter initialEntries={['/assessments']}>
+          <AppRouter />
+        </MemoryRouter>,
+      );
+
+      expect(
+        await screen.findByRole('heading', {
+          name: /Administrative Assessment & Certification Governance/i,
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/Planned Capability Roadmap · Phase 30.11/i),
+      ).toBeInTheDocument();
+      expect(screen.getByText('SIH-ASSESSMENT-ADMIN')).toBeInTheDocument();
+    });
+
+    it('admin visiting /data-quality renders truthful Phase 30.12 roadmap component', async () => {
+      setupAuthMock('ADMIN', ['ROLE_admin']);
+      const { AppRouter } = await import('@/router/index');
+
+      render(
+        <MemoryRouter initialEntries={['/data-quality']}>
+          <AppRouter />
+        </MemoryRouter>,
+      );
+
+      expect(
+        await screen.findByRole('heading', {
+          name: /National Data Quality & Center Scorecard Oversight/i,
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/Planned Capability Roadmap · Phase 30.12/i),
+      ).toBeInTheDocument();
+      expect(screen.getByText('SIH-DQ-ADMIN')).toBeInTheDocument();
+    });
+
+    it('unauthorized trainee accessing /batches is redirected to /forbidden', async () => {
+      setupAuthMock('TRAINEE', ['ROLE_trainee']);
+      const { AppRouter } = await import('@/router/index');
+
+      render(
+        <MemoryRouter initialEntries={['/batches']}>
+          <AppRouter />
+        </MemoryRouter>,
+      );
+
+      expect(
+        await screen.findByRole('heading', { name: /403.*Access/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('renders planned roadmap components for planned subphases without inventing fake forms', async () => {
+      setupAuthMock('ADMIN', ['ROLE_admin']);
+      const { AppRouter } = await import('@/router/index');
+
+      render(
+        <MemoryRouter initialEntries={['/placements']}>
+          <AppRouter />
+        </MemoryRouter>,
+      );
+
+      expect(
+        await screen.findByRole('heading', {
+          name: /Placements & Apprenticeships Management/i,
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/Planned Capability Roadmap · Phase 30.7/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('5. Auto-synchronization of Active Persona in RoleGuard', () => {
+    it('automatically switches activePersona when a multi-role user navigates to an assigned single-persona route', async () => {
+      const mockSetActivePersona = vi.fn();
+      const { RoleGuard } = await import('@/components/auth/RoleGuard');
+
+      vi.spyOn(authContext, 'useAuth').mockReturnValue({
+        user: { id: 77, username: 'dual_admin_assessor', authorities: ['ROLE_admin', 'ROLE_assessor'] },
+        isAuthenticated: true,
+        isInitializing: false,
+        connectionError: null,
+        personas: ['ADMIN', 'ASSESSOR'],
+        primaryPersona: 'ADMIN',
+        activePersona: 'ADMIN',
+        setActivePersona: mockSetActivePersona,
+        defaultLandingRoute: '/admin/dashboard',
+        login: vi.fn(),
+        establishSession: vi.fn(),
+        logout: vi.fn(),
+        refreshProfile: vi.fn(),
+        retrySession: vi.fn(),
+        hasRole: vi.fn().mockReturnValue(true),
+        hasAnyRole: vi.fn().mockReturnValue(true),
+        hasAuthority: vi.fn().mockReturnValue(true),
+      });
+
+      render(
+        <MemoryRouter initialEntries={['/assessor-only']}>
+          <Routes>
+            <Route
+              path="/assessor-only"
+              element={
+                <RoleGuard allowedPersonas={['ASSESSOR']}>
+                  <div>Assessor Protected Area</div>
+                </RoleGuard>
+              }
+            />
+          </Routes>
+        </MemoryRouter>,
+      );
+
+      expect(screen.getByText('Assessor Protected Area')).toBeInTheDocument();
+      expect(mockSetActivePersona).toHaveBeenCalledWith('ASSESSOR');
     });
   });
 });

@@ -7,10 +7,13 @@ import {
   getTraineeSkillGapProfile,
   acceptSkillGapRecommendation,
   rejectSkillGapRecommendation,
-  getTraineeSurveyResponses,
+  getEmploymentHistory,
 } from '@/api/traineeApi';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { EmptyState } from '@/components/feedback/EmptyState';
+import { ErrorState } from '@/components/feedback/ErrorState';
+import { RetentionPanel, SkillGapInsights } from '@/components/career/CareerInsights';
+import { TraineeSurveys } from './TraineeSurveys';
 
 interface TraineeContextType {
   trainee: TraineeProfile | null;
@@ -45,12 +48,12 @@ export const TraineeJourneyPage: React.FC = () => {
     retry: false,
   });
 
-  // 3. Survey Responses Query
-  const surveyResponsesQuery = useQuery({
-    queryKey: ['trainee', 'surveys', traineeId],
-    queryFn: () => getTraineeSurveyResponses(traineeId!),
+  const [employmentPage, setEmploymentPage] = useState(0);
+  const [retentionEmploymentId, setRetentionEmploymentId] = useState<number>();
+  const employment = useQuery({
+    queryKey: ['trainee', 'employment-history', traineeId, employmentPage],
+    queryFn: ({ signal }) => getEmploymentHistory(employmentPage, signal),
     enabled: Boolean(traineeId),
-    retry: false,
   });
 
   // Accept Recommendation Mutation
@@ -109,82 +112,47 @@ export const TraineeJourneyPage: React.FC = () => {
   const outcome = outcomesQuery.data;
   const skillProfile = skillGapQuery.data;
   const recommendations = skillProfile?.recommendations ?? [];
-  const pastSurveys = surveyResponsesQuery.data?.content ?? [];
 
   return (
     <div className="space-y-6">
-      {/* Career Milestones Section */}
-      <section
-        aria-labelledby="career-milestones-heading"
-        className="bg-white rounded-lg shadow-sm border border-gov-neutral-200 p-6"
-      >
-        <div className="pb-4 border-b border-gov-neutral-200 mb-6">
-          <h2
-            id="career-milestones-heading"
-            className="text-lg font-bold text-gov-neutral-900"
-          >
-            Longitudinal Career Journey &amp; Verified Outcomes
-          </h2>
-          <p className="text-xs text-gov-neutral-500">
-            Official post-training employment trajectory verified under the National Vocational Tracking Framework.
-          </p>
-        </div>
-
-        {outcomesQuery.isLoading ? (
-          <div className="py-8 flex justify-center">
-            <LoadingSpinner size="md" />
-          </div>
-        ) : outcomesQuery.isError ? (
-          <div className="text-sm text-gov-neutral-600 bg-gov-neutral-50 p-4 rounded border border-gov-neutral-200">
-            <span>Employment outcome data is being compiled by state field verification officers.</span>
-          </div>
-        ) : outcome ? (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-gov-neutral-50 p-4 rounded-lg border border-gov-neutral-200">
-                <span className="text-xs font-semibold uppercase text-gov-neutral-500">
-                  Current Status
-                </span>
-                <p className="text-lg font-bold text-gov-neutral-900 mt-1">
-                  {outcome.snapshotIsEmployedFlag ? (
-                    <span className="text-emerald-700">● Gainfully Employed</span>
-                  ) : (
-                    <span className="text-amber-700">Seeking Placement</span>
-                  )}
-                </p>
-              </div>
-              <div className="bg-gov-neutral-50 p-4 rounded-lg border border-gov-neutral-200">
-                <span className="text-xs font-semibold uppercase text-gov-neutral-500">
-                  Verified Employer
-                </span>
-                <p className="text-base font-bold text-gov-neutral-900 mt-1 truncate">
-                  {outcome.lastVerifiedEmployerName || 'Under Verification'}
-                </p>
-              </div>
-              <div className="bg-gov-neutral-50 p-4 rounded-lg border border-gov-neutral-200">
-                <span className="text-xs font-semibold uppercase text-gov-neutral-500">
-                  Monthly Emolument
-                </span>
-                <p className="text-lg font-bold text-gov-neutral-900 mt-1 font-mono">
-                  {outcome.monthlySalary ? `₹${outcome.monthlySalary.toLocaleString('en-IN')}` : '—'}
-                </p>
-              </div>
-              <div className="bg-gov-neutral-50 p-4 rounded-lg border border-gov-neutral-200">
-                <span className="text-xs font-semibold uppercase text-gov-neutral-500">
-                  Placement Date
-                </span>
-                <p className="text-base font-semibold text-gov-neutral-800 mt-1">
-                  {outcome.lastPlacementDate ? new Date(outcome.lastPlacementDate).toLocaleDateString() : '—'}
-                </p>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <EmptyState
-            title="No Outcome Records"
-            description="No post-training employment records have been confirmed yet."
-          />
+      <section className="card space-y-4" aria-labelledby="career-milestones-heading">
+        <h2 id="career-milestones-heading" className="text-lg font-bold text-navy">Employment history</h2>
+        {outcomesQuery.isError && (
+          <ErrorState error={outcomesQuery.error} title="Unable to load current employment status" onRetry={() => void outcomesQuery.refetch()} />
         )}
+        {outcome?.snapshotEmploymentStatusCode && (
+          <p className="text-sm">Current status <strong className="capitalize">{outcome.snapshotEmploymentStatusCode.toLowerCase().replace(/_/g, ' ')}</strong></p>
+        )}
+        {employment.isLoading ? <LoadingSpinner label="Loading employment history" /> : employment.isError ? (
+          <ErrorState error={employment.error} title="Unable to load employment history" onRetry={() => void employment.refetch()} />
+        ) : employment.data?.content.length ? (
+          <>
+            <ul className="space-y-2">
+              {employment.data.content.map((period) => (
+                <li key={period.id} className="rounded border p-3 text-sm space-y-1">
+                  <p className="font-semibold">{period.jobRole || period.employer || 'Employment record'}</p>
+                  <p>{[period.jobRole && period.employer, period.engagementType?.replace(/_/g, ' '), period.status].filter(Boolean).join(' · ')}</p>
+                  <p>{[period.startDate, period.endDate].filter(Boolean).join(' to ')}</p>
+                  {period.verificationStatus && <p>Verification <strong>{period.verificationStatus.replace(/_/g, ' ')}</strong></p>}
+                  {period.startingPay != null && (
+                    <p>Starting pay {[period.currency, period.startingPay.toLocaleString('en-IN'), period.payFrequency?.toLowerCase()].filter(Boolean).join(' ')}</p>
+                  )}
+                  <button type="button" className="btn-secondary mt-2" aria-expanded={retentionEmploymentId === period.id}
+                    onClick={() => setRetentionEmploymentId(retentionEmploymentId === period.id ? undefined : period.id)}>
+                    {retentionEmploymentId === period.id ? 'Hide retention and wages' : 'View retention and wages'}
+                  </button>
+                  {retentionEmploymentId === period.id && <div className="mt-3 border-t pt-3"><RetentionPanel employmentId={period.id} /></div>}
+                </li>
+              ))}
+            </ul>
+            {employment.data.totalPages > 1 && (
+              <div className="flex gap-2">
+                <button type="button" className="btn-outline" disabled={!employment.data.hasPrevious} onClick={() => { setRetentionEmploymentId(undefined); setEmploymentPage((page) => page - 1); }}>Previous employment records</button>
+                <button type="button" className="btn-outline" disabled={!employment.data.hasNext} onClick={() => { setRetentionEmploymentId(undefined); setEmploymentPage((page) => page + 1); }}>Next employment records</button>
+              </div>
+            )}
+          </>
+        ) : <p className="text-sm text-gray-600">There are no employment records linked to your profile.</p>}
       </section>
 
       {/* Skill Gap Remediation & Recommendations Section */}
@@ -209,6 +177,9 @@ export const TraineeJourneyPage: React.FC = () => {
           )}
         </div>
 
+        {skillProfile && Boolean(skillProfile.currentSkillGaps?.length) && (
+          <div className="mb-4"><SkillGapInsights profile={skillProfile} /></div>
+        )}
         {remediationActionError && (
           <div
             role="alert"
@@ -229,7 +200,9 @@ export const TraineeJourneyPage: React.FC = () => {
           <div className="py-6 flex justify-center">
             <LoadingSpinner size="md" />
           </div>
-        ) : skillGapQuery.isError || recommendations.length === 0 ? (
+        ) : skillGapQuery.isError ? (
+          <ErrorState error={skillGapQuery.error} title="Unable to load course recommendations" onRetry={() => void skillGapQuery.refetch()} />
+        ) : recommendations.length === 0 ? (
           <div className="bg-gov-neutral-50 p-6 rounded-lg border border-gov-neutral-200 text-center">
             <p className="text-sm font-semibold text-gov-neutral-800">
               No Pending Upskilling Recommendations
@@ -253,10 +226,11 @@ export const TraineeJourneyPage: React.FC = () => {
                     {rec.remarks || 'Recommended to bridge identified competency gap.'}
                   </p>
                   <span className="text-[11px] font-mono text-gov-neutral-500 mt-1 block">
-                    Status: {rec.status || 'PROPOSED'}
+                    Status: {rec.status || (rec.isAcceptedFlag === true ? 'Accepted' : 'Available')}
                   </span>
                 </div>
 
+                {!rec.isAcceptedFlag && (!rec.status || rec.status === 'PROPOSED') && (
                 <div className="flex items-center gap-2 shrink-0">
                   {rejectingRecId === rec.id ? (
                     <div className="flex items-center gap-2">
@@ -309,97 +283,14 @@ export const TraineeJourneyPage: React.FC = () => {
                     </>
                   )}
                 </div>
+                )}
               </div>
             ))}
           </div>
         )}
       </section>
 
-      {/* Post-Training Survey & Longitudinal Feedback Section */}
-      <section
-        aria-labelledby="survey-feedback-heading"
-        className="bg-white rounded-lg shadow-sm border border-gov-neutral-200 p-6"
-      >
-        <div className="pb-4 border-b border-gov-neutral-200 mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h3
-              id="survey-feedback-heading"
-              className="text-base font-bold text-gov-neutral-900"
-            >
-              Post-Training Feedback &amp; Verification Survey
-            </h3>
-            <p className="text-xs text-gov-neutral-500">
-              National Vocational Tracking Framework longitudinal impact evaluation and feedback campaigns.
-            </p>
-          </div>
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-800 border border-blue-200 w-fit">
-            Campaign-Assigned System
-          </span>
-        </div>
-
-        {/* Campaign Required State */}
-        <div className="bg-gov-neutral-50 border border-gov-neutral-200 rounded-lg p-5">
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 mt-0.5">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-            </div>
-            <div className="space-y-1">
-              <h4 className="text-sm font-bold text-gov-neutral-900">
-                Feedback Surveys Require an Active Campaign Invitation
-              </h4>
-              <p className="text-xs text-gov-neutral-600 leading-relaxed">
-                Post-training quality feedback and employment verification surveys are issued systematically through scheduled NCVET monitoring campaigns. Candidate self-initiated questionnaire submissions without an active campaign assignment are not supported by the central survey register.
-              </p>
-              <p className="text-xs text-gov-neutral-500 pt-1">
-                When your cohort is selected for an evaluation round, an invitation with your unique campaign access key will appear here and be dispatched via your consented communication channels.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Survey History Section */}
-        <div className="mt-6 pt-6 border-t border-gov-neutral-200">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-gov-neutral-500 mb-3">
-            Completed Survey Records
-          </h4>
-          {surveyResponsesQuery.isLoading ? (
-            <div className="py-4 flex justify-center">
-              <LoadingSpinner size="sm" />
-            </div>
-          ) : surveyResponsesQuery.isError ? (
-            <p className="text-xs text-gov-neutral-500 italic">
-              Survey response records are accessible during active verification campaigns.
-            </p>
-          ) : pastSurveys.length > 0 ? (
-            <div className="space-y-2">
-              {pastSurveys.map((resp) => (
-                <div
-                  key={resp.id}
-                  className="text-xs bg-gov-neutral-50 p-3 rounded border border-gov-neutral-200 flex justify-between"
-                >
-                  <span className="font-semibold text-gov-neutral-800">
-                    Survey Response #{resp.id} (Attempt {resp.attemptNumber})
-                  </span>
-                  <span className="text-gov-neutral-500">
-                    {resp.submittedAt ? new Date(resp.submittedAt).toLocaleDateString() : 'Recorded'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-gov-neutral-500 italic">
-              No previous survey responses recorded for your profile.
-            </p>
-          )}
-        </div>
-      </section>
+      <TraineeSurveys traineeId={traineeId} />
     </div>
   );
 };

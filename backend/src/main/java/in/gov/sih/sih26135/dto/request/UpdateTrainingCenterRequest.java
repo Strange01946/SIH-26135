@@ -1,4 +1,5 @@
 package in.gov.sih.sih26135.dto.request;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.*;
 
 public class UpdateTrainingCenterRequest {
@@ -10,12 +11,16 @@ public class UpdateTrainingCenterRequest {
   @Size(max = 200, message = "addressLine2 cannot exceed 200 characters")
   private String addressLine2;
   @Pattern(regexp = "^[1-9][0-9]{5}$", message = "Pincode must be 6 digits and cannot start with 0")
+  @Schema(description = "Six-digit PIN code. Omit to keep the current PIN code if one is already on file.")
   private String pincode;
   private Long locationId;
   private Long stateId;
   private Long districtId;
+  @Schema(types = {"integer", "null"}, description = "Null clears capacity. Omit to preserve it.")
   private Integer operationalCapacity;
   private Long lifecycleStatusId;
+  private boolean pincodeProvided;
+  private boolean capacityProvided;
 
   public UpdateTrainingCenterRequest() {
   }
@@ -33,11 +38,11 @@ public class UpdateTrainingCenterRequest {
     this.centerName = centerName;
     this.addressLine1 = addressLine1;
     this.addressLine2 = addressLine2;
-    this.pincode = pincode;
+    if (pincode != null) setPincode(pincode);
     this.locationId = locationId;
     this.stateId = stateId;
     this.districtId = districtId;
-    this.operationalCapacity = operationalCapacity;
+    if (operationalCapacity != null) setOperationalCapacity(operationalCapacity);
     this.lifecycleStatusId = lifecycleStatusId;
   }
 
@@ -71,6 +76,11 @@ public class UpdateTrainingCenterRequest {
 
   public void setPincode(String pincode) {
     this.pincode = pincode;
+    this.pincodeProvided = true;
+  }
+
+  public boolean hasPincode() {
+    return pincodeProvided;
   }
 
   public Long getLocationId() {
@@ -103,6 +113,11 @@ public class UpdateTrainingCenterRequest {
 
   public void setOperationalCapacity(Integer operationalCapacity) {
     this.operationalCapacity = operationalCapacity;
+    this.capacityProvided = true;
+  }
+
+  public boolean hasOperationalCapacity() {
+    return capacityProvided;
   }
 
   public Long getLifecycleStatusId() {

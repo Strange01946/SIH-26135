@@ -10,6 +10,7 @@ import in.gov.sih.sih26135.dto.response.JobPostingResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.service.JobPostingService;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -35,13 +36,15 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @Validated
 @RestController
 @RequestMapping("/api/v1/job-postings")
-@PreAuthorize("hasAuthority('placement.manage')")
+@PreAuthorize("hasAuthority('placement.manage') and (!hasAuthority('ROLE_employer') or hasAnyAuthority('ROLE_super_admin', 'ROLE_government_admin'))")
 public class JobPostingController {
 
   private final JobPostingService jobPostingService;
+  private final WorkflowSecurityScopeValidator scope;
 
-  public JobPostingController(JobPostingService jobPostingService) {
+  public JobPostingController(JobPostingService jobPostingService, WorkflowSecurityScopeValidator scope) {
     this.jobPostingService = jobPostingService;
+    this.scope = scope;
   }
 
   /**
@@ -79,9 +82,11 @@ public class JobPostingController {
    * @return 200 OK with list of JobPostingResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"employerId", "!code", "!jobRoleId", "!districtId", "!includeDeleted"})
+  @PreAuthorize("hasAuthority('placement.manage')")
   public ResponseEntity<ApiResponse<List<JobPostingResponse>>> getByEmployer(
       @RequestParam("employerId") @Positive Long employerId,
       HttpServletRequest httpRequest) {
+    scope.requireEmployerOwnershipForEmployerCaller(employerId);
     validateOnlyQueryParameter(httpRequest, "employerId");
     List<JobPostingResponse> postings = jobPostingService.getJobPostingsByEmployer(employerId);
     return ResponseEntity.ok(ApiResponse.ok(postings));
@@ -167,9 +172,14 @@ public class JobPostingController {
    * @return 201 Created with created JobPostingResponse enveloped in ApiResponse
    */
   @PostMapping
+  @PreAuthorize("hasAuthority('placement.manage')")
   public ResponseEntity<ApiResponse<JobPostingResponse>> createJobPosting(
       @Valid @RequestBody CreateJobPostingRequest request,
       HttpServletRequest httpRequest) {
+    scope.requireEmployerOwnershipForEmployerCaller(request.getEmployerId());
+    if (scope.isEmployerCaller()) {
+      request.setCreatedByUserId(scope.resolveAuthenticatedUserId());
+    }
     JobPostingResponse response = jobPostingService.createJobPosting(request);
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(ApiResponse.success("Job posting created successfully", response, httpRequest.getRequestURI()));

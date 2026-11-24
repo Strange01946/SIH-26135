@@ -5,7 +5,6 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.Valid;
-import in.gov.sih.sih26135.dto.request.CreateTrainingCenterRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTrainingCenterRequest;
 import in.gov.sih.sih26135.dto.response.TrainingCenterResponse;
 import in.gov.sih.sih26135.response.ApiResponse;
@@ -14,14 +13,11 @@ import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.service.TrainingCenterService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -46,6 +42,11 @@ public class TrainingCenterController {
 
   public TrainingCenterController(TrainingCenterService trainingCenterService) {
     this.trainingCenterService = trainingCenterService;
+  }
+
+  @GetMapping("/lifecycle-statuses")
+  public ApiResponse<List<TrainingCenterService.LifecycleStatus>> getLifecycleStatuses() {
+    return ApiResponse.ok(trainingCenterService.getLifecycleStatuses());
   }
 
   /**
@@ -100,22 +101,6 @@ public class TrainingCenterController {
     }
     Page<TrainingCenterResponse> centers = trainingCenterService.getAllTrainingCenters(pageable);
     return ResponseEntity.ok(ApiResponse.ok(PagedResponse.of(centers)));
-  }
-
-  /**
-   * Creates a new training center record.
-   *
-   * @param request training center creation payload
-   * @param httpRequest HTTP servlet request for URI extraction
-   * @return 201 Created with created TrainingCenterResponse enveloped in ApiResponse
-   */
-  @PostMapping
-  public ResponseEntity<ApiResponse<TrainingCenterResponse>> createTrainingCenter(
-      @Valid @RequestBody CreateTrainingCenterRequest request,
-      HttpServletRequest httpRequest) {
-    TrainingCenterResponse response = trainingCenterService.createTrainingCenter(request);
-    return ResponseEntity.status(HttpStatus.CREATED)
-        .body(ApiResponse.success("Training center created successfully", response, httpRequest.getRequestURI()));
   }
 
   /**

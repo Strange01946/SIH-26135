@@ -6,6 +6,9 @@ import { queryClient } from '@/lib/queryClient';
 import { AuthProvider } from '@/context/AuthContext';
 import { AppRouter } from '@/router/index';
 import { ErrorBoundary } from '@/components/feedback/ErrorBoundary';
+import { localEvaluatorEnabled, simulationActive } from '@/lib/demoEnvironment';
+
+const EvaluatorControls = React.lazy(() => import('@/evaluator/EvaluatorControls'));
 
 export default function App(): React.JSX.Element {
   return (
@@ -13,7 +16,13 @@ export default function App(): React.JSX.Element {
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <AuthProvider>
+            {simulationActive && (
+              <div role="status" className="sticky top-0 z-40 border-b border-amber-800 bg-amber-100 px-4 py-2 text-center text-sm font-bold text-amber-950">
+                Simulation mode · Synthetic data and local actions
+              </div>
+            )}
             <AppRouter />
+            {localEvaluatorEnabled && <React.Suspense fallback={null}><EvaluatorControls /></React.Suspense>}
             <Toaster
               position="top-right"
               toastOptions={{

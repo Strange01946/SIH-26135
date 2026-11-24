@@ -100,6 +100,7 @@ export type ConsentTypeCode =
   | 'COMMUNICATION_SMS'
   | 'COMMUNICATION_EMAIL'
   | 'COMMUNICATION_WHATSAPP'
+  | 'EMPLOYER_SHARING'
   | 'EMPLOYMENT_FOLLOW_UP';
 
 export type ConsentStatusCode = 'GRANTED' | 'REVOKED' | 'EXPIRED' | 'UNSPECIFIED';
@@ -197,57 +198,16 @@ export interface Certification {
   createdAt?: string | null;
 }
 
-export interface SurveyResponse {
-  id: number;
-  surveyId: number;
-  traineeId: number;
-  attemptNumber: number;
-  statusId?: number | null;
-  statusCode?: string | null;
-  followupTaskId?: number | null;
-  enrollmentId?: number | null;
-  versionId?: number | null;
-  submittedAt?: string | null;
-  createdAt?: string | null;
-}
-
-export interface SurveyQuestion {
-  id: number;
-  surveyId: number;
-  questionText: string;
-  questionType: 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'TEXT' | 'NUMERIC' | 'RATING';
-  isRequired: boolean;
-  sortOrder: number;
-  optionsJson?: string | null;
-}
-
-export interface CreateSurveyResponsePayload {
-  surveyId: number;
-  traineeId: number;
-  attemptNumber?: number;
-  statusId?: number;
-  followupTaskId?: number;
-  enrollmentId?: number;
-  versionId?: number;
-}
-
-export interface CreateSurveyResponseAnswerPayload {
-  surveyResponseId: number;
-  surveyQuestionId: number;
-  answerText?: string;
-  selectedOptionId?: number;
-  numericRating?: number;
-}
-
 export interface TraineeOutcomeSummary {
   traineeId: number;
   stateId?: number | null;
   districtId?: number | null;
   currentEmploymentStatusId?: number | null;
+  snapshotEmploymentStatusCode?: string | null;
   snapshotIsEmployedFlag?: boolean | null;
-  lastVerifiedEmployerName?: string | null;
-  monthlySalary?: number | null;
-  lastPlacementDate?: string | null;
+  placedEnrollmentCount?: number | null;
+  currentWageEmploymentCount?: number | null;
+  currentSelfEmploymentCount?: number | null;
 }
 
 export interface TraineeSkillGapProfile {
@@ -255,10 +215,18 @@ export interface TraineeSkillGapProfile {
   hasAssessment: boolean;
   identifiedGapsCount?: number;
   recommendationsCount?: number;
+  assessments?: import('@/api/generated/api.types').components['schemas']['SkillGapAssessmentResponse'][];
+  currentSkillGaps?: import('@/api/generated/api.types').components['schemas']['SkillGapResponse'][];
   recommendations?: Array<{
     id: number;
+    skillGapId?: number;
+    recommendedCourseId?: number;
     recommendedCourseName?: string;
+    recommendedSkillName?: string;
+    skillGapActionTypeName?: string;
+    acceptedOn?: string;
     status?: string;
+    isAcceptedFlag?: boolean | null;
     remarks?: string;
   }>;
 }

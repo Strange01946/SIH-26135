@@ -315,6 +315,15 @@ public class WorkflowSecurityScopeValidator {
     return resolveAuthenticatedUser().map(u -> u.getEmployerId() != null).orElse(false);
   }
 
+  /** Generic list and create endpoints can accept an employer ID only for the caller's own employer. */
+  public void requireEmployerOwnershipForEmployerCaller(Long employerId) {
+    if (isEmployerCaller() && !isAdministrativeCaller()
+        && (employerId == null || resolveAuthenticatedUser()
+            .filter(user -> user.getDeletedAt() == null && employerId.equals(user.getEmployerId())).isEmpty())) {
+      throw new AccessDeniedException("Access denied");
+    }
+  }
+
   /**
    * Checks whether the authenticated caller is a Trainee persona.
    *

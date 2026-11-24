@@ -18,7 +18,7 @@ public class AuthResponse {
   @Schema(description = "Token type identifier", example = "Bearer")
   private String tokenType;
 
-  @Schema(description = "Access token lifespan in milliseconds", example = "900000")
+  @Schema(description = "Access token lifespan in seconds", example = "900")
   private Long expiresIn;
 
   @Schema(description = "Unique user identifier", example = "1")

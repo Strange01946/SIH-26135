@@ -69,6 +69,13 @@ public class AuditLogController {
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
 
+  @GetMapping("/scope")
+  public ApiResponse<AuditSearchScope> getSearchScope() {
+    return ApiResponse.ok(new AuditSearchScope(auditLogService.canSearchNationwide()));
+  }
+
+  public record AuditSearchScope(boolean nationwide) {}
+
   /**
    * Searches and retrieves paginated audit log entries using multi-criteria filters.
    *

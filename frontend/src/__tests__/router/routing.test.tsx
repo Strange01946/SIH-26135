@@ -36,7 +36,7 @@ describe('AppRouter', () => {
       </TestWrapper>,
     );
     expect(
-      await screen.findByRole('heading', { name: /Sign In to Official Portal/i }),
+      await screen.findByRole('heading', { name: /^Sign in$/i }),
     ).toBeInTheDocument();
   });
 
@@ -56,7 +56,7 @@ describe('AppRouter', () => {
       </TestWrapper>,
     );
     expect(
-      await screen.findByRole('heading', { name: /Sign In to Official Portal/i }),
+      await screen.findByRole('heading', { name: /^Sign in$/i }),
     ).toBeInTheDocument();
   });
 
@@ -67,7 +67,7 @@ describe('AppRouter', () => {
       </TestWrapper>,
     );
     expect(
-      await screen.findByRole('heading', { name: /Sign In to Official Portal/i }),
+      await screen.findByRole('heading', { name: /^Sign in$/i }),
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/Username or Official Email/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/Enter your password/i)).toBeInTheDocument();

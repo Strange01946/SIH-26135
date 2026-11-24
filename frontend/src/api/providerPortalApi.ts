@@ -6,12 +6,14 @@ import {
   apiUpload,
   apiDownload,
 } from './client';
+import type { ApiError } from './types';
+import type { components } from './generated/api.types';
 import type { PagedResponse } from './types';
+import { apiBaseUrl } from '@/lib/demoEnvironment';
 import type {
   TrainingCenter,
   Course,
   TrainingBatch,
-  CreateBatchPayload,
   ChangeBatchStatusPayload,
   TrainingEnrollmentItem,
   CreateEnrollmentPayload,
@@ -58,7 +60,8 @@ export async function getTrainingCenters(params?: {
         hasNext: false,
         hasPrevious: false,
       };
-    } catch {
+    } catch (error) {
+      if ((error as ApiError)?.status !== 404) throw error;
       return {
         content: [],
         page: 0,
@@ -93,7 +96,26 @@ export async function getCourses(params?: {
   sort?: string;
   direction?: string;
 }): Promise<PagedResponse<Course>> {
+  const code = params?.code?.trim();
+  if (code) {
+    try {
+      const course = await apiGet<Course>('/api/v1/courses', { params: { code } });
+      const content = course && (!params?.sectorId || course.sectorId === params.sectorId) ? [course] : [];
+      return { content, page: 0, size: 1, totalElements: content.length, totalPages: content.length,
+        first: true, last: true, hasNext: false, hasPrevious: false };
+    } catch (error) {
+      if ((error as ApiError)?.status !== 404) throw error;
+      return { content: [], page: 0, size: 1, totalElements: 0, totalPages: 0,
+        first: true, last: true, hasNext: false, hasPrevious: false };
+    }
+  }
   return apiGetPaged<Course>('/api/v1/courses', { params });
+}
+
+export type BatchProgramOption = Required<components['schemas']['BatchProgramOption']>;
+
+export async function getBatchProgramOptions(courseId: number, signal?: AbortSignal) {
+  return apiGet<BatchProgramOption[]>(`/api/v1/provider/courses/${courseId}/programs`, { signal });
 }
 
 export async function getCourseById(id: number): Promise<Course> {
@@ -132,7 +154,8 @@ export async function getTrainingBatches(params?: {
         hasNext: false,
         hasPrevious: false,
       };
-    } catch {
+    } catch (error) {
+      if ((error as ApiError)?.status !== 404) throw error;
       return {
         content: [],
         page: 0,
@@ -151,10 +174,6 @@ export async function getTrainingBatches(params?: {
 
 export async function getTrainingBatchById(id: number): Promise<TrainingBatch> {
   return apiGet<TrainingBatch>(`/api/v1/training-batches/${id}`);
-}
-
-export async function createTrainingBatch(payload: CreateBatchPayload): Promise<TrainingBatch> {
-  return apiPost<CreateBatchPayload, TrainingBatch>('/api/v1/training-batches', payload);
 }
 
 export async function updateTrainingBatchStatus(
@@ -210,6 +229,16 @@ export async function createTrainingEnrollment(
   );
 }
 
+export type EnrollmentCorrection = components['schemas']['UpdateTrainingEnrollmentRequest'];
+
+export async function getTrainingEnrollmentById(id: number, signal?: AbortSignal) {
+  return apiGet<components['schemas']['TrainingEnrollmentResponse']>(`/api/v1/training-enrollments/${id}`, { signal });
+}
+
+export async function correctTrainingEnrollment(id: number, payload: EnrollmentCorrection) {
+  return apiPut<EnrollmentCorrection, components['schemas']['TrainingEnrollmentResponse']>(`/api/v1/training-enrollments/${id}`, payload);
+}
+
 // ---------------------------------------------------------------------------
 // 5. Attendance Recording
 // ---------------------------------------------------------------------------
@@ -261,11 +290,18 @@ export async function processImportBatch(batchId: number): Promise<ImportBatchPr
   return apiPost<Record<string, never>, ImportBatchProgress>(
     `/api/v1/import-batches/${batchId}/process`,
     {},
+    { timeout: 180_000 },
   );
 }
 
-export async function getImportBatchStatus(batchId: number): Promise<ImportBatchProgress> {
-  return apiGet<ImportBatchProgress>(`/api/v1/import-batches/${batchId}/status`);
+export async function getImportBatchStatus(batchId: number, signal?: AbortSignal): Promise<ImportBatchProgress> {
+  return apiGet<ImportBatchProgress>(`/api/v1/import-batches/${batchId}/status`, { signal });
+}
+
+export async function recoverImportBatch(batchId: number): Promise<ImportBatchProgress> {
+  return apiPost<Record<string, never>, ImportBatchProgress>(`/api/v1/import-batches/${batchId}/recover`, {}, {
+    params: { confirmWorkerTerminated: true },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -296,6 +332,6 @@ export async function downloadQuarantineExport(
 }
 
 export function getQuarantineExportUrl(batchId: number, includeDuplicates = true): string {
-  const base = import.meta.env.VITE_API_BASE_URL ?? '';
+  const base = apiBaseUrl();
   return `${base}/api/v1/import-batches/${batchId}/quarantine/export?includeDuplicates=${includeDuplicates}`;
 }

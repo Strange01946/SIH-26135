@@ -304,6 +304,24 @@ class DurableDispatchQueueTest {
   }
 
   @Test
+  @DisplayName("A worker leaves jobs from another delivery mode pending and refuses cross-mode replay")
+  void workerCannotProcessOrReplayJobsFromAnotherDeliveryMode() {
+    var command = CommunicationDispatchCommand.of(this.fixtureTraineeId, CommunicationChannel.SMS,
+        CommunicationPurpose.OPERATIONAL, "OPERATIONAL_ALERT", Map.of("referenceId", "MODE-CHECK"), null);
+    Long jobId = enqueueAndTrackJob(command, IDEMPOTENCY_PREFIX + UUID.randomUUID()).jobId();
+    jdbcTemplate.update("UPDATE communication_dispatch_jobs SET delivery_mode = 'LIVE' WHERE job_id = ?", jobId);
+
+    assertThat(queueService.claimAndProcessJob(jobId, "test-worker")).isNull();
+    assertThat(queueService.getJobById(jobId).jobStatus()).isEqualTo("PENDING");
+    assertThat(queueService.getAttemptsByJobId(jobId)).isEmpty();
+
+    jdbcTemplate.update("UPDATE communication_dispatch_jobs SET job_status = 'DEAD_LETTER' WHERE job_id = ?", jobId);
+    assertThatThrownBy(() -> queueService.replayDeadLetterJob(jobId, "test-operator"))
+        .hasMessageContaining("Job delivery mode does not match");
+    assertThat(queueService.getJobById(jobId).jobStatus()).isEqualTo("DEAD_LETTER");
+  }
+
+  @Test
   @DisplayName("3. Permanent Failure Fail-Closed: Unknown template code immediately transitions to DEAD_LETTER with zero retries")
   void testPermanentFailure_immediatelyDeadLettersZeroRetries() {
     String key = IDEMPOTENCY_PREFIX + UUID.randomUUID();

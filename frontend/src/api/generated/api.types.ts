@@ -68,34 +68,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/training-batches/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Training Batch by ID
-         * @description Retrieves training batch details by primary key identifier.
-         */
-        get: operations["getById_4"];
-        /**
-         * Update Training Batch
-         * @description Updates details, capacity, and dates of an existing training batch.
-         */
-        put: operations["updateBatch"];
-        post?: never;
-        /**
-         * Delete Training Batch
-         * @description Soft-deletes an existing training batch by ID.
-         */
-        delete: operations["deleteBatch"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/training-batches/{id}/status": {
         parameters: {
             query?: never;
@@ -127,7 +99,7 @@ export interface paths {
          * Get Trainee by ID
          * @description Retrieves complete trainee profile by primary key identifier.
          */
-        get: operations["getById_5"];
+        get: operations["getById_4"];
         /**
          * Update Trainee
          * @description Updates an existing trainee's demographic and contact information.
@@ -151,7 +123,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_6"];
+        get: operations["getById_5"];
         put: operations["updateUnemploymentEvent"];
         post?: never;
         delete: operations["deleteUnemploymentEvent"];
@@ -167,7 +139,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_7"];
+        get: operations["getById_6"];
         put: operations["updateTraineeAssessment"];
         post?: never;
         delete: operations["deleteTraineeAssessment"];
@@ -183,7 +155,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_8"];
+        get: operations["getById_7"];
         put: operations["updateSurveyResponse"];
         post?: never;
         delete: operations["deleteSurveyResponse"];
@@ -199,7 +171,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_9"];
+        get: operations["getById_8"];
         put: operations["updateSurveyResponseAnswer"];
         post?: never;
         delete: operations["deleteSurveyResponseAnswer"];
@@ -215,7 +187,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_10"];
+        get: operations["getById_9"];
         put: operations["updateSurveyQuestion"];
         post?: never;
         delete: operations["deleteSurveyQuestion"];
@@ -231,7 +203,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_11"];
+        get: operations["getById_10"];
         put: operations["updateSkillGap"];
         post?: never;
         delete: operations["deleteSkillGap"];
@@ -247,7 +219,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_12"];
+        get: operations["getById_11"];
         put: operations["updateRecommendation"];
         post?: never;
         delete: operations["deleteRecommendation"];
@@ -263,7 +235,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_13"];
+        get: operations["getById_12"];
         put: operations["updateObservation"];
         post?: never;
         delete: operations["deleteObservation"];
@@ -279,7 +251,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_14"];
+        get: operations["getById_13"];
         put: operations["updateAssessment"];
         post?: never;
         delete: operations["deleteAssessment"];
@@ -295,7 +267,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_15"];
+        get: operations["getById_14"];
         put: operations["updateScheme"];
         post?: never;
         delete: operations["deleteScheme"];
@@ -311,7 +283,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_16"];
+        get: operations["getById_15"];
         put: operations["updateSalaryHistory"];
         post?: never;
         delete: operations["deleteSalaryHistory"];
@@ -327,7 +299,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_17"];
+        get: operations["getById_16"];
         put: operations["updateRole"];
         post?: never;
         delete?: never;
@@ -359,7 +331,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_18"];
+        get: operations["getById_17"];
         put: operations["updateProgram"];
         post?: never;
         delete: operations["deleteProgram"];
@@ -375,7 +347,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_19"];
+        get: operations["getById_18"];
         put: operations["updatePlacementRecord"];
         post?: never;
         delete: operations["deletePlacementRecord"];
@@ -391,7 +363,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_20"];
+        get: operations["getById_19"];
         put: operations["updateJobPosting"];
         post?: never;
         delete: operations["deleteJobPosting"];
@@ -407,7 +379,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_21"];
+        get: operations["getById_20"];
         put: operations["updateJobApplication"];
         post?: never;
         delete: operations["deleteJobApplication"];
@@ -423,7 +395,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_22"];
+        get: operations["getById_21"];
         put: operations["updateImportRecord"];
         post?: never;
         delete: operations["deleteImportRecord"];
@@ -439,7 +411,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_23"];
+        get: operations["getById_22"];
         put: operations["updateImportBatch"];
         post?: never;
         delete: operations["deleteImportBatch"];
@@ -455,7 +427,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_24"];
+        get: operations["getById_23"];
         put: operations["updateImportBatch_1"];
         post?: never;
         delete: operations["deleteImportBatch_1"];
@@ -471,7 +443,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_25"];
+        get: operations["getById_24"];
         put: operations["updateFollowupTask"];
         post?: never;
         delete: operations["deleteFollowupTask"];
@@ -487,7 +459,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_26"];
+        get: operations["getById_25"];
         put: operations["updateFollowupCampaign"];
         post?: never;
         delete: operations["deleteFollowupCampaign"];
@@ -503,7 +475,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_27"];
+        get: operations["getById_26"];
         put: operations["updateEmploymentVerification"];
         post?: never;
         delete: operations["deleteEmploymentVerification"];
@@ -519,7 +491,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_28"];
+        get: operations["getById_27"];
         put: operations["updateVerificationRequest"];
         post?: never;
         delete: operations["deleteVerificationRequest"];
@@ -535,7 +507,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_29"];
+        get: operations["getById_28"];
         put: operations["updateVerificationEvidence"];
         post?: never;
         delete: operations["deleteVerificationEvidence"];
@@ -551,7 +523,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_30"];
+        get: operations["getById_29"];
         put: operations["updateVerificationAttempt"];
         post?: never;
         delete: operations["deleteVerificationAttempt"];
@@ -567,7 +539,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_31"];
+        get: operations["getById_30"];
         put: operations["updateEmploymentRecord"];
         post?: never;
         delete: operations["deleteEmploymentRecord"];
@@ -583,7 +555,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_32"];
+        get: operations["getById_31"];
         put: operations["updateExitEvent"];
         post?: never;
         delete: operations["deleteExitEvent"];
@@ -599,7 +571,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_33"];
+        get: operations["getById_32"];
         put: operations["updateEmployer"];
         post?: never;
         delete: operations["deleteEmployer"];
@@ -615,7 +587,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_34"];
+        get: operations["getById_33"];
         put: operations["updateRule"];
         post?: never;
         delete: operations["deleteRule"];
@@ -631,7 +603,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_35"];
+        get: operations["getById_34"];
         put: operations["updateRule_1"];
         post?: never;
         delete: operations["deleteRule_1"];
@@ -647,7 +619,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_36"];
+        get: operations["getById_35"];
         put: operations["updateIssue"];
         post?: never;
         delete?: never;
@@ -663,7 +635,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_37"];
+        get: operations["getById_36"];
         put: operations["updateCourse"];
         post?: never;
         delete: operations["deleteCourse"];
@@ -695,7 +667,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_38"];
+        get: operations["getById_37"];
         put: operations["updateConsentStatus_1"];
         post?: never;
         delete?: never;
@@ -711,10 +683,26 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_39"];
+        get: operations["getById_38"];
         put: operations["updateCommunicationLog"];
         post?: never;
         delete: operations["deleteCommunicationLog"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certificates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getById_39"];
+        put: operations["updateCertification"];
+        post?: never;
+        delete: operations["deleteCertification"];
         options?: never;
         head?: never;
         patch?: never;
@@ -728,9 +716,9 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getById_40"];
-        put: operations["updateCertification"];
+        put: operations["updateCertification_1"];
         post?: never;
-        delete: operations["deleteCertification"];
+        delete: operations["deleteCertification_1"];
         options?: never;
         head?: never;
         patch?: never;
@@ -779,6 +767,22 @@ export interface paths {
         put: operations["updateAssessmentResult"];
         post?: never;
         delete: operations["deleteAssessmentResult"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assessments/results/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getById_44"];
+        put: operations["updateAssessmentResult_1"];
+        post?: never;
+        delete: operations["deleteAssessmentResult_1"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1192,6 +1196,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/venue-bookings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["bookings"];
+        put?: never;
+        post: operations["request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/venue-bookings/{id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["review"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/venue-bookings/{id}/reschedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["requestReschedule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/venue-bookings/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["close"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/venue-bookings/venues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["sharedVenues"];
+        put?: never;
+        post: operations["createSharedVenue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/venue-bookings/venues/{centerId}/blackouts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["addBlackout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users": {
         parameters: {
             query?: never;
@@ -1256,46 +1356,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/training-centers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getTrainingCenters"];
-        put?: never;
-        post: operations["createTrainingCenter"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/training-batches": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Training Batches (Filter / Paginated)
-         * @description Retrieves training batches with optional filtering by code, course ID, provider ID, center ID, program ID, or status ID.
-         */
-        get: operations["getTrainingBatches"];
-        put?: never;
-        /**
-         * Create Training Batch
-         * @description Creates a new training batch associated with a course, provider, and training center.
-         */
-        post: operations["createBatch"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/trainees": {
         parameters: {
             query?: never;
@@ -1314,6 +1374,22 @@ export interface paths {
          * @description Registers a new trainee record with territorial and demographic details.
          */
         post: operations["createTrainee"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trainees/me/followup-surveys/{taskId}/responses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["submitQuestionnaire"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1538,6 +1614,70 @@ export interface paths {
         get: operations["getRolePermissions"];
         put?: never;
         post: operations["assignPermission"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/provider/data-quality/re-evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["triggerReEvaluation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/provider/data-quality/issues/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["resolveIssue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/provider/data-quality/issues/{id}/investigate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["startInvestigation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/provider/data-quality/issues/{id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["dismissIssue"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1800,6 +1940,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/employments/{id}/unemployment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["confirmCareerUnemployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/employments/{id}/exit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["recordCareerExit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/employment-verifications": {
         parameters: {
             query?: never;
@@ -1912,6 +2084,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/employer/verifications/{requestId}/verdict": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["submitEmployerVerdict"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/employer/placements/{placementId}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["confirmEmployerPlacement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/employer/job-postings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["employerVacancies"];
+        put?: never;
+        post: operations["publishEmployerVacancy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/data-quality-rules/scan": {
         parameters: {
             query?: never;
@@ -2001,7 +2221,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["startInvestigation"];
+        post: operations["startInvestigation_1"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2017,7 +2237,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["resolveIssue"];
+        post: operations["resolveIssue_1"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2049,7 +2269,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["dismissIssue"];
+        post: operations["dismissIssue_1"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2156,6 +2376,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/communication/demo/receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createDemoReceipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/communication/demo/receipts/{logId}/deliver": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["deliverDemoReceipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/communication/demo/consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["checkConsent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/communication/dead-letter/{jobId}/replay": {
         parameters: {
             query?: never;
@@ -2208,7 +2476,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/certifications": {
+    "/api/v1/certifications/issue-pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["issuePendingCertificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certificates/issue-pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["issuePendingCertificate_1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certificates/issue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["issueCertificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certifications/issue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["issueCertificate_1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certificates": {
         parameters: {
             query?: never;
             header?: never;
@@ -2218,6 +2550,98 @@ export interface paths {
         get: operations["getAllCertifications"];
         put?: never;
         post: operations["createCertification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAllCertifications_1"];
+        put?: never;
+        post: operations["createCertification_1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/career-progress/recommendations/{id}/enrollment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["enrollCareerRemediation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/register/training-provider": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register Training Provider
+         * @description Public application creating pending user and training provider record
+         */
+        post: operations["registerTrainingProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/register/trainee": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register Trainee
+         * @description Creates an active trainee account and records explicit core data processing consent
+         */
+        post: operations["registerTrainee"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/register/employer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register Employer
+         * @description Public application creating pending user and employer record
+         */
+        post: operations["registerEmployer"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2296,6 +2720,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/assessor/assessments/{id}/issue-pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Issue certificates for eligible pending candidates */
+        post: operations["issuePendingCertificates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assessor/assessments/{id}/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finalize assessment and issue certificates */
+        post: operations["finalizeAssessment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assessor/assessments/{id}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save candidate scoring draft */
+        post: operations["saveDraftScores"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/assessments": {
         parameters: {
             query?: never;
@@ -2312,7 +2787,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/assessment-results": {
+    "/api/v1/assessments/results": {
         parameters: {
             query?: never;
             header?: never;
@@ -2322,6 +2797,122 @@ export interface paths {
         get: operations["getAllAssessmentResults"];
         put?: never;
         post: operations["createAssessmentResult"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assessment-results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAllAssessmentResults_1"];
+        put?: never;
+        post: operations["createAssessmentResult_1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/provision-super-admin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Provision Super Admin
+         * @description Provision a new Super Administrator account (strictly Super Admin only)
+         */
+        post: operations["provisionSuperAdmin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/provision-government-admin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Provision Government Admin
+         * @description Provision a Government Official or Analyst account
+         */
+        post: operations["provisionGovernmentAdmin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/provision-assessor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Provision Assessor
+         * @description Provision an Assessor user account with assessment management authorities
+         */
+        post: operations["provisionAssessor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/onboarding/applications/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Application
+         * @description Reject onboarding application with reason and disable user
+         */
+        post: operations["rejectApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/onboarding/applications/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Application
+         * @description Approve onboarding application, activate user, and grant accreditation
+         */
+        post: operations["approveApplication"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2536,6 +3127,158 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/venue-bookings/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["details"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/venue-bookings/venues/{centerId}/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["availability"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-centers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getTrainingCenters"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-centers/lifecycle-statuses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getLifecycleStatuses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Training Batches (Filter / Paginated)
+         * @description Retrieves training batches with optional filtering by code, course ID, provider ID, center ID, program ID, or status ID.
+         */
+        get: operations["getTrainingBatches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-batches/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Training Batch by ID
+         * @description Retrieves training batch details by primary key identifier.
+         */
+        get: operations["getById_45"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trainees/me/followup-surveys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trainees/me/followup-surveys/{taskId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getQuestionnaire"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trainees/me/employment-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getEmploymentHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system-event-logs/{id}": {
         parameters: {
             query?: never;
@@ -2543,7 +3286,103 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_44"];
+        get: operations["getById_46"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system-event-logs/throttle-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/provider/data-quality/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getIssues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/provider/data-quality/issues/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getIssueById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/provider/data-quality/issues/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getIssueEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/provider/courses/{courseId}/programs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getBatchProgramOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/provider/centers/{centerId}/scorecard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getCenterScorecard"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2575,7 +3414,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_45"];
+        get: operations["getById_47"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2664,6 +3503,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/import/batches/{id}/export/csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["exportQuarantinedCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/import-batches/{id}/quarantine/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["exportQuarantinedCsv_1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/import/batches/{id}/quarantine/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["exportQuarantinedCsv_2"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/import-batches/{id}/export/csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["exportQuarantinedCsv_3"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/import/batches/{id}/quarantine": {
         parameters: {
             query?: never;
@@ -2696,7 +3599,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/import-batches/{id}/progress": {
+    "/api/v1/import/batches/{id}/status": {
         parameters: {
             query?: never;
             header?: never;
@@ -2712,7 +3615,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/import/batches/{id}/progress": {
+    "/api/v1/import-batches/{id}/status": {
         parameters: {
             query?: never;
             header?: never;
@@ -2728,6 +3631,150 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/import-batches/{id}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getBatchProgress_2"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/import/batches/{id}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getBatchProgress_3"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/employments/{id}/retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getEmploymentRetention"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/employer/verifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["employerVerificationHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/employer/verifications/{requestId}/evidence/{evidenceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["downloadEmployerEvidence"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/employer/verifications/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["pendingEmployerVerifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/employer/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["employerSkills"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/employer/reference-data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["employerReferences"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/employer/placements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["employerPlacements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/data-quality-issues/{id}/events": {
         parameters: {
             query?: never;
@@ -2735,7 +3782,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getIssueEvents"];
+        get: operations["getIssueEvents_1"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2751,7 +3798,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_46"];
+        get: operations["getById_48"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2804,6 +3851,70 @@ export interface paths {
          * @description Retrieves state-level outcome KPIs, constituent district rankings, and training center distributions.
          */
         get: operations["getStateGeography"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dashboards/specialized/wage-distributions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSpecializedWages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dashboards/specialized/incident-trend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSpecializedIncidentTrend"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dashboards/specialized/exit-areas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSpecializedExitAreas"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dashboards/specialized/dropout-signals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSpecializedDropoutSignals"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2916,6 +4027,38 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getNationalOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dashboards/mis/provider-quality": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getMisProviderQuality"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dashboards/mis/filters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getMisFilterOptions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3092,6 +4235,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/communication/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["logs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/communication/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["jobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/communication/jobs/{jobId}": {
         parameters: {
             query?: never;
@@ -3152,6 +4327,158 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/communication/center": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["capabilities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certificates/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["downloadCertificatePdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certifications/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["downloadCertificatePdf_1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/career-progress/recommendations/{id}/batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getRemediationBatches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/career-progress/exit-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getCareerExitOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/career-progress/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["findCareerCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/career-progress/candidates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getCareerHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/register/status/{applicationNumber}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check Application Status
+         * @description Public lookup of organization application status by application number
+         */
+        get: operations["getApplicationStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/register/reference-data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Registration Reference Data
+         * @description Public reference data for genders, states, districts, and organization types
+         */
+        get: operations["getReferenceData"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/me": {
         parameters: {
             query?: never;
@@ -3179,7 +4506,23 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getById_47"];
+        get: operations["getById_49"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit-logs/scope": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSearchScope"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3196,6 +4539,57 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getEntityTimeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assessor/assessments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get assigned assessments for authenticated assessor */
+        get: operations["getAssignedAssessments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assessor/assessments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get assessment summary by ID */
+        get: operations["getAssessmentSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assessor/assessments/{id}/roster": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get candidate roster for an assessment */
+        get: operations["getAssessmentRoster"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4140,6 +5534,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analytics/export/candidates/{format}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["exportCandidateOutcomes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/export/candidates/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getCandidateExportColumns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/onboarding/applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Onboarding Applications
+         * @description Retrieve list of onboarding applications with optional status filter
+         */
+        get: operations["getApplications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/onboarding/applications/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Onboarding Application Details
+         * @description Retrieve single application by ID
+         */
+        get: operations["getApplicationById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/venue-bookings/venues/{centerId}/blackouts/{blackoutId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["releaseBlackout"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{userId}/roles/{roleId}": {
         parameters: {
             query?: never;
@@ -4444,9 +5926,9 @@ export interface components {
             /** Format: date */
             startDate?: string;
             /** Format: date */
-            expectedCompletionDate?: string;
+            expectedCompletionDate?: string | null;
             /** Format: date */
-            actualCompletionDate?: string;
+            actualCompletionDate?: string | null;
             /** Format: int64 */
             enrollmentStatusId?: number;
             enrollmentStatusCode?: string;
@@ -4454,21 +5936,22 @@ export interface components {
             isTerminal?: boolean;
             isCompletedFlag?: boolean;
             /** Format: int64 */
-            dropoutReasonId?: number;
-            dropoutReasonCode?: string;
-            dropoutReasonName?: string;
-            dropoutRemarks?: string;
+            dropoutReasonId?: number | null;
+            dropoutReasonCode?: string | null;
+            dropoutReasonName?: string | null;
+            dropoutRemarks?: string | null;
             /** Format: date-time */
             createdAt?: string;
             /** Format: date-time */
             updatedAt?: string;
             /** Format: date-time */
-            deletedAt?: string;
+            deletedAt?: string | null;
         };
         UpdateTrainingCenterRequest: {
             centerName?: string;
             addressLine1?: string;
             addressLine2?: string;
+            /** @description Six-digit PIN code. Omit to keep the current PIN code if one is already on file. */
             pincode?: string;
             /** Format: int64 */
             locationId?: number;
@@ -4476,8 +5959,11 @@ export interface components {
             stateId?: number;
             /** Format: int64 */
             districtId?: number;
-            /** Format: int32 */
-            operationalCapacity?: number;
+            /**
+             * Format: int32
+             * @description Null clears capacity. Omit to preserve it.
+             */
+            operationalCapacity?: number | null;
             /** Format: int64 */
             lifecycleStatusId?: number;
         };
@@ -4522,6 +6008,7 @@ export interface components {
             id?: number;
             /** Format: int64 */
             providerId?: number;
+            venueType?: string;
             providerCode?: string;
             providerName?: string;
             centerCode?: string;
@@ -4546,15 +6033,9 @@ export interface components {
             /** Format: date-time */
             deletedAt?: string;
         };
-        UpdateTrainingBatchRequest: {
-            /** Format: date */
-            startDate?: string;
-            /** Format: date */
-            endDate?: string;
-            /** Format: int32 */
-            capacity?: number;
+        ChangeBatchStatusRequest: {
             /** Format: int64 */
-            batchStatusId?: number;
+            batchStatusId: number;
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseTrainingBatchResponse: {
@@ -4688,6 +6169,18 @@ export interface components {
              */
             capacity?: number;
             /**
+             * Format: int32
+             * @description Authoritative count of actively enrolled trainees
+             * @example 12
+             */
+            enrolledCount?: number;
+            /**
+             * Format: int32
+             * @description Authoritative remaining available seats
+             * @example 18
+             */
+            availableSeats?: number;
+            /**
              * Format: int64
              * @description Batch status lookup ID
              * @example 1
@@ -4720,11 +6213,7 @@ export interface components {
              * @description Soft deletion timestamp if deleted
              * @example null
              */
-            deletedAt?: string;
-        };
-        ChangeBatchStatusRequest: {
-            /** Format: int64 */
-            batchStatusId: number;
+            deletedAt?: string | null;
         };
         UpdateTraineeRequest: {
             firstName?: string;
@@ -6649,9 +8138,9 @@ export interface components {
             /** Format: int32 */
             failureCount?: number;
             /** Format: date-time */
-            startedAt?: string;
+            startedAt?: string | null;
             /** Format: date-time */
-            completedAt?: string;
+            completedAt?: string | null;
             /** Format: date-time */
             createdAt?: string;
             /** Format: date-time */
@@ -7920,12 +9409,12 @@ export interface components {
             /** Format: date-time */
             grantedAt?: string;
             /** Format: date-time */
-            revokedAt?: string;
+            revokedAt?: string | null;
             /** Format: date-time */
-            expiresAt?: string;
+            expiresAt?: string | null;
             capturedChannel?: string;
             /** Format: int64 */
-            capturedByUserId?: number;
+            capturedByUserId?: number | null;
             /** Format: date-time */
             createdAt?: string;
             /** Format: date-time */
@@ -9264,6 +10753,250 @@ export interface components {
             exitEvent?: components["schemas"]["EmploymentExitEventResponse"];
             unemploymentEvent?: components["schemas"]["TraineeUnemploymentEventResponse"];
         };
+        NewBooking: {
+            /** Format: int64 */
+            centerId?: number;
+            temporaryVenue?: components["schemas"]["TemporaryVenue"];
+            batchCode: string;
+            /** Format: int64 */
+            courseId?: number;
+            /** Format: int64 */
+            programId?: number;
+            /** Format: int32 */
+            seats?: number;
+            sessions: components["schemas"]["SessionRequest"][];
+        };
+        SessionRequest: {
+            /** Format: date-time */
+            startsAt: string;
+            /** Format: date-time */
+            endsAt: string;
+        };
+        TemporaryVenue: {
+            name: string;
+            address: string;
+            /** Format: int64 */
+            stateId?: number;
+            /** Format: int64 */
+            districtId?: number;
+            /** Format: int32 */
+            capacity?: number;
+            permissionToUse: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseDetails: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Details"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        Booking: {
+            /** Format: int64 */
+            id?: number;
+            /** Format: int64 */
+            providerId?: number;
+            providerName?: string;
+            /** Format: int64 */
+            centerId?: number;
+            /** Format: int64 */
+            batchId?: number;
+            /** Format: int64 */
+            replacesBookingId?: number;
+            venueType?: string;
+            status?: string;
+            batchCode?: string;
+            /** Format: int64 */
+            courseId?: number;
+            courseName?: string;
+            /** Format: int64 */
+            programId?: number;
+            programName?: string;
+            /** Format: int32 */
+            seats?: number;
+            venueName?: string;
+            venueAddress?: string;
+            /** Format: int64 */
+            stateId?: number;
+            /** Format: int64 */
+            districtId?: number;
+            /** Format: int32 */
+            venueCapacity?: number;
+            premisesPermission?: string;
+            decisionNote?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            reviewedAt?: string;
+            batchStatus?: string;
+        };
+        Details: {
+            booking?: components["schemas"]["Booking"];
+            sessions?: components["schemas"]["Session"][];
+        };
+        Session: {
+            /** Format: date-time */
+            startsAt?: string;
+            /** Format: date-time */
+            endsAt?: string;
+            /** Format: date-time */
+            reservedAt?: string;
+            /** Format: date-time */
+            releasedAt?: string;
+        };
+        Review: {
+            approved: boolean;
+            reason?: string;
+        };
+        Reschedule: {
+            sessions: components["schemas"]["SessionRequest"][];
+        };
+        Close: {
+            /** @enum {string} */
+            action: "COMPLETE" | "CANCEL";
+            reason?: string;
+        };
+        NewSharedVenue: {
+            code: string;
+            name: string;
+            address: string;
+            pincode: string;
+            /** Format: int64 */
+            stateId?: number;
+            /** Format: int64 */
+            districtId?: number;
+            /** Format: int32 */
+            capacity?: number;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseSharedVenue: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["SharedVenue"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        SharedVenue: {
+            /** Format: int64 */
+            id?: number;
+            code?: string;
+            name?: string;
+            address?: string;
+            /** Format: int64 */
+            stateId?: number;
+            /** Format: int64 */
+            districtId?: number;
+            /** Format: int32 */
+            capacity?: number;
+        };
+        Blackout: {
+            /** Format: date-time */
+            startsAt: string;
+            /** Format: date-time */
+            endsAt: string;
+            reason: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseBusySlot: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["BusySlot"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        BusySlot: {
+            /** Format: date-time */
+            startsAt?: string;
+            /** Format: date-time */
+            endsAt?: string;
+            /** Format: int64 */
+            blackoutId?: number;
+            reason?: string;
+        };
         CreateUserRequest: {
             username?: string;
             /** Format: email */
@@ -9362,81 +11095,6 @@ export interface components {
             rating?: number;
             /** Format: int64 */
             lifecycleStatusId?: number;
-        };
-        CreateTrainingCenterRequest: {
-            /** Format: int64 */
-            providerId?: number;
-            centerCode: string;
-            centerName: string;
-            addressLine1?: string;
-            addressLine2?: string;
-            pincode?: string;
-            /** Format: int64 */
-            locationId?: number;
-            /** Format: int64 */
-            stateId?: number;
-            /** Format: int64 */
-            districtId?: number;
-            /** Format: int32 */
-            operationalCapacity?: number;
-            /** Format: int64 */
-            lifecycleStatusId?: number;
-        };
-        /** @description Request payload for creating a new training batch */
-        CreateTrainingBatchRequest: {
-            /**
-             * @description Unique batch identifier code
-             * @example BATCH-2026-IT01
-             */
-            batchCode: string;
-            /**
-             * Format: int64
-             * @description Associated course catalog ID
-             * @example 101
-             */
-            courseId?: number;
-            /**
-             * Format: int64
-             * @description Training provider organization ID
-             * @example 201
-             */
-            providerId?: number;
-            /**
-             * Format: int64
-             * @description Training center location ID
-             * @example 301
-             */
-            centerId?: number;
-            /**
-             * Format: int64
-             * @description Government scheme or program ID
-             * @example 1
-             */
-            programId?: number;
-            /**
-             * Format: date
-             * @description Scheduled batch start date (ISO-8601)
-             * @example 2026-03-01
-             */
-            startDate?: string;
-            /**
-             * Format: date
-             * @description Scheduled batch completion date (ISO-8601)
-             * @example 2026-06-01
-             */
-            endDate?: string;
-            /**
-             * Format: int32
-             * @description Maximum trainee seating capacity
-             * @example 30
-             */
-            capacity?: number;
-            /**
-             * Format: int64
-             * @description Initial batch status ID
-             * @example 1
-             */
-            batchStatusId?: number;
         };
         /** @description Request payload for creating a new trainee profile */
         CreateTraineeRequest: {
@@ -9546,6 +11204,64 @@ export interface components {
              * @example 1
              */
             profileStatusId?: number;
+        };
+        Answer: {
+            /** Format: int64 */
+            questionId: number;
+            text?: string;
+            number?: number;
+            yes?: boolean;
+            /** Format: date */
+            date?: string;
+            optionIds?: number[];
+        };
+        SubmitRequest: {
+            /** Format: int64 */
+            versionId: number;
+            answers: components["schemas"]["Answer"][];
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseSubmission: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Submission"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        Submission: {
+            /** Format: int64 */
+            id?: number;
+            name?: string;
+            /** Format: date-time */
+            submittedAt?: string;
         };
         CreateTraineeAssessmentRequest: {
             /** Format: int64 */
@@ -9763,6 +11479,150 @@ export interface components {
             moduleCode?: string;
             /** Format: date-time */
             grantedAt?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseListDataQualityRuleExecutionSummary: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["DataQualityRuleExecutionSummary"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        DataQualityRuleExecutionSummary: {
+            /** Format: int64 */
+            ruleId?: number;
+            ruleCode?: string;
+            targetEntityType?: string;
+            /** Format: int64 */
+            evaluatedRecordCount?: number;
+            /** Format: int64 */
+            violationCount?: number;
+            /** Format: int64 */
+            newIssuesCreated?: number;
+            /** Format: int64 */
+            deduplicatedIssuesSkipped?: number;
+            /** Format: date-time */
+            executedAt?: string;
+            /** Format: int64 */
+            executionDurationMs?: number;
+            status?: string;
+        };
+        ResolveDataQualityIssueRequest: {
+            /** Format: int64 */
+            readonly resolvedByUserId?: number;
+            resolutionNotes: string;
+            /** Format: date-time */
+            readonly resolvedAt?: string;
+            isDismissed?: boolean;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseProviderDataQualityIssueResponse: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["ProviderDataQualityIssueResponse"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        ProviderDataQualityIssueResponse: {
+            /** Format: int64 */
+            id?: number;
+            /** Format: int64 */
+            ruleId?: number;
+            ruleCode?: string;
+            ruleName?: string;
+            /** Format: int64 */
+            categoryId?: number;
+            categoryCode?: string;
+            categoryName?: string;
+            /** Format: int64 */
+            severityId?: number;
+            severityCode?: string;
+            severityName?: string;
+            /** Format: int64 */
+            statusId?: number;
+            statusCode?: string;
+            statusName?: string;
+            isOpen?: boolean;
+            entityType?: string;
+            /** Format: int64 */
+            entityId?: number;
+            /** Format: int64 */
+            centerId?: number;
+            centerName?: string;
+            /** Format: int64 */
+            batchId?: number;
+            batchCode?: string;
+            issueSummary?: string;
+            /** Format: date-time */
+            detectedAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+            /** Format: date-time */
+            resolvedAt?: string;
+            /** Format: int64 */
+            resolvedByUserId?: number;
+            resolutionNotes?: string;
+            remediationPermitted?: boolean;
+            remediationReason?: string;
+        };
+        DismissDataQualityIssueRequest: {
+            remarks: string;
         };
         CreateProgramRequest: {
             programCode: string;
@@ -10027,11 +11887,11 @@ export interface components {
             /** Format: int32 */
             skippedCount?: number;
             /** Format: date-time */
-            startedAt?: string;
+            startedAt?: string | null;
             /** Format: date-time */
-            completedAt?: string;
+            completedAt?: string | null;
             /** Format: int64 */
-            durationMs?: number;
+            durationMs?: number | null;
         };
         CreateImportBatchRequest: {
             batchCode: string;
@@ -10097,6 +11957,23 @@ export interface components {
             /** Format: int64 */
             createdByUserId?: number;
         };
+        ReportUnemploymentRequest: {
+            /** Format: int64 */
+            unemploymentReasonId: number;
+            remarks?: string;
+        };
+        EmploymentExitRequest: {
+            /** Format: date */
+            separationDate: string;
+            /** @enum {string} */
+            exitType: "VOLUNTARY" | "CONTRACT_END" | "LAY_OFF";
+            /** Format: int64 */
+            exitReasonId?: number;
+            confirmUnemployment?: boolean;
+            /** Format: int64 */
+            unemploymentReasonId?: number;
+            remarks?: string;
+        };
         CreateEmploymentVerificationAttemptRequest: {
             /** Format: int64 */
             employmentVerificationRequestId?: number;
@@ -10155,20 +12032,21 @@ export interface components {
             /** Format: int64 */
             lifecycleStatusId?: number;
         };
-        DataQualityScanRequest: {
+        VerdictRequest: {
+            /** @enum {string} */
+            decision: "ATTEST" | "DISPUTE" | "REPORT_EXIT";
+            notes?: string;
             /** Format: int64 */
-            ruleId?: number;
-            ruleCode?: string;
-            targetEntityType?: string;
+            rejectionReasonId?: number;
+            /** Format: date */
+            exitDate?: string;
             /** Format: int64 */
-            entityId?: number;
+            exitReasonId?: number;
             /** Format: int64 */
-            categoryId?: number;
-            /** Format: int64 */
-            severityId?: number;
+            separationNatureId?: number;
         };
         /** @description Standard generic envelope for REST API responses */
-        ApiResponseListDataQualityRuleExecutionSummary: {
+        ApiResponseVerification: {
             /**
              * @description Whether the request completed successfully
              * @example true
@@ -10185,7 +12063,7 @@ export interface components {
              */
             message?: string;
             /** @description Payload data of type T */
-            data?: components["schemas"]["DataQualityRuleExecutionSummary"][];
+            data?: components["schemas"]["Verification"];
             /**
              * Format: date-time
              * @description UTC ISO-8601 timestamp of response generation
@@ -10203,24 +12081,141 @@ export interface components {
              */
             correlationId?: string;
         };
-        DataQualityRuleExecutionSummary: {
+        Verification: {
+            /** Format: int64 */
+            id?: number;
+            number?: string;
+            candidateName?: string;
+            employmentNumber?: string;
+            jobRole?: string | null;
+            /** Format: date */
+            startedOn?: string;
+            /** Format: date */
+            endedOn?: string | null;
+            startingPay?: number | null;
+            payFrequency?: string | null;
+            currency?: string;
+            /** Format: date-time */
+            requestedAt?: string;
+            /** Format: date-time */
+            dueAt?: string | null;
+            requestStatus?: string;
+            employmentVerificationStatus?: string;
+            verdict?: string | null;
+            canRespond?: boolean;
+            canReportExit?: boolean;
+            /** Format: int64 */
+            evidenceId?: number | null;
+            evidenceName?: string | null;
+        };
+        ConfirmPlacementRequest: {
+            /** Format: int64 */
+            jobRoleId: number;
+            /** Format: date */
+            joiningDate: string;
+            offeredPay: number;
+            /** Format: int64 */
+            payFrequencyId: number;
+        };
+        SkillTag: {
+            /** Format: int64 */
+            skillId: number;
+            /** Format: int64 */
+            levelId: number;
+        };
+        VacancyRequest: {
+            title: string;
+            description?: string;
+            /** Format: int64 */
+            jobRoleId: number;
+            /** Format: int64 */
+            engagementTypeId: number;
+            /** Format: int64 */
+            qualificationId: number;
+            /** Format: int64 */
+            districtId: number;
+            /** Format: int32 */
+            vacancies: number;
+            minimumPay: number;
+            maximumPay: number;
+            /** Format: int64 */
+            payFrequencyId: number;
+            /** Format: date */
+            closingDate?: string;
+            skills: components["schemas"]["SkillTag"][];
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseVacancy: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Vacancy"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        Vacancy: {
+            /** Format: int64 */
+            id?: number;
+            code?: string;
+            title?: string;
+            jobRole?: string;
+            qualification?: string;
+            district?: string;
+            /** Format: int32 */
+            vacancies?: number;
+            minimumPay?: number;
+            maximumPay?: number;
+            payFrequency?: string;
+            currency?: string;
+            status?: string;
+            /** Format: date */
+            closesOn?: string;
+            skills?: components["schemas"]["VacancySkill"][];
+        };
+        VacancySkill: {
+            /** Format: int64 */
+            id?: number;
+            name?: string;
+            level?: string;
+        };
+        DataQualityScanRequest: {
             /** Format: int64 */
             ruleId?: number;
             ruleCode?: string;
             targetEntityType?: string;
             /** Format: int64 */
-            evaluatedRecordCount?: number;
+            entityId?: number;
             /** Format: int64 */
-            violationCount?: number;
+            categoryId?: number;
             /** Format: int64 */
-            newIssuesCreated?: number;
-            /** Format: int64 */
-            deduplicatedIssuesSkipped?: number;
-            /** Format: date-time */
-            executedAt?: string;
-            /** Format: int64 */
-            executionDurationMs?: number;
-            status?: string;
+            severityId?: number;
         };
         CreateDataQualityRuleRequest: {
             ruleCode: string;
@@ -10257,19 +12252,8 @@ export interface components {
         StartInvestigationRequest: {
             remarks?: string;
         };
-        ResolveDataQualityIssueRequest: {
-            /** Format: int64 */
-            readonly resolvedByUserId?: number;
-            resolutionNotes: string;
-            /** Format: date-time */
-            readonly resolvedAt?: string;
-            isDismissed?: boolean;
-        };
         ReopenDataQualityIssueRequest: {
             reopeningReason: string;
-        };
-        DismissDataQualityIssueRequest: {
-            remarks: string;
         };
         AssignDataQualityIssueRequest: {
             /** Format: int64 */
@@ -10464,6 +12448,99 @@ export interface components {
             bodyHtml?: string;
         };
         /** @description Standard generic envelope for REST API responses */
+        ApiResponseLogRow: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["LogRow"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        LogRow: {
+            /** Format: int64 */
+            id?: number;
+            templateCode?: string;
+            purpose?: string;
+            channel?: string;
+            status?: string;
+            recipientMasked?: string;
+            optedOut?: boolean;
+            demoReceipt?: boolean;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            sentAt?: string;
+            /** Format: date-time */
+            deliveredAt?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseConsentCheck: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["ConsentCheck"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        ConsentCheck: {
+            status?: string;
+            simulated?: boolean;
+        };
+        /** @description Standard generic envelope for REST API responses */
         ApiResponseDispatchJobDto: {
             /**
              * @description Whether the request completed successfully
@@ -10617,13 +12694,117 @@ export interface components {
             /** Format: int64 */
             jobId?: number;
         };
-        /** @description Refresh token renewal payload */
-        RefreshTokenRequest: {
+        RemediationRequest: {
+            /** Format: int64 */
+            batchId: number;
+        };
+        RegisterTrainingProviderRequest: {
+            username: string;
+            /** Format: email */
+            email: string;
+            password: string;
+            providerName: string;
+            registrationNumber: string;
+            /** Format: int64 */
+            organizationTypeId?: number;
+            contactPersonName: string;
+            /** Format: email */
+            contactEmail?: string;
+            contactPhone?: string;
+            /** Format: int64 */
+            stateId: number;
+            /** Format: int64 */
+            districtId: number;
+            addressLine1?: string;
+            addressLine2?: string;
+            pincode: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseOnboardingApplicationResponse: {
             /**
-             * @description Cryptographically signed JWT refresh token
-             * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+             * @description Whether the request completed successfully
+             * @example true
              */
-            refreshToken: string;
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["OnboardingApplicationResponse"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        OnboardingApplicationResponse: {
+            /** Format: int64 */
+            applicationId?: number;
+            applicationNumber?: string;
+            applicantType?: string;
+            /** Format: int64 */
+            userId?: number;
+            username?: string;
+            entityType?: string;
+            /** Format: int64 */
+            entityId?: number;
+            organizationName?: string;
+            contactPerson?: string;
+            contactEmail?: string;
+            contactPhone?: string;
+            status?: string;
+            rejectionReason?: string;
+            /** Format: int64 */
+            reviewedByUserId?: number;
+            /** Format: date-time */
+            reviewedAt?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            message?: string;
+        };
+        RegisterTraineeRequest: {
+            username: string;
+            /** Format: email */
+            email: string;
+            password: string;
+            firstName: string;
+            middleName?: string;
+            lastName?: string;
+            /** Format: date */
+            dateOfBirth?: string;
+            /** Format: int64 */
+            genderId: number;
+            phone?: string;
+            /** Format: int64 */
+            stateId: number;
+            /** Format: int64 */
+            districtId: number;
+            addressLine1?: string;
+            addressLine2?: string;
+            pincode: string;
+            /** Format: int64 */
+            educationLevelId?: number;
+            /** Format: int64 */
+            currentEmploymentStatusId?: number;
+            dataProcessingConsent: boolean;
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseAuthResponse: {
@@ -10680,8 +12861,8 @@ export interface components {
             tokenType?: string;
             /**
              * Format: int64
-             * @description Access token lifespan in milliseconds
-             * @example 900000
+             * @description Access token lifespan in seconds
+             * @example 900
              */
             expiresIn?: number;
             /**
@@ -10702,6 +12883,42 @@ export interface components {
              *     ]
              */
             authorities?: string[];
+        };
+        RegisterEmployerRequest: {
+            username: string;
+            /** Format: email */
+            email: string;
+            password: string;
+            employerName: string;
+            registrationNumber?: string;
+            gstin?: string;
+            /** Format: int64 */
+            organizationTypeId?: number;
+            /** Format: int64 */
+            industryId?: number;
+            /** Format: int64 */
+            sectorId?: number;
+            /** Format: int64 */
+            companySizeId?: number;
+            contactPersonName: string;
+            /** Format: email */
+            contactEmail?: string;
+            contactPhone?: string;
+            /** Format: int64 */
+            stateId: number;
+            /** Format: int64 */
+            districtId: number;
+            addressLine1?: string;
+            addressLine2?: string;
+            pincode?: string;
+        };
+        /** @description Refresh token renewal payload */
+        RefreshTokenRequest: {
+            /**
+             * @description Cryptographically signed JWT refresh token
+             * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+             */
+            refreshToken: string;
         };
         /** @description User authentication credentials payload */
         LoginRequest: {
@@ -10783,7 +13000,14 @@ export interface components {
             changeSummary?: string;
             /** Format: date-time */
             createdAt?: string;
+            stateChange?: components["schemas"]["AuditStateChange"];
         };
+        AuditStateChange: {
+            before?: components["schemas"]["JsonNode"];
+            after?: components["schemas"]["JsonNode"];
+            redactedFields?: string[];
+        };
+        JsonNode: unknown;
         CreateAttendanceRecordRequest: {
             /** Format: int64 */
             enrollmentId?: number;
@@ -10805,6 +13029,115 @@ export interface components {
             markedByUserId?: number;
             remarks?: string;
         };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseSaveAssessmentScoresResponse: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["SaveAssessmentScoresResponse"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        AssessorCandidateRosterItemResponse: {
+            /** Format: int64 */
+            traineeId?: number;
+            registrationNumber?: string;
+            fullName?: string;
+            gender?: string | null;
+            email?: string | null;
+            phone?: string | null;
+            /** Format: int64 */
+            enrollmentId?: number;
+            enrollmentNumber?: string;
+            enrollmentStatusCode?: string;
+            /** Format: int64 */
+            traineeAssessmentId?: number | null;
+            /** Format: int32 */
+            attemptNumber?: number | null;
+            appearedFlag?: boolean;
+            /** Format: date */
+            assessmentDate?: string | null;
+            /** Format: int64 */
+            assessmentResultId?: number | null;
+            theoryScore?: number | null;
+            practicalScore?: number | null;
+            vivaScore?: number | null;
+            totalScore?: number | null;
+            scorePercentage?: number | null;
+            /** Format: int64 */
+            assessmentOutcomeId?: number | null;
+            assessmentOutcomeCode?: string | null;
+            assessmentOutcomeName?: string | null;
+            isPassFlag?: boolean | null;
+            isFinalized?: boolean;
+            remarks?: string | null;
+            /** Format: int64 */
+            certificateId?: number | null;
+            certificateNumber?: string | null;
+            certificateStatusCode?: string | null;
+            /** Format: date-time */
+            resultDeclaredAt?: string | null;
+        };
+        SaveAssessmentScoresResponse: {
+            /** Format: int64 */
+            assessmentId?: number;
+            isFinalized?: boolean;
+            /** Format: int32 */
+            totalProcessed?: number;
+            /** Format: int32 */
+            passedCount?: number;
+            /** Format: int32 */
+            failedCount?: number;
+            /** Format: int32 */
+            absentCount?: number;
+            /** Format: int32 */
+            certificatesIssued?: number;
+            results?: components["schemas"]["AssessorCandidateRosterItemResponse"][];
+        };
+        CandidateScoreInput: {
+            /** Format: int64 */
+            traineeId: number;
+            /** Format: int64 */
+            enrollmentId: number;
+            /** Format: int64 */
+            traineeAssessmentId?: number;
+            appeared?: boolean;
+            theoryScore?: number;
+            practicalScore?: number;
+            vivaScore?: number;
+            remarks?: string;
+        };
+        SaveAssessmentScoresRequest: {
+            candidates: components["schemas"]["CandidateScoreInput"][];
+            draft?: boolean;
+        };
         CreateAssessmentRequest: {
             assessmentCode: string;
             assessmentName?: string;
@@ -10825,6 +13158,41 @@ export interface components {
             evaluatorName?: string;
             /** Format: int64 */
             lifecycleStatusId?: number;
+        };
+        ProvisionSuperAdminRequest: {
+            username: string;
+            /** Format: email */
+            email: string;
+            password: string;
+            fullName?: string;
+        };
+        ProvisionGovernmentAdminRequest: {
+            username: string;
+            /** Format: email */
+            email: string;
+            password: string;
+            fullName?: string;
+            roleCode: string;
+            /** Format: int64 */
+            organizationId?: number;
+            /** Format: int64 */
+            stateId?: number;
+            /** Format: int64 */
+            districtId?: number;
+        };
+        ProvisionAssessorRequest: {
+            username: string;
+            /** Format: email */
+            email: string;
+            password: string;
+            fullName?: string;
+            phone?: string;
+            /** Format: int64 */
+            organizationId?: number;
+            /** Format: int64 */
+            stateId?: number;
+            /** Format: int64 */
+            districtId?: number;
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseEmploymentVerificationSummaryResponse: {
@@ -11081,6 +13449,114 @@ export interface components {
             unemploymentEvents?: components["schemas"]["TraineeUnemploymentEventResponse"][];
         };
         /** @description Standard generic envelope for REST API responses */
+        ApiResponseListBooking: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Booking"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseListSharedVenue: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["SharedVenue"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseListBusySlot: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["BusySlot"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
         ApiResponseObject: {
             /**
              * @description Whether the request completed successfully
@@ -11192,6 +13668,252 @@ export interface components {
         PagedResponseTrainingEnrollmentResponse: {
             /** @description List of records in the current page */
             content?: components["schemas"]["TrainingEnrollmentResponse"][];
+            /**
+             * Format: int32
+             * @description Current page index (0-based)
+             * @example 0
+             */
+            page?: number;
+            /**
+             * Format: int32
+             * @description Number of records per page
+             * @example 20
+             */
+            size?: number;
+            /**
+             * Format: int64
+             * @description Total number of records matching criteria
+             * @example 100
+             */
+            totalElements?: number;
+            /**
+             * Format: int32
+             * @description Total number of available pages
+             * @example 5
+             */
+            totalPages?: number;
+            /**
+             * @description True if this is the first page
+             * @example true
+             */
+            first?: boolean;
+            /**
+             * @description True if this is the last page
+             * @example false
+             */
+            last?: boolean;
+            /**
+             * @description True if there is a next page
+             * @example true
+             */
+            hasNext?: boolean;
+            /**
+             * @description True if there is a previous page
+             * @example false
+             */
+            hasPrevious?: boolean;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseListLifecycleStatus: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["LifecycleStatus"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        LifecycleStatus: {
+            /** Format: int64 */
+            id?: number;
+            code?: string;
+            name?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseOverview: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Overview"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        Assignment: {
+            /** Format: int64 */
+            taskId?: number;
+            name?: string;
+            /** Format: date */
+            closesOn?: string;
+        };
+        Overview: {
+            followupConsentGranted?: boolean;
+            assignments?: components["schemas"]["Assignment"][];
+            recentSubmissions?: components["schemas"]["Submission"][];
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseQuestionnaire: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Questionnaire"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        Option: {
+            /** Format: int64 */
+            id?: number;
+            label?: string;
+        };
+        Question: {
+            /** Format: int64 */
+            id?: number;
+            text?: string;
+            type?: string;
+            required?: boolean;
+            options?: components["schemas"]["Option"][];
+        };
+        Questionnaire: {
+            assignment?: components["schemas"]["Assignment"];
+            /** Format: int64 */
+            versionId?: number;
+            questions?: components["schemas"]["Question"][];
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponsePagedResponseEmploymentPeriod: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["PagedResponseEmploymentPeriod"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        EmploymentPeriod: {
+            /** Format: int64 */
+            id?: number;
+            employer?: string;
+            jobRole?: string;
+            engagementType?: string;
+            /** Format: date */
+            startDate?: string;
+            /** Format: date */
+            endDate?: string;
+            status?: string;
+            verificationStatus?: string;
+            startingPay?: number;
+            currency?: string;
+            payFrequency?: string;
+        };
+        /** @description Standard pagination wrapper enveloped inside ApiResponse */
+        PagedResponseEmploymentPeriod: {
+            /** @description List of records in the current page */
+            content?: components["schemas"]["EmploymentPeriod"][];
             /**
              * Format: int32
              * @description Current page index (0-based)
@@ -11393,6 +14115,59 @@ export interface components {
              * @example false
              */
             hasPrevious?: boolean;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseThrottleStatus: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["ThrottleStatus"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        ThrottleCounters: {
+            /** Format: int64 */
+            duplicateEvents?: number;
+            /** Format: int64 */
+            rateLimitAlerts?: number;
+            /** Format: int64 */
+            dataQualityAlerts?: number;
+        };
+        ThrottleStatus: {
+            /** Format: int32 */
+            eventDedupWindowSeconds?: number;
+            /** Format: int32 */
+            rateLimitCooldownSeconds?: number;
+            /** Format: int32 */
+            dataQualityCooldownSeconds?: number;
+            suppressedSinceStartup?: components["schemas"]["ThrottleCounters"];
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponsePagedResponseSurveyResponseResponse: {
@@ -11766,6 +14541,242 @@ export interface components {
              * @example c8f9b2a1-0000-4000-a000-000000000001
              */
             correlationId?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponsePagedResponseProviderDataQualityIssueResponse: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["PagedResponseProviderDataQualityIssueResponse"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        /** @description Standard pagination wrapper enveloped inside ApiResponse */
+        PagedResponseProviderDataQualityIssueResponse: {
+            /** @description List of records in the current page */
+            content?: components["schemas"]["ProviderDataQualityIssueResponse"][];
+            /**
+             * Format: int32
+             * @description Current page index (0-based)
+             * @example 0
+             */
+            page?: number;
+            /**
+             * Format: int32
+             * @description Number of records per page
+             * @example 20
+             */
+            size?: number;
+            /**
+             * Format: int64
+             * @description Total number of records matching criteria
+             * @example 100
+             */
+            totalElements?: number;
+            /**
+             * Format: int32
+             * @description Total number of available pages
+             * @example 5
+             */
+            totalPages?: number;
+            /**
+             * @description True if this is the first page
+             * @example true
+             */
+            first?: boolean;
+            /**
+             * @description True if this is the last page
+             * @example false
+             */
+            last?: boolean;
+            /**
+             * @description True if there is a next page
+             * @example true
+             */
+            hasNext?: boolean;
+            /**
+             * @description True if there is a previous page
+             * @example false
+             */
+            hasPrevious?: boolean;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseListDataQualityIssueEventResponse: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["DataQualityIssueEventResponse"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseListBatchProgramOption: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["BatchProgramOption"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        BatchProgramOption: {
+            /** Format: int64 */
+            id?: number;
+            code?: string;
+            name?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseCenterScorecardResponse: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["CenterScorecardResponse"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        CenterScorecardResponse: {
+            /** Format: int64 */
+            centerId?: number;
+            centerCode?: string;
+            centerName?: string;
+            /** Format: int64 */
+            providerId?: number;
+            cleanlinessIndexPct?: number;
+            cleanlinessFormula?: string;
+            cleanlinessScope?: string;
+            /** Format: int64 */
+            eligiblePopulation?: number;
+            /** Format: int64 */
+            distinctAffectedEntities?: number;
+            /** Format: int64 */
+            cleanEntitiesEstimate?: number;
+            /** Format: int64 */
+            totalActiveIssues?: number;
+            activeIssuesBySeverity?: {
+                [key: string]: number;
+            };
+            activeIssuesByCategory?: {
+                [key: string]: number;
+            };
+            /** Format: int64 */
+            totalEnrollments?: number;
+            /** Format: int64 */
+            completedEnrollments?: number;
+            /** Format: int64 */
+            droppedEnrollments?: number;
+            /** Format: int64 */
+            inProgressEnrollments?: number;
+            completionRatePct?: number;
+            dropoutRatePct?: number;
+            /** Format: date-time */
+            evaluatedAt?: string;
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseListProgramTrainingProviderResponse: {
@@ -12306,6 +15317,7 @@ export interface components {
              */
             hasPrevious?: boolean;
         };
+        StreamingResponseBody: unknown;
         /** @description Standard generic envelope for REST API responses */
         ApiResponseListImportBatchResponse: {
             /**
@@ -12462,6 +15474,82 @@ export interface components {
              * @example c8f9b2a1-0000-4000-a000-000000000001
              */
             correlationId?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseEmploymentRetention: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["EmploymentRetention"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        Employment: {
+            /** Format: int64 */
+            id?: number;
+            number?: string;
+            employer?: string;
+            role?: string;
+            /** Format: date */
+            startDate?: string;
+            /** Format: date */
+            endDate?: string;
+            status?: string;
+            verificationStatus?: string;
+            canRecordExit?: boolean;
+        };
+        EmploymentRetention: {
+            employment?: components["schemas"]["Employment"];
+            /** Format: date */
+            asOf?: string;
+            milestones?: components["schemas"]["RetentionMilestone"][];
+            wages?: components["schemas"]["Wage"][];
+        };
+        RetentionMilestone: {
+            /** Format: int32 */
+            months?: number;
+            /** Format: date */
+            dueOn?: string;
+            /** @enum {string} */
+            status?: "NOT_YET_DUE" | "RETAINED" | "ENDED_BEFORE_MILESTONE";
+        };
+        Wage: {
+            /** Format: date */
+            date?: string;
+            amount?: number;
+            currency?: string;
+            frequency?: string;
+            verificationStatus?: string;
+            /** Format: int32 */
+            observationMonth?: number;
+            startingWage?: boolean;
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseListEmploymentVerificationResponse: {
@@ -12912,6 +16000,374 @@ export interface components {
             hasPrevious?: boolean;
         };
         /** @description Standard generic envelope for REST API responses */
+        ApiResponsePagedResponseVerification: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["PagedResponseVerification"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        /** @description Standard pagination wrapper enveloped inside ApiResponse */
+        PagedResponseVerification: {
+            /** @description List of records in the current page */
+            content?: components["schemas"]["Verification"][];
+            /**
+             * Format: int32
+             * @description Current page index (0-based)
+             * @example 0
+             */
+            page?: number;
+            /**
+             * Format: int32
+             * @description Number of records per page
+             * @example 20
+             */
+            size?: number;
+            /**
+             * Format: int64
+             * @description Total number of records matching criteria
+             * @example 100
+             */
+            totalElements?: number;
+            /**
+             * Format: int32
+             * @description Total number of available pages
+             * @example 5
+             */
+            totalPages?: number;
+            /**
+             * @description True if this is the first page
+             * @example true
+             */
+            first?: boolean;
+            /**
+             * @description True if this is the last page
+             * @example false
+             */
+            last?: boolean;
+            /**
+             * @description True if there is a next page
+             * @example true
+             */
+            hasNext?: boolean;
+            /**
+             * @description True if there is a previous page
+             * @example false
+             */
+            hasPrevious?: boolean;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseListReference: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Reference"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        Reference: {
+            /** Format: int64 */
+            id?: number;
+            label?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseReferences: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["References"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        References: {
+            employerName?: string;
+            jobRoles?: components["schemas"]["Reference"][];
+            qualifications?: components["schemas"]["Reference"][];
+            districts?: components["schemas"]["Reference"][];
+            engagementTypes?: components["schemas"]["Reference"][];
+            payFrequencies?: components["schemas"]["Reference"][];
+            skillLevels?: components["schemas"]["Reference"][];
+            rejectionReasons?: components["schemas"]["Reference"][];
+            exitReasons?: components["schemas"]["Reference"][];
+            separationNatures?: components["schemas"]["Reference"][];
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponsePagedResponsePlacement: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["PagedResponsePlacement"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        /** @description Standard pagination wrapper enveloped inside ApiResponse */
+        PagedResponsePlacement: {
+            /** @description List of records in the current page */
+            content?: components["schemas"]["Placement"][];
+            /**
+             * Format: int32
+             * @description Current page index (0-based)
+             * @example 0
+             */
+            page?: number;
+            /**
+             * Format: int32
+             * @description Number of records per page
+             * @example 20
+             */
+            size?: number;
+            /**
+             * Format: int64
+             * @description Total number of records matching criteria
+             * @example 100
+             */
+            totalElements?: number;
+            /**
+             * Format: int32
+             * @description Total number of available pages
+             * @example 5
+             */
+            totalPages?: number;
+            /**
+             * @description True if this is the first page
+             * @example true
+             */
+            first?: boolean;
+            /**
+             * @description True if this is the last page
+             * @example false
+             */
+            last?: boolean;
+            /**
+             * @description True if there is a next page
+             * @example true
+             */
+            hasNext?: boolean;
+            /**
+             * @description True if there is a previous page
+             * @example false
+             */
+            hasPrevious?: boolean;
+        };
+        Placement: {
+            /** Format: int64 */
+            id?: number;
+            number?: string;
+            candidateName?: string;
+            course?: string;
+            /** Format: int64 */
+            jobRoleId?: number;
+            jobRole?: string;
+            placementStatus?: string;
+            joiningStatus?: string;
+            /** Format: date */
+            offeredOn?: string;
+            /** Format: date */
+            joinedOn?: string;
+            offeredPay?: number;
+            /** Format: int64 */
+            payFrequencyId?: number;
+            payFrequency?: string;
+            currency?: string;
+            /** Format: int64 */
+            employmentId?: number;
+            canConfirm?: boolean;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponsePagedResponseVacancy: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["PagedResponseVacancy"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        /** @description Standard pagination wrapper enveloped inside ApiResponse */
+        PagedResponseVacancy: {
+            /** @description List of records in the current page */
+            content?: components["schemas"]["Vacancy"][];
+            /**
+             * Format: int32
+             * @description Current page index (0-based)
+             * @example 0
+             */
+            page?: number;
+            /**
+             * Format: int32
+             * @description Number of records per page
+             * @example 20
+             */
+            size?: number;
+            /**
+             * Format: int64
+             * @description Total number of records matching criteria
+             * @example 100
+             */
+            totalElements?: number;
+            /**
+             * Format: int32
+             * @description Total number of available pages
+             * @example 5
+             */
+            totalPages?: number;
+            /**
+             * @description True if this is the first page
+             * @example true
+             */
+            first?: boolean;
+            /**
+             * @description True if this is the last page
+             * @example false
+             */
+            last?: boolean;
+            /**
+             * @description True if there is a next page
+             * @example true
+             */
+            hasNext?: boolean;
+            /**
+             * @description True if there is a previous page
+             * @example false
+             */
+            hasPrevious?: boolean;
+        };
+        /** @description Standard generic envelope for REST API responses */
         ApiResponseListDataQualityRuleResponse: {
             /**
              * @description Whether the request completed successfully
@@ -12966,42 +16422,6 @@ export interface components {
             message?: string;
             /** @description Payload data of type T */
             data?: components["schemas"]["DataQualityIssueResponse"][];
-            /**
-             * Format: date-time
-             * @description UTC ISO-8601 timestamp of response generation
-             * @example 2026-11-19T18:00:00Z
-             */
-            timestamp?: string;
-            /**
-             * @description Request URI path
-             * @example /api/v1/trainees
-             */
-            path?: string;
-            /**
-             * @description Unique correlation identifier for request tracing across services
-             * @example c8f9b2a1-0000-4000-a000-000000000001
-             */
-            correlationId?: string;
-        };
-        /** @description Standard generic envelope for REST API responses */
-        ApiResponseListDataQualityIssueEventResponse: {
-            /**
-             * @description Whether the request completed successfully
-             * @example true
-             */
-            success?: boolean;
-            /**
-             * @description Machine-readable status or error code
-             * @example SUCCESS
-             */
-            code?: string;
-            /**
-             * @description Human-readable result or status message
-             * @example Operation completed successfully
-             */
-            message?: string;
-            /** @description Payload data of type T */
-            data?: components["schemas"]["DataQualityIssueEventResponse"][];
             /**
              * Format: date-time
              * @description UTC ISO-8601 timestamp of response generation
@@ -13334,6 +16754,190 @@ export interface components {
             rank?: number;
         };
         /** @description Standard generic envelope for REST API responses */
+        ApiResponseWageDistributions: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["WageDistributions"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        Bucket: {
+            label?: string;
+            /** Format: int64 */
+            count?: number;
+        };
+        WageDistributions: {
+            currentWages?: components["schemas"]["Bucket"][];
+            beforeTraining?: components["schemas"]["Bucket"][];
+            afterTraining?: components["schemas"]["Bucket"][];
+            pairedChange?: components["schemas"]["Bucket"][];
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseListIncidentDay: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["IncidentDay"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        IncidentDay: {
+            /** Format: date */
+            day?: string;
+            /** Format: int64 */
+            errors?: number;
+            /** Format: int64 */
+            critical?: number;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseExitAreas: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["ExitAreas"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        ExitArea: {
+            key?: string;
+            name?: string;
+            /** Format: int64 */
+            exits?: number;
+        };
+        ExitAreas: {
+            sectors?: components["schemas"]["ExitArea"][];
+            districts?: components["schemas"]["ExitArea"][];
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseListDropoutSignal: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["DropoutSignal"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        DropoutSignal: {
+            key?: string;
+            district?: string;
+            provider?: string;
+            /** Format: int64 */
+            attendanceDips?: number;
+            /** Format: int64 */
+            assessmentLags?: number;
+            /** Format: int64 */
+            candidatesWithSignal?: number;
+        };
+        /** @description Standard generic envelope for REST API responses */
         ApiResponseSkillGapDashboardResponse: {
             /**
              * @description Whether the request completed successfully
@@ -13664,6 +17268,11 @@ export interface components {
              */
             correlationId?: string;
         };
+        Measure: {
+            value?: number | null;
+            /** @enum {string} */
+            availability?: "RELEASED" | "SUPPRESSED" | "NO_DATA" | "NOT_APPLICABLE";
+        };
         PipelineFunnelResponse: {
             /** Format: int64 */
             enrollmentCount?: number;
@@ -13679,6 +17288,11 @@ export interface components {
             certificationRatePct?: number;
             placementRatePct?: number;
             employmentRatePct?: number;
+            candidateStages?: components["schemas"]["Stage"][];
+        };
+        Stage: {
+            key?: string;
+            candidates?: components["schemas"]["Measure"];
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseExecutiveDashboardResponse: {
@@ -13718,38 +17332,164 @@ export interface components {
         };
         DashboardKpiStripResponse: {
             /** Format: int64 */
-            traineeCount?: number;
+            traineeCount?: number | null;
             /** Format: int64 */
-            enrollmentCount?: number;
+            enrollmentCount?: number | null;
             /** Format: int64 */
-            enrolledTraineeCount?: number;
+            enrolledTraineeCount?: number | null;
             /** Format: int64 */
-            completedEnrollmentCount?: number;
+            completedEnrollmentCount?: number | null;
             /** Format: int64 */
-            certifiedEnrollmentCount?: number;
+            certifiedEnrollmentCount?: number | null;
             /** Format: int64 */
-            placementCount?: number;
+            placementCount?: number | null;
             /** Format: int64 */
-            joinedPlacementCount?: number;
+            joinedPlacementCount?: number | null;
             /** Format: int64 */
-            employmentSpellCount?: number;
+            employmentSpellCount?: number | null;
             /** Format: int64 */
-            employedTraineeCount?: number;
+            employedTraineeCount?: number | null;
             /** Format: int64 */
-            currentEmploymentSpellCount?: number;
+            currentEmploymentSpellCount?: number | null;
             /** Format: int64 */
-            currentSelfEmploymentCount?: number;
+            currentSelfEmploymentCount?: number | null;
             /** Format: int64 */
-            currentApprenticeshipCount?: number;
-            completionRatePct?: number;
-            certificationRatePct?: number;
-            placementRatePct?: number;
-            employmentRatePct?: number;
+            currentApprenticeshipCount?: number | null;
+            completionRatePct?: number | null;
+            certificationRatePct?: number | null;
+            placementRatePct?: number | null;
+            employmentRatePct?: number | null;
+            executiveKpis?: components["schemas"]["KpiComparison"];
         };
         ExecutiveDashboardResponse: {
             kpiStrip?: components["schemas"]["DashboardKpiStripResponse"];
             pipelineFunnel?: components["schemas"]["PipelineFunnelResponse"];
             schemeProgramMatrix?: components["schemas"]["LeaderboardResponseSchemeProgramPerformanceResponse"];
+        };
+        Kpi: {
+            key?: string;
+            current?: components["schemas"]["Measure"];
+            changePct?: number | null;
+        };
+        KpiComparison: {
+            kpis?: components["schemas"]["Kpi"][];
+            previousFinancialYear?: string | null;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseListProviderQuality: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["ProviderQuality"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        ProviderQuality: {
+            /** Format: int64 */
+            providerId?: number;
+            scorePct?: components["schemas"]["Measure"];
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseFilterOptions: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["FilterOptions"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        DistrictOption: {
+            /** Format: int64 */
+            id?: number;
+            /** Format: int64 */
+            stateId?: number;
+            name?: string;
+        };
+        FilterOptions: {
+            financialYears?: string[];
+            schemes?: components["schemas"]["SchemeOption"][];
+            sectors?: components["schemas"]["Identifier"][];
+            states?: components["schemas"]["StateOption"][];
+            districts?: components["schemas"]["DistrictOption"][];
+            genders?: components["schemas"]["GenderOption"][];
+            socialCategorySupported?: boolean;
+            /** Format: int64 */
+            suppressionThreshold?: number;
+        };
+        GenderOption: {
+            code?: string;
+            name?: string;
+        };
+        Identifier: {
+            /** Format: int64 */
+            id?: number;
+            name?: string;
+        };
+        SchemeOption: {
+            /** Format: int64 */
+            id?: number;
+            name?: string;
+            administration?: string;
+        };
+        StateOption: {
+            /** Format: int64 */
+            id?: number;
+            code?: string;
+            name?: string;
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseDashboardKpiStripResponse: {
@@ -14469,6 +18209,203 @@ export interface components {
             correlationId?: string;
         };
         /** @description Standard generic envelope for REST API responses */
+        ApiResponsePagedResponseLogRow: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["PagedResponseLogRow"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        /** @description Standard pagination wrapper enveloped inside ApiResponse */
+        PagedResponseLogRow: {
+            /** @description List of records in the current page */
+            content?: components["schemas"]["LogRow"][];
+            /**
+             * Format: int32
+             * @description Current page index (0-based)
+             * @example 0
+             */
+            page?: number;
+            /**
+             * Format: int32
+             * @description Number of records per page
+             * @example 20
+             */
+            size?: number;
+            /**
+             * Format: int64
+             * @description Total number of records matching criteria
+             * @example 100
+             */
+            totalElements?: number;
+            /**
+             * Format: int32
+             * @description Total number of available pages
+             * @example 5
+             */
+            totalPages?: number;
+            /**
+             * @description True if this is the first page
+             * @example true
+             */
+            first?: boolean;
+            /**
+             * @description True if this is the last page
+             * @example false
+             */
+            last?: boolean;
+            /**
+             * @description True if there is a next page
+             * @example true
+             */
+            hasNext?: boolean;
+            /**
+             * @description True if there is a previous page
+             * @example false
+             */
+            hasPrevious?: boolean;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseJobQueue: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["JobQueue"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        JobCount: {
+            status?: string;
+            /** Format: int64 */
+            count?: number;
+        };
+        JobQueue: {
+            counts?: components["schemas"]["JobCount"][];
+            jobs?: components["schemas"]["PagedResponseJobRow"];
+        };
+        JobRow: {
+            /** Format: int64 */
+            id?: number;
+            templateCode?: string;
+            channel?: string;
+            status?: string;
+            /** Format: int32 */
+            attemptCount?: number;
+            /** Format: int32 */
+            maxAttempts?: number;
+            deliveryMode?: string;
+            /** Format: date-time */
+            scheduledAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+            /** Format: int64 */
+            communicationLogId?: number;
+        };
+        /** @description Standard pagination wrapper enveloped inside ApiResponse */
+        PagedResponseJobRow: {
+            /** @description List of records in the current page */
+            content?: components["schemas"]["JobRow"][];
+            /**
+             * Format: int32
+             * @description Current page index (0-based)
+             * @example 0
+             */
+            page?: number;
+            /**
+             * Format: int32
+             * @description Number of records per page
+             * @example 20
+             */
+            size?: number;
+            /**
+             * Format: int64
+             * @description Total number of records matching criteria
+             * @example 100
+             */
+            totalElements?: number;
+            /**
+             * Format: int32
+             * @description Total number of available pages
+             * @example 5
+             */
+            totalPages?: number;
+            /**
+             * @description True if this is the first page
+             * @example true
+             */
+            first?: boolean;
+            /**
+             * @description True if this is the last page
+             * @example false
+             */
+            last?: boolean;
+            /**
+             * @description True if there is a next page
+             * @example true
+             */
+            hasNext?: boolean;
+            /**
+             * @description True if there is a previous page
+             * @example false
+             */
+            hasPrevious?: boolean;
+        };
+        /** @description Standard generic envelope for REST API responses */
         ApiResponseListDispatchAttemptDto: {
             /**
              * @description Whether the request completed successfully
@@ -14556,6 +18493,45 @@ export interface components {
              * @example c8f9b2a1-0000-4000-a000-000000000001
              */
             correlationId?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseCapabilities: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Capabilities"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        Capabilities: {
+            demoAvailable?: boolean;
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponsePagedResponseCommunicationLogResponse: {
@@ -14677,6 +18653,280 @@ export interface components {
              * @example c8f9b2a1-0000-4000-a000-000000000001
              */
             correlationId?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseListBatchOption: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["BatchOption"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        BatchOption: {
+            /** Format: int64 */
+            id?: number;
+            code?: string;
+            provider?: string;
+            center?: string;
+            /** Format: date */
+            startsOn?: string;
+            /** Format: date */
+            endsOn?: string;
+            /** Format: int64 */
+            availableSeats?: number;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseExitOptions: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["ExitOptions"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        ExitOptions: {
+            unemploymentReasons?: components["schemas"]["Reference"][];
+            exitReasons?: components["schemas"]["Reference"][];
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseListCandidate: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Candidate"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        Candidate: {
+            /** Format: int64 */
+            id?: number;
+            registrationNumber?: string;
+            name?: string;
+            statusCode?: string;
+            status?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseCandidateHistory: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["CandidateHistory"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        CandidateHistory: {
+            candidate?: components["schemas"]["Candidate"];
+            employments?: components["schemas"]["Employment"][];
+            exitEvents?: components["schemas"]["EmploymentExitEventResponse"][];
+            unemploymentEvents?: components["schemas"]["TraineeUnemploymentEventResponse"][];
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseApplicationStatusResponse: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["ApplicationStatusResponse"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        ApplicationStatusResponse: {
+            applicationNumber?: string;
+            applicantType?: string;
+            organizationName?: string;
+            contactEmail?: string;
+            status?: string;
+            rejectionReason?: string;
+            /** Format: date-time */
+            submittedAt?: string;
+            /** Format: date-time */
+            reviewedAt?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseRegistrationReferenceDataResponse: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["RegistrationReferenceDataResponse"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        ReferenceItem: {
+            /** Format: int64 */
+            id?: number;
+            code?: string;
+            name?: string;
+            /** Format: int64 */
+            parentId?: number;
+        };
+        RegistrationReferenceDataResponse: {
+            genders?: components["schemas"]["ReferenceItem"][];
+            states?: components["schemas"]["ReferenceItem"][];
+            districts?: components["schemas"]["ReferenceItem"][];
+            organizationTypes?: components["schemas"]["ReferenceItem"][];
+            employmentStatuses?: components["schemas"]["ReferenceItem"][];
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseAuthenticatedUserResponse: {
@@ -14862,6 +19112,45 @@ export interface components {
             hasPrevious?: boolean;
         };
         /** @description Standard generic envelope for REST API responses */
+        ApiResponseAuditSearchScope: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["AuditSearchScope"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        AuditSearchScope: {
+            nationwide?: boolean;
+        };
+        /** @description Standard generic envelope for REST API responses */
         ApiResponseAuditTrailTimelineResponse: {
             /**
              * @description Whether the request completed successfully
@@ -14952,6 +19241,169 @@ export interface components {
              * @example c8f9b2a1-0000-4000-a000-000000000001
              */
             correlationId?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseListAssessorAssessmentSummaryResponse: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["AssessorAssessmentSummaryResponse"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        AssessorAssessmentSummaryResponse: {
+            /** Format: int64 */
+            id?: number;
+            assessmentCode?: string;
+            assessmentName?: string;
+            /** Format: int64 */
+            assessmentTypeId?: number;
+            assessmentTypeCode?: string;
+            assessmentTypeName?: string;
+            /** Format: int64 */
+            courseId?: number;
+            courseCode?: string;
+            courseName?: string;
+            /** Format: int64 */
+            batchId?: number;
+            batchCode?: string;
+            /** Format: int64 */
+            centerId?: number;
+            centerCode?: string;
+            centerName?: string;
+            /** Format: int64 */
+            providerId?: number;
+            providerCode?: string;
+            providerName?: string;
+            /** Format: int64 */
+            programId?: number;
+            programCode?: string;
+            programName?: string;
+            /** Format: date */
+            assessmentDate?: string;
+            maximumScore?: number;
+            passScore?: number;
+            theoryMaxScore?: number;
+            practicalMaxScore?: number;
+            vivaMaxScore?: number;
+            /** Format: int64 */
+            lifecycleStatusId?: number;
+            lifecycleStatusCode?: string;
+            /** Format: int32 */
+            totalCandidates?: number;
+            /** Format: int32 */
+            scoredCandidates?: number;
+            /** Format: int32 */
+            passedCandidates?: number;
+            /** Format: int32 */
+            failedCandidates?: number;
+            /** Format: int64 */
+            evaluatorUserId?: number;
+            evaluatorName?: string;
+            isFinalized?: boolean;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseAssessorAssessmentSummaryResponse: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["AssessorAssessmentSummaryResponse"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseAssessorRosterResponse: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["AssessorRosterResponse"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        AssessorRosterResponse: {
+            assessment?: components["schemas"]["AssessorAssessmentSummaryResponse"];
+            candidates?: components["schemas"]["AssessorCandidateRosterItemResponse"][];
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseListAssessmentResponse: {
@@ -17705,7 +22157,82 @@ export interface components {
              */
             correlationId?: string;
         };
-        StreamingResponseBody: unknown;
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseListColumn: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Column"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        Column: {
+            key?: string;
+            label?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseListOnboardingApplicationResponse: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["OnboardingApplicationResponse"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseVoid: {
             /**
@@ -18035,103 +22562,6 @@ export interface operations {
             };
         };
     };
-    getById_4: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Training batch found */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseTrainingBatchResponse"];
-                };
-            };
-            /** @description Training batch not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseTrainingBatchResponse"];
-                };
-            };
-        };
-    };
-    updateBatch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateTrainingBatchRequest"];
-            };
-        };
-        responses: {
-            /** @description Training batch updated successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseTrainingBatchResponse"];
-                };
-            };
-            /** @description Training batch not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseTrainingBatchResponse"];
-                };
-            };
-        };
-    };
-    deleteBatch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Training batch deleted successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
-                };
-            };
-            /** @description Training batch not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
-                };
-            };
-        };
-    };
     updateBatchStatus: {
         parameters: {
             query?: never;
@@ -18167,7 +22597,7 @@ export interface operations {
             };
         };
     };
-    getById_5: {
+    getById_4: {
         parameters: {
             query?: never;
             header?: never;
@@ -18277,7 +22707,7 @@ export interface operations {
             };
         };
     };
-    getById_6: {
+    getById_5: {
         parameters: {
             query?: never;
             header?: never;
@@ -18347,7 +22777,7 @@ export interface operations {
             };
         };
     };
-    getById_7: {
+    getById_6: {
         parameters: {
             query?: never;
             header?: never;
@@ -18417,7 +22847,7 @@ export interface operations {
             };
         };
     };
-    getById_8: {
+    getById_7: {
         parameters: {
             query?: never;
             header?: never;
@@ -18487,7 +22917,7 @@ export interface operations {
             };
         };
     };
-    getById_9: {
+    getById_8: {
         parameters: {
             query?: never;
             header?: never;
@@ -18557,7 +22987,7 @@ export interface operations {
             };
         };
     };
-    getById_10: {
+    getById_9: {
         parameters: {
             query?: never;
             header?: never;
@@ -18627,7 +23057,7 @@ export interface operations {
             };
         };
     };
-    getById_11: {
+    getById_10: {
         parameters: {
             query?: never;
             header?: never;
@@ -18697,7 +23127,7 @@ export interface operations {
             };
         };
     };
-    getById_12: {
+    getById_11: {
         parameters: {
             query?: never;
             header?: never;
@@ -18767,7 +23197,7 @@ export interface operations {
             };
         };
     };
-    getById_13: {
+    getById_12: {
         parameters: {
             query?: never;
             header?: never;
@@ -18837,7 +23267,7 @@ export interface operations {
             };
         };
     };
-    getById_14: {
+    getById_13: {
         parameters: {
             query?: never;
             header?: never;
@@ -18907,7 +23337,7 @@ export interface operations {
             };
         };
     };
-    getById_15: {
+    getById_14: {
         parameters: {
             query?: never;
             header?: never;
@@ -18977,7 +23407,7 @@ export interface operations {
             };
         };
     };
-    getById_16: {
+    getById_15: {
         parameters: {
             query?: never;
             header?: never;
@@ -19047,7 +23477,7 @@ export interface operations {
             };
         };
     };
-    getById_17: {
+    getById_16: {
         parameters: {
             query?: never;
             header?: never;
@@ -19122,7 +23552,7 @@ export interface operations {
             };
         };
     };
-    getById_18: {
+    getById_17: {
         parameters: {
             query?: never;
             header?: never;
@@ -19192,7 +23622,7 @@ export interface operations {
             };
         };
     };
-    getById_19: {
+    getById_18: {
         parameters: {
             query?: never;
             header?: never;
@@ -19262,7 +23692,7 @@ export interface operations {
             };
         };
     };
-    getById_20: {
+    getById_19: {
         parameters: {
             query?: never;
             header?: never;
@@ -19332,7 +23762,7 @@ export interface operations {
             };
         };
     };
-    getById_21: {
+    getById_20: {
         parameters: {
             query?: never;
             header?: never;
@@ -19402,7 +23832,7 @@ export interface operations {
             };
         };
     };
-    getById_22: {
+    getById_21: {
         parameters: {
             query?: never;
             header?: never;
@@ -19472,7 +23902,7 @@ export interface operations {
             };
         };
     };
-    getById_23: {
+    getById_22: {
         parameters: {
             query?: never;
             header?: never;
@@ -19542,7 +23972,7 @@ export interface operations {
             };
         };
     };
-    getById_24: {
+    getById_23: {
         parameters: {
             query?: never;
             header?: never;
@@ -19612,7 +24042,7 @@ export interface operations {
             };
         };
     };
-    getById_25: {
+    getById_24: {
         parameters: {
             query?: never;
             header?: never;
@@ -19682,7 +24112,7 @@ export interface operations {
             };
         };
     };
-    getById_26: {
+    getById_25: {
         parameters: {
             query?: never;
             header?: never;
@@ -19752,7 +24182,7 @@ export interface operations {
             };
         };
     };
-    getById_27: {
+    getById_26: {
         parameters: {
             query?: never;
             header?: never;
@@ -19822,7 +24252,7 @@ export interface operations {
             };
         };
     };
-    getById_28: {
+    getById_27: {
         parameters: {
             query?: never;
             header?: never;
@@ -19892,7 +24322,7 @@ export interface operations {
             };
         };
     };
-    getById_29: {
+    getById_28: {
         parameters: {
             query?: never;
             header?: never;
@@ -19962,7 +24392,7 @@ export interface operations {
             };
         };
     };
-    getById_30: {
+    getById_29: {
         parameters: {
             query?: never;
             header?: never;
@@ -20032,7 +24462,7 @@ export interface operations {
             };
         };
     };
-    getById_31: {
+    getById_30: {
         parameters: {
             query?: never;
             header?: never;
@@ -20102,7 +24532,7 @@ export interface operations {
             };
         };
     };
-    getById_32: {
+    getById_31: {
         parameters: {
             query?: never;
             header?: never;
@@ -20172,7 +24602,7 @@ export interface operations {
             };
         };
     };
-    getById_33: {
+    getById_32: {
         parameters: {
             query?: never;
             header?: never;
@@ -20242,7 +24672,7 @@ export interface operations {
             };
         };
     };
-    getById_34: {
+    getById_33: {
         parameters: {
             query?: never;
             header?: never;
@@ -20312,7 +24742,7 @@ export interface operations {
             };
         };
     };
-    getById_35: {
+    getById_34: {
         parameters: {
             query?: never;
             header?: never;
@@ -20382,7 +24812,7 @@ export interface operations {
             };
         };
     };
-    getById_36: {
+    getById_35: {
         parameters: {
             query?: never;
             header?: never;
@@ -20430,7 +24860,7 @@ export interface operations {
             };
         };
     };
-    getById_37: {
+    getById_36: {
         parameters: {
             query?: never;
             header?: never;
@@ -20528,7 +24958,7 @@ export interface operations {
             };
         };
     };
-    getById_38: {
+    getById_37: {
         parameters: {
             query?: never;
             header?: never;
@@ -20578,7 +25008,7 @@ export interface operations {
             };
         };
     };
-    getById_39: {
+    getById_38: {
         parameters: {
             query?: never;
             header?: never;
@@ -20648,7 +25078,7 @@ export interface operations {
             };
         };
     };
-    getById_40: {
+    getById_39: {
         parameters: {
             query?: never;
             header?: never;
@@ -20697,6 +25127,76 @@ export interface operations {
         };
     };
     deleteCertification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseVoid"];
+                };
+            };
+        };
+    };
+    getById_40: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCertificationResponse"];
+                };
+            };
+        };
+    };
+    updateCertification_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCertificationRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCertificationResponse"];
+                };
+            };
+        };
+    };
+    deleteCertification_1: {
         parameters: {
             query?: never;
             header?: never;
@@ -20907,6 +25407,76 @@ export interface operations {
         };
     };
     deleteAssessmentResult: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseVoid"];
+                };
+            };
+        };
+    };
+    getById_44: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseAssessmentResultResponse"];
+                };
+            };
+        };
+    };
+    updateAssessmentResult_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAssessmentResultRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseAssessmentResultResponse"];
+                };
+            };
+        };
+    };
+    deleteAssessmentResult_1: {
         parameters: {
             query?: never;
             header?: never;
@@ -21566,6 +26136,207 @@ export interface operations {
             };
         };
     };
+    bookings: {
+        parameters: {
+            query?: {
+                status?: string;
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListBooking"];
+                };
+            };
+        };
+    };
+    request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewBooking"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseDetails"];
+                };
+            };
+        };
+    };
+    review: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Review"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseDetails"];
+                };
+            };
+        };
+    };
+    requestReschedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Reschedule"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseDetails"];
+                };
+            };
+        };
+    };
+    close: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Close"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseDetails"];
+                };
+            };
+        };
+    };
+    sharedVenues: {
+        parameters: {
+            query?: {
+                stateId?: number;
+                districtId?: number;
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListSharedVenue"];
+                };
+            };
+        };
+    };
+    createSharedVenue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewSharedVenue"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseSharedVenue"];
+                };
+            };
+        };
+    };
+    addBlackout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                centerId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Blackout"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseBusySlot"];
+                };
+            };
+        };
+    };
     getUsers: {
         parameters: {
             query?: {
@@ -21764,130 +26535,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseTrainingEnrollmentResponse"];
-                };
-            };
-        };
-    };
-    getTrainingCenters: {
-        parameters: {
-            query?: {
-                code?: string;
-                providerId?: number;
-                districtId?: number;
-                stateId?: number;
-                page?: number;
-                size?: number;
-                sort?: string;
-                direction?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseObject"];
-                };
-            };
-        };
-    };
-    createTrainingCenter: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateTrainingCenterRequest"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseTrainingCenterResponse"];
-                };
-            };
-        };
-    };
-    getTrainingBatches: {
-        parameters: {
-            query?: {
-                code?: string;
-                courseId?: number;
-                providerId?: number;
-                centerId?: number;
-                programId?: number;
-                statusId?: number;
-                page?: number;
-                size?: number;
-                sort?: string;
-                direction?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Training batches retrieved successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseObject"];
-                };
-            };
-        };
-    };
-    createBatch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateTrainingBatchRequest"];
-            };
-        };
-        responses: {
-            /** @description Training batch created successfully */
+            /** @description Created */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseTrainingBatchResponse"];
-                };
-            };
-            /** @description Validation failed or invalid date sequence */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseTrainingBatchResponse"];
+                    "*/*": components["schemas"]["ApiResponseTrainingEnrollmentResponse"];
                 };
             };
         };
@@ -21950,6 +26604,32 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseTraineeResponse"];
+                };
+            };
+        };
+    };
+    submitQuestionnaire: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseSubmission"];
                 };
             };
         };
@@ -22683,6 +27363,102 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseRolePermissionResponse"];
+                };
+            };
+        };
+    };
+    triggerReEvaluation: {
+        parameters: {
+            query?: {
+                issueId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListDataQualityRuleExecutionSummary"];
+                };
+            };
+        };
+    };
+    resolveIssue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveDataQualityIssueRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseProviderDataQualityIssueResponse"];
+                };
+            };
+        };
+    };
+    startInvestigation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseProviderDataQualityIssueResponse"];
+                };
+            };
+        };
+    };
+    dismissIssue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DismissDataQualityIssueRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseProviderDataQualityIssueResponse"];
                 };
             };
         };
@@ -23429,6 +28205,58 @@ export interface operations {
             };
         };
     };
+    confirmCareerUnemployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportUnemploymentRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseTraineeUnemploymentEventResponse"];
+                };
+            };
+        };
+    };
+    recordCareerExit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmploymentExitRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseEmploymentExitAndUnemploymentResponse"];
+                };
+            };
+        };
+    };
     getByVerificationNumber: {
         parameters: {
             query: {
@@ -23795,6 +28623,109 @@ export interface operations {
             };
         };
     };
+    submitEmployerVerdict: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": {
+                    verdict: components["schemas"]["VerdictRequest"];
+                    /** Format: binary */
+                    evidence?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseVerification"];
+                };
+            };
+        };
+    };
+    confirmEmployerPlacement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                placementId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmPlacementRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePlacementToEmploymentTransitionResponse"];
+                };
+            };
+        };
+    };
+    employerVacancies: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePagedResponseVacancy"];
+                };
+            };
+        };
+    };
+    publishEmployerVacancy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VacancyRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseVacancy"];
+                };
+            };
+        };
+    };
     triggerScan: {
         parameters: {
             query?: never;
@@ -23999,7 +28930,7 @@ export interface operations {
             };
         };
     };
-    startInvestigation: {
+    startInvestigation_1: {
         parameters: {
             query?: never;
             header?: never;
@@ -24025,7 +28956,7 @@ export interface operations {
             };
         };
     };
-    resolveIssue: {
+    resolveIssue_1: {
         parameters: {
             query?: never;
             header?: never;
@@ -24077,7 +29008,7 @@ export interface operations {
             };
         };
     };
-    dismissIssue: {
+    dismissIssue_1: {
         parameters: {
             query?: never;
             header?: never;
@@ -24273,8 +29204,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -24359,6 +29290,68 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseRenderedTemplate"];
+                };
+            };
+        };
+    };
+    createDemoReceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseLogRow"];
+                };
+            };
+        };
+    };
+    deliverDemoReceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                logId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseLogRow"];
+                };
+            };
+        };
+    };
+    checkConsent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseConsentCheck"];
                 };
             };
         };
@@ -24485,6 +29478,98 @@ export interface operations {
             };
         };
     };
+    issuePendingCertificate: {
+        parameters: {
+            query: {
+                assessmentResultId: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCertificationResponse"];
+                };
+            };
+        };
+    };
+    issuePendingCertificate_1: {
+        parameters: {
+            query: {
+                assessmentResultId: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCertificationResponse"];
+                };
+            };
+        };
+    };
+    issueCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCertificationRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCertificationResponse"];
+                };
+            };
+        };
+    };
+    issueCertificate_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCertificationRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCertificationResponse"];
+                };
+            };
+        };
+    };
     getAllCertifications: {
         parameters: {
             query: {
@@ -24535,6 +29620,158 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseCertificationResponse"];
+                };
+            };
+        };
+    };
+    getAllCertifications_1: {
+        parameters: {
+            query: {
+                verificationStatusId: number;
+                traineeId: number;
+                statusId: number;
+                programId: number;
+                issueDate: string;
+                enrollmentId: number;
+                courseId: number;
+                certificateNumber: string;
+                assessmentResultId: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCertificationResponse"] | components["schemas"]["ApiResponseListCertificationResponse"];
+                };
+            };
+        };
+    };
+    createCertification_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCertificationRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCertificationResponse"];
+                };
+            };
+        };
+    };
+    enrollCareerRemediation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemediationRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseSkillGapRemediationEnrollmentResponse"];
+                };
+            };
+        };
+    };
+    registerTrainingProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterTrainingProviderRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseOnboardingApplicationResponse"];
+                };
+            };
+        };
+    };
+    registerTrainee: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterTraineeRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseAuthResponse"];
+                };
+            };
+        };
+    };
+    registerEmployer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterEmployerRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseOnboardingApplicationResponse"];
                 };
             };
         };
@@ -24730,6 +29967,80 @@ export interface operations {
             };
         };
     };
+    issuePendingCertificates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseSaveAssessmentScoresResponse"];
+                };
+            };
+        };
+    };
+    finalizeAssessment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveAssessmentScoresRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseSaveAssessmentScoresResponse"];
+                };
+            };
+        };
+    };
+    saveDraftScores: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveAssessmentScoresRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseSaveAssessmentScoresResponse"];
+                };
+            };
+        };
+    };
     getAllAssessments: {
         parameters: {
             query: {
@@ -24826,6 +30137,176 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseAssessmentResultResponse"];
+                };
+            };
+        };
+    };
+    getAllAssessmentResults_1: {
+        parameters: {
+            query: {
+                traineeId: number;
+                traineeAssessmentId: number;
+                outcomeId: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseAssessmentResultResponse"] | components["schemas"]["ApiResponseListAssessmentResultResponse"];
+                };
+            };
+        };
+    };
+    createAssessmentResult_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAssessmentResultRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseAssessmentResultResponse"];
+                };
+            };
+        };
+    };
+    provisionSuperAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProvisionSuperAdminRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseUserResponse"];
+                };
+            };
+        };
+    };
+    provisionGovernmentAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProvisionGovernmentAdminRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseUserResponse"];
+                };
+            };
+        };
+    };
+    provisionAssessor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProvisionAssessorRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseUserResponse"];
+                };
+            };
+        };
+    };
+    rejectApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    [key: string]: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseOnboardingApplicationResponse"];
+                };
+            };
+        };
+    };
+    approveApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseOnboardingApplicationResponse"];
                 };
             };
         };
@@ -25168,7 +30649,230 @@ export interface operations {
             };
         };
     };
-    getById_44: {
+    details: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseDetails"];
+                };
+            };
+        };
+    };
+    availability: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path: {
+                centerId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListBusySlot"];
+                };
+            };
+        };
+    };
+    getTrainingCenters: {
+        parameters: {
+            query?: {
+                code?: string;
+                providerId?: number;
+                districtId?: number;
+                stateId?: number;
+                page?: number;
+                size?: number;
+                sort?: string;
+                direction?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseObject"];
+                };
+            };
+        };
+    };
+    getLifecycleStatuses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListLifecycleStatus"];
+                };
+            };
+        };
+    };
+    getTrainingBatches: {
+        parameters: {
+            query?: {
+                code?: string;
+                courseId?: number;
+                providerId?: number;
+                centerId?: number;
+                programId?: number;
+                statusId?: number;
+                page?: number;
+                size?: number;
+                sort?: string;
+                direction?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Training batches retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseObject"];
+                };
+            };
+        };
+    };
+    getById_45: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Training batch found */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseTrainingBatchResponse"];
+                };
+            };
+            /** @description Training batch not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseTrainingBatchResponse"];
+                };
+            };
+        };
+    };
+    getOverview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseOverview"];
+                };
+            };
+        };
+    };
+    getQuestionnaire: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseQuestionnaire"];
+                };
+            };
+        };
+    };
+    getEmploymentHistory: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePagedResponseEmploymentPeriod"];
+                };
+            };
+        };
+    };
+    getById_46: {
         parameters: {
             query?: never;
             header?: never;
@@ -25186,6 +30890,148 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseSystemEventLogResponse"];
+                };
+            };
+        };
+    };
+    getStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseThrottleStatus"];
+                };
+            };
+        };
+    };
+    getIssues: {
+        parameters: {
+            query?: {
+                severity?: string;
+                category?: string;
+                status?: string;
+                entityType?: string;
+                centerId?: number;
+                activeOnly?: boolean;
+                page?: number;
+                size?: number;
+                sort?: string;
+                direction?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePagedResponseProviderDataQualityIssueResponse"];
+                };
+            };
+        };
+    };
+    getIssueById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseProviderDataQualityIssueResponse"];
+                };
+            };
+        };
+    };
+    getIssueEvents: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListDataQualityIssueEventResponse"];
+                };
+            };
+        };
+    };
+    getBatchProgramOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListBatchProgramOption"];
+                };
+            };
+        };
+    };
+    getCenterScorecard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                centerId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCenterScorecardResponse"];
                 };
             };
         };
@@ -25212,7 +31058,7 @@ export interface operations {
             };
         };
     };
-    getById_45: {
+    getById_47: {
         parameters: {
             query?: never;
             header?: never;
@@ -25368,6 +31214,102 @@ export interface operations {
             };
         };
     };
+    exportQuarantinedCsv: {
+        parameters: {
+            query?: {
+                includeDuplicates?: boolean;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": components["schemas"]["StreamingResponseBody"];
+                };
+            };
+        };
+    };
+    exportQuarantinedCsv_1: {
+        parameters: {
+            query?: {
+                includeDuplicates?: boolean;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": components["schemas"]["StreamingResponseBody"];
+                };
+            };
+        };
+    };
+    exportQuarantinedCsv_2: {
+        parameters: {
+            query?: {
+                includeDuplicates?: boolean;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": components["schemas"]["StreamingResponseBody"];
+                };
+            };
+        };
+    };
+    exportQuarantinedCsv_3: {
+        parameters: {
+            query?: {
+                includeDuplicates?: boolean;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": components["schemas"]["StreamingResponseBody"];
+                };
+            };
+        };
+    };
     getQuarantinedRecords: {
         parameters: {
             query?: {
@@ -25468,7 +31410,207 @@ export interface operations {
             };
         };
     };
-    getIssueEvents: {
+    getBatchProgress_2: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseImportBatchProgressResponse"];
+                };
+            };
+        };
+    };
+    getBatchProgress_3: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseImportBatchProgressResponse"];
+                };
+            };
+        };
+    };
+    getEmploymentRetention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseEmploymentRetention"];
+                };
+            };
+        };
+    };
+    employerVerificationHistory: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePagedResponseVerification"];
+                };
+            };
+        };
+    };
+    downloadEmployerEvidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: number;
+                evidenceId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
+                };
+            };
+        };
+    };
+    pendingEmployerVerifications: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePagedResponseVerification"];
+                };
+            };
+        };
+    };
+    employerSkills: {
+        parameters: {
+            query?: {
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListReference"];
+                };
+            };
+        };
+    };
+    employerReferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseReferences"];
+                };
+            };
+        };
+    };
+    employerPlacements: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePagedResponsePlacement"];
+                };
+            };
+        };
+    };
+    getIssueEvents_1: {
         parameters: {
             query?: {
                 page?: number;
@@ -25493,7 +31635,7 @@ export interface operations {
             };
         };
     };
-    getById_46: {
+    getById_48: {
         parameters: {
             query?: never;
             header?: never;
@@ -25597,6 +31739,133 @@ export interface operations {
             };
         };
     };
+    getSpecializedWages: {
+        parameters: {
+            query?: {
+                fiscalYear?: string;
+                calendarYear?: number;
+                startDate?: string;
+                endDate?: string;
+                schemeId?: number;
+                programId?: number;
+                sectorId?: number;
+                courseId?: number;
+                stateId?: number;
+                districtId?: number;
+                gender?: string;
+                socialCategory?: string;
+                minority?: string;
+                pwd?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseWageDistributions"];
+                };
+            };
+        };
+    };
+    getSpecializedIncidentTrend: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListIncidentDay"];
+                };
+            };
+        };
+    };
+    getSpecializedExitAreas: {
+        parameters: {
+            query?: {
+                fiscalYear?: string;
+                calendarYear?: number;
+                startDate?: string;
+                endDate?: string;
+                schemeId?: number;
+                programId?: number;
+                sectorId?: number;
+                courseId?: number;
+                stateId?: number;
+                districtId?: number;
+                gender?: string;
+                socialCategory?: string;
+                minority?: string;
+                pwd?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseExitAreas"];
+                };
+            };
+        };
+    };
+    getSpecializedDropoutSignals: {
+        parameters: {
+            query?: {
+                fiscalYear?: string;
+                calendarYear?: number;
+                startDate?: string;
+                endDate?: string;
+                schemeId?: number;
+                programId?: number;
+                sectorId?: number;
+                courseId?: number;
+                stateId?: number;
+                districtId?: number;
+                gender?: string;
+                socialCategory?: string;
+                minority?: string;
+                pwd?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListDropoutSignal"];
+                };
+            };
+        };
+    };
     getSkillGapDashboard: {
         parameters: {
             query?: never;
@@ -25685,6 +31954,7 @@ export interface operations {
         parameters: {
             query: {
                 criteria: components["schemas"]["AnalyticsFilterCriteria"];
+                executive?: boolean;
             };
             header?: never;
             path?: never;
@@ -25747,10 +32017,66 @@ export interface operations {
             };
         };
     };
+    getMisProviderQuality: {
+        parameters: {
+            query?: {
+                fiscalYear?: string;
+                calendarYear?: number;
+                startDate?: string;
+                endDate?: string;
+                schemeId?: number;
+                programId?: number;
+                sectorId?: number;
+                courseId?: number;
+                stateId?: number;
+                districtId?: number;
+                gender?: string;
+                socialCategory?: string;
+                minority?: string;
+                pwd?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListProviderQuality"];
+                };
+            };
+        };
+    };
+    getMisFilterOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseFilterOptions"];
+                };
+            };
+        };
+    };
     getKpiStrip: {
         parameters: {
             query: {
                 criteria: components["schemas"]["AnalyticsFilterCriteria"];
+                executive?: boolean;
             };
             header?: never;
             path?: never;
@@ -25822,7 +32148,22 @@ export interface operations {
     };
     getEmployerLeaderboard: {
         parameters: {
-            query?: never;
+            query?: {
+                fiscalYear?: string;
+                calendarYear?: number;
+                startDate?: string;
+                endDate?: string;
+                schemeId?: number;
+                programId?: number;
+                sectorId?: number;
+                courseId?: number;
+                stateId?: number;
+                districtId?: number;
+                gender?: string;
+                socialCategory?: string;
+                minority?: string;
+                pwd?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -25842,7 +32183,22 @@ export interface operations {
     };
     getEconomicOutcomeSummary: {
         parameters: {
-            query?: never;
+            query?: {
+                fiscalYear?: string;
+                calendarYear?: number;
+                startDate?: string;
+                endDate?: string;
+                schemeId?: number;
+                programId?: number;
+                sectorId?: number;
+                courseId?: number;
+                stateId?: number;
+                districtId?: number;
+                gender?: string;
+                socialCategory?: string;
+                minority?: string;
+                pwd?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -25986,6 +32342,56 @@ export interface operations {
             };
         };
     };
+    logs: {
+        parameters: {
+            query?: {
+                channel?: string;
+                status?: string;
+                q?: string;
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePagedResponseLogRow"];
+                };
+            };
+        };
+    };
+    jobs: {
+        parameters: {
+            query?: {
+                status?: string;
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseJobQueue"];
+                };
+            };
+        };
+    };
     getJobById: {
         parameters: {
             query?: never;
@@ -26098,6 +32504,198 @@ export interface operations {
             };
         };
     };
+    capabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCapabilities"];
+                };
+            };
+        };
+    };
+    downloadCertificatePdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+        };
+    };
+    downloadCertificatePdf_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+        };
+    };
+    getRemediationBatches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListBatchOption"];
+                };
+            };
+        };
+    };
+    getCareerExitOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseExitOptions"];
+                };
+            };
+        };
+    };
+    findCareerCandidates: {
+        parameters: {
+            query: {
+                search: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListCandidate"];
+                };
+            };
+        };
+    };
+    getCareerHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCandidateHistory"];
+                };
+            };
+        };
+    };
+    getApplicationStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                applicationNumber: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseApplicationStatusResponse"];
+                };
+            };
+        };
+    };
+    getReferenceData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseRegistrationReferenceDataResponse"];
+                };
+            };
+        };
+    };
     me: {
         parameters: {
             query?: never;
@@ -26127,7 +32725,7 @@ export interface operations {
             };
         };
     };
-    getById_47: {
+    getById_49: {
         parameters: {
             query?: never;
             header?: never;
@@ -26145,6 +32743,26 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseAuditLogResponse"];
+                };
+            };
+        };
+    };
+    getSearchScope: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseAuditSearchScope"];
                 };
             };
         };
@@ -26168,6 +32786,75 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseAuditTrailTimelineResponse"];
+                };
+            };
+        };
+    };
+    getAssignedAssessments: {
+        parameters: {
+            query?: {
+                fromDate?: string;
+                toDate?: string;
+                status?: string;
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListAssessorAssessmentSummaryResponse"];
+                };
+            };
+        };
+    };
+    getAssessmentSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseAssessorAssessmentSummaryResponse"];
+                };
+            };
+        };
+    };
+    getAssessmentRoster: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseAssessorRosterResponse"];
                 };
             };
         };
@@ -27711,6 +34398,129 @@ export interface operations {
                 content: {
                     "*/*": components["schemas"]["StreamingResponseBody"];
                 };
+            };
+        };
+    };
+    exportCandidateOutcomes: {
+        parameters: {
+            query?: {
+                columns?: string[];
+                fiscalYear?: string;
+                calendarYear?: number;
+                startDate?: string;
+                endDate?: string;
+                schemeId?: number;
+                programId?: number;
+                sectorId?: number;
+                courseId?: number;
+                stateId?: number;
+                districtId?: number;
+                gender?: string;
+                socialCategory?: string;
+                minority?: string;
+                pwd?: string;
+            };
+            header?: never;
+            path: {
+                format: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["StreamingResponseBody"];
+                };
+            };
+        };
+    };
+    getCandidateExportColumns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListColumn"];
+                };
+            };
+        };
+    };
+    getApplications: {
+        parameters: {
+            query?: {
+                status?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListOnboardingApplicationResponse"];
+                };
+            };
+        };
+    };
+    getApplicationById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseOnboardingApplicationResponse"];
+                };
+            };
+        };
+    };
+    releaseBlackout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                centerId: number;
+                blackoutId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

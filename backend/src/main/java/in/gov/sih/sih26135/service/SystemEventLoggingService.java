@@ -23,6 +23,10 @@ public interface SystemEventLoggingService {
     CRITICAL
   }
 
+  record ThrottleCounters(long duplicateEvents, long rateLimitAlerts, long dataQualityAlerts) {}
+
+  ThrottleCounters getThrottleCounters();
+
   /**
    * Persists a structured operational event in an independent transaction with server-derived timestamps,
    * correlation context, sanitized summary, and recursive/fallback protection.

@@ -1,34 +1,26 @@
 package in.gov.sih.sih26135.service.impl;
 
 import in.gov.sih.sih26135.dto.request.ChangeBatchStatusRequest;
-import in.gov.sih.sih26135.dto.request.CreateTrainingBatchRequest;
-import in.gov.sih.sih26135.dto.request.UpdateTrainingBatchRequest;
 import in.gov.sih.sih26135.dto.response.TrainingBatchResponse;
-import in.gov.sih.sih26135.entity.Course;
-import in.gov.sih.sih26135.entity.Program;
 import in.gov.sih.sih26135.entity.RefBatchStatus;
 import in.gov.sih.sih26135.entity.TrainingBatch;
 import in.gov.sih.sih26135.entity.TrainingCenter;
-import in.gov.sih.sih26135.entity.TrainingProvider;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ConflictException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.mapper.TrainingBatchMapper;
-import in.gov.sih.sih26135.repository.CourseProgramRepository;
-import in.gov.sih.sih26135.repository.CourseRepository;
-import in.gov.sih.sih26135.repository.ProgramRepository;
 import in.gov.sih.sih26135.repository.RefBatchStatusRepository;
 import in.gov.sih.sih26135.repository.TrainingBatchRepository;
 import in.gov.sih.sih26135.repository.TrainingCenterRepository;
-import in.gov.sih.sih26135.repository.TrainingProviderRepository;
 import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.TrainingBatchService;
-import java.time.LocalDate;
+import in.gov.sih.sih26135.service.AuditLogService;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -45,60 +37,29 @@ import org.springframework.transaction.annotation.Transactional;
 public class TrainingBatchServiceImpl implements TrainingBatchService {
 
   private final TrainingBatchRepository trainingBatchRepository;
-  private final CourseRepository courseRepository;
-  private final TrainingProviderRepository trainingProviderRepository;
   private final TrainingCenterRepository trainingCenterRepository;
-  private final ProgramRepository programRepository;
   private final RefBatchStatusRepository refBatchStatusRepository;
-  private final CourseProgramRepository courseProgramRepository;
   private final TrainingBatchMapper trainingBatchMapper;
   private final WorkflowSecurityScopeValidator scopeValidator;
   private final JdbcTemplate jdbcTemplate;
-
-  public TrainingBatchServiceImpl(
-      TrainingBatchRepository trainingBatchRepository,
-      CourseRepository courseRepository,
-      TrainingProviderRepository trainingProviderRepository,
-      TrainingCenterRepository trainingCenterRepository,
-      ProgramRepository programRepository,
-      RefBatchStatusRepository refBatchStatusRepository,
-      CourseProgramRepository courseProgramRepository,
-      TrainingBatchMapper trainingBatchMapper) {
-    this(
-        trainingBatchRepository,
-        courseRepository,
-        trainingProviderRepository,
-        trainingCenterRepository,
-        programRepository,
-        refBatchStatusRepository,
-        courseProgramRepository,
-        trainingBatchMapper,
-        null,
-        null);
-  }
+  private final AuditLogService auditLogs;
 
   @Autowired
   public TrainingBatchServiceImpl(
       TrainingBatchRepository trainingBatchRepository,
-      CourseRepository courseRepository,
-      TrainingProviderRepository trainingProviderRepository,
       TrainingCenterRepository trainingCenterRepository,
-      ProgramRepository programRepository,
       RefBatchStatusRepository refBatchStatusRepository,
-      CourseProgramRepository courseProgramRepository,
       TrainingBatchMapper trainingBatchMapper,
       WorkflowSecurityScopeValidator scopeValidator,
-      JdbcTemplate jdbcTemplate) {
+      JdbcTemplate jdbcTemplate,
+      AuditLogService auditLogs) {
     this.trainingBatchRepository = trainingBatchRepository;
-    this.courseRepository = courseRepository;
-    this.trainingProviderRepository = trainingProviderRepository;
     this.trainingCenterRepository = trainingCenterRepository;
-    this.programRepository = programRepository;
     this.refBatchStatusRepository = refBatchStatusRepository;
-    this.courseProgramRepository = courseProgramRepository;
     this.trainingBatchMapper = trainingBatchMapper;
     this.scopeValidator = scopeValidator;
     this.jdbcTemplate = jdbcTemplate;
+    this.auditLogs = auditLogs;
   }
 
   @Override
@@ -260,152 +221,13 @@ public class TrainingBatchServiceImpl implements TrainingBatchService {
 
   @Override
   @Transactional
-  public TrainingBatchResponse createBatch(CreateTrainingBatchRequest request) {
-    TrainingTenantScopeSupport.CallerScope scope = resolveScope();
-    if (request == null) {
-      throw new BadRequestException("Training batch creation request cannot be null");
-    }
-    if (request.getBatchCode() == null || request.getBatchCode().isBlank()) {
-      throw new BadRequestException("Batch code is required");
-    }
-    if (request.getCourseId() == null) {
-      throw new BadRequestException("Course ID is required");
-    }
-    if (request.getProviderId() == null) {
-      throw new BadRequestException("Provider ID is required");
-    }
-    if (request.getCenterId() == null) {
-      throw new BadRequestException("Center ID is required");
-    }
-    if (request.getProgramId() == null) {
-      throw new BadRequestException("Program ID is required");
-    }
-    if (request.getStartDate() == null) {
-      throw new BadRequestException("Start date is required");
-    }
-    if (request.getCapacity() == null) {
-      throw new BadRequestException("Capacity is required");
-    }
-    if (request.getBatchStatusId() == null) {
-      throw new BadRequestException("Batch status ID is required");
-    }
-
-    String batchCode = request.getBatchCode().trim();
-    if (trainingBatchRepository.existsByBatchCode(batchCode)) {
-      throw new ConflictException("Batch code already exists", "BATCH_CODE_ALREADY_EXISTS");
-    }
-
-    if (request.getCapacity() <= 0) {
-      throw new BadRequestException("Capacity must be greater than 0", "INVALID_BATCH_CAPACITY");
-    }
-
-    if (request.getEndDate() != null && request.getEndDate().isBefore(request.getStartDate())) {
-      throw new BadRequestException("End date cannot be before start date", "INVALID_DATE_RANGE");
-    }
-
-    Course course = courseRepository.findById(request.getCourseId())
-        .orElseThrow(() -> new ResourceNotFoundException("Course", "courseId"));
-
-    TrainingProvider provider = trainingProviderRepository.findById(request.getProviderId())
-        .orElseThrow(() -> new ResourceNotFoundException("TrainingProvider", "providerId"));
-
-    TrainingCenter center = trainingCenterRepository.findById(request.getCenterId())
-        .orElseThrow(() -> new ResourceNotFoundException("TrainingCenter", "centerId"));
-
-    Program program = programRepository.findById(request.getProgramId())
-        .orElseThrow(() -> new ResourceNotFoundException("Program", "programId"));
-
-    RefBatchStatus status = refBatchStatusRepository.findById(request.getBatchStatusId())
-        .orElseThrow(() -> new ResourceNotFoundException("RefBatchStatus", "batchStatusId"));
-
-    if (center.getTrainingProvider() == null || !provider.getId().equals(center.getTrainingProvider().getId())) {
-      throw new BadRequestException(
-          "Training center does not belong to the specified training provider",
-          "CENTER_PROVIDER_MISMATCH"
-      );
-    }
-
-    if (!courseProgramRepository.existsByCourseIdAndProgramId(request.getCourseId(), request.getProgramId())) {
-      throw new BadRequestException(
-          "Course is not associated with the specified program",
-          "COURSE_PROGRAM_MISMATCH"
-      );
-    }
-    TrainingTenantScopeSupport.validateBatchOwnership(
-        scope,
-        provider.getId(),
-        center.getTrainingProvider() != null ? center.getTrainingProvider().getId() : null,
-        center.getStateId(),
-        center.getDistrictId());
-
-    TrainingBatch batch = trainingBatchMapper.toEntity(request, course, provider, center, program, status);
-    batch.setBatchCode(batchCode);
-
-    LocalDateTime now = LocalDateTime.now();
-    batch.setCreatedAt(now);
-    batch.setUpdatedAt(now);
-
-    TrainingBatch saved = trainingBatchRepository.save(batch);
-    return trainingBatchMapper.toResponse(saved);
-  }
-
-  @Override
-  @Transactional
-  public TrainingBatchResponse updateBatch(Long id, UpdateTrainingBatchRequest request) {
-    TrainingTenantScopeSupport.CallerScope scope = resolveScope();
-    if (request == null) {
-      throw new BadRequestException("Training batch update request cannot be null");
-    }
-
-    TrainingBatch batch = trainingBatchRepository.findById(id)
-        .orElseThrow(() -> new ResourceNotFoundException("TrainingBatch", "id"));
-    validateBatchScope(scope, batch);
-
-    if (batch.getDeletedAt() != null) {
-      throw new BadRequestException("Cannot update a deleted training batch", "BATCH_DELETED");
-    }
-
-    LocalDate prospectiveStartDate = request.getStartDate() != null ? request.getStartDate() : batch.getStartDate();
-    LocalDate prospectiveEndDate = request.getEndDate() != null ? request.getEndDate() : batch.getEndDate();
-    if (prospectiveStartDate != null && prospectiveEndDate != null && prospectiveEndDate.isBefore(prospectiveStartDate)) {
-      throw new BadRequestException("End date cannot be before start date", "INVALID_DATE_RANGE");
-    }
-
-    if (request.getCapacity() != null) {
-      if (request.getCapacity() <= 0) {
-        throw new BadRequestException("Capacity must be greater than 0", "INVALID_BATCH_CAPACITY");
-      }
-      batch.setCapacity(request.getCapacity());
-    }
-
-    if (request.getStartDate() != null) {
-      batch.setStartDate(request.getStartDate());
-    }
-    if (request.getEndDate() != null) {
-      batch.setEndDate(request.getEndDate());
-    }
-
-    if (request.getBatchStatusId() != null) {
-      RefBatchStatus status = refBatchStatusRepository.findById(request.getBatchStatusId())
-          .orElseThrow(() -> new ResourceNotFoundException("RefBatchStatus", "batchStatusId"));
-      batch.setBatchStatus(status);
-    }
-
-    batch.setUpdatedAt(LocalDateTime.now());
-    TrainingBatch saved = trainingBatchRepository.save(batch);
-    return trainingBatchMapper.toResponse(saved);
-  }
-
-  @Override
-  @Transactional
   public TrainingBatchResponse updateBatchStatus(Long id, ChangeBatchStatusRequest request) {
     TrainingTenantScopeSupport.CallerScope scope = resolveScope();
     if (request == null || request.getBatchStatusId() == null) {
       throw new BadRequestException("Batch status ID is required");
     }
 
-    TrainingBatch batch = trainingBatchRepository.findById(id)
-        .orElseThrow(() -> new ResourceNotFoundException("TrainingBatch", "id"));
+    TrainingBatch batch = batchForChange(id);
     validateBatchScope(scope, batch);
 
     if (batch.getDeletedAt() != null) {
@@ -414,30 +236,60 @@ public class TrainingBatchServiceImpl implements TrainingBatchService {
 
     RefBatchStatus status = refBatchStatusRepository.findById(request.getBatchStatusId())
         .orElseThrow(() -> new ResourceNotFoundException("RefBatchStatus", "batchStatusId"));
+    validateBookedBatchTransition(batch, status.getStatusCode());
 
+    Map<String, Object> before = batchState(batch);
     batch.setBatchStatus(status);
     batch.setUpdatedAt(LocalDateTime.now());
 
     TrainingBatch saved = trainingBatchRepository.save(batch);
+    auditBatch("STATUS_CHANGE", "Training batch status changed", id, before, batchState(saved));
     return trainingBatchMapper.toResponse(saved);
   }
 
-  @Override
-  @Transactional
-  public void deleteBatch(Long id) {
-    TrainingTenantScopeSupport.CallerScope scope = resolveScope();
-    if (id == null) {
-      throw new BadRequestException("Batch ID is required");
+  private TrainingBatch batchForChange(Long id) {
+    var locked = auditLogs == null ? java.util.Optional.<TrainingBatch>empty() : trainingBatchRepository.findByIdForUpdate(id);
+    if (locked.isPresent()) {
+      return locked.get();
     }
-    TrainingBatch batch = trainingBatchRepository.findById(id)
+    return trainingBatchRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("TrainingBatch", "id"));
-    validateBatchScope(scope, batch);
+  }
 
-    if (batch.getDeletedAt() == null) {
-      LocalDateTime now = LocalDateTime.now();
-      batch.setDeletedAt(now);
-      batch.setUpdatedAt(now);
-      trainingBatchRepository.save(batch);
+  private void validateBookedBatchTransition(TrainingBatch batch, String next) {
+    if (!Boolean.TRUE.equals(jdbcTemplate.queryForObject("""
+        SELECT EXISTS (SELECT 1 FROM venue_bookings WHERE batch_id=? AND booking_status='APPROVED')
+        """, Boolean.class, batch.getId()))) {
+      throw new ConflictException("This batch requires an approved venue booking.", "VENUE_APPROVED_BOOKING_REQUIRED");
+    }
+    String current = batch.getBatchStatus().getStatusCode();
+    if (current.equals(next)) return;
+    if ("PLANNED".equals(current) && "OPEN".equals(next)) return;
+    if ("OPEN".equals(current) && "ONGOING".equals(next)) {
+      var now = LocalDateTime.now(java.time.ZoneId.of("Asia/Kolkata"));
+      if (Boolean.TRUE.equals(jdbcTemplate.queryForObject("""
+          SELECT EXISTS (SELECT 1 FROM venue_booking_sessions s JOIN venue_bookings b USING (booking_id)
+            WHERE b.batch_id=? AND s.reserved_at IS NOT NULL AND s.released_at IS NULL AND s.starts_at<=?)
+          """, Boolean.class, batch.getId(), now))) {
+        return;
+      }
+      throw new ConflictException("Training can start when the first approved session begins.", "VENUE_BATCH_NOT_STARTED");
+    }
+    throw new ConflictException("Manage this batch schedule from Venue Bookings.", "VENUE_WORKFLOW_REQUIRED");
+  }
+
+  private Map<String, Object> batchState(TrainingBatch batch) {
+    Map<String, Object> state = new LinkedHashMap<>();
+    state.put("status", batch.getBatchStatus() != null ? batch.getBatchStatus().getStatusCode() : null);
+    state.put("capacity", batch.getCapacity());
+    state.put("startDate", batch.getStartDate() != null ? batch.getStartDate().toString() : null);
+    state.put("endDate", batch.getEndDate() != null ? batch.getEndDate().toString() : null);
+    return state;
+  }
+
+  private void auditBatch(String action, String summary, Long id, Map<String, ?> before, Map<String, ?> after) {
+    if (auditLogs != null) {
+      auditLogs.recordStateChange(action, "TrainingBatch", id, summary, before, after, List.of());
     }
   }
 
@@ -455,6 +307,9 @@ public class TrainingBatchServiceImpl implements TrainingBatchService {
     TrainingCenter center = batch.getTrainingCenter();
     Long batchProv = batch.getTrainingProvider() != null ? batch.getTrainingProvider().getId() : null;
     Long centerProv = center != null && center.getTrainingProvider() != null ? center.getTrainingProvider().getId() : null;
+    if (center != null && "SHARED".equals(center.getVenueType())) {
+      centerProv = batchProv;
+    }
     Long stateId = center != null ? center.getStateId() : null;
     Long districtId = center != null ? center.getDistrictId() : null;
     TrainingTenantScopeSupport.validateBatchOwnership(scope, batchProv, centerProv, stateId, districtId);
@@ -466,6 +321,7 @@ public class TrainingBatchServiceImpl implements TrainingBatchService {
     }
     TrainingCenter center = trainingCenterRepository.findById(centerId)
         .orElseThrow(() -> new ResourceNotFoundException("TrainingCenter", "centerId"));
+    if (scope.isProviderScoped() && "SHARED".equals(center.getVenueType())) return;
     TrainingTenantScopeSupport.validateCenterOwnership(
         scope,
         center.getTrainingProvider() != null ? center.getTrainingProvider().getId() : null,
@@ -484,7 +340,7 @@ public class TrainingBatchServiceImpl implements TrainingBatchService {
             "WHERE tb.deleted_at IS NULL AND ").append(basePredicate);
     List<Object> params = new ArrayList<>(baseParams);
     if (scope.isProviderScoped()) {
-      where.append(" AND tb.provider_id = ? AND tc.provider_id = ?");
+      where.append(" AND tb.provider_id = ? AND (tc.provider_id = ? OR tc.venue_type = 'SHARED')");
       params.add(scope.trainingProviderId());
       params.add(scope.trainingProviderId());
     } else if (scope.isStateScoped()) {

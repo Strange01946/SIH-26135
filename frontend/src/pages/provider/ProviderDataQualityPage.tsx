@@ -9,8 +9,8 @@ import {
   dismissDataQualityIssue,
   triggerRuleReEvaluation,
 } from '@/api/providerDataQualityApi';
-import { getTrainingCenters } from '@/api/providerPortalApi';
-import { apiPut } from '@/api/client';
+import { correctTrainingEnrollment, getTrainingCenters, getTrainingEnrollmentById, type EnrollmentCorrection } from '@/api/providerPortalApi';
+import { Modal } from '@/components/common/Modal';
 import type {
   ProviderDataQualityIssue,
   IssueFilterParams,
@@ -40,12 +40,14 @@ export function ProviderDataQualityPage(): React.JSX.Element {
   const [remediationOpen, setRemediationOpen] = useState<boolean>(false);
   const [remediatingIssue, setRemediatingIssue] = useState<ProviderDataQualityIssue | null>(null);
   const [resolutionNotes, setResolutionNotes] = useState<string>('');
-  const [enrollmentStartDate, setEnrollmentStartDate] = useState<string>('');
-  const [enrollmentExpCompDate, setEnrollmentExpCompDate] = useState<string>('');
-  const [enrollmentActCompDate, setEnrollmentActCompDate] = useState<string>('');
-  const [enrollmentStatusId, setEnrollmentStatusId] = useState<number>(1);
-  const [dropoutReasonId, setDropoutReasonId] = useState<string>('');
-  const [dropoutRemarks, setDropoutRemarks] = useState<string>('');
+  const [correction, setCorrection] = useState<EnrollmentCorrection>({});
+  const enrollmentId = remediationOpen && remediatingIssue?.entityType.toUpperCase().includes('ENROLLMENT')
+    ? remediatingIssue.entityId : undefined;
+  const enrollment = useQuery({
+    queryKey: ['provider', 'enrollment', enrollmentId],
+    queryFn: ({ signal }) => getTrainingEnrollmentById(enrollmentId!, signal),
+    enabled: Boolean(enrollmentId),
+  });
 
   // Dismiss Modal State
   const [dismissOpen, setDismissOpen] = useState<boolean>(false);
@@ -108,31 +110,20 @@ export function ProviderDataQualityPage(): React.JSX.Element {
     },
   });
 
-  const resolveMutation = useMutation({
-    mutationFn: async ({
-      issue,
-      notes,
-      recordUpdate,
-    }: {
-      issue: ProviderDataQualityIssue;
-      notes: string;
-      recordUpdate?: any;
-    }) => {
-      // If underlying record is editable (e.g. TrainingEnrollment), update it first
-      if (recordUpdate && issue.entityId && issue.entityType.toUpperCase().includes('ENROLLMENT')) {
-        await apiPut(`/api/v1/training-enrollments/${issue.entityId}`, recordUpdate);
-      }
-      // Authoritative issue resolution
-      const res = await resolveDataQualityIssue(issue.id, { resolutionNotes: notes });
-      // Trigger background rule re-evaluation
-      try {
-        await triggerRuleReEvaluation(issue.id);
-      } catch {
-        // Non-blocking
-      }
-      return res;
-    },
+  const correctionMutation = useMutation({
+    mutationFn: ({ id, changes }: { id: number; changes: EnrollmentCorrection }) => correctTrainingEnrollment(id, changes),
     onSuccess: (updated) => {
+      queryClient.setQueryData(['provider', 'enrollment', enrollmentId], updated);
+      void queryClient.invalidateQueries({ queryKey: ['provider', 'enrollments'] });
+      void queryClient.invalidateQueries({ queryKey: ['center-scorecard'] });
+      setCorrection({});
+    },
+  });
+
+  const resolveMutation = useMutation({
+    mutationFn: ({ id, notes }: { id: number; notes: string }) => resolveDataQualityIssue(id, { resolutionNotes: notes }),
+    onSuccess: (updated) => {
+      void triggerRuleReEvaluation(updated.id).catch(() => toast.warning('Issue resolved. Rule re-evaluation could not be requested.'));
       toast.success(`Issue #${updated.id} resolved successfully!`);
       setRemediationOpen(false);
       setDetailOpen(false);
@@ -168,15 +159,9 @@ export function ProviderDataQualityPage(): React.JSX.Element {
   const handleOpenRemediation = (issue: ProviderDataQualityIssue) => {
     setRemediatingIssue(issue);
     setResolutionNotes('');
-    if (issue.entityType.toUpperCase().includes('ENROLLMENT') && issue.entityId) {
-      // Default dates
-      setEnrollmentStartDate(new Date().toISOString().split('T')[0]);
-      setEnrollmentExpCompDate(new Date(Date.now() + 90 * 86400000).toISOString().split('T')[0]);
-      setEnrollmentActCompDate('');
-      setEnrollmentStatusId(3); // Completed or In Progress
-      setDropoutReasonId('');
-      setDropoutRemarks('');
-    }
+    setCorrection({});
+    correctionMutation.reset();
+    resolveMutation.reset();
     setRemediationOpen(true);
   };
 
@@ -191,6 +176,11 @@ export function ProviderDataQualityPage(): React.JSX.Element {
     setDismissRemarks('');
     setDismissOpen(true);
   };
+
+  const pendingCorrection: EnrollmentCorrection = Object.fromEntries(
+    Object.entries(correction).filter(([field, value]) => value && value !== enrollment.data?.[field as keyof typeof enrollment.data]),
+  );
+  const hasCorrection = Object.keys(pendingCorrection).length > 0;
 
   return (
     <div className="space-y-6">
@@ -654,24 +644,10 @@ export function ProviderDataQualityPage(): React.JSX.Element {
       )}
 
       {/* Inline Remediation Modal */}
-      {remediationOpen && remediatingIssue && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          data-testid="remediation-modal"
-        >
-          <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-emerald-50/50">
-              <h3 className="text-base font-bold text-slate-800">
-                Remediate Issue #{remediatingIssue.id} ({remediatingIssue.entityType})
-              </h3>
-              <button
-                onClick={() => setRemediationOpen(false)}
-                className="text-slate-400 hover:text-slate-600 text-lg"
-              >
-                ✕
-              </button>
-            </div>
-
+      {remediatingIssue && (
+        <Modal open={remediationOpen} title={`Remediate Issue #${remediatingIssue.id}`} testId="remediation-modal" onClose={() => {
+          if (!correctionMutation.isPending && !resolveMutation.isPending) setRemediationOpen(false);
+        }}>
             <div className="p-6 overflow-y-auto space-y-4 flex-1">
               {/* Informational Guidance Banner */}
               <div className="text-xs p-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-700">
@@ -680,67 +656,50 @@ export function ProviderDataQualityPage(): React.JSX.Element {
               </div>
 
               {/* Supported Entity Correction Fields: Training Enrollment */}
-              {remediatingIssue.entityType.toUpperCase().includes('ENROLLMENT') ? (
-                <div className="space-y-3 border-t border-slate-200 pt-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Correct Underlying Training Enrollment Record
-                  </h4>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">
-                        Start Date
-                      </label>
-                      <input
-                        type="date"
-                        value={enrollmentStartDate}
-                        onChange={(e) => setEnrollmentStartDate(e.target.value)}
-                        className="w-full text-xs border border-slate-300 rounded px-2.5 py-1.5"
-                        data-testid="input-start-date"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">
-                        Expected Completion Date
-                      </label>
-                      <input
-                        type="date"
-                        value={enrollmentExpCompDate}
-                        onChange={(e) => setEnrollmentExpCompDate(e.target.value)}
-                        className="w-full text-xs border border-slate-300 rounded px-2.5 py-1.5"
-                        data-testid="input-exp-comp-date"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">
-                        Actual Completion Date (Optional)
-                      </label>
-                      <input
-                        type="date"
-                        value={enrollmentActCompDate}
-                        onChange={(e) => setEnrollmentActCompDate(e.target.value)}
-                        className="w-full text-xs border border-slate-300 rounded px-2.5 py-1.5"
-                        data-testid="input-act-comp-date"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">
-                        Enrollment Status
-                      </label>
-                      <select
-                        value={enrollmentStatusId}
-                        onChange={(e) => setEnrollmentStatusId(Number(e.target.value))}
-                        className="w-full text-xs border border-slate-300 rounded px-2.5 py-1.5 bg-white"
-                        data-testid="select-enrollment-status"
-                      >
-                        <option value={1}>Enrolled</option>
-                        <option value={2}>In Progress</option>
-                        <option value={3}>Completed</option>
-                        <option value={4}>Dropped Out</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
+              {enrollmentId && (
+                <fieldset className="space-y-3 rounded border p-3" disabled={correctionMutation.isPending || resolveMutation.isPending}>
+                  <legend className="px-1 text-sm font-semibold">Correct enrollment details</legend>
+                  {enrollment.isLoading ? <PageLoading message="Loading enrollment…" /> : enrollment.isError ? (
+                    <p role="alert" className="text-sm text-red-800">{enrollment.error.message} <button type="button" className="underline" onClick={() => void enrollment.refetch()}>Retry</button></p>
+                  ) : enrollment.data && (
+                    <>
+                      <p className="text-sm text-gray-600">Current status {enrollment.data.enrollmentStatusName ?? enrollment.data.enrollmentStatusCode ?? 'Unknown'}</p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {([
+                          ['startDate', 'Start date', 'input-start-date'],
+                          ['expectedCompletionDate', 'Expected completion date', 'input-exp-comp-date'],
+                          ['actualCompletionDate', 'Actual completion date', 'input-act-comp-date'],
+                        ] as const).map(([field, label, testId]) => (
+                          <label className="block text-sm" key={field}>{label}
+                            <input type="date" className="form-input" data-testid={testId}
+                              value={correction[field] ?? enrollment.data?.[field] ?? ''}
+                              onChange={(event) => setCorrection({ ...correction, [field]: event.target.value })} />
+                          </label>
+                        ))}
+                        <label className="block text-sm">Change enrollment status
+                          <select className="form-input" data-testid="select-enrollment-status"
+                            value={correction.enrollmentStatusId ?? ''} onChange={(event) => setCorrection({ ...correction, enrollmentStatusId: Number(event.target.value) || undefined })}>
+                            <option value="">Keep current status</option>
+                            <option value="1">Enrolled</option>
+                            <option value="2">In progress</option>
+                            <option value="3">Completed</option>
+                            <option value="4">Dropped out</option>
+                            <option value="5">Deferred</option>
+                            <option value="6">Transferred</option>
+                            <option value="7">Cancelled</option>
+                          </select>
+                        </label>
+                      </div>
+                      <button type="button" className="btn-outline" disabled={!hasCorrection} onClick={() =>
+                        correctionMutation.mutate({ id: enrollmentId, changes: pendingCorrection })}>
+                        {correctionMutation.isPending ? 'Saving correction…' : 'Save correction'}
+                      </button>
+                    </>
+                  )}
+                  {correctionMutation.isSuccess && <p role="status" className="text-sm text-emerald-800">Enrollment correction saved.</p>}
+                  {correctionMutation.isError && <p role="alert" className="text-sm text-red-800">{correctionMutation.error.message}</p>}
+                </fieldset>
+              )}
 
               {/* Mandatory Resolution Notes */}
               <div>
@@ -749,6 +708,7 @@ export function ProviderDataQualityPage(): React.JSX.Element {
                 </label>
                 <textarea
                   rows={3}
+                  maxLength={500}
                   value={resolutionNotes}
                   onChange={(e) => setResolutionNotes(e.target.value)}
                   placeholder="Explain remediation actions taken to correct this anomaly (mandatory)..."
@@ -769,33 +729,15 @@ export function ProviderDataQualityPage(): React.JSX.Element {
                 Cancel
               </button>
               <button
-                disabled={!resolutionNotes.trim() || resolveMutation.isPending}
-                onClick={() => {
-                  let recordUpdate: any = undefined;
-                  if (remediatingIssue.entityType.toUpperCase().includes('ENROLLMENT')) {
-                    recordUpdate = {
-                      startDate: enrollmentStartDate || null,
-                      expectedCompletionDate: enrollmentExpCompDate || null,
-                      actualCompletionDate: enrollmentActCompDate || null,
-                      enrollmentStatusId: enrollmentStatusId,
-                      dropoutReasonId: dropoutReasonId ? Number(dropoutReasonId) : null,
-                      dropoutRemarks: dropoutRemarks || null,
-                    };
-                  }
-                  resolveMutation.mutate({
-                    issue: remediatingIssue,
-                    notes: resolutionNotes,
-                    recordUpdate,
-                  });
-                }}
+                disabled={!resolutionNotes.trim() || hasCorrection || correctionMutation.isPending || resolveMutation.isPending}
+                onClick={() => resolveMutation.mutate({ id: remediatingIssue.id, notes: resolutionNotes.trim() })}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-sm disabled:opacity-50"
                 data-testid="btn-submit-resolution"
               >
                 {resolveMutation.isPending ? 'Resolving...' : 'Confirm & Resolve Issue'}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Dismiss (False Positive / Suppressed) Modal */}

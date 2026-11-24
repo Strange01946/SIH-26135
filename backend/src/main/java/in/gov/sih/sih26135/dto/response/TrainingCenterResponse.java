@@ -6,6 +6,7 @@ public class TrainingCenterResponse {
 
   private Long id;
   private Long providerId;
+  private String venueType;
   private String providerCode;
   private String providerName;
   private String centerCode;
@@ -23,6 +24,14 @@ public class TrainingCenterResponse {
   private LocalDateTime deletedAt;
 
   public TrainingCenterResponse() {
+  }
+
+  public String getVenueType() {
+    return venueType;
+  }
+
+  public void setVenueType(String venueType) {
+    this.venueType = venueType;
   }
 
   public TrainingCenterResponse(

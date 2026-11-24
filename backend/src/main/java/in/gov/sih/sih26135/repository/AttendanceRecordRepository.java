@@ -2,9 +2,12 @@ package in.gov.sih.sih26135.repository;
 
 import in.gov.sih.sih26135.entity.AttendanceRecord;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -27,4 +30,12 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
   List<AttendanceRecord> findBySessionDate(LocalDate sessionDate);
 
   List<AttendanceRecord> findByAttendanceStatusId(Long attendanceStatusId);
+
+  @Query(value = """
+      SELECT COUNT(*) FROM venue_booking_sessions s JOIN venue_bookings b USING (booking_id)
+      WHERE b.batch_id=:batch AND s.reserved_at IS NOT NULL AND s.released_at IS NULL
+        AND s.starts_at>=:dayStart AND s.starts_at<:dayEnd AND s.starts_at<=:now
+      """, nativeQuery = true)
+  long countStartedVenueSessions(@Param("batch") Long batchId, @Param("dayStart") LocalDateTime dayStart,
+      @Param("dayEnd") LocalDateTime dayEnd, @Param("now") LocalDateTime now);
 }

@@ -107,10 +107,11 @@ public final class AnalyticsQueryFilterBuilder {
     }
 
     // 4. Demographic predicates
-    Long genderId = criteria.resolveGenderId();
-    if (genderId != null) {
-      sb.append(" AND ").append(prefix).append("trainee_id IN (SELECT tr.trainee_id FROM trainees tr WHERE tr.gender_id = ? AND tr.deleted_at IS NULL)");
-      params.add(genderId);
+    String genderCode = criteria.resolveGenderCode();
+    if (genderCode != null) {
+      sb.append(" AND ").append(prefix).append("trainee_id IN (SELECT tr.trainee_id FROM trainees tr"
+          + " JOIN ref_gender g ON g.gender_id = tr.gender_id WHERE g.gender_code = ? AND tr.deleted_at IS NULL)");
+      params.add(genderCode);
     }
 
     return new FilterPredicateResult(sb.toString(), params);

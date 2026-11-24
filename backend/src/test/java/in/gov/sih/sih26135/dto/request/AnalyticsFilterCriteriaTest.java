@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import in.gov.sih.sih26135.exception.BadRequestException;
 import java.time.LocalDate;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -163,25 +164,28 @@ class AnalyticsFilterCriteriaTest {
   class DemographicValidationTests {
 
     @Test
-    @DisplayName("Supported genders (MALE, FEMALE, TRANSGENDER) validate and resolve to authoritative IDs")
+    @DisplayName("Recorded gender codes validate and normalize for lookup")
     void testSupportedGenders() {
       AnalyticsFilterCriteria criteriaMale = new AnalyticsFilterCriteria();
       criteriaMale.setGender("MALE");
       assertThatCode(criteriaMale::validate).doesNotThrowAnyException();
       assertThat(criteriaMale.resolveGenderCode()).isEqualTo("MALE");
-      assertThat(criteriaMale.resolveGenderId()).isEqualTo(1L);
 
       AnalyticsFilterCriteria criteriaFemale = new AnalyticsFilterCriteria();
       criteriaFemale.setGender("female"); // case-insensitive
       assertThatCode(criteriaFemale::validate).doesNotThrowAnyException();
       assertThat(criteriaFemale.resolveGenderCode()).isEqualTo("FEMALE");
-      assertThat(criteriaFemale.resolveGenderId()).isEqualTo(2L);
 
       AnalyticsFilterCriteria criteriaTrans = new AnalyticsFilterCriteria();
       criteriaTrans.setGender("TRANSGENDER");
       assertThatCode(criteriaTrans::validate).doesNotThrowAnyException();
       assertThat(criteriaTrans.resolveGenderCode()).isEqualTo("TRANSGENDER");
-      assertThat(criteriaTrans.resolveGenderId()).isEqualTo(3L);
+      for (String gender : List.of("OTHER", "PREFER_NOT_TO_SAY")) {
+        var criteria = new AnalyticsFilterCriteria();
+        criteria.setGender(gender);
+        assertThatCode(criteria::validate).doesNotThrowAnyException();
+        assertThat(criteria.resolveGenderCode()).isEqualTo(gender);
+      }
     }
 
     @Test

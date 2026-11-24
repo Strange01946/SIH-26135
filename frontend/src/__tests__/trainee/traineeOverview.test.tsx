@@ -211,9 +211,10 @@ describe('TraineeOverviewPage Component', () => {
     const mockOutcome: TraineeOutcomeSummary = {
       traineeId: 42,
       snapshotIsEmployedFlag: true,
-      lastVerifiedEmployerName: 'Schneider Electric India',
-      monthlySalary: 32000,
-      lastPlacementDate: '2026-10-15',
+      snapshotEmploymentStatusCode: 'EMPLOYED',
+      placedEnrollmentCount: 1,
+      currentWageEmploymentCount: 1,
+      currentSelfEmploymentCount: 0,
     };
 
     vi.spyOn(traineeApi, 'getTraineeEnrollments').mockResolvedValueOnce(emptyEnrollmentPaged);
@@ -229,10 +230,9 @@ describe('TraineeOverviewPage Component', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText('Schneider Electric India')).toBeInTheDocument();
+      expect(screen.getByText('EMPLOYED')).toBeInTheDocument();
     });
-    expect(screen.getByText(/32,000/)).toBeInTheDocument();
-    expect(screen.getByText(/Employed/i)).toBeInTheDocument();
+    expect(screen.getByText('Current wage employment records')).toBeInTheDocument();
   });
 
   it('renders unlinked empty state notice when candidate is not mapped to Trainee ID', () => {

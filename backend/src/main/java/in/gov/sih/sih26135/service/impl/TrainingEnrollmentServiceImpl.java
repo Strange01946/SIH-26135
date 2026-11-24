@@ -264,6 +264,11 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
     if (batch.getDeletedAt() != null) {
       throw new BadRequestException("Cannot create training enrollment for soft-deleted training batch", "BATCH_DELETED");
     }
+    if (batch.getTrainingCenter() != null
+        && (batch.getBatchStatus() == null
+            || !List.of("OPEN", "ONGOING").contains(batch.getBatchStatus().getStatusCode()))) {
+      throw new ConflictException("Open the approved venue batch for enrollment first.", "VENUE_ENROLLMENT_CLOSED");
+    }
 
     // Capacity enforcement under locking read (bypasses MVCC read-view to count current committed records)
     List<TrainingEnrollment> activeList = trainingEnrollmentRepository.findActiveEnrollmentsForUpdate(batch.getId());

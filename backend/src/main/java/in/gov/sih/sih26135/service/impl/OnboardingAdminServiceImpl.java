@@ -7,6 +7,7 @@ import in.gov.sih.sih26135.dto.registration.ProvisionSuperAdminRequest;
 import in.gov.sih.sih26135.dto.response.UserResponse;
 import in.gov.sih.sih26135.entity.Employer;
 import in.gov.sih.sih26135.entity.OnboardingApplication;
+import in.gov.sih.sih26135.entity.Organization;
 import in.gov.sih.sih26135.entity.RefAccreditationStatus;
 import in.gov.sih.sih26135.entity.RefRecordVerificationStatus;
 import in.gov.sih.sih26135.entity.Role;
@@ -19,18 +20,21 @@ import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.mapper.UserMapper;
 import in.gov.sih.sih26135.repository.EmployerRepository;
 import in.gov.sih.sih26135.repository.OnboardingApplicationRepository;
+import in.gov.sih.sih26135.repository.OrganizationRepository;
 import in.gov.sih.sih26135.repository.RefAccreditationStatusRepository;
 import in.gov.sih.sih26135.repository.RefRecordVerificationStatusRepository;
 import in.gov.sih.sih26135.repository.RoleRepository;
 import in.gov.sih.sih26135.repository.TrainingProviderRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
 import in.gov.sih.sih26135.repository.UserRoleRepository;
+import in.gov.sih.sih26135.service.ActiveGeography;
 import in.gov.sih.sih26135.service.OnboardingAdminService;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,6 +54,7 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
 
   private static final Set<String> ALLOWED_GOVERNMENT_ROLES = Set.of(
       "government_admin",
+      "state_admin",
       "government_officer",
       "district_officer",
       "analyst"
@@ -65,6 +70,8 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
   private final RefRecordVerificationStatusRepository refRecordVerificationStatusRepository;
   private final UserMapper userMapper;
   private final PasswordEncoder passwordEncoder;
+  private final JdbcTemplate jdbcTemplate;
+  private final OrganizationRepository organizationRepository;
 
   public OnboardingAdminServiceImpl(
       OnboardingApplicationRepository onboardingApplicationRepository,
@@ -76,7 +83,9 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
       RefAccreditationStatusRepository refAccreditationStatusRepository,
       RefRecordVerificationStatusRepository refRecordVerificationStatusRepository,
       UserMapper userMapper,
-      PasswordEncoder passwordEncoder) {
+      PasswordEncoder passwordEncoder,
+      JdbcTemplate jdbcTemplate,
+      OrganizationRepository organizationRepository) {
     this.onboardingApplicationRepository = onboardingApplicationRepository;
     this.userRepository = userRepository;
     this.userRoleRepository = userRoleRepository;
@@ -87,6 +96,8 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
     this.refRecordVerificationStatusRepository = refRecordVerificationStatusRepository;
     this.userMapper = userMapper;
     this.passwordEncoder = passwordEncoder;
+    this.jdbcTemplate = jdbcTemplate;
+    this.organizationRepository = organizationRepository;
   }
 
   @Override
@@ -126,26 +137,38 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
       throw new IllegalStateException("Associated user account is deleted and cannot be approved");
     }
 
-    // Explicitly validate associated organization entity and expected role assignment
+    // Validate the associated entity and bind its organisation before activating the account.
+    LocalDateTime now = LocalDateTime.now();
+    Long organizationId;
     if ("TRAINING_PROVIDER".equalsIgnoreCase(app.getApplicantType())) {
-      if (!trainingProviderRepository.existsById(app.getEntityId())) {
-        throw new ResourceNotFoundException("TrainingProvider", "providerId=" + app.getEntityId());
-      }
+      TrainingProvider provider = trainingProviderRepository.findById(app.getEntityId())
+          .orElseThrow(() -> new ResourceNotFoundException("TrainingProvider", "providerId=" + app.getEntityId()));
       if (!userRoleRepository.existsByUserIdAndRoleId(user.getId(), ROLE_ID_TRAINING_PROVIDER)) {
         throw new IllegalStateException("Associated user does not hold required training_provider role");
       }
-    } else if ("EMPLOYER".equalsIgnoreCase(app.getApplicantType())) {
-      if (!employerRepository.existsById(app.getEntityId())) {
-        throw new ResourceNotFoundException("Employer", "employerId=" + app.getEntityId());
+      organizationId = provider.getOrganizationId();
+      if (organizationId == null) {
+        organizationId = createOrganization(app, provider.getOrganizationTypeId(), provider.getStateId(), provider.getDistrictId(), now);
+        provider.setOrganizationId(organizationId);
       }
+    } else if ("EMPLOYER".equalsIgnoreCase(app.getApplicantType())) {
+      Employer employer = employerRepository.findById(app.getEntityId())
+          .orElseThrow(() -> new ResourceNotFoundException("Employer", "employerId=" + app.getEntityId()));
       if (!userRoleRepository.existsByUserIdAndRoleId(user.getId(), ROLE_ID_EMPLOYER)) {
         throw new IllegalStateException("Associated user does not hold required employer role");
+      }
+      organizationId = employer.getOrganizationId();
+      if (organizationId == null) {
+        organizationId = createOrganization(app, employer.getOrganizationTypeId(), employer.getStateId(), employer.getDistrictId(), now);
+        employer.setOrganizationId(organizationId);
       }
     } else {
       throw new BadRequestException("Unknown applicant type: " + app.getApplicantType(), "INVALID_APPLICANT_TYPE");
     }
-
-    LocalDateTime now = LocalDateTime.now();
+    if (user.getOrganizationId() != null && !user.getOrganizationId().equals(organizationId)) {
+      throw new ConflictException("The account and application have different organisations", "ONBOARDING_ORGANIZATION_MISMATCH");
+    }
+    user.setOrganizationId(organizationId);
     app.setStatus("APPROVED");
     app.setReviewedByUserId(reviewerUserId);
     app.setReviewedAt(now);
@@ -165,6 +188,15 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
     OnboardingApplicationResponse response = mapToResponse(savedApp);
     response.setMessage("Application approved successfully. User account has been activated.");
     return response;
+  }
+
+  private Long createOrganization(OnboardingApplication app, Long type, Long state, Long district, LocalDateTime now) {
+    Organization organization = new Organization(null, "ONB-" + app.getId(), app.getOrganizationName(), type, 1L);
+    organization.setStateId(state);
+    organization.setDistrictId(district);
+    organization.setCreatedAt(now);
+    organization.setUpdatedAt(now);
+    return organizationRepository.save(organization).getId();
   }
 
   @Override
@@ -219,6 +251,7 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
     if (request == null) {
       throw new BadRequestException("Provisioning request cannot be null");
     }
+    ActiveGeography.validate(jdbcTemplate, request.getStateId(), request.getDistrictId());
 
     String username = request.getUsername().trim();
     String email = request.getEmail().trim().toLowerCase();
@@ -263,6 +296,7 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
     if (request == null) {
       throw new BadRequestException("Provisioning request cannot be null");
     }
+    ActiveGeography.validate(jdbcTemplate, request.getStateId(), request.getDistrictId());
 
     String username = request.getUsername().trim();
     String email = request.getEmail().trim().toLowerCase();
@@ -277,6 +311,9 @@ public class OnboardingAdminServiceImpl implements OnboardingAdminService {
     String rawRoleCode = request.getRoleCode() != null ? request.getRoleCode().trim().toLowerCase() : "";
     if (!ALLOWED_GOVERNMENT_ROLES.contains(rawRoleCode)) {
       throw new BadRequestException("Role code must be one of: " + ALLOWED_GOVERNMENT_ROLES, "INVALID_GOVERNMENT_ROLE");
+    }
+    if ("state_admin".equals(rawRoleCode) && (request.getStateId() == null || request.getDistrictId() != null)) {
+      throw new BadRequestException("Assign a state or union territory to a State Administrator.", "STATE_SCOPE_REQUIRED");
     }
 
     Role targetRole = roleRepository.findByRoleCode(rawRoleCode)

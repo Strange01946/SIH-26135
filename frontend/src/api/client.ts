@@ -13,6 +13,7 @@ import {
   refreshAccessToken,
   hasSession,
   getSessionGeneration,
+  isAccessTokenExpiring,
 } from '@/lib/sessionManager';
 import type {
   ApiResponse,
@@ -22,8 +23,12 @@ import type {
   BackendErrorResponse,
 } from './types';
 
-/** Base URL — empty means Vite dev proxy routes /api to localhost:8080 */
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
+import { apiBaseUrl } from '@/lib/demoEnvironment';
+
+/** Empty live base URL uses the Vite development proxy. */
+const BASE_URL = apiBaseUrl();
+
+type SessionRequest = InternalAxiosRequestConfig & { _sessionGeneration?: number; _retry?: boolean };
 
 /** Axios instance for JSON API calls */
 export const apiClient: AxiosInstance = axios.create({
@@ -36,8 +41,12 @@ export const apiClient: AxiosInstance = axios.create({
 });
 
 /** Request interceptor: attach X-Correlation-ID and Authorization */
+function isPublicAuthRequest(url: string): boolean {
+  return /^\/api\/v1\/auth\/(?:login|refresh|register)(?:[/?]|$)/.test(url);
+}
+
 apiClient.interceptors.request.use(
-  (config: InternalAxiosRequestConfig): InternalAxiosRequestConfig => {
+  async (config: InternalAxiosRequestConfig): Promise<InternalAxiosRequestConfig> => {
     // Attach fresh correlation ID per request if not explicitly provided
     if (!config.headers['X-Correlation-ID']) {
       config.headers['X-Correlation-ID'] = uuidv4();
@@ -48,18 +57,27 @@ apiClient.interceptors.request.use(
       delete config.headers['Content-Type'];
     }
 
-    // Attach Bearer token from session manager if present
-    const token = getSessionAccessToken();
-    if (token && !config.headers['Authorization']) {
-      config.headers['Authorization'] = `Bearer ${token}`;
-    }
-
     // Record session generation at dispatch time to prevent cross-session replay or stale invalidation
-    const requestWithGen = config as InternalAxiosRequestConfig & { _sessionGeneration?: number };
+    const requestWithGen = config as SessionRequest;
     if (requestWithGen._sessionGeneration === undefined) {
       requestWithGen._sessionGeneration = getSessionGeneration();
     }
 
+    // Renew before dispatching an expiring session's writes so they never need to be replayed.
+    let token = getSessionAccessToken();
+    if (token && !config.headers.has('Authorization') && !isPublicAuthRequest(config.url ?? '')) {
+      if (hasSession() && isAccessTokenExpiring(token)) {
+        try {
+          token = await refreshAccessToken();
+        } catch (error) {
+          throw axios.isAxiosError(error) ? normalizeAxiosError(error) : error;
+        }
+      }
+      if (requestWithGen._sessionGeneration !== getSessionGeneration()) {
+        throw { status: 0, code: 'REQUEST_CANCELED', message: 'The session changed.', isCanceled: true } satisfies ApiError;
+      }
+      config.headers.set('Authorization', `Bearer ${token}`);
+    }
     return config;
   },
   (error: unknown) => Promise.reject(error),
@@ -67,7 +85,11 @@ apiClient.interceptors.request.use(
 
 /** Response interceptor: unwrap ApiResponse<T>.data, normalize errors, and handle 401 token refresh */
 apiClient.interceptors.response.use(
-  (response: AxiosResponse): AxiosResponse => {
+  (response: AxiosResponse): AxiosResponse | Promise<AxiosResponse> => {
+    const requestGeneration = (response.config as SessionRequest)._sessionGeneration;
+    if (requestGeneration !== undefined && requestGeneration !== getSessionGeneration()) {
+      return Promise.reject({ status: 0, code: 'REQUEST_CANCELED', message: 'The session changed.', isCanceled: true } satisfies ApiError);
+    }
     // For streaming/binary responses, pass through unchanged
     if (
       response.config.responseType === 'blob' ||
@@ -82,16 +104,17 @@ apiClient.interceptors.response.use(
     if (body && typeof body === 'object' && 'success' in body && !body.success) {
       return Promise.reject(
         normalizeApiError(body, response.status),
-      ) as never;
+      );
     }
 
     return response;
   },
   async (error: unknown) => {
-    const axiosError = error as AxiosError<unknown>;
-    const originalRequest = axiosError.config as
-      | (InternalAxiosRequestConfig & { _retry?: boolean })
-      | undefined;
+    if (!axios.isAxiosError(error)) {
+      return Promise.reject(error);
+    }
+    const axiosError: AxiosError<unknown> = error;
+    const originalRequest = axiosError.config as SessionRequest | undefined;
 
     // If the error response was received as a Blob (e.g. from failed apiDownload), parse JSON text
     if (
@@ -114,13 +137,10 @@ apiClient.interceptors.response.use(
       !originalRequest._retry
     ) {
       const url = originalRequest.url ?? '';
-      const isAuthEndpoint =
-        url.includes('/api/v1/auth/login') ||
-        url.includes('/api/v1/auth/refresh');
+      const isAuthEndpoint = isPublicAuthRequest(url);
 
       const currentGeneration = getSessionGeneration();
-      const requestGeneration = (originalRequest as InternalAxiosRequestConfig & { _sessionGeneration?: number })
-        ?._sessionGeneration;
+      const requestGeneration = originalRequest._sessionGeneration;
 
       // Invariant: If request originated from an older session generation, do NOT replay or refresh.
       // An outdated request from a previous session must NEVER be replayed with a newer user's token,
@@ -142,13 +162,16 @@ apiClient.interceptors.response.use(
         if (isSafeMethod || isExplicitlyIdempotent) {
           let newAccessToken: string;
           try {
-            newAccessToken = await refreshAccessToken();
+            const currentToken = getSessionAccessToken();
+            newAccessToken = currentToken && originalRequest.headers.get('Authorization') !== `Bearer ${currentToken}`
+              ? currentToken : await refreshAccessToken();
           } catch {
-            // Only clear session if session has not already been superseded by another login/logout
-            if (getSessionGeneration() === currentGeneration) {
-              clearSession();
-            }
-            return Promise.reject(normalizeAxiosError(axiosError));
+            // The session manager invalidates credentials only on an authoritative rejection.
+            return Promise.reject(
+              getSessionGeneration() !== currentGeneration
+                ? normalizeAxiosError(axiosError)
+                : { status: 503, code: 'SESSION_REFRESH_UNAVAILABLE', message: 'Unable to renew your session. Try again shortly.' } satisfies ApiError,
+            );
           }
 
           // Verify session was not logged out or replaced while refresh was in-flight
@@ -162,11 +185,7 @@ apiClient.interceptors.response.use(
           // For non-idempotent mutation requests (POST, PATCH, PUT, DELETE):
           // Do NOT automatically replay to prevent duplicate transactions or state corruptions.
           // Trigger background refresh so user's active session is restored for subsequent actions.
-          refreshAccessToken().catch(() => {
-            if (getSessionGeneration() === currentGeneration) {
-              clearSession();
-            }
-          });
+          void refreshAccessToken().catch(() => {});
           return Promise.reject(normalizeAxiosError(axiosError));
         }
       }

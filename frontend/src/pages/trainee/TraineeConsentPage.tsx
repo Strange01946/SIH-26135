@@ -37,7 +37,7 @@ export const CONSENT_TYPES_CATALOG: ConsentTypeConfig[] = [
     id: 1,
     name: 'Core Scheme Data Processing',
     description:
-      'Processing of candidate demographics, educational history, biometric attendance, and qualification outcomes in accordance with National Skill Development Scheme rules.',
+      'Process your registration and training records.',
     isRequired: true,
     defaultPurpose: 'Process registration and training records',
   },
@@ -49,6 +49,14 @@ export const CONSENT_TYPES_CATALOG: ConsentTypeConfig[] = [
       'Permission to follow up regarding post-training job placement, apprenticeship opportunities, employer verification, and career tracking.',
     isRequired: false,
     defaultPurpose: 'Contact the trainee about employment outcomes over time',
+  },
+  {
+    code: 'EMPLOYER_SHARING',
+    id: 3,
+    name: 'Share with employers',
+    description: 'Allow relevant profile information to be shared with prospective employers for placements.',
+    isRequired: false,
+    defaultPurpose: 'Share relevant profile data with prospective employers',
   },
   {
     code: 'COMMUNICATION_SMS',
@@ -240,6 +248,7 @@ export const TraineeConsentPage: React.FC = () => {
     onSuccess: () => {
       setActionError(null);
       queryClient.invalidateQueries({ queryKey: ['trainee', 'consents', traineeId] });
+      queryClient.invalidateQueries({ queryKey: ['trainee', 'surveys', traineeId] });
     },
     onError: (err: any) => {
       setActionError(err?.message || 'Failed to record consent. Please try again.');
@@ -264,6 +273,7 @@ export const TraineeConsentPage: React.FC = () => {
     onSuccess: () => {
       setActionError(null);
       queryClient.invalidateQueries({ queryKey: ['trainee', 'consents', traineeId] });
+      queryClient.invalidateQueries({ queryKey: ['trainee', 'surveys', traineeId] });
     },
     onError: (err: any) => {
       setActionError(err?.message || 'Failed to update consent status. Please try again.');

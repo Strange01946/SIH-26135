@@ -193,6 +193,9 @@ class SystemEventDiagnosticsUnitTest {
         null, "ImportBatch", 10L, "IMPORT_WORKFLOW", "Failed batch");
     assertThat(first).isPresent();
     assertThat(second).isEmpty();
+    assertThat(service.getThrottleCounters().duplicateEvents()).isEqualTo(1);
+    assertThat(service.getThrottleCounters().rateLimitAlerts()).isZero();
+    assertThat(service.getThrottleCounters().dataQualityAlerts()).isZero();
     verify(eventRepo, times(2)).saveAndFlush(any(SystemEventLog.class));
   }
 

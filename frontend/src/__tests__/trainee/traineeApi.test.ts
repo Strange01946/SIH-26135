@@ -14,9 +14,8 @@ import {
   getTraineeSkillGapProfile,
   acceptSkillGapRecommendation,
   rejectSkillGapRecommendation,
-  getTraineeSurveyResponses,
-  submitSurveyResponse,
-  submitSurveyResponseAnswer,
+  getFollowupSurveys,
+  submitFollowupQuestionnaire,
 } from '@/api/traineeApi';
 import { apiClient } from '@/api/client';
 
@@ -315,33 +314,11 @@ describe('Trainee Domain API Services (traineeApi)', () => {
     expect(result).toEqual(mockProfile);
   });
 
-  it('getTraineeSurveyResponses fetches paged survey responses for traineeId', async () => {
-    const mockPaged = {
-      content: [{ id: 99, surveyId: 1, attemptNumber: 1 }],
-      page: 0,
-      size: 20,
-      totalElements: 1,
-      totalPages: 1,
-      first: true,
-      last: true,
-      hasNext: false,
-      hasPrevious: false,
-    };
-
-    const getSpy = vi.spyOn(apiClient, 'get').mockResolvedValueOnce({
-      data: {
-        success: true,
-        data: mockPaged,
-      },
-      status: 200,
-    } as any);
-
-    const result = await getTraineeSurveyResponses(42, 0, 20);
-
-    expect(getSpy).toHaveBeenCalledWith('/api/v1/survey-responses', {
-      params: { traineeId: 42, page: 0, size: 20 },
-    });
-    expect(result).toEqual(mockPaged);
+  it('loads survey history and assignments for the authenticated trainee', async () => {
+    const payload = { followupConsentGranted: true, assignments: [], recentSubmissions: [] };
+    const get = vi.spyOn(apiClient, 'get').mockResolvedValueOnce({ data: { success: true, data: payload } });
+    expect(await getFollowupSurveys()).toEqual(payload);
+    expect(get).toHaveBeenCalledWith('/api/v1/trainees/me/followup-surveys', { signal: undefined });
   });
 
   it('acceptSkillGapRecommendation posts to workflow accept endpoint', async () => {
@@ -382,37 +359,12 @@ describe('Trainee Domain API Services (traineeApi)', () => {
     expect(result.status).toBe('REJECTED');
   });
 
-  it('submitSurveyResponse and submitSurveyResponseAnswer post to survey endpoints', async () => {
-    const respSpy = vi.spyOn(apiClient, 'post').mockResolvedValueOnce({
-      data: {
-        success: true,
-        data: { id: 99, surveyId: 1, traineeId: 42 },
-      },
-      status: 201,
-    } as any);
-
-    const response = await submitSurveyResponse({ surveyId: 1, traineeId: 42 });
-    expect(respSpy).toHaveBeenCalledWith('/api/v1/survey-responses', { surveyId: 1, traineeId: 42 }, undefined);
-    expect(response.id).toBe(99);
-
-    const ansSpy = vi.spyOn(apiClient, 'post').mockResolvedValueOnce({
-      data: {
-        success: true,
-        data: { id: 1001, surveyResponseId: 99 },
-      },
-      status: 201,
-    } as any);
-
-    const ansResult = await submitSurveyResponseAnswer({
-      surveyResponseId: 99,
-      surveyQuestionId: 1,
-      answerText: 'Great program',
+  it('submits typed answers together for the assigned survey', async () => {
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValueOnce({
+      data: { success: true, data: { id: 99, name: 'Employment survey' } },
     });
-    expect(ansSpy).toHaveBeenCalledWith(
-      '/api/v1/survey-response-answers',
-      { surveyResponseId: 99, surveyQuestionId: 1, answerText: 'Great program' },
-      undefined,
-    );
-    expect(ansResult.id).toBe(1001);
+    const payload = { versionId: 10, answers: [{ questionId: 1, yes: false }] };
+    expect(await submitFollowupQuestionnaire(42, payload)).toMatchObject({ id: 99 });
+    expect(post).toHaveBeenCalledWith('/api/v1/trainees/me/followup-surveys/42/responses', payload, undefined);
   });
 });

@@ -1,4 +1,5 @@
 import { apiGet, apiPost } from './client';
+import type { components } from './generated/api.types';
 import type { AuthResponse } from './types';
 
 export interface ReferenceItem {
@@ -16,62 +17,9 @@ export interface RegistrationReferenceData {
   employmentStatuses: ReferenceItem[];
 }
 
-export interface RegisterTraineePayload {
-  username: string;
-  email: string;
-  password: string;
-  firstName: string;
-  middleName?: string;
-  lastName?: string;
-  dateOfBirth?: string;
-  genderId: number;
-  phone?: string;
-  stateId: number;
-  districtId: number;
-  addressLine1?: string;
-  addressLine2?: string;
-  pincode?: string;
-  educationLevelId?: number;
-  currentEmploymentStatusId?: number;
-}
-
-export interface RegisterTrainingProviderPayload {
-  username: string;
-  email: string;
-  password: string;
-  providerName: string;
-  registrationNumber: string;
-  organizationTypeId?: number;
-  contactPersonName: string;
-  contactEmail: string;
-  contactPhone?: string;
-  stateId: number;
-  districtId: number;
-  addressLine1?: string;
-  addressLine2?: string;
-  pincode?: string;
-}
-
-export interface RegisterEmployerPayload {
-  username: string;
-  email: string;
-  password: string;
-  employerName: string;
-  registrationNumber?: string;
-  gstin?: string;
-  organizationTypeId?: number;
-  industryId?: number;
-  sectorId?: number;
-  companySizeId?: number;
-  contactPersonName: string;
-  contactEmail: string;
-  contactPhone?: string;
-  stateId: number;
-  districtId: number;
-  addressLine1?: string;
-  addressLine2?: string;
-  pincode?: string;
-}
+export type RegisterTraineePayload = components['schemas']['RegisterTraineeRequest'];
+export type RegisterTrainingProviderPayload = components['schemas']['RegisterTrainingProviderRequest'];
+export type RegisterEmployerPayload = components['schemas']['RegisterEmployerRequest'];
 
 export interface OnboardingApplicationResponse {
   applicationId: number;

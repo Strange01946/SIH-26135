@@ -24,6 +24,7 @@ public class MockWebhookSignatureValidator implements WebhookSignatureValidator 
   public static final String HEADER_WEBHOOK_SIGNATURE = "X-Webhook-Signature";
   public static final String TEST_MOCK_VALID_SIGNATURE = "mock-valid-signature";
   public static final String DEFAULT_MOCK_SECRET = "sih26135-mock-webhook-secret";
+  public static final String DEMO_RECEIPT_PREFIX = "DLR_DEMO_";
 
   private final CommunicationProperties properties;
 

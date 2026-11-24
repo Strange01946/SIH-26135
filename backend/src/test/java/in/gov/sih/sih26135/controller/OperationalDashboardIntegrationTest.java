@@ -283,19 +283,26 @@ class OperationalDashboardIntegrationTest {
   }
 
   private void cleanUpFixtures() {
-    jdbcTemplate.update("DELETE FROM audit_logs WHERE audit_log_id BETWEEN 99100 AND 99199 OR audit_log_id BETWEEN 987000 AND 987999 OR actor_user_id BETWEEN 9910 AND 9919");
-    jdbcTemplate.update("DELETE FROM system_event_logs WHERE system_event_log_id BETWEEN 99100 AND 99199 OR system_event_log_id BETWEEN 987000 AND 987999 OR actor_user_id BETWEEN 9910 AND 9919");
+    jdbcTemplate.update("""
+        DELETE a FROM audit_logs a JOIN users u ON u.user_id = a.actor_user_id WHERE LEFT(u.username, 6) = 'op287_'
+        """);
+    jdbcTemplate.update("DELETE FROM system_event_logs WHERE LEFT(event_code, 6) = 'OP287_'");
 
-    jdbcTemplate.update("DELETE FROM data_quality_issue_events WHERE data_quality_issue_event_id BETWEEN 99100 AND 99199 OR data_quality_issue_event_id BETWEEN 987000 AND 987999 OR data_quality_issue_id BETWEEN 99100 AND 99199 OR data_quality_issue_id BETWEEN 987000 AND 987999");
-    jdbcTemplate.update("DELETE FROM data_quality_issues WHERE data_quality_issue_id BETWEEN 99100 AND 99199 OR data_quality_issue_id BETWEEN 987000 AND 987999");
+    jdbcTemplate.update("""
+        DELETE e FROM data_quality_issue_events e JOIN data_quality_issues i USING (data_quality_issue_id)
+        WHERE i.issue_summary = 'OP287 test issue'
+        """);
+    jdbcTemplate.update("DELETE FROM data_quality_issues WHERE issue_summary = 'OP287 test issue'");
     jdbcTemplate.update("DELETE FROM data_quality_rules WHERE data_quality_rule_id IN (?, ?, ?)", RULE_1_ID, RULE_2_ID, RULE_3_ID);
 
-    jdbcTemplate.update("DELETE FROM import_records WHERE import_record_id BETWEEN 99100 AND 99199 OR import_record_id BETWEEN 987000 AND 987999 OR import_batch_id BETWEEN 99100 AND 99199 OR import_batch_id BETWEEN 987000 AND 987999");
-    jdbcTemplate.update("DELETE FROM import_batches WHERE import_batch_id BETWEEN 99100 AND 99199 OR import_batch_id BETWEEN 987000 AND 987999 OR initiated_by_user_id BETWEEN 9910 AND 9919");
+    jdbcTemplate.update("""
+        DELETE r FROM import_records r JOIN import_batches b USING (import_batch_id) WHERE b.batch_code LIKE 'IMP-OP-%'
+        """);
+    jdbcTemplate.update("DELETE FROM import_batches WHERE batch_code LIKE 'IMP-OP-%'");
 
     jdbcTemplate.update("DELETE FROM placement_records WHERE placement_id = ?", PLACEMENT_EMP_A_ID);
-    jdbcTemplate.update("DELETE FROM training_enrollments WHERE enrollment_id BETWEEN 9911 AND 9919 OR enrollment_id BETWEEN 987000 AND 987999");
-    jdbcTemplate.update("DELETE FROM trainees WHERE trainee_id BETWEEN 9911 AND 9919 OR trainee_id BETWEEN 987000 AND 987999");
+    jdbcTemplate.update("DELETE FROM training_enrollments WHERE enrollment_number LIKE 'OP287-ENR-%'");
+    jdbcTemplate.update("DELETE FROM trainees WHERE registration_number LIKE 'OP287-TR-%'");
     jdbcTemplate.update("DELETE FROM training_batches WHERE batch_id IN (?, ?)", BATCH_A1_ID, BATCH_A2_ID);
     jdbcTemplate.update("DELETE FROM training_centers WHERE center_id IN (?, ?)", CENTER_A1_ID, CENTER_A2_ID);
     jdbcTemplate.update("DELETE FROM courses WHERE course_id = ?", COURSE_ID);

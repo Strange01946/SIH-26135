@@ -3,6 +3,7 @@ package in.gov.sih.sih26135.dto.registration;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public class RegisterTrainingProviderRequest {
@@ -34,10 +35,11 @@ public class RegisterTrainingProviderRequest {
   @Size(max = 150, message = "Contact person name cannot exceed 150 characters")
   private String contactPersonName;
 
-  @NotBlank(message = "Contact email is required")
   @Email(message = "Contact email must be a valid email address")
+  @Size(max = 255)
   private String contactEmail;
 
+  @Size(max = 15)
   private String contactPhone;
 
   @NotNull(message = "State is required")
@@ -46,10 +48,14 @@ public class RegisterTrainingProviderRequest {
   @NotNull(message = "District is required")
   private Long districtId;
 
+  @Size(max = 200)
   private String addressLine1;
 
+  @Size(max = 200)
   private String addressLine2;
 
+  @NotBlank(message = "PIN code is required")
+  @Pattern(regexp = "^[1-9][0-9]{5}$", message = "Enter a valid six-digit PIN code")
   private String pincode;
 
   public RegisterTrainingProviderRequest() {

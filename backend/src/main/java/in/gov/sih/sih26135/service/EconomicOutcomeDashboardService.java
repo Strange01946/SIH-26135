@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.service;
 
+import in.gov.sih.sih26135.dto.request.AnalyticsFilterCriteria;
 import in.gov.sih.sih26135.dto.response.EconomicOutcomeSummaryResponse;
 import in.gov.sih.sih26135.dto.response.EmployerHiringPerformanceResponse;
 import in.gov.sih.sih26135.dto.response.LeaderboardResponse;
@@ -16,6 +17,7 @@ public interface EconomicOutcomeDashboardService {
    * @return generic leaderboard response containing ranked employer performance items
    */
   LeaderboardResponse<EmployerHiringPerformanceResponse> getEmployerLeaderboard();
+  LeaderboardResponse<EmployerHiringPerformanceResponse> getEmployerLeaderboard(AnalyticsFilterCriteria criteria);
 
   /**
    * Retrieves the consolidated economic outcome summary including wage progression (Q10),
@@ -25,4 +27,5 @@ public interface EconomicOutcomeDashboardService {
    * @return consolidated economic outcome summary response
    */
   EconomicOutcomeSummaryResponse getEconomicOutcomeSummary();
+  EconomicOutcomeSummaryResponse getEconomicOutcomeSummary(AnalyticsFilterCriteria criteria);
 }

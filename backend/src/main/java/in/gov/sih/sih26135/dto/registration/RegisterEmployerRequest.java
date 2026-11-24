@@ -3,6 +3,7 @@ package in.gov.sih.sih26135.dto.registration;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public class RegisterEmployerRequest {
@@ -24,8 +25,10 @@ public class RegisterEmployerRequest {
   @Size(max = 200, message = "Employer name cannot exceed 200 characters")
   private String employerName;
 
+  @Size(max = 64)
   private String registrationNumber;
 
+  @Pattern(regexp = "^$|^[A-Za-z0-9]{10,15}$", message = "GSTIN must contain 10 to 15 letters or digits")
   private String gstin;
 
   private Long organizationTypeId;
@@ -40,10 +43,11 @@ public class RegisterEmployerRequest {
   @Size(max = 150, message = "Contact person name cannot exceed 150 characters")
   private String contactPersonName;
 
-  @NotBlank(message = "Contact email is required")
   @Email(message = "Contact email must be a valid email address")
+  @Size(max = 255)
   private String contactEmail;
 
+  @Size(max = 15)
   private String contactPhone;
 
   @NotNull(message = "State is required")
@@ -52,10 +56,13 @@ public class RegisterEmployerRequest {
   @NotNull(message = "District is required")
   private Long districtId;
 
+  @Size(max = 200)
   private String addressLine1;
 
+  @Size(max = 200)
   private String addressLine2;
 
+  @Pattern(regexp = "^$|^[1-9][0-9]{5}$", message = "Enter a valid six-digit PIN code")
   private String pincode;
 
   public RegisterEmployerRequest() {

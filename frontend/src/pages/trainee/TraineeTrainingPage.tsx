@@ -9,6 +9,7 @@ import type {
 import { getTraineeEnrollments, getTraineeAttendance } from '@/api/traineeApi';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { EmptyState } from '@/components/feedback/EmptyState';
+import { ErrorState } from '@/components/feedback/ErrorState';
 
 interface TraineeContextType {
   trainee: TraineeProfile | null;
@@ -189,28 +190,7 @@ export const TraineeTrainingPage: React.FC = () => {
             <LoadingSpinner size="md" />
           </div>
         ) : enrollmentsQuery.isError ? (
-          <div
-            role="alert"
-            className="bg-blue-50 border border-blue-200 p-4 rounded-lg text-blue-900 text-sm flex items-start gap-3"
-          >
-            <svg
-              className="w-5 h-5 text-blue-600 mt-0.5 shrink-0"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path
-                fillRule="evenodd"
-                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                clipRule="evenodd"
-              />
-            </svg>
-            <div>
-              <p className="font-semibold">Center Synchronization Notice</p>
-              <p className="text-xs text-blue-800 mt-0.5">
-                Detailed batch master records are maintained by your Training Provider. Your enrollment standing is active in the central verification system.
-              </p>
-            </div>
-          </div>
+          <ErrorState error={enrollmentsQuery.error} title="Unable to load enrollments" onRetry={() => void enrollmentsQuery.refetch()} />
         ) : enrollments.length === 0 ? (
           <EmptyState
             title="No Enrollments Found"
@@ -320,14 +300,7 @@ export const TraineeTrainingPage: React.FC = () => {
             <LoadingSpinner size="md" />
           </div>
         ) : attendanceQuery.isError ? (
-          <div className="p-6 text-center text-sm text-gov-neutral-600">
-            <p className="font-medium text-gov-neutral-800">
-              Attendance records are restricted to verified biometric or trainer-authorized devices.
-            </p>
-            <p className="text-xs text-gov-neutral-500 mt-1">
-              If your attendance percentage is not visible, check with your batch trainer.
-            </p>
-          </div>
+          <ErrorState error={attendanceQuery.error} title="Unable to load attendance records" onRetry={() => void attendanceQuery.refetch()} />
         ) : filteredAttendance.length === 0 ? (
           <div className="p-8">
             <EmptyState

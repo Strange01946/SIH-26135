@@ -56,7 +56,7 @@ describe('LoginPage Component', () => {
   it('renders login page with official title, inputs, and submit button', () => {
     renderLoginPage();
 
-    expect(screen.getByRole('heading', { name: /Sign In to Official Portal/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^Sign in$/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/Username or Official Email/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/Enter your password/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Sign In$/i })).toBeInTheDocument();

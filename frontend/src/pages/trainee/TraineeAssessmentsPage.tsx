@@ -9,6 +9,7 @@ import {
 } from '@/api/traineeApi';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { EmptyState } from '@/components/feedback/EmptyState';
+import { ErrorState } from '@/components/feedback/ErrorState';
 
 export type AssessmentOutcomeVerdict =
   | 'PASS'
@@ -233,12 +234,12 @@ export const TraineeAssessmentsPage: React.FC = () => {
               NCVET Assessments &amp; Certified Credentials
             </h2>
             <p className="text-xs text-gov-neutral-500">
-              National vocational skill qualification results, grades, and digitally signed credentials.
+              Assessment scores, outcomes, and certificates issued by eligible training programmes.
             </p>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-              {certifications.length} Credentials Awarded
+              {certificationsQuery.isSuccess ? certifications.length : '—'} Credentials Awarded
             </span>
           </div>
         </div>
@@ -287,28 +288,7 @@ export const TraineeAssessmentsPage: React.FC = () => {
             <LoadingSpinner size="md" />
           </div>
         ) : certificationsQuery.isError ? (
-          <div
-            role="alert"
-            className="bg-blue-50 border border-blue-200 p-4 rounded-lg text-blue-900 text-sm flex items-start gap-3"
-          >
-            <svg
-              className="w-5 h-5 text-blue-600 mt-0.5 shrink-0"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path
-                fillRule="evenodd"
-                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                clipRule="evenodd"
-              />
-            </svg>
-            <div>
-              <p className="font-semibold">Certificate Registry Notice</p>
-              <p className="text-xs text-blue-800 mt-0.5">
-                Centralized certificate viewing requires administrative assessment synchronization. Verified credentials remain securely logged in the NCVET register.
-              </p>
-            </div>
-          </div>
+          <ErrorState error={certificationsQuery.error} title="Unable to load certificates" onRetry={() => void certificationsQuery.refetch()} />
         ) : certifications.length === 0 ? (
           <EmptyState
             title="No Certificates Found"
@@ -331,18 +311,18 @@ export const TraineeAssessmentsPage: React.FC = () => {
                         {cert.courseName || `Course #${cert.courseId}`}
                       </h4>
                       <p className="text-xs text-gov-neutral-600 mt-0.5">
-                        Program: {cert.programName || 'National Skills Program'}
+                        Program: {cert.programName || '—'}
                       </p>
                     </div>
                     <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
-                      {cert.certificateVerificationStatusName || 'Verified'}
+                      {cert.certificateVerificationStatusName || cert.certificateVerificationStatusCode || 'Verification status unavailable'}
                     </span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-gov-neutral-200 text-xs text-gov-neutral-600">
                     <div>
                       <span className="font-medium text-gov-neutral-500">Issuing Body:</span>{' '}
-                      <span className="font-semibold">{cert.issuingBody || 'NCVET'}</span>
+                      <span className="font-semibold">{cert.issuingBody || '—'}</span>
                     </div>
                     <div>
                       <span className="font-medium text-gov-neutral-500">Issue Date:</span>{' '}
@@ -354,7 +334,7 @@ export const TraineeAssessmentsPage: React.FC = () => {
                     </div>
                     <div>
                       <span className="font-medium text-gov-neutral-500">Status:</span>{' '}
-                      <span>{cert.certificateStatusName || 'Active'}</span>
+                      <span>{cert.certificateStatusName || cert.certificateStatusCode || '—'}</span>
                     </div>
                   </div>
                 </div>
@@ -412,14 +392,7 @@ export const TraineeAssessmentsPage: React.FC = () => {
             <LoadingSpinner size="md" />
           </div>
         ) : assessmentsQuery.isError ? (
-          <div className="p-6 text-center text-sm text-gov-neutral-600">
-            <p className="font-medium text-gov-neutral-800">
-              Assessment score records require evaluation clearance.
-            </p>
-            <p className="text-xs text-gov-neutral-500 mt-1">
-              Contact your assessment agency invigilator for scorecard inquiries.
-            </p>
-          </div>
+          <ErrorState error={assessmentsQuery.error} title="Unable to load assessment results" onRetry={() => void assessmentsQuery.refetch()} />
         ) : assessmentResults.length === 0 ? (
           <div className="p-8">
             <EmptyState

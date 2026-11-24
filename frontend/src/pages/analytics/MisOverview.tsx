@@ -1,0 +1,160 @@
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { getStateOutcomes, type DistrictSummary, type MisFilters, type MisOptions, type MisSnapshot } from '@/api/misApi';
+import { Modal } from '@/components/common/Modal';
+import { ErrorState } from '@/components/feedback/ErrorState';
+import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
+import { formatMetric, MeasureValue, MisTable, Panel, Value, type TableColumn } from './MisUi';
+import india from './indiaStates.json';
+import { ExecutiveKpiCards } from './ExecutiveKpiCards';
+
+export function ExecutiveKpis({ headline }: Pick<MisSnapshot, 'headline'>) {
+  return (
+    <Panel code="Q01" title="Executive indicators">
+      <ExecutiveKpiCards headline={headline} />
+      {!headline.previousFinancialYear && <p className="text-sm text-slate-600">Select a financial year for a comparison with the previous year.</p>}
+    </Panel>
+  );
+}
+
+const stages: Record<string, { label: string; detail: string }> = {
+  registered: { label: 'Registered', detail: 'Includes candidates registered in the period and candidates with matching enrollments who registered earlier.' },
+  enrolled: { label: 'Enrolled', detail: 'Distinct candidates with an enrollment in the selected cohort.' },
+  assessed: { label: 'Assessed', detail: 'Candidates who appeared for an assessment linked to a qualifying enrollment.' },
+  certified: { label: 'Certified', detail: 'Assessed candidates with an issued certificate for the same enrollment.' },
+  placed: { label: 'Placed', detail: 'Certified candidates who joined a placement for the same enrollment.' },
+  retained: { label: 'Retained', detail: 'Placed candidates whose linked wage employment reached six months.' },
+};
+
+export function TrainingFunnel({ pipeline }: Pick<MisSnapshot, 'pipeline'>) {
+  const [selected, setSelected] = useState('enrolled');
+  const maximum = Math.max(1, ...pipeline.filter((stage) => stage.candidates.availability === 'RELEASED')
+    .map((stage) => stage.candidates.value ?? 0));
+  return (
+    <Panel code="Q02" title="Training pipeline">
+      <p className="text-sm text-slate-600">Distinct candidates through each stage. Select a stage for its definition.</p>
+      <ol className="grid gap-2" aria-label="Candidate lifecycle stages">
+        {pipeline.map(({ key, candidates }, index) => (
+          <li key={key}>
+            <button type="button" aria-pressed={key === selected} onClick={() => setSelected(key)}
+              className="grid w-full gap-2 rounded-md border border-slate-200 bg-white p-2.5 text-left text-sm hover:bg-slate-50 aria-pressed:border-navy aria-pressed:bg-navy-50 sm:grid-cols-[7.5rem_minmax(0,1fr)_minmax(6rem,auto)] sm:items-center">
+              <span className="font-semibold">{stages[key]?.label ?? key}</span>
+              <span className="flex h-4 justify-center" aria-hidden="true">
+                {candidates.availability === 'RELEASED' && candidates.value != null && (
+                  <span className="rounded-sm bg-cyan-800" style={{ width: `${candidates.value / maximum * 100}%`, opacity: 1 - 0.09 * index }} />
+                )}
+              </span>
+              <span className="text-right tabular-nums"><MeasureValue measure={candidates} focusable={false} /></span>
+            </button>
+          </li>
+        ))}
+      </ol>
+      <p className="min-h-10 rounded-md bg-slate-100 p-3 text-sm text-slate-700" aria-live="polite">{stages[selected]?.detail}</p>
+    </Panel>
+  );
+}
+
+const codeAliases: Record<string, string> = { CG: 'CT', OD: 'OR', TS: 'TG', UK: 'UT', DN: 'DH', DD: 'DH' };
+const canonicalCode = (code = '') => codeAliases[code.toUpperCase()] ?? code.toUpperCase();
+const metrics = { placementRatePct: 'Placement rate', employmentRatePct: 'Employment rate', certificationRatePct: 'Certification rate' } as const;
+type MapMetric = keyof typeof metrics;
+const scale = ['#e0f2fe', '#bae6fd', '#7dd3fc', '#38bdf8', '#0369a1'];
+
+export function GeographicPanel({ geography, filters, options }: { geography: MisSnapshot['geography']; filters: MisFilters; options: MisOptions }) {
+  const [metric, setMetric] = useState<MapMetric>('placementRatePct');
+  const [selectedId, setSelectedId] = useState<number>();
+  const summaries = new Map((geography.stateSummaries ?? []).map((row) => [row.stateId, row]));
+  const states = options.states.filter((state) => !filters.stateId || filters.stateId === state.id);
+  const statesByCode = new Map(states.map((state) => [canonicalCode(state.code), state]));
+  const selected = states.find((state) => state.id === selectedId);
+
+  return (
+    <Panel code="Q06" title="State and district outcomes">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(16rem,0.8fr)]">
+        <div className="space-y-3">
+          <div className="max-w-60">
+            <label className="form-label" htmlFor="mis-map-metric">Map metric</label>
+            <select id="mis-map-metric" className="form-input" value={metric} onChange={(event) => setMetric(event.target.value as MapMetric)}>
+              {Object.entries(metrics).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </select>
+          </div>
+          <svg viewBox="0 0 452 480" aria-label={`India state choropleth of ${metrics[metric].toLowerCase()}`}
+            className="mx-auto block w-full max-w-lg rounded-lg bg-slate-50 p-2">
+            {india.map((shape) => {
+              const state = statesByCode.get(shape.code);
+              const row = state ? summaries.get(state.id) : undefined;
+              const value = row?.[metric];
+              const title = `${state?.name ?? shape.name} · ${value != null ? formatMetric(value, 'percent')
+                : row && row.enrollmentCount !== 0 ? 'Suppressed' : 'No data'}`;
+              const fill = value != null ? scale[Math.min(4, Math.max(0, Math.floor(value / 20)))]
+                : row && row.enrollmentCount !== 0 ? '#f8cc81' : '#e2e8f0';
+              return (
+                <path key={shape.code} d={shape.path} fill={fill} fillRule="evenodd"
+                  stroke={selected?.id === state?.id && selected ? '#0f172a' : '#f8fafc'} strokeWidth="1.3"
+                  role={state ? 'button' : undefined} aria-label={title}
+                  className={state ? 'cursor-pointer hover:stroke-navy focus:stroke-navy focus:outline-none' : undefined}
+                  tabIndex={state ? 0 : undefined}
+                  onClick={state ? () => setSelectedId(state.id) : undefined}
+                  onKeyDown={state ? (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(state.id); }
+                  } : undefined}>
+                  <title>{title}</title>
+                </path>
+              );
+            })}
+          </svg>
+          <ul className="flex flex-wrap justify-center gap-2 text-xs text-slate-700" aria-label="Map shading legend">
+            {[...scale, '#f8cc81', '#e2e8f0'].map((fill, index) => (
+              <li key={fill} className="flex items-center gap-1">
+                <span className="size-3 rounded-sm border border-slate-300" style={{ backgroundColor: fill }} aria-hidden="true" />
+                {['0–<20%', '20–<40%', '40–<60%', '60–<80%', '80–100%', 'Suppressed', 'No data'][index]}
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-slate-600">Boundaries adapted from DataMeet and Election Commission of India via geoBoundaries (<a href="https://creativecommons.org/licenses/by/2.5/in/" className="underline">CC BY 2.5 India</a>).</p>
+        </div>
+        <div className="min-w-0 space-y-2">
+          <h3 className="font-semibold text-navy">Select a state to view districts</h3>
+          {states.length === 0 ? <p className="text-sm text-slate-600">No states are available in the location directory.</p> : (
+            <ul className="max-h-100 divide-y overflow-auto rounded-md border border-slate-200">
+              {states.map((state) => {
+                const row = summaries.get(state.id);
+                return <li key={state.id} className="flex items-center justify-between gap-2 p-3 text-sm">
+                  <button type="button" className="rounded text-left font-semibold text-navy hover:underline focus-visible:outline-2"
+                    onClick={() => setSelectedId(state.id)}>{state.name}</button>
+                  <Value value={row?.[metric]} format="percent" noData={!row || row.enrollmentCount === 0} />
+                </li>;
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+      {selected && <StateDialog stateId={selected.id} name={selected.name} filters={filters} onClose={() => setSelectedId(undefined)} />}
+    </Panel>
+  );
+}
+
+const districtColumns: TableColumn<DistrictSummary>[] = [
+  { key: 'district', title: 'District', value: (row) => row.districtName, sortable: true },
+  { key: 'enrolled', title: 'Enrollments', value: (row) => row.enrollmentCount, format: 'count', sortable: true },
+  { key: 'certified', title: 'Certification rate', value: (row) => row.certificationRatePct, format: 'percent', sortable: true, noData: (row) => row.enrollmentCount === 0 },
+  { key: 'placed', title: 'Placement rate', value: (row) => row.placementRatePct, format: 'percent', sortable: true, noData: (row) => row.enrollmentCount === 0 },
+  { key: 'employment', title: 'Employment rate', value: (row) => row.employmentRatePct, format: 'percent', sortable: true, noData: (row) => row.enrollmentCount === 0 },
+];
+
+function StateDialog({ stateId, name, filters, onClose }: { stateId: number; name: string; filters: MisFilters; onClose: () => void }) {
+  const districts = useQuery({
+    queryKey: ['government-mis', 'state', stateId, filters],
+    queryFn: ({ signal }) => getStateOutcomes(stateId, filters, signal),
+    retry: false,
+  });
+  return (
+    <Modal open onClose={onClose} title={`${name} district outcomes`} className="max-w-[52rem]">
+      <div className="p-4 sm:p-5">
+        {districts.isPending ? <LoadingSpinner label="Loading district outcomes" /> : districts.isError
+          ? <ErrorState error={districts.error} title="Unable to load district outcomes" onRetry={() => void districts.refetch()} />
+          : <MisTable title="District outcomes" rows={districts.data.districts ?? []} columns={districtColumns} rowKey={(row) => row.districtId} initialSort="district" />}
+      </div>
+    </Modal>
+  );
+}

@@ -113,6 +113,7 @@ describe('TraineeAssessmentsPage Component', () => {
 
     const createObjectURLSpy = vi.fn().mockReturnValue('blob:mock-url');
     const revokeObjectURLSpy = vi.fn();
+    const downloadClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     window.URL.createObjectURL = createObjectURLSpy;
     window.URL.revokeObjectURL = revokeObjectURLSpy;
 
@@ -128,7 +129,9 @@ describe('TraineeAssessmentsPage Component', () => {
       expect(screen.getByText(/Certificate PDF downloaded successfully/i)).toBeInTheDocument();
     });
     expect(createObjectURLSpy).toHaveBeenCalledWith(pdfBlob);
+    expect(downloadClick).toHaveBeenCalledOnce();
     expect(revokeObjectURLSpy).toHaveBeenCalledWith('blob:mock-url');
+    downloadClick.mockRestore();
   });
 
   it('handles certificate PDF download when backend does not stream binary file', async () => {
@@ -166,9 +169,10 @@ describe('TraineeAssessmentsPage Component', () => {
     renderAssessmentsWithContext({ traineeId: 42, isUnlinked: false, isLoading: false });
 
     await waitFor(() => {
-      expect(screen.getByText(/Certificate Registry Notice/i)).toBeInTheDocument();
+      expect(screen.getByText(/Unable to load certificates/i)).toBeInTheDocument();
     });
-    expect(screen.getByText(/Assessment score records require evaluation clearance/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Unable to load assessment results/i)).toBeInTheDocument();
+    expect(screen.getAllByText('Access Denied')).toHaveLength(2);
   });
 
   describe('resolveAssessmentOutcome() authoritative evaluation tests', () => {

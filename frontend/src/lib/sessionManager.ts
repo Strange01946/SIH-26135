@@ -1,8 +1,10 @@
 import axios from 'axios';
+import { v4 as uuidv4 } from 'uuid';
 import { queryClient } from './queryClient';
 import type { ApiResponse, AuthResponse } from '@/api/types';
+import { apiBaseUrl, simulationActive, simulationRefreshKey } from './demoEnvironment';
 
-const REFRESH_TOKEN_STORAGE_KEY = 'sih_refresh_token';
+const REFRESH_TOKEN_STORAGE_KEY = simulationActive ? simulationRefreshKey : 'sih_refresh_token';
 
 // In-memory access token storage (never exposed to window or localStorage)
 let memoryAccessToken: string | null = null;
@@ -22,7 +24,7 @@ export function getSessionGeneration(): number {
 let inFlightRefreshPromise: Promise<string | null> | null = null;
 
 // Subscribers for session lifecycle events (e.g., AuthContext)
-type SessionListener = (isAuthenticated: boolean) => void;
+type SessionListener = (isAuthenticated: boolean, renewedSession?: AuthResponse) => void;
 const listeners = new Set<SessionListener>();
 
 /**
@@ -30,6 +32,16 @@ const listeners = new Set<SessionListener>();
  */
 export function getAccessToken(): string | null {
   return memoryAccessToken;
+}
+
+export function isAccessTokenExpiring(token: string): boolean {
+  try {
+    const payload = token.split('.')[1];
+    const { exp } = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as { exp?: number };
+    return typeof exp === 'number' && exp * 1000 <= Date.now() + 5_000;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -78,9 +90,7 @@ export function hasSession(): boolean {
 export function setTokens(accessToken: string, refreshToken?: string): void {
   sessionGeneration++;
   memoryAccessToken = accessToken;
-  if (refreshToken) {
-    setRefreshToken(refreshToken);
-  }
+  setRefreshToken(refreshToken ?? null);
   inFlightRefreshPromise = null;
   notifyListeners(true);
 }
@@ -136,7 +146,7 @@ export async function refreshAccessToken(): Promise<string> {
   let currentPromise: Promise<string> | null = null;
   currentPromise = (async () => {
     try {
-      const baseUrl = import.meta.env.VITE_API_BASE_URL ?? '';
+      const baseUrl = apiBaseUrl();
       // Use direct axios call to bypass apiClient interceptors (prevents recursion)
       const response = await axios.post<ApiResponse<AuthResponse>>(
         `${baseUrl}/api/v1/auth/refresh`,
@@ -145,6 +155,7 @@ export async function refreshAccessToken(): Promise<string> {
           headers: {
             'Content-Type': 'application/json',
             Accept: 'application/json',
+            'X-Correlation-ID': uuidv4(),
           },
           timeout: 15_000,
         },
@@ -165,6 +176,7 @@ export async function refreshAccessToken(): Promise<string> {
       if (authData.refreshToken) {
         setRefreshToken(authData.refreshToken);
       }
+      notifyListeners(true, authData);
 
       return authData.accessToken;
     } catch (err) {
@@ -213,10 +225,11 @@ export function subscribeToSession(listener: SessionListener): () => void {
   };
 }
 
-function notifyListeners(isAuthenticated: boolean): void {
+function notifyListeners(isAuthenticated: boolean, renewedSession?: AuthResponse): void {
   listeners.forEach((listener) => {
     try {
-      listener(isAuthenticated);
+      if (renewedSession) listener(isAuthenticated, renewedSession);
+      else listener(isAuthenticated);
     } catch {
       // Prevent listener errors from interrupting execution
     }

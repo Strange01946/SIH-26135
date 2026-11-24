@@ -1,14 +1,26 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   listOnboardingApplications,
   approveOnboardingApplication,
   rejectOnboardingApplication,
+  pendingOnboardingKey,
 } from '@/api/adminApi';
 import type { OnboardingApplicationResponse } from '@/api/registrationApi';
+import { useAuth } from '@/context/AuthContext';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import type { ApiError } from '@/api/types';
 
 export function AdminOnboardingPage(): React.JSX.Element {
+  const { user, hasRole, hasAuthority } = useAuth();
+  const queryClient = useQueryClient();
+  const canApproveOrReject =
+    hasRole('ROLE_super_admin') ||
+    hasRole('ROLE_government_admin') ||
+    hasRole('ROLE_ADMIN') ||
+    hasRole('ADMIN') ||
+    hasAuthority('user.manage');
+
   const [applications, setApplications] = useState<OnboardingApplicationResponse[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('PENDING');
   const [loading, setLoading] = useState(true);
@@ -48,6 +60,7 @@ export function AdminOnboardingPage(): React.JSX.Element {
     setSuccessMsg(null);
     try {
       await approveOnboardingApplication(app.applicationId);
+      void queryClient.invalidateQueries({ queryKey: pendingOnboardingKey });
       setSuccessMsg(`Application for "${app.organizationName}" approved successfully.`);
       await fetchApplications();
     } catch (err) {
@@ -67,6 +80,7 @@ export function AdminOnboardingPage(): React.JSX.Element {
     setSuccessMsg(null);
     try {
       await rejectOnboardingApplication(rejectModalApp.applicationId, rejectionReason.trim());
+      void queryClient.invalidateQueries({ queryKey: pendingOnboardingKey });
       setSuccessMsg(`Application for "${rejectModalApp.organizationName}" rejected.`);
       setRejectModalApp(null);
       setRejectionReason('');
@@ -84,9 +98,16 @@ export function AdminOnboardingPage(): React.JSX.Element {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b pb-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-navy">
-            Organisation Onboarding Requests
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight text-navy">
+              Organisation Onboarding Requests
+            </h1>
+            {user?.stateId != null && (
+              <span className="text-xs bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded border border-indigo-200 font-medium">
+                State Jurisdiction (ID: {user.stateId})
+              </span>
+            )}
+          </div>
           <p className="text-sm text-gray-500 mt-1">
             Review and adjudicate pending training provider and employer registrations.
           </p>
@@ -194,24 +215,30 @@ export function AdminOnboardingPage(): React.JSX.Element {
                     </td>
                     <td className="px-4 py-3.5 text-right whitespace-nowrap">
                       {app.status === 'PENDING' ? (
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            type="button"
-                            disabled={processingId === app.applicationId}
-                            onClick={() => handleApprove(app)}
-                            className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-300 transition-colors"
-                          >
-                            Approve
-                          </button>
-                          <button
-                            type="button"
-                            disabled={processingId === app.applicationId}
-                            onClick={() => { setRejectModalApp(app); setRejectionReason(''); }}
-                            className="px-2.5 py-1 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded border border-red-300 transition-colors"
-                          >
-                            Reject
-                          </button>
-                        </div>
+                        canApproveOrReject ? (
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              disabled={processingId === app.applicationId}
+                              onClick={() => handleApprove(app)}
+                              className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-300 transition-colors"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              type="button"
+                              disabled={processingId === app.applicationId}
+                              onClick={() => { setRejectModalApp(app); setRejectionReason(''); }}
+                              className="px-2.5 py-1 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded border border-red-300 transition-colors"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-xs font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded border border-amber-200">
+                            Read-Only Review
+                          </span>
+                        )
                       ) : (
                         <span className="text-xs text-gray-400">
                           {app.status === 'REJECTED' && app.rejectionReason

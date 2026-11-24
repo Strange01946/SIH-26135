@@ -120,12 +120,12 @@ describe('API Client Auth Interceptors & Refresh Loop Protection', () => {
     expect(refreshSpy).not.toHaveBeenCalled();
   });
 
-  it('clears session when silent token refresh fails and rejects the original call', async () => {
+  it('preserves session on a transient refresh failure and reports that renewal is unavailable', async () => {
     sessionManager.setTokens('expired-token', 'invalid-refresh-token');
     const clearSessionSpy = vi.spyOn(sessionManager, 'clearSession');
 
     vi.spyOn(sessionManager, 'refreshAccessToken').mockRejectedValue(
-      new Error('Refresh failed with 401'),
+      new Error('Network unavailable'),
     );
 
     mock.onGet('/api/v1/sensitive-data').reply(401, {
@@ -136,10 +136,24 @@ describe('API Client Auth Interceptors & Refresh Loop Protection', () => {
     });
 
     await expect(apiGet('/api/v1/sensitive-data')).rejects.toMatchObject({
-      status: 401,
+      status: 503,
+      code: 'SESSION_REFRESH_UNAVAILABLE',
     });
 
-    expect(clearSessionSpy).toHaveBeenCalled();
+    expect(clearSessionSpy).not.toHaveBeenCalled();
+    expect(sessionManager.getRefreshToken()).toBe('invalid-refresh-token');
+  });
+
+  it('renews an expired access token before dispatching a write', async () => {
+    const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) - 1 }));
+    sessionManager.setTokens(`test.${payload}.test`, 'stored-refresh-token');
+    const refresh = vi.spyOn(sessionManager, 'refreshAccessToken').mockResolvedValue('renewed-token');
+    mock.onPost('/api/v1/training-batches').reply(201, { success: true, data: { id: 5 } });
+
+    await expect(apiPost('/api/v1/training-batches', { capacity: 10 })).resolves.toEqual({ id: 5 });
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(mock.history.post).toHaveLength(1);
+    expect(mock.history.post[0].headers?.Authorization).toBe('Bearer renewed-token');
   });
 
   it('does not retry infinitely if retried request still returns 401 (_retry guard)', async () => {

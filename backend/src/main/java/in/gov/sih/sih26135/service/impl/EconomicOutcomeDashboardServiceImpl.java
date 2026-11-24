@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.service.impl;
 
+import in.gov.sih.sih26135.dto.request.AnalyticsFilterCriteria;
 import in.gov.sih.sih26135.dto.response.CourseWageProgressionResponse;
 import in.gov.sih.sih26135.dto.response.EconomicOutcomeSummaryResponse;
 import in.gov.sih.sih26135.dto.response.EmployerHiringPerformanceResponse;
@@ -84,7 +85,17 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
   }
 
   private LeaderboardResponse<EmployerHiringPerformanceResponse> computeUnfilteredEmployerLeaderboard() {
-    List<EmployerHiringProjection> projections = repository.getFormalQ07EmployerLeaderboard();
+    return mapEmployerLeaderboard(repository.getFormalQ07EmployerLeaderboard());
+  }
+
+  @Override
+  public LeaderboardResponse<EmployerHiringPerformanceResponse> getEmployerLeaderboard(AnalyticsFilterCriteria criteria) {
+    scopeValidator.validateNationwideScope();
+    scopeValidator.validateAnalyticsFilterScope(criteria);
+    return mapEmployerLeaderboard(repository.getFormalQ07EmployerLeaderboard(criteria));
+  }
+
+  private LeaderboardResponse<EmployerHiringPerformanceResponse> mapEmployerLeaderboard(List<EmployerHiringProjection> projections) {
     if (projections == null || projections.isEmpty()) {
       return LeaderboardResponse.of(EMPLOYER_RANKING_METRIC, Collections.emptyList());
     }
@@ -98,7 +109,7 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
           p.employerName(),
           p.placementCount() != null ? p.placementCount() : 0L,
           p.traineeCount() != null ? p.traineeCount() : 0L,
-          p.joinedCount() != null ? p.joinedCount() : 0L,
+          p.traineeCount() == null ? Long.valueOf(0L) : p.joinedCount(),
           p.joinRatePct(),
           p.avgJoiningSalary(),
           i + 1
@@ -118,36 +129,38 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
   }
 
   private EconomicOutcomeSummaryResponse computeUnfilteredEconomicOutcomeSummary() {
-    // 1. Wage Progression KPIs (Q10)
-    WageProgressionResponse wageProgression = mapWageProgression(repository.getFormalQ10WageProgression());
+    return mapEconomicOutcome(repository.getFormalQ10WageProgression(), repository.getSalaryDistributionCounts(),
+        repository.getFormalQ08EmploymentMix(), repository.getFormalQ09CategoryBreakdown(),
+        repository.getFormalQ11CourseWageProgression());
+  }
 
-    // 2. Salary Distribution Brackets
-    List<SalaryDistributionResponse> salaryDistribution = buildSalaryDistribution(
-        repository.getSalaryDistributionCounts()
-    );
+  @Override
+  public EconomicOutcomeSummaryResponse getEconomicOutcomeSummary(AnalyticsFilterCriteria criteria) {
+    scopeValidator.validateNationwideScope();
+    scopeValidator.validateAnalyticsFilterScope(criteria);
+    return mapEconomicOutcome(repository.getFormalQ10WageProgression(criteria), repository.getSalaryDistributionCounts(criteria),
+        repository.getFormalQ08EmploymentMix(criteria), repository.getFormalQ09CategoryBreakdown(criteria),
+        repository.getFormalQ11CourseWageProgression(criteria));
+  }
 
-    // 3. Employment Mix (Q08)
-    EmploymentMixResponse employmentMix = mapEmploymentMix(repository.getFormalQ08EmploymentMix());
-
-    // 4. Engagement Category Breakdown (Q09)
-    Long totalSpells = employmentMix != null ? employmentMix.employmentSpellCount() : null;
-    List<EmploymentCategoryBreakdownResponse> categoryBreakdown = mapCategoryBreakdown(
-        repository.getFormalQ09CategoryBreakdown(),
-        totalSpells
-    );
-
-    // 5. Course Wage Progression (Q11)
-    List<CourseWageProgressionResponse> courseWageProgression = mapCourseWageProgression(
-        repository.getFormalQ11CourseWageProgression()
-    );
-
-    return privacyService.applyPrivacyGuardrail(new EconomicOutcomeSummaryResponse(
-        wageProgression,
-        salaryDistribution,
-        employmentMix,
-        categoryBreakdown,
-        courseWageProgression
-    ));
+  private EconomicOutcomeSummaryResponse mapEconomicOutcome(WageProgressionProjection wages,
+      List<SalaryBracketCountProjection> salaries, EmploymentMixProjection mix,
+      List<EmploymentCategoryBreakdownProjection> categories, List<CourseWageProgressionProjection> courseWages) {
+    var employment = mapEmploymentMix(mix);
+    var breakdown = mapCategoryBreakdown(categories, employment.employmentSpellCount());
+    var released = privacyService.applyPrivacyGuardrail(new EconomicOutcomeSummaryResponse(
+        mapWageProgression(wages), buildSalaryDistribution(salaries), employment, breakdown,
+        mapCourseWageProgression(courseWages)));
+    if (released.categoryBreakdown().stream().anyMatch(row -> row.spellCount() == null)) {
+      // Employment flags can overlap exact category breakdowns. Do not publish one as a
+      // means of deriving a category hidden in the other.
+      var safe = released.employmentMix();
+      return new EconomicOutcomeSummaryResponse(released.wageProgression(), released.salaryDistribution(),
+          new EmploymentMixResponse(safe.employmentSpellCount(), safe.traineeCount(), safe.currentSpellCount(),
+              null, null, null, null, null, null, safe.avgDurationDays(), safe.avgCurrentSpellDurationDays(),
+              null, null, null, null), released.categoryBreakdown(), released.courseWageProgression());
+    }
+    return released;
   }
 
   private WageProgressionResponse mapWageProgression(WageProgressionProjection p) {
@@ -155,7 +168,7 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
       return new WageProgressionResponse(0L, 0L, 0L, null, null, null, null);
     }
     return new WageProgressionResponse(
-        p.employmentSpellCount() != null ? p.employmentSpellCount() : 0L,
+        p.employmentSpellCount(),
         p.firstSalaryCount() != null ? p.firstSalaryCount() : 0L,
         p.latestSalaryCount() != null ? p.latestSalaryCount() : 0L,
         p.avgFirstRecordedSalary(),
@@ -203,10 +216,10 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
     }
 
     Long totalSpells = p.employmentSpellCount() != null ? p.employmentSpellCount() : 0L;
-    Long wageCount = p.wageSpellCount() != null ? p.wageSpellCount() : 0L;
-    Long selfCount = p.selfEmploymentSpellCount() != null ? p.selfEmploymentSpellCount() : 0L;
-    Long appCount = p.apprenticeshipSpellCount() != null ? p.apprenticeshipSpellCount() : 0L;
-    Long internCount = p.internshipSpellCount() != null ? p.internshipSpellCount() : 0L;
+    Long wageCount = p.wageSpellCount();
+    Long selfCount = p.selfEmploymentSpellCount();
+    Long appCount = p.apprenticeshipSpellCount();
+    Long internCount = p.internshipSpellCount();
 
     BigDecimal wageShare = AnalyticsCalculationUtils.calculatePercentage(wageCount, totalSpells);
     BigDecimal selfShare = AnalyticsCalculationUtils.calculatePercentage(selfCount, totalSpells);
@@ -216,13 +229,13 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
     return new EmploymentMixResponse(
         totalSpells,
         p.traineeCount() != null ? p.traineeCount() : 0L,
-        p.currentSpellCount() != null ? p.currentSpellCount() : 0L,
+        p.currentSpellCount(),
         wageCount,
         selfCount,
         appCount,
         internCount,
-        p.currentWageCount() != null ? p.currentWageCount() : 0L,
-        p.currentSelfEmploymentCount() != null ? p.currentSelfEmploymentCount() : 0L,
+        p.currentWageCount(),
+        p.currentSelfEmploymentCount(),
         p.avgDurationDays(),
         p.avgCurrentSpellDurationDays(),
         wageShare,
@@ -253,7 +266,7 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
           Boolean.TRUE.equals(p.isInternship()),
           spellCount,
           p.traineeCount() != null ? p.traineeCount() : 0L,
-          p.currentSpellCount() != null ? p.currentSpellCount() : 0L,
+          p.currentSpellCount(),
           sharePct,
           p.avgDurationDays()
       ));
@@ -274,7 +287,7 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
           p.courseId(),
           p.courseCode(),
           p.courseName(),
-          p.spellCount() != null ? p.spellCount() : 0L,
+          p.spellCount(),
           p.avgFirstRecordedSalary(),
           p.avgLatestRecordedSalary(),
           p.avgSalaryChangePct()

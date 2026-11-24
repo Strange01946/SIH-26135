@@ -272,21 +272,28 @@ public class AnalyticsExportTest {
   }
 
   private void cleanUpFixtures() {
-    jdbcTemplate.update("DELETE FROM salary_history WHERE (trainee_id >= 99000 AND trainee_id < 1000000)");
-    jdbcTemplate.update("DELETE FROM employment_records WHERE (trainee_id >= 99000 AND trainee_id < 1000000)");
-    jdbcTemplate.update("DELETE FROM training_enrollments WHERE (trainee_id >= 99000 AND trainee_id < 1000000)");
-    jdbcTemplate.update("DELETE FROM training_batches WHERE batch_id >= 99890");
-    jdbcTemplate.update("DELETE FROM training_centers WHERE center_id = 99885");
-    jdbcTemplate.update("DELETE FROM trainees WHERE (trainee_id >= 99000 AND trainee_id < 1000000) OR trainee_id = ?", userTraineeId);
-    jdbcTemplate.update("DELETE FROM courses WHERE course_id IN (99890, 99891)");
+    String ownedTrainees = """
+        WHERE t.state_id IN (99881, 99882)
+          AND (t.registration_number LIKE 'REG-DA-%' OR t.registration_number LIKE 'REG-DB-%'
+            OR t.registration_number IN ('REG-EXP-99112', 'REG-T1-99301', 'REG-T2-99302',
+                'REG-T-99303', 'REG-T-99304', 'REG-T-99305'))
+        """;
+    jdbcTemplate.update("DELETE sh FROM salary_history sh JOIN trainees t USING (trainee_id) " + ownedTrainees);
+    jdbcTemplate.update("DELETE emp FROM employment_records emp JOIN trainees t USING (trainee_id) " + ownedTrainees);
+    jdbcTemplate.update("DELETE en FROM training_enrollments en JOIN trainees t USING (trainee_id) " + ownedTrainees);
+    jdbcTemplate.update("DELETE FROM training_batches WHERE batch_code = 'BAT-SAL-99890' OR batch_code LIKE 'BAT-OUT-%'");
+    jdbcTemplate.update("DELETE FROM training_centers WHERE center_code = 'TC-99885'");
+    jdbcTemplate.update("DELETE t FROM trainees t " + ownedTrainees);
+    jdbcTemplate.update("DELETE FROM courses WHERE course_code IN ('CRS-SAL-99890', 'CRS-OUT-99891')");
     jdbcTemplate.update("DELETE FROM programs WHERE program_id = ?", FIXTURE_PROGRAM_ID);
     jdbcTemplate.update("DELETE FROM schemes WHERE scheme_id = 99885");
     jdbcTemplate.update("DELETE FROM departments WHERE department_id = 99885");
     jdbcTemplate.update("DELETE FROM organizations WHERE organization_id = 99885");
     jdbcTemplate.update("DELETE FROM sectors WHERE sector_id = ?", FIXTURE_SECTOR_ID);
-    jdbcTemplate.update("DELETE FROM users WHERE user_id >= 95000 OR user_id IN (?, ?, ?, ?, ?, ?, ?)",
-        userSuperAdminId, userNationalAdminId, userStateAdminId, userProviderId,
-        userEmployerId, userTraineeId, userPermOnlyId);
+    jdbcTemplate.update("""
+        DELETE FROM users WHERE username IN ('export_superadmin', 'export_natadmin', 'export_stateadmin',
+            'export_tp_user', 'export_emp_user', 'export_trainee_user', 'export_perm_only')
+        """);
     jdbcTemplate.update("DELETE FROM training_providers WHERE provider_id = ?", FIXTURE_PROVIDER_ID);
     jdbcTemplate.update("DELETE FROM employers WHERE employer_id = ?", FIXTURE_EMPLOYER_ID);
     jdbcTemplate.update("DELETE FROM districts WHERE district_id IN (?, ?)",

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { StateDistrictFields } from '@/components/common/StateDistrictFields';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -15,6 +16,13 @@ import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import type { ApiError } from '@/api/types';
 
 type TabType = 'trainee' | 'provider' | 'employer' | 'status';
+
+const optional = (value: string) => value.trim() || undefined;
+
+function submissionError(error: unknown, fallback: string) {
+  const apiError = error as ApiError;
+  return apiError?.fieldErrors?.[0]?.message || apiError?.message || fallback;
+}
 
 export function RegistrationPage(): React.JSX.Element {
   const navigate = useNavigate();
@@ -42,6 +50,7 @@ export function RegistrationPage(): React.JSX.Element {
     addressLine1: '',
     pincode: '',
     currentEmploymentStatusId: 0,
+    dataProcessingConsent: false,
   });
 
   // Training Provider Form State
@@ -52,13 +61,11 @@ export function RegistrationPage(): React.JSX.Element {
     confirmPassword: '',
     providerName: '',
     registrationNumber: '',
-    organizationTypeId: 0,
     contactPersonName: '',
     contactEmail: '',
     contactPhone: '',
     stateId: 0,
     districtId: 0,
-    addressLine1: '',
     pincode: '',
   });
 
@@ -71,14 +78,11 @@ export function RegistrationPage(): React.JSX.Element {
     employerName: '',
     registrationNumber: '',
     gstin: '',
-    organizationTypeId: 0,
     contactPersonName: '',
     contactEmail: '',
     contactPhone: '',
     stateId: 0,
     districtId: 0,
-    addressLine1: '',
-    pincode: '',
   });
 
   // Status Search State
@@ -96,33 +100,8 @@ export function RegistrationPage(): React.JSX.Element {
     try {
       const data = await getRegistrationReferenceData();
       setRefData(data);
-      if (data.states && data.states.length > 0) {
-        const defaultState = data.states[0].id;
-        const matchingDistricts = data.districts?.filter((d) => d.parentId === defaultState) ?? [];
-        const defaultDistrict = matchingDistricts.length > 0 ? matchingDistricts[0].id : 0;
-        const defaultGender = data.genders?.length > 0 ? data.genders[0].id : 0;
-        const defaultEmp = data.employmentStatuses?.length > 0 ? data.employmentStatuses[0].id : 0;
-        const defaultOrg = data.organizationTypes?.length > 0 ? data.organizationTypes[0].id : 0;
-
-        setTraineeForm((prev) => ({
-          ...prev,
-          stateId: prev.stateId || defaultState,
-          districtId: prev.districtId || defaultDistrict,
-          genderId: prev.genderId || defaultGender,
-          currentEmploymentStatusId: prev.currentEmploymentStatusId || defaultEmp,
-        }));
-        setProviderForm((prev) => ({
-          ...prev,
-          stateId: prev.stateId || defaultState,
-          districtId: prev.districtId || defaultDistrict,
-          organizationTypeId: prev.organizationTypeId || defaultOrg,
-        }));
-        setEmployerForm((prev) => ({
-          ...prev,
-          stateId: prev.stateId || defaultState,
-          districtId: prev.districtId || defaultDistrict,
-          organizationTypeId: prev.organizationTypeId || defaultOrg,
-        }));
+      if (!data.states.length || !data.districts.length) {
+        setRefError('The location directory is unavailable. Please try again.');
       }
     } catch (err) {
       const apiErr = err as ApiError;
@@ -135,25 +114,6 @@ export function RegistrationPage(): React.JSX.Element {
   useEffect(() => {
     fetchReferenceData();
   }, [fetchReferenceData]);
-
-  // Synchronized state-district handlers
-  const handleTraineeStateChange = (newStatId: number) => {
-    const matching = refData?.districts?.filter((d) => d.parentId === newStatId) ?? [];
-    const newDistrictId = matching.length > 0 ? matching[0].id : 0;
-    setTraineeForm((prev) => ({ ...prev, stateId: newStatId, districtId: newDistrictId }));
-  };
-
-  const handleProviderStateChange = (newStatId: number) => {
-    const matching = refData?.districts?.filter((d) => d.parentId === newStatId) ?? [];
-    const newDistrictId = matching.length > 0 ? matching[0].id : 0;
-    setProviderForm((prev) => ({ ...prev, stateId: newStatId, districtId: newDistrictId }));
-  };
-
-  const handleEmployerStateChange = (newStatId: number) => {
-    const matching = refData?.districts?.filter((d) => d.parentId === newStatId) ?? [];
-    const newDistrictId = matching.length > 0 ? matching[0].id : 0;
-    setEmployerForm((prev) => ({ ...prev, stateId: newStatId, districtId: newDistrictId }));
-  };
 
   const handleTraineeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -168,6 +128,10 @@ export function RegistrationPage(): React.JSX.Element {
       setErrorMsg('Please select a valid State and District from the official catalog.');
       return;
     }
+    if (!traineeForm.genderId || !traineeForm.dataProcessingConsent) {
+      setErrorMsg('Choose a gender option and confirm core data processing consent.');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -176,16 +140,17 @@ export function RegistrationPage(): React.JSX.Element {
         email: traineeForm.email.trim(),
         password: traineeForm.password,
         firstName: traineeForm.firstName.trim(),
-        middleName: traineeForm.middleName ? traineeForm.middleName.trim() : undefined,
-        lastName: traineeForm.lastName ? traineeForm.lastName.trim() : undefined,
+        middleName: optional(traineeForm.middleName),
+        lastName: optional(traineeForm.lastName),
         dateOfBirth: traineeForm.dateOfBirth || undefined,
         genderId: Number(traineeForm.genderId),
-        phone: traineeForm.phone ? traineeForm.phone.trim() : undefined,
+        phone: optional(traineeForm.phone),
         stateId: Number(traineeForm.stateId),
         districtId: Number(traineeForm.districtId),
-        addressLine1: traineeForm.addressLine1 ? traineeForm.addressLine1.trim() : undefined,
-        pincode: traineeForm.pincode ? traineeForm.pincode.trim() : undefined,
-        currentEmploymentStatusId: Number(traineeForm.currentEmploymentStatusId),
+        addressLine1: optional(traineeForm.addressLine1),
+        pincode: traineeForm.pincode,
+        currentEmploymentStatusId: traineeForm.currentEmploymentStatusId || undefined,
+        dataProcessingConsent: traineeForm.dataProcessingConsent,
       });
 
       // Seamless single-phase session transition without double login request
@@ -196,8 +161,7 @@ export function RegistrationPage(): React.JSX.Element {
         navigate('/login', { replace: true });
       }
     } catch (err) {
-      const apiErr = err as ApiError;
-      setErrorMsg(apiErr.message || 'Registration failed. Please check your inputs.');
+      setErrorMsg(submissionError(err, 'Registration failed. Please check your inputs.'));
     } finally {
       setSubmitting(false);
     }
@@ -220,25 +184,22 @@ export function RegistrationPage(): React.JSX.Element {
     setSubmitting(true);
     try {
       const res = await registerTrainingProvider({
-        username: providerForm.username,
-        email: providerForm.email,
+        username: providerForm.username.trim(),
+        email: providerForm.email.trim(),
         password: providerForm.password,
-        providerName: providerForm.providerName,
-        registrationNumber: providerForm.registrationNumber,
-        organizationTypeId: Number(providerForm.organizationTypeId),
-        contactPersonName: providerForm.contactPersonName,
-        contactEmail: providerForm.contactEmail,
-        contactPhone: providerForm.contactPhone || undefined,
+        providerName: providerForm.providerName.trim(),
+        registrationNumber: providerForm.registrationNumber.trim(),
+        contactPersonName: providerForm.contactPersonName.trim(),
+        contactEmail: optional(providerForm.contactEmail),
+        contactPhone: optional(providerForm.contactPhone),
         stateId: Number(providerForm.stateId),
         districtId: Number(providerForm.districtId),
-        addressLine1: providerForm.addressLine1 || undefined,
-        pincode: providerForm.pincode || undefined,
+        pincode: providerForm.pincode,
       });
 
       setApplicationSuccess(res);
     } catch (err) {
-      const apiErr = err as ApiError;
-      setErrorMsg(apiErr.message || 'Failed to submit application.');
+      setErrorMsg(submissionError(err, 'Failed to submit application.'));
     } finally {
       setSubmitting(false);
     }
@@ -261,26 +222,22 @@ export function RegistrationPage(): React.JSX.Element {
     setSubmitting(true);
     try {
       const res = await registerEmployer({
-        username: employerForm.username,
-        email: employerForm.email,
+        username: employerForm.username.trim(),
+        email: employerForm.email.trim(),
         password: employerForm.password,
-        employerName: employerForm.employerName,
-        registrationNumber: employerForm.registrationNumber || undefined,
-        gstin: employerForm.gstin || undefined,
-        organizationTypeId: Number(employerForm.organizationTypeId),
-        contactPersonName: employerForm.contactPersonName,
-        contactEmail: employerForm.contactEmail,
-        contactPhone: employerForm.contactPhone || undefined,
+        employerName: employerForm.employerName.trim(),
+        registrationNumber: optional(employerForm.registrationNumber),
+        gstin: optional(employerForm.gstin),
+        contactPersonName: employerForm.contactPersonName.trim(),
+        contactEmail: optional(employerForm.contactEmail),
+        contactPhone: optional(employerForm.contactPhone),
         stateId: Number(employerForm.stateId),
         districtId: Number(employerForm.districtId),
-        addressLine1: employerForm.addressLine1 || undefined,
-        pincode: employerForm.pincode || undefined,
       });
 
       setApplicationSuccess(res);
     } catch (err) {
-      const apiErr = err as ApiError;
-      setErrorMsg(apiErr.message || 'Failed to submit application.');
+      setErrorMsg(submissionError(err, 'Failed to submit application.'));
     } finally {
       setSubmitting(false);
     }
@@ -408,7 +365,7 @@ export function RegistrationPage(): React.JSX.Element {
             <div className="bg-gray-50 p-4 rounded-md border text-sm space-y-2 mb-4">
               <div><span className="font-medium text-gray-700">Application Number:</span> <span className="font-mono font-bold text-navy">{applicationSuccess.applicationNumber}</span></div>
               <div><span className="font-medium text-gray-700">Organisation:</span> {applicationSuccess.organizationName}</div>
-              <div><span className="font-medium text-gray-700">Registered Email:</span> {applicationSuccess.contactEmail}</div>
+              <div><span className="font-medium text-gray-700">Contact Email:</span> {applicationSuccess.contactEmail}</div>
               <div><span className="font-medium text-gray-700">Status:</span> <span className="inline-flex px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800">PENDING APPROVAL</span></div>
             </div>
             <p className="text-xs text-gray-500 mb-4">
@@ -430,10 +387,11 @@ export function RegistrationPage(): React.JSX.Element {
         {/* Tab 1: Trainee Self-Registration */}
         {!applicationSuccess && activeTab === 'trainee' && (
           <div className="bg-white rounded-b-lg shadow p-6 sm:p-8">
-            <h2 className="text-lg font-bold text-navy mb-4">Candidate / Trainee Self-Registration</h2>
+            <h2 data-evaluator-registration className="text-lg font-bold text-navy mb-4">Candidate / Trainee Self-Registration</h2>
             <p className="text-xs text-gray-500 mb-6">
               Create your candidate profile to access training programs, digital attendance, Skill India credentials, and placement opportunities.
             </p>
+            <p className="mb-4 text-xs text-slate-600">Fields marked * are required.</p>
 
             <form onSubmit={handleTraineeSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -441,6 +399,9 @@ export function RegistrationPage(): React.JSX.Element {
                   <label htmlFor="trainee-username" className="block text-xs font-medium text-gray-700 mb-1">Username *</label>
                   <input
                     id="trainee-username"
+                    minLength={3}
+                    maxLength={80}
+                    autoComplete="username"
                     type="text"
                     required
                     value={traineeForm.username}
@@ -454,6 +415,8 @@ export function RegistrationPage(): React.JSX.Element {
                   <label htmlFor="trainee-email" className="block text-xs font-medium text-gray-700 mb-1">Email Address *</label>
                   <input
                     id="trainee-email"
+                    maxLength={255}
+                    autoComplete="email"
                     type="email"
                     required
                     value={traineeForm.email}
@@ -467,6 +430,8 @@ export function RegistrationPage(): React.JSX.Element {
                   <label htmlFor="trainee-password" className="block text-xs font-medium text-gray-700 mb-1">Password *</label>
                   <input
                     id="trainee-password"
+                    maxLength={100}
+                    autoComplete="new-password"
                     type="password"
                     required
                     minLength={8}
@@ -481,6 +446,8 @@ export function RegistrationPage(): React.JSX.Element {
                   <label htmlFor="trainee-confirmPassword" className="block text-xs font-medium text-gray-700 mb-1">Confirm Password *</label>
                   <input
                     id="trainee-confirmPassword"
+                    maxLength={100}
+                    autoComplete="new-password"
                     type="password"
                     required
                     minLength={8}
@@ -499,6 +466,7 @@ export function RegistrationPage(): React.JSX.Element {
                     <label htmlFor="trainee-firstName" className="block text-xs font-medium text-gray-700 mb-1">First Name *</label>
                     <input
                       id="trainee-firstName"
+                      maxLength={80}
                       type="text"
                       required
                       value={traineeForm.firstName}
@@ -507,9 +475,10 @@ export function RegistrationPage(): React.JSX.Element {
                     />
                   </div>
                   <div>
-                    <label htmlFor="trainee-middleName" className="block text-xs font-medium text-gray-700 mb-1">Middle Name</label>
+                    <label htmlFor="trainee-middleName" className="block text-xs font-medium text-gray-700 mb-1">Middle Name (optional)</label>
                     <input
                       id="trainee-middleName"
+                      maxLength={80}
                       type="text"
                       value={traineeForm.middleName}
                       onChange={(e) => setTraineeForm({ ...traineeForm, middleName: e.target.value })}
@@ -517,9 +486,10 @@ export function RegistrationPage(): React.JSX.Element {
                     />
                   </div>
                   <div>
-                    <label htmlFor="trainee-lastName" className="block text-xs font-medium text-gray-700 mb-1">Last Name</label>
+                    <label htmlFor="trainee-lastName" className="block text-xs font-medium text-gray-700 mb-1">Last Name (optional)</label>
                     <input
                       id="trainee-lastName"
+                      maxLength={80}
                       type="text"
                       value={traineeForm.lastName}
                       onChange={(e) => setTraineeForm({ ...traineeForm, lastName: e.target.value })}
@@ -530,9 +500,10 @@ export function RegistrationPage(): React.JSX.Element {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3">
                   <div>
-                    <label htmlFor="trainee-dob" className="block text-xs font-medium text-gray-700 mb-1">Date of Birth</label>
+                    <label htmlFor="trainee-dob" className="block text-xs font-medium text-gray-700 mb-1">Date of Birth (optional)</label>
                     <input
                       id="trainee-dob"
+                      max={new Date().toLocaleDateString('sv-SE')}
                       type="date"
                       value={traineeForm.dateOfBirth}
                       onChange={(e) => setTraineeForm({ ...traineeForm, dateOfBirth: e.target.value })}
@@ -543,70 +514,47 @@ export function RegistrationPage(): React.JSX.Element {
                     <label htmlFor="trainee-gender" className="block text-xs font-medium text-gray-700 mb-1">Gender *</label>
                     <select
                       id="trainee-gender"
-                      value={traineeForm.genderId}
+                      required
+                      value={traineeForm.genderId || ''}
                       onChange={(e) => setTraineeForm({ ...traineeForm, genderId: Number(e.target.value) })}
                       disabled={refLoading || !!refError}
                       className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none disabled:bg-gray-100"
                     >
+                      <option value="">Select a gender option</option>
                       {refData?.genders?.map((g) => (
                         <option key={g.id} value={g.id}>{g.name}</option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label htmlFor="trainee-phone" className="block text-xs font-medium text-gray-700 mb-1">Mobile Number</label>
+                    <label htmlFor="trainee-phone" className="block text-xs font-medium text-gray-700 mb-1">Mobile Number (optional)</label>
                     <input
                       id="trainee-phone"
+                      maxLength={15}
                       type="tel"
                       value={traineeForm.phone}
                       onChange={(e) => setTraineeForm({ ...traineeForm, phone: e.target.value })}
                       className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none"
-                      placeholder="10-digit mobile"
+                      placeholder="Include country code if needed"
                     />
                   </div>
                 </div>
               </div>
 
               <div className="border-t pt-4">
-                <h3 className="text-sm font-semibold text-gray-800 mb-3">Address & Employment</h3>
+                <h3 className="text-sm font-semibold text-gray-800 mb-3">Location and employment</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="trainee-state" className="block text-xs font-medium text-gray-700 mb-1">State *</label>
-                    <select
-                      id="trainee-state"
-                      value={traineeForm.stateId}
-                      onChange={(e) => handleTraineeStateChange(Number(e.target.value))}
-                      disabled={refLoading || !!refError}
-                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none disabled:bg-gray-100"
-                    >
-                      {refData?.states?.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="trainee-district" className="block text-xs font-medium text-gray-700 mb-1">District *</label>
-                    <select
-                      id="trainee-district"
-                      value={traineeForm.districtId}
-                      onChange={(e) => setTraineeForm({ ...traineeForm, districtId: Number(e.target.value) })}
-                      disabled={refLoading || !!refError}
-                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none disabled:bg-gray-100"
-                    >
-                      {refData?.districts
-                        ?.filter((d) => d.parentId === traineeForm.stateId)
-                        .map((d) => (
-                          <option key={d.id} value={d.id}>{d.name}</option>
-                        ))}
-                    </select>
-                  </div>
+                  <StateDistrictFields prefix="trainee" reference={refData} required disabled={refLoading || !!refError}
+                    stateId={traineeForm.stateId} districtId={traineeForm.districtId}
+                    onChange={(stateId, districtId) => setTraineeForm((form) => ({ ...form, stateId, districtId }))} />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3">
                   <div className="md:col-span-2">
-                    <label htmlFor="trainee-address" className="block text-xs font-medium text-gray-700 mb-1">Address</label>
+                    <label htmlFor="trainee-address" className="block text-xs font-medium text-gray-700 mb-1">Address (optional)</label>
                     <input
                       id="trainee-address"
+                      maxLength={200}
                       type="text"
                       value={traineeForm.addressLine1}
                       onChange={(e) => setTraineeForm({ ...traineeForm, addressLine1: e.target.value })}
@@ -615,9 +563,13 @@ export function RegistrationPage(): React.JSX.Element {
                     />
                   </div>
                   <div>
-                    <label htmlFor="trainee-pincode" className="block text-xs font-medium text-gray-700 mb-1">Pincode</label>
+                    <label htmlFor="trainee-pincode" className="block text-xs font-medium text-gray-700 mb-1">PIN Code *</label>
                     <input
                       id="trainee-pincode"
+                      required
+                      inputMode="numeric"
+                      pattern="[1-9][0-9]{5}"
+                      title="Enter a six-digit PIN code"
                       type="text"
                       maxLength={6}
                       value={traineeForm.pincode}
@@ -626,7 +578,32 @@ export function RegistrationPage(): React.JSX.Element {
                     />
                   </div>
                 </div>
+                <div className="mt-3 max-w-sm">
+                  <label htmlFor="trainee-employment" className="form-label">Current employment status (optional)</label>
+                  <select id="trainee-employment" className="form-input" value={traineeForm.currentEmploymentStatusId || ''}
+                    disabled={refLoading || !!refError} onChange={(event) => setTraineeForm((form) => ({
+                      ...form, currentEmploymentStatusId: Number(event.target.value),
+                    }))}>
+                    <option value="">Not provided</option>
+                    {refData?.employmentStatuses.filter((status) => status.code !== 'UNKNOWN').map((status) => (
+                      <option key={status.id} value={status.id}>{status.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
+
+              <fieldset className="space-y-2 rounded-md border border-slate-300 p-4">
+                <legend className="px-1 text-sm font-semibold text-navy">Core data processing consent *</legend>
+                <label htmlFor="trainee-processing-consent" className="flex items-start gap-3 text-sm text-slate-800">
+                  <input id="trainee-processing-consent" type="checkbox" className="mt-1 size-4 shrink-0 accent-navy"
+                    required checked={traineeForm.dataProcessingConsent} aria-describedby="trainee-consent-purpose"
+                    onChange={(event) => setTraineeForm((form) => ({ ...form, dataProcessingConsent: event.target.checked }))} />
+                  I agree to the use of my information to create my trainee account and manage my registration and training records.
+                </label>
+                <p id="trainee-consent-purpose" className="text-xs text-slate-600">
+                  You can manage employment follow-up, employer sharing, and communication permissions separately in the trainee portal.
+                </p>
+              </fieldset>
 
               <div>
                 <button
@@ -655,6 +632,7 @@ export function RegistrationPage(): React.JSX.Element {
             <p className="text-xs text-gray-500 mb-6">
               Empanelled training partners, institutions, and vocational centres apply here. Upon administrator verification, your portal credentials are activated.
             </p>
+            <p className="mb-4 text-xs text-slate-600">Fields marked * are required.</p>
 
             <form onSubmit={handleProviderSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -662,6 +640,7 @@ export function RegistrationPage(): React.JSX.Element {
                   <label htmlFor="provider-name" className="block text-xs font-medium text-gray-700 mb-1">Institution / Provider Name *</label>
                   <input
                     id="provider-name"
+                    maxLength={200}
                     type="text"
                     required
                     value={providerForm.providerName}
@@ -673,6 +652,7 @@ export function RegistrationPage(): React.JSX.Element {
                   <label htmlFor="provider-reg-number" className="block text-xs font-medium text-gray-700 mb-1">Registration / NSDC Number *</label>
                   <input
                     id="provider-reg-number"
+                    maxLength={64}
                     type="text"
                     required
                     value={providerForm.registrationNumber}
@@ -687,6 +667,7 @@ export function RegistrationPage(): React.JSX.Element {
                   <label htmlFor="provider-contact-person" className="block text-xs font-medium text-gray-700 mb-1">Authorized Contact Person *</label>
                   <input
                     id="provider-contact-person"
+                    maxLength={150}
                     type="text"
                     required
                     value={providerForm.contactPersonName}
@@ -695,20 +676,23 @@ export function RegistrationPage(): React.JSX.Element {
                   />
                 </div>
                 <div>
-                  <label htmlFor="provider-contact-email" className="block text-xs font-medium text-gray-700 mb-1">Official Contact Email *</label>
+                  <label htmlFor="provider-contact-email" className="block text-xs font-medium text-gray-700 mb-1">Alternate Contact Email (optional)</label>
                   <input
                     id="provider-contact-email"
+                    maxLength={255}
+                    aria-describedby="provider-contact-email-note"
                     type="email"
-                    required
                     value={providerForm.contactEmail}
                     onChange={(e) => setProviderForm({ ...providerForm, contactEmail: e.target.value })}
                     className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none"
                   />
+                  <p id="provider-contact-email-note" className="mt-1 text-xs text-slate-600">Uses your account email when left blank.</p>
                 </div>
                 <div>
-                  <label htmlFor="provider-contact-phone" className="block text-xs font-medium text-gray-700 mb-1">Official Contact Phone</label>
+                  <label htmlFor="provider-contact-phone" className="block text-xs font-medium text-gray-700 mb-1">Contact Phone (optional)</label>
                   <input
                     id="provider-contact-phone"
+                    maxLength={15}
                     type="tel"
                     value={providerForm.contactPhone}
                     onChange={(e) => setProviderForm({ ...providerForm, contactPhone: e.target.value })}
@@ -720,40 +704,17 @@ export function RegistrationPage(): React.JSX.Element {
               <div className="border-t pt-4">
                 <h3 className="text-sm font-semibold text-gray-800 mb-3">Provider Location</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <StateDistrictFields prefix="provider" reference={refData} required disabled={refLoading || !!refError}
+                    stateId={providerForm.stateId} districtId={providerForm.districtId}
+                    onChange={(stateId, districtId) => setProviderForm((form) => ({ ...form, stateId, districtId }))} />
                   <div>
-                    <label htmlFor="provider-state" className="block text-xs font-medium text-gray-700 mb-1">State *</label>
-                    <select
-                      id="provider-state"
-                      value={providerForm.stateId}
-                      onChange={(e) => handleProviderStateChange(Number(e.target.value))}
-                      disabled={refLoading || !!refError}
-                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none disabled:bg-gray-100"
-                    >
-                      {refData?.states?.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="provider-district" className="block text-xs font-medium text-gray-700 mb-1">District *</label>
-                    <select
-                      id="provider-district"
-                      value={providerForm.districtId}
-                      onChange={(e) => setProviderForm({ ...providerForm, districtId: Number(e.target.value) })}
-                      disabled={refLoading || !!refError}
-                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none disabled:bg-gray-100"
-                    >
-                      {refData?.districts
-                        ?.filter((d) => d.parentId === providerForm.stateId)
-                        .map((d) => (
-                          <option key={d.id} value={d.id}>{d.name}</option>
-                        ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="provider-pincode" className="block text-xs font-medium text-gray-700 mb-1">Pincode</label>
+                    <label htmlFor="provider-pincode" className="block text-xs font-medium text-gray-700 mb-1">PIN Code *</label>
                     <input
                       id="provider-pincode"
+                      required
+                      inputMode="numeric"
+                      pattern="[1-9][0-9]{5}"
+                      title="Enter a six-digit PIN code"
                       type="text"
                       maxLength={6}
                       value={providerForm.pincode}
@@ -771,6 +732,9 @@ export function RegistrationPage(): React.JSX.Element {
                     <label htmlFor="provider-username" className="block text-xs font-medium text-gray-700 mb-1">Portal Login Username *</label>
                     <input
                       id="provider-username"
+                      minLength={3}
+                      maxLength={80}
+                      autoComplete="username"
                       type="text"
                       required
                       value={providerForm.username}
@@ -779,9 +743,11 @@ export function RegistrationPage(): React.JSX.Element {
                     />
                   </div>
                   <div>
-                    <label htmlFor="provider-email" className="block text-xs font-medium text-gray-700 mb-1">Account Recovery Email *</label>
+                    <label htmlFor="provider-email" className="block text-xs font-medium text-gray-700 mb-1">Account Email *</label>
                     <input
                       id="provider-email"
+                      maxLength={255}
+                      autoComplete="email"
                       type="email"
                       required
                       value={providerForm.email}
@@ -793,6 +759,8 @@ export function RegistrationPage(): React.JSX.Element {
                     <label htmlFor="provider-password" className="block text-xs font-medium text-gray-700 mb-1">Password *</label>
                     <input
                       id="provider-password"
+                      maxLength={100}
+                      autoComplete="new-password"
                       type="password"
                       required
                       minLength={8}
@@ -805,6 +773,8 @@ export function RegistrationPage(): React.JSX.Element {
                     <label htmlFor="provider-confirmPassword" className="block text-xs font-medium text-gray-700 mb-1">Confirm Password *</label>
                     <input
                       id="provider-confirmPassword"
+                      maxLength={100}
+                      autoComplete="new-password"
                       type="password"
                       required
                       minLength={8}
@@ -843,6 +813,7 @@ export function RegistrationPage(): React.JSX.Element {
             <p className="text-xs text-gray-500 mb-6">
               Enterprises and recruiting companies apply here to post vacancies, recruit certified trainees, and conduct employment verification.
             </p>
+            <p className="mb-4 text-xs text-slate-600">Fields marked * are required.</p>
 
             <form onSubmit={handleEmployerSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -850,6 +821,7 @@ export function RegistrationPage(): React.JSX.Element {
                   <label htmlFor="emp-company-name" className="block text-xs font-medium text-gray-700 mb-1">Company / Enterprise Name *</label>
                   <input
                     id="emp-company-name"
+                    maxLength={200}
                     type="text"
                     required
                     value={employerForm.employerName}
@@ -858,9 +830,10 @@ export function RegistrationPage(): React.JSX.Element {
                   />
                 </div>
                 <div>
-                  <label htmlFor="emp-reg-number" className="block text-xs font-medium text-gray-700 mb-1">CIN / Registration No.</label>
+                  <label htmlFor="emp-reg-number" className="block text-xs font-medium text-gray-700 mb-1">CIN / Registration No. (optional)</label>
                   <input
                     id="emp-reg-number"
+                    maxLength={64}
                     type="text"
                     value={employerForm.registrationNumber}
                     onChange={(e) => setEmployerForm({ ...employerForm, registrationNumber: e.target.value })}
@@ -868,9 +841,11 @@ export function RegistrationPage(): React.JSX.Element {
                   />
                 </div>
                 <div>
-                  <label htmlFor="emp-gstin" className="block text-xs font-medium text-gray-700 mb-1">GSTIN</label>
+                  <label htmlFor="emp-gstin" className="block text-xs font-medium text-gray-700 mb-1">GSTIN (optional)</label>
                   <input
                     id="emp-gstin"
+                    pattern="[A-Za-z0-9]{10,15}"
+                    title="Enter 10 to 15 letters or digits"
                     type="text"
                     maxLength={15}
                     value={employerForm.gstin}
@@ -885,6 +860,7 @@ export function RegistrationPage(): React.JSX.Element {
                   <label htmlFor="emp-contact-person" className="block text-xs font-medium text-gray-700 mb-1">Contact Person *</label>
                   <input
                     id="emp-contact-person"
+                    maxLength={150}
                     type="text"
                     required
                     value={employerForm.contactPersonName}
@@ -893,20 +869,23 @@ export function RegistrationPage(): React.JSX.Element {
                   />
                 </div>
                 <div>
-                  <label htmlFor="emp-contact-email" className="block text-xs font-medium text-gray-700 mb-1">Contact Email *</label>
+                  <label htmlFor="emp-contact-email" className="block text-xs font-medium text-gray-700 mb-1">Alternate Contact Email (optional)</label>
                   <input
                     id="emp-contact-email"
+                    maxLength={255}
+                    aria-describedby="emp-contact-email-note"
                     type="email"
-                    required
                     value={employerForm.contactEmail}
                     onChange={(e) => setEmployerForm({ ...employerForm, contactEmail: e.target.value })}
                     className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none"
                   />
+                  <p id="emp-contact-email-note" className="mt-1 text-xs text-slate-600">Uses your account email when left blank.</p>
                 </div>
                 <div>
-                  <label htmlFor="emp-contact-phone" className="block text-xs font-medium text-gray-700 mb-1">Phone</label>
+                  <label htmlFor="emp-contact-phone" className="block text-xs font-medium text-gray-700 mb-1">Phone (optional)</label>
                   <input
                     id="emp-contact-phone"
+                    maxLength={15}
                     type="tel"
                     value={employerForm.contactPhone}
                     onChange={(e) => setEmployerForm({ ...employerForm, contactPhone: e.target.value })}
@@ -918,36 +897,9 @@ export function RegistrationPage(): React.JSX.Element {
               <div className="border-t pt-4">
                 <h3 className="text-sm font-semibold text-gray-800 mb-3">Enterprise Location</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="emp-state" className="block text-xs font-medium text-gray-700 mb-1">State *</label>
-                    <select
-                      id="emp-state"
-                      value={employerForm.stateId}
-                      onChange={(e) => handleEmployerStateChange(Number(e.target.value))}
-                      disabled={refLoading || !!refError}
-                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none disabled:bg-gray-100"
-                    >
-                      {refData?.states?.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="emp-district" className="block text-xs font-medium text-gray-700 mb-1">District *</label>
-                    <select
-                      id="emp-district"
-                      value={employerForm.districtId}
-                      onChange={(e) => setEmployerForm({ ...employerForm, districtId: Number(e.target.value) })}
-                      disabled={refLoading || !!refError}
-                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-navy focus:outline-none disabled:bg-gray-100"
-                    >
-                      {refData?.districts
-                        ?.filter((d) => d.parentId === employerForm.stateId)
-                        .map((d) => (
-                          <option key={d.id} value={d.id}>{d.name}</option>
-                        ))}
-                    </select>
-                  </div>
+                  <StateDistrictFields prefix="emp" reference={refData} required disabled={refLoading || !!refError}
+                    stateId={employerForm.stateId} districtId={employerForm.districtId}
+                    onChange={(stateId, districtId) => setEmployerForm((form) => ({ ...form, stateId, districtId }))} />
                 </div>
               </div>
 
@@ -958,6 +910,9 @@ export function RegistrationPage(): React.JSX.Element {
                     <label htmlFor="emp-username" className="block text-xs font-medium text-gray-700 mb-1">Username *</label>
                     <input
                       id="emp-username"
+                      minLength={3}
+                      maxLength={80}
+                      autoComplete="username"
                       type="text"
                       required
                       value={employerForm.username}
@@ -966,9 +921,11 @@ export function RegistrationPage(): React.JSX.Element {
                     />
                   </div>
                   <div>
-                    <label htmlFor="emp-email" className="block text-xs font-medium text-gray-700 mb-1">Recovery Email *</label>
+                    <label htmlFor="emp-email" className="block text-xs font-medium text-gray-700 mb-1">Account Email *</label>
                     <input
                       id="emp-email"
+                      maxLength={255}
+                      autoComplete="email"
                       type="email"
                       required
                       value={employerForm.email}
@@ -980,6 +937,8 @@ export function RegistrationPage(): React.JSX.Element {
                     <label htmlFor="emp-password" className="block text-xs font-medium text-gray-700 mb-1">Password *</label>
                     <input
                       id="emp-password"
+                      maxLength={100}
+                      autoComplete="new-password"
                       type="password"
                       required
                       minLength={8}
@@ -992,6 +951,8 @@ export function RegistrationPage(): React.JSX.Element {
                     <label htmlFor="emp-confirmPassword" className="block text-xs font-medium text-gray-700 mb-1">Confirm Password *</label>
                     <input
                       id="emp-confirmPassword"
+                      maxLength={100}
+                      autoComplete="new-password"
                       type="password"
                       required
                       minLength={8}
@@ -1074,7 +1035,7 @@ export function RegistrationPage(): React.JSX.Element {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-700">
                   <div><span className="font-medium text-gray-500">Organisation:</span> {statusResult.organizationName}</div>
                   <div><span className="font-medium text-gray-500">Applicant Type:</span> {statusResult.applicantType}</div>
-                  <div><span className="font-medium text-gray-500">Contact Email:</span> {statusResult.contactEmail}</div>
+                  <div><span className="font-medium text-gray-500">Contact email hint:</span> {statusResult.contactEmail}</div>
                   <div><span className="font-medium text-gray-500">Submitted On:</span> {new Date(statusResult.submittedAt).toLocaleDateString()}</div>
                 </div>
 

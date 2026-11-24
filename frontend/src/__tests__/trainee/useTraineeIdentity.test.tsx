@@ -42,7 +42,7 @@ describe('useTraineeIdentity Hook', () => {
       user: mockUser as any,
       isAuthenticated: true,
       roles: ['trainee'],
-      authorities: ['trainee.read'],
+      authorities: ['ROLE_trainee', 'trainee.read'],
       hasRole: () => true,
       hasAuthority: () => true,
     } as any);
@@ -84,7 +84,7 @@ describe('useTraineeIdentity Hook', () => {
       user: mockUser as any,
       isAuthenticated: true,
       roles: ['trainee'],
-      authorities: ['trainee.read'],
+      authorities: ['ROLE_trainee', 'trainee.read'],
       hasRole: () => true,
       hasAuthority: () => true,
     } as any);

@@ -18,6 +18,7 @@ import in.gov.sih.sih26135.repository.UserRepository;
 import in.gov.sih.sih26135.security.AuditPayloadMasker;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.AuditLogService;
+import in.gov.sih.sih26135.service.audit.AuditSnapshot;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -27,10 +28,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 @Service
@@ -45,7 +48,7 @@ public class AuditLogServiceImpl implements AuditLogService {
       "SKILLGAP", "SKILLGAPRECOMMENDATION",
       "EMPLOYMENT", "EMPLOYMENTRECORD",
       "TRAININGCENTER", "TRAININGBATCH", "IMPORTBATCH",
-      "USER"
+      "USER", "TRAINEE"
   );
 
   private static final Set<String> WORKFLOW_AUTOMATED_ACTIONS = Set.of(
@@ -90,6 +93,9 @@ public class AuditLogServiceImpl implements AuditLogService {
     }
     if (request.getAuditActionId() == null) {
       throw new BadRequestException("Audit action ID is required", "AUDIT_ACTION_REQUIRED");
+    }
+    if (AuditSnapshot.isReserved(request.getChangeSummary())) {
+      throw new BadRequestException("Structured audit snapshots are reserved for server-recorded changes", "AUDIT_SNAPSHOT_RESERVED");
     }
     RefAuditAction auditAction = refAuditActionRepository.findById(request.getAuditActionId())
         .orElseThrow(() -> new ResourceNotFoundException("RefAuditAction", "auditActionId"));
@@ -156,6 +162,20 @@ public class AuditLogServiceImpl implements AuditLogService {
   }
 
   @Override
+  @Transactional(propagation = Propagation.MANDATORY)
+  public void recordStateChange(String actionCode, String entityType, Long entityId, String summary,
+      Map<String, ?> before, Map<String, ?> after, List<String> redactedFields) {
+    if (Objects.equals(before, after) && redactedFields.isEmpty()) {
+      return;
+    }
+    Long auditActionId = refAuditActionRepository.findByActionCode(actionCode)
+        .orElseThrow(() -> new ResourceNotFoundException("RefAuditAction", "actionCode")).getId();
+    Long actorUserId = scopeValidator != null ? scopeValidator.resolveAuthenticatedUserId() : null;
+    recordInternalAuditLog(actorUserId, auditActionId, entityType, entityId,
+        AuditSnapshot.encode(summary, before, after, redactedFields));
+  }
+
+  @Override
   @Transactional
   public AuditLogResponse recordInternalAuditLog(Long actorUserId, Long auditActionId, String entityType, Long entityId, String summary) {
     if (auditActionId == null) {
@@ -186,6 +206,11 @@ public class AuditLogServiceImpl implements AuditLogService {
 
     AuditLog saved = auditLogRepository.save(auditLog);
     return mapper.toResponse(saved);
+  }
+
+  @Override
+  public boolean canSearchNationwide() {
+    return isCallerNationwideAdmin();
   }
 
   private boolean isCallerNationwideAdmin() {
@@ -269,6 +294,7 @@ public class AuditLogServiceImpl implements AuditLogService {
       case "TRAININGBATCH" -> "TrainingBatch";
       case "IMPORTBATCH" -> "ImportBatch";
       case "USER" -> "User";
+      case "TRAINEE" -> "Trainee";
       default -> entityType.trim();
     };
   }
@@ -293,6 +319,7 @@ public class AuditLogServiceImpl implements AuditLogService {
     String upper = entityType.trim().toUpperCase().replace("_", "");
     try {
       switch (upper) {
+        case "TRAINEE" -> scopeValidator.validateTraineeScope(entityId);
         case "PLACEMENT", "PLACEMENTRECORD" -> {
           List<Map<String, Object>> rows = jdbcTemplate.queryForList(
               "SELECT p.employer_id, p.provider_id, p.trainee_id, COALESCE(p.work_state_id, t.state_id) AS state_id, COALESCE(p.work_district_id, t.district_id) AS district_id "

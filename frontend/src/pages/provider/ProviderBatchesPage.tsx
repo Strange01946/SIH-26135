@@ -1,77 +1,32 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
-import {
-  getTrainingBatches,
-  getTrainingCenters,
-  getCourses,
-  createTrainingBatch,
-  updateTrainingBatchStatus,
-} from '@/api/providerPortalApi';
-import type { CreateBatchPayload } from '@/types/provider';
+import { getTrainingBatches, updateTrainingBatchStatus } from '@/api/providerPortalApi';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 
 export function ProviderBatchesPage(): React.JSX.Element {
-  const { user } = useAuth();
+  const { user, hasAuthority } = useAuth();
   const providerId = user?.trainingProviderId ?? undefined;
   const queryClient = useQueryClient();
 
   const [page, setPage] = useState(0);
   const [size] = useState(10);
   const [statusFilter, setStatusFilter] = useState<number | undefined>(undefined);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-
-  // Form State
-  const [formBatchCode, setFormBatchCode] = useState('');
-  const [formCenterId, setFormCenterId] = useState<number | ''>('');
-  const [formCourseId, setFormCourseId] = useState<number | ''>('');
-  const [formStartDate, setFormStartDate] = useState('');
-  const [formEndDate, setFormEndDate] = useState('');
-  const [formCapacity, setFormCapacity] = useState<number>(30);
-  const [formError, setFormError] = useState<string | null>(null);
-
   // Queries
   const batchesQuery = useQuery({
     queryKey: ['provider', 'batches', providerId, page, size, statusFilter],
     queryFn: () =>
       getTrainingBatches({
-        providerId,
-        statusId: statusFilter,
+        ...(statusFilter ? { statusId: statusFilter } : { providerId }),
         page,
         size,
         sort: 'id',
         direction: 'DESC',
       }),
     enabled: !!providerId,
-  });
-
-  const centersQuery = useQuery({
-    queryKey: ['provider', 'centers', providerId],
-    queryFn: () => getTrainingCenters({ providerId, size: 100 }),
-    enabled: !!providerId && isCreateModalOpen,
-  });
-
-  const coursesQuery = useQuery({
-    queryKey: ['provider', 'courses', 'all'],
-    queryFn: () => getCourses({ size: 100 }),
-    enabled: isCreateModalOpen,
-  });
-
-  // Create Batch Mutation
-  const createBatchMutation = useMutation({
-    mutationFn: (payload: CreateBatchPayload) => createTrainingBatch(payload),
-    onSuccess: (data) => {
-      toast.success(`Training batch ${data.batchCode} created successfully!`);
-      queryClient.invalidateQueries({ queryKey: ['provider', 'batches'] });
-      setIsCreateModalOpen(false);
-      resetForm();
-    },
-    onError: (err: any) => {
-      const msg = err.response?.data?.message || err.message || 'Failed to create training batch';
-      setFormError(msg);
-      toast.error(msg);
-    },
+    refetchInterval: 15_000,
   });
 
   // Update Status Mutation
@@ -87,69 +42,6 @@ export function ProviderBatchesPage(): React.JSX.Element {
       toast.error(msg);
     },
   });
-
-  const resetForm = () => {
-    setFormBatchCode('');
-    setFormCenterId('');
-    setFormCourseId('');
-    setFormStartDate('');
-    setFormEndDate('');
-    setFormCapacity(30);
-    setFormError(null);
-  };
-
-  const handleOpenModal = () => {
-    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    setFormBatchCode(`BAT-2026-${randomSuffix}`);
-    setIsCreateModalOpen(true);
-  };
-
-  const handleCreateSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError(null);
-
-    if (!formBatchCode.trim()) {
-      setFormError('Batch code is required');
-      return;
-    }
-    if (!formCenterId) {
-      setFormError('Please select an authorized training center');
-      return;
-    }
-    if (!formCourseId) {
-      setFormError('Please select an approved course');
-      return;
-    }
-    if (!formStartDate || !formEndDate) {
-      setFormError('Start date and end date are required');
-      return;
-    }
-    if (new Date(formEndDate) < new Date(formStartDate)) {
-      setFormError('End date cannot precede start date');
-      return;
-    }
-    if (!formCapacity || formCapacity < 1) {
-      setFormError('Capacity must be at least 1 seat');
-      return;
-    }
-
-    if (!providerId) {
-      setFormError('Training provider ID cannot be resolved');
-      return;
-    }
-
-    createBatchMutation.mutate({
-      batchCode: formBatchCode.trim(),
-      courseId: Number(formCourseId),
-      centerId: Number(formCenterId),
-      providerId,
-      programId: 1, // Default statutory program
-      startDate: formStartDate,
-      endDate: formEndDate,
-      capacity: Number(formCapacity),
-      batchStatusId: 1, // SCHEDULED
-    });
-  };
 
   const totalPages = batchesQuery.data?.totalPages ?? 0;
   const totalElements = batchesQuery.data?.totalElements ?? 0;
@@ -167,12 +59,9 @@ export function ProviderBatchesPage(): React.JSX.Element {
             Authoritative schedule, real-time seat occupancy, and enrollment capacity management
           </p>
         </div>
-        <button
-          onClick={handleOpenModal}
-          className="btn-primary py-2.5 px-4 text-xs font-semibold flex items-center gap-1.5 self-start sm:self-auto shadow-sm"
-        >
-          <span aria-hidden="true">➕</span> Create New Batch
-        </button>
+        {hasAuthority('venue.booking.request') && (
+          <Link to="/provider/venue-bookings?view=shared" className="btn-primary self-start">Request a training venue</Link>
+        )}
       </div>
 
       {/* Filter Bar */}
@@ -380,145 +269,13 @@ export function ProviderBatchesPage(): React.JSX.Element {
             </span>
             <p className="text-base font-semibold text-gray-800 mb-1">No Training Batches Found</p>
             <p className="text-xs text-gray-500 max-w-md mx-auto mb-4">
-              Get started by creating your first vocational training batch.
+              Approved venue bookings appear here as training batches.
             </p>
-            <button onClick={handleOpenModal} className="btn-primary text-xs py-2 px-4">
-              Create New Batch
-            </button>
+
           </div>
         )}
       </div>
 
-      {/* Create Batch Modal Dialog */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 space-y-4 animate-in fade-in">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-200">
-              <h2 className="text-lg font-bold text-navy flex items-center gap-2">
-                <span>Create Training Batch</span>
-                <span className="badge-info text-xs">Authoritative Form</span>
-              </h2>
-              <button
-                onClick={() => setIsCreateModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 text-lg leading-none"
-              >
-                &times;
-              </button>
-            </div>
-
-            {formError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700">
-                {formError}
-              </div>
-            )}
-
-            <form onSubmit={handleCreateSubmit} className="space-y-4 text-xs">
-              <div>
-                <label className="block font-semibold text-gray-700 mb-1">Batch Code *</label>
-                <input
-                  type="text"
-                  required
-                  className="input-field w-full font-mono text-sm"
-                  value={formBatchCode}
-                  onChange={(e) => setFormBatchCode(e.target.value)}
-                  placeholder="e.g. BAT-2026-IT01"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-gray-700 mb-1">Authorized Training Center *</label>
-                <select
-                  required
-                  className="input-field w-full text-sm"
-                  value={formCenterId}
-                  onChange={(e) => setFormCenterId(e.target.value ? Number(e.target.value) : '')}
-                >
-                  <option value="">-- Select Affiliated Center --</option>
-                  {centersQuery.data?.content.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.centerName} ({c.centerCode})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-gray-700 mb-1">Approved Qualification Course *</label>
-                <select
-                  required
-                  className="input-field w-full text-sm"
-                  value={formCourseId}
-                  onChange={(e) => setFormCourseId(e.target.value ? Number(e.target.value) : '')}
-                >
-                  <option value="">-- Select Course --</option>
-                  {coursesQuery.data?.content.map((crs) => (
-                    <option key={crs.id} value={crs.id}>
-                      {crs.courseName} ({crs.courseCode})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-gray-700 mb-1">Start Date *</label>
-                  <input
-                    type="date"
-                    required
-                    className="input-field w-full text-sm"
-                    value={formStartDate}
-                    onChange={(e) => setFormStartDate(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-gray-700 mb-1">End Date *</label>
-                  <input
-                    type="date"
-                    required
-                    className="input-field w-full text-sm"
-                    value={formEndDate}
-                    onChange={(e) => setFormEndDate(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-gray-700 mb-1">Seat Capacity (Seats) *</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="1000"
-                  required
-                  className="input-field w-full text-sm"
-                  value={formCapacity}
-                  onChange={(e) => setFormCapacity(Number(e.target.value))}
-                />
-                <span className="text-[11px] text-gray-400">
-                  Enforces pessimistic locking during trainee enrollment. Cannot be overbooked.
-                </span>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
-                  className="btn-outline py-2 px-4"
-                  disabled={createBatchMutation.isPending}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn-primary py-2 px-5 font-semibold"
-                  disabled={createBatchMutation.isPending}
-                >
-                  {createBatchMutation.isPending ? 'Creating Batch...' : 'Create Batch'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -20,14 +20,6 @@ export const TraineePortalLayout: React.FC = () => {
       <div className="bg-white rounded-lg shadow-sm border border-gov-neutral-200 overflow-hidden">
         <div className="bg-gradient-to-r from-gov-navy to-gov-navy-light px-6 py-5 text-white flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-semibold uppercase tracking-wider bg-white/20 text-white px-2 py-0.5 rounded">
-                GIGW / NCVET Compliant
-              </span>
-              <span className="text-xs font-medium text-gov-neutral-200">
-                National Skill Development Mission
-              </span>
-            </div>
             <h1 className="text-xl md:text-2xl font-bold tracking-tight">
               Candidate Self-Service &amp; Career Portal
             </h1>

@@ -13,8 +13,12 @@ import in.gov.sih.sih26135.repository.TraineeRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.TraineeService;
+import in.gov.sih.sih26135.service.AuditLogService;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -31,12 +35,21 @@ public class TraineeServiceImpl implements TraineeService {
   private final UserRepository userRepository;
   private final TraineeMapper traineeMapper;
   private final WorkflowSecurityScopeValidator securityScopeValidator;
+  private final AuditLogService auditLogs;
 
   public TraineeServiceImpl(
       TraineeRepository traineeRepository,
       UserRepository userRepository,
       TraineeMapper traineeMapper) {
-    this(traineeRepository, userRepository, traineeMapper, null);
+    this(traineeRepository, userRepository, traineeMapper, null, null);
+  }
+
+  public TraineeServiceImpl(
+      TraineeRepository traineeRepository,
+      UserRepository userRepository,
+      TraineeMapper traineeMapper,
+      WorkflowSecurityScopeValidator securityScopeValidator) {
+    this(traineeRepository, userRepository, traineeMapper, securityScopeValidator, null);
   }
 
   @Autowired
@@ -44,11 +57,13 @@ public class TraineeServiceImpl implements TraineeService {
       TraineeRepository traineeRepository,
       UserRepository userRepository,
       TraineeMapper traineeMapper,
-      @Autowired(required = false) WorkflowSecurityScopeValidator securityScopeValidator) {
+      WorkflowSecurityScopeValidator securityScopeValidator,
+      AuditLogService auditLogs) {
     this.traineeRepository = traineeRepository;
     this.userRepository = userRepository;
     this.traineeMapper = traineeMapper;
     this.securityScopeValidator = securityScopeValidator;
+    this.auditLogs = auditLogs;
   }
 
   @Override
@@ -165,6 +180,7 @@ public class TraineeServiceImpl implements TraineeService {
     trainee.setUpdatedAt(now);
 
     Trainee saved = traineeRepository.save(trainee);
+    auditTrainee("CREATE", "Candidate profile created", saved.getId(), null, candidateState(saved), List.of());
     return traineeMapper.toResponse(saved);
   }
 
@@ -178,8 +194,9 @@ public class TraineeServiceImpl implements TraineeService {
       securityScopeValidator.validateTraineeScope(id);
     }
 
-    Trainee trainee = traineeRepository.findById(id)
-        .orElseThrow(() -> new ResourceNotFoundException("Trainee", "id"));
+    Trainee trainee = traineeForChange(id);
+    Map<String, Object> before = candidateState(trainee);
+    Map<String, Object> privateBefore = privateFields(trainee);
 
     if (request.getFirstName() != null && !request.getFirstName().isBlank()) {
       trainee.setFirstName(request.getFirstName().trim());
@@ -239,6 +256,13 @@ public class TraineeServiceImpl implements TraineeService {
 
     trainee.setUpdatedAt(LocalDateTime.now());
     Trainee saved = traineeRepository.save(trainee);
+    Map<String, Object> privateAfter = privateFields(saved);
+    List<String> redacted = privateBefore.keySet().stream()
+        .filter(field -> !Objects.equals(privateBefore.get(field), privateAfter.get(field))).toList();
+    Map<String, Object> after = candidateState(saved);
+    boolean transitioned = !Objects.equals(before.get("profileStatusId"), after.get("profileStatusId"))
+        || !Objects.equals(before.get("currentEmploymentStatusId"), after.get("currentEmploymentStatusId"));
+    auditTrainee(transitioned ? "STATUS_CHANGE" : "UPDATE", "Candidate profile updated", id, before, after, redacted);
     return traineeMapper.toResponse(saved);
   }
 
@@ -248,12 +272,54 @@ public class TraineeServiceImpl implements TraineeService {
     if (securityScopeValidator != null) {
       securityScopeValidator.validateTraineeScope(id);
     }
-    Trainee trainee = traineeRepository.findById(id)
-        .orElseThrow(() -> new ResourceNotFoundException("Trainee", "id"));
+    Trainee trainee = traineeForChange(id);
+    boolean wasActive = trainee.getDeletedAt() == null;
 
     LocalDateTime now = LocalDateTime.now();
     trainee.setDeletedAt(now);
     trainee.setUpdatedAt(now);
     traineeRepository.save(trainee);
+    if (wasActive) {
+      auditTrainee("SOFT_DELETE", "Candidate profile removed", id, candidateState(trainee), null, List.of());
+    }
+  }
+
+  private Trainee traineeForChange(Long id) {
+    var trainee = auditLogs == null ? traineeRepository.findById(id) : traineeRepository.findLockedById(id);
+    return trainee.orElseThrow(() -> new ResourceNotFoundException("Trainee", "id"));
+  }
+
+  private Map<String, Object> candidateState(Trainee trainee) {
+    Map<String, Object> state = new LinkedHashMap<>();
+    state.put("profileStatusId", trainee.getProfileStatusId());
+    state.put("currentEmploymentStatusId", trainee.getCurrentEmploymentStatusId());
+    state.put("educationLevelId", trainee.getEducationLevelId());
+    return state;
+  }
+
+  private Map<String, Object> privateFields(Trainee trainee) {
+    Map<String, Object> fields = new LinkedHashMap<>();
+    fields.put("firstName", trainee.getFirstName());
+    fields.put("middleName", trainee.getMiddleName());
+    fields.put("lastName", trainee.getLastName());
+    fields.put("dateOfBirth", trainee.getDateOfBirth());
+    fields.put("genderId", trainee.getGenderId());
+    fields.put("email", trainee.getEmail());
+    fields.put("phone", trainee.getPhone());
+    fields.put("addressLine1", trainee.getAddressLine1());
+    fields.put("addressLine2", trainee.getAddressLine2());
+    fields.put("pincode", trainee.getPincode());
+    fields.put("locationId", trainee.getLocationId());
+    fields.put("stateId", trainee.getStateId());
+    fields.put("districtId", trainee.getDistrictId());
+    fields.put("blockId", trainee.getBlockId());
+    return fields;
+  }
+
+  private void auditTrainee(String action, String summary, Long id, Map<String, ?> before, Map<String, ?> after,
+      List<String> redactedFields) {
+    if (auditLogs != null) {
+      auditLogs.recordStateChange(action, "Trainee", id, summary, before, after, redactedFields);
+    }
   }
 }

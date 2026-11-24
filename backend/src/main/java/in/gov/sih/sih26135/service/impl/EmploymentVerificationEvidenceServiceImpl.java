@@ -103,7 +103,8 @@ public class EmploymentVerificationEvidenceServiceImpl implements EmploymentVeri
       throw new ResourceNotFoundException("User", "uploadedByUserId");
     }
 
-    LocalDateTime capturedAt = request.getCapturedAt() != null ? request.getCapturedAt() : LocalDateTime.now();
+    LocalDateTime now = LocalDateTime.now();
+    LocalDateTime capturedAt = request.getCapturedAt() != null ? request.getCapturedAt() : now;
 
     EmploymentVerificationEvidence entity = new EmploymentVerificationEvidence();
     entity.setEmploymentVerification(verification);
@@ -115,6 +116,8 @@ public class EmploymentVerificationEvidenceServiceImpl implements EmploymentVeri
     entity.setCapturedAt(capturedAt);
     entity.setUploadedByUserId(request.getUploadedByUserId());
     entity.setNotes(request.getNotes());
+    entity.setCreatedAt(now);
+    entity.setUpdatedAt(now);
 
     EmploymentVerificationEvidence saved = employmentVerificationEvidenceRepository.save(entity);
     return employmentVerificationEvidenceMapper.toResponse(saved);

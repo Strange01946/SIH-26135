@@ -1,8 +1,12 @@
 package in.gov.sih.sih26135.dto.registration;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PastOrPresent;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 
@@ -25,15 +29,20 @@ public class RegisterTraineeRequest {
   @Size(max = 80, message = "First name cannot exceed 80 characters")
   private String firstName;
 
+  @Size(max = 80)
   private String middleName;
 
+  @Size(max = 80)
   private String lastName;
 
+  @PastOrPresent(message = "Date of birth cannot be in the future")
   private LocalDate dateOfBirth;
 
   @NotNull(message = "Gender is required")
+  @Positive
   private Long genderId;
 
+  @Size(max = 15)
   private String phone;
 
   @NotNull(message = "State is required")
@@ -42,15 +51,31 @@ public class RegisterTraineeRequest {
   @NotNull(message = "District is required")
   private Long districtId;
 
+  @Size(max = 200)
   private String addressLine1;
 
+  @Size(max = 200)
   private String addressLine2;
 
+  @NotBlank(message = "PIN code is required")
+  @Pattern(regexp = "^[1-9][0-9]{5}$", message = "Enter a valid six-digit PIN code")
   private String pincode;
 
   private Long educationLevelId;
 
   private Long currentEmploymentStatusId;
+
+  @NotNull(message = "Core data processing consent is required")
+  @AssertTrue(message = "Core data processing consent is required")
+  private Boolean dataProcessingConsent;
+
+  public Boolean getDataProcessingConsent() {
+    return dataProcessingConsent;
+  }
+
+  public void setDataProcessingConsent(Boolean dataProcessingConsent) {
+    this.dataProcessingConsent = dataProcessingConsent;
+  }
 
   public RegisterTraineeRequest() {
   }

@@ -1,24 +1,23 @@
 package in.gov.sih.sih26135.service.impl;
 
-import in.gov.sih.sih26135.dto.request.CreateTrainingCenterRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTrainingCenterRequest;
 import in.gov.sih.sih26135.dto.response.TrainingCenterResponse;
 import in.gov.sih.sih26135.entity.TrainingCenter;
-import in.gov.sih.sih26135.entity.TrainingProvider;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ConflictException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.mapper.TrainingCenterMapper;
 import in.gov.sih.sih26135.repository.TrainingCenterRepository;
-import in.gov.sih.sih26135.repository.TrainingProviderRepository;
 import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
+import in.gov.sih.sih26135.service.ActiveGeography;
 import in.gov.sih.sih26135.service.TrainingCenterService;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -36,30 +35,35 @@ public class TrainingCenterServiceImpl implements TrainingCenterService {
   private static final String PINCODE_REGEX = "^[1-9][0-9]{5}$";
 
   private final TrainingCenterRepository trainingCenterRepository;
-  private final TrainingProviderRepository trainingProviderRepository;
   private final TrainingCenterMapper trainingCenterMapper;
   private final WorkflowSecurityScopeValidator scopeValidator;
   private final JdbcTemplate jdbcTemplate;
 
   public TrainingCenterServiceImpl(
       TrainingCenterRepository trainingCenterRepository,
-      TrainingProviderRepository trainingProviderRepository,
       TrainingCenterMapper trainingCenterMapper) {
-    this(trainingCenterRepository, trainingProviderRepository, trainingCenterMapper, null, null);
+    this(trainingCenterRepository, trainingCenterMapper, null, null);
   }
 
   @Autowired
   public TrainingCenterServiceImpl(
       TrainingCenterRepository trainingCenterRepository,
-      TrainingProviderRepository trainingProviderRepository,
       TrainingCenterMapper trainingCenterMapper,
       WorkflowSecurityScopeValidator scopeValidator,
       JdbcTemplate jdbcTemplate) {
     this.trainingCenterRepository = trainingCenterRepository;
-    this.trainingProviderRepository = trainingProviderRepository;
     this.trainingCenterMapper = trainingCenterMapper;
     this.scopeValidator = scopeValidator;
     this.jdbcTemplate = jdbcTemplate;
+  }
+
+  @Override
+  public List<LifecycleStatus> getLifecycleStatuses() {
+    resolveScope();
+    return jdbcTemplate.query("""
+        SELECT lifecycle_status_id, status_code, status_name FROM ref_lifecycle_status
+        WHERE is_active = 1 ORDER BY sort_order, lifecycle_status_id
+        """, (rs, rowNum) -> new LifecycleStatus(rs.getLong(1), rs.getString(2), rs.getString(3)));
   }
 
   @Override
@@ -78,7 +82,7 @@ public class TrainingCenterServiceImpl implements TrainingCenterService {
   @Override
   public TrainingCenterResponse getByCode(String centerCode) {
     TrainingTenantScopeSupport.CallerScope scope = resolveScope();
-    TrainingCenter center = trainingCenterRepository.findByCenterCode(centerCode)
+    TrainingCenter center = trainingCenterRepository.findByCenterCodeAndDeletedAtIsNull(centerCode)
         .orElseThrow(() -> new ResourceNotFoundException("TrainingCenter", "centerCode"));
     TrainingTenantScopeSupport.validateCenterOwnership(
         scope,
@@ -220,98 +224,65 @@ public class TrainingCenterServiceImpl implements TrainingCenterService {
 
   @Override
   @Transactional
-  public TrainingCenterResponse createTrainingCenter(CreateTrainingCenterRequest request) {
-    TrainingTenantScopeSupport.CallerScope scope = resolveScope();
-    if (request == null) {
-      throw new BadRequestException("Training center creation request cannot be null");
-    }
-    if (request.getCenterCode() == null || request.getCenterCode().isBlank()) {
-      throw new BadRequestException("Center code is required");
-    }
-    if (request.getCenterName() == null || request.getCenterName().isBlank()) {
-      throw new BadRequestException("Center name is required");
-    }
-    if (request.getProviderId() == null) {
-      throw new BadRequestException("Provider ID is required");
-    }
-    if (request.getStateId() == null) {
-      throw new BadRequestException("State ID is required");
-    }
-    if (request.getDistrictId() == null) {
-      throw new BadRequestException("District ID is required");
-    }
-    if (request.getLifecycleStatusId() == null) {
-      throw new BadRequestException("Lifecycle status ID is required");
-    }
-    TrainingTenantScopeSupport.validateCenterOwnership(
-        scope, request.getProviderId(), request.getStateId(), request.getDistrictId());
-
-    String centerCode = request.getCenterCode().trim();
-    if (trainingCenterRepository.existsByCenterCode(centerCode)) {
-      throw new ConflictException("Center code already exists", "CENTER_CODE_ALREADY_EXISTS");
-    }
-
-    if (request.getOperationalCapacity() != null && request.getOperationalCapacity() <= 0) {
-      throw new BadRequestException("Operational capacity must be greater than 0", "INVALID_OPERATIONAL_CAPACITY");
-    }
-
-    if (request.getPincode() != null && !request.getPincode().isBlank()) {
-      String pincode = request.getPincode().trim();
-      if (!pincode.matches(PINCODE_REGEX)) {
-        throw new BadRequestException("Invalid pincode format. Must be 6 digits starting with 1-9", "INVALID_PINCODE");
-      }
-      request.setPincode(pincode);
-    }
-
-    TrainingProvider provider = trainingProviderRepository.findById(request.getProviderId())
-        .orElseThrow(() -> new ResourceNotFoundException("TrainingProvider", "providerId"));
-
-    TrainingCenter center = trainingCenterMapper.toEntity(request, provider);
-    center.setCenterCode(centerCode);
-    center.setCenterName(request.getCenterName().trim());
-    if (request.getAddressLine1() != null) {
-      center.setAddressLine1(request.getAddressLine1().trim());
-    }
-    if (request.getAddressLine2() != null) {
-      center.setAddressLine2(request.getAddressLine2().trim());
-    }
-
-    LocalDateTime now = LocalDateTime.now();
-    center.setCreatedAt(now);
-    center.setUpdatedAt(now);
-
-    TrainingCenter saved = trainingCenterRepository.save(center);
-    return trainingCenterMapper.toResponse(saved);
-  }
-
-  @Override
-  @Transactional
   public TrainingCenterResponse updateTrainingCenter(Long id, UpdateTrainingCenterRequest request) {
     TrainingTenantScopeSupport.CallerScope scope = resolveScope();
     if (request == null) {
       throw new BadRequestException("Training center update request cannot be null");
     }
 
-    TrainingCenter center = trainingCenterRepository.findById(id)
+    TrainingCenter center = trainingCenterRepository.findByIdForUpdate(id)
         .orElseThrow(() -> new ResourceNotFoundException("TrainingCenter", "id"));
+    Long providerId = center.getTrainingProvider() != null ? center.getTrainingProvider().getId() : null;
     TrainingTenantScopeSupport.validateCenterOwnership(
-        scope,
-        center.getTrainingProvider() != null ? center.getTrainingProvider().getId() : null,
-        center.getStateId(),
-        center.getDistrictId());
+        scope, providerId, center.getStateId(), center.getDistrictId());
+    if (center.getDeletedAt() != null) {
+      throw new ResourceNotFoundException("TrainingCenter", "id");
+    }
+    if ("TEMPORARY".equals(center.getVenueType())) {
+      throw new ConflictException("Manage temporary locations through their venue booking.", "VENUE_WORKFLOW_REQUIRED");
+    }
 
-    if (request.getOperationalCapacity() != null) {
-      if (request.getOperationalCapacity() <= 0) {
+    Long stateId = request.getStateId() == null ? center.getStateId() : request.getStateId();
+    Long districtId = request.getDistrictId() == null ? center.getDistrictId() : request.getDistrictId();
+    boolean geographyChanged = !Objects.equals(stateId, center.getStateId()) || !Objects.equals(districtId, center.getDistrictId());
+    if ("SHARED".equals(center.getVenueType())) {
+      boolean closing = request.getLifecycleStatusId() != null && request.getLifecycleStatusId() != 1L;
+      if (geographyChanged || closing || request.hasOperationalCapacity()) {
+        requireNoFutureVenueReservations(id);
+      }
+      if (request.hasOperationalCapacity() && request.getOperationalCapacity() == null) {
+        throw new BadRequestException("Enter the seating capacity of the shared center.", "VENUE_CAPACITY_REQUIRED");
+      }
+    }
+    if (geographyChanged || request.getLocationId() != null) {
+      TrainingTenantScopeSupport.validateCenterOwnership(scope, providerId, stateId, districtId);
+      validateGeography(stateId, districtId, request.getLocationId());
+      if (geographyChanged && hasTrainingHistory(id)) {
+        throw new ConflictException("This center has training records. Create a center for the new district to preserve history.",
+            "CENTER_HAS_TRAINING_HISTORY");
+      }
+      center.setStateId(stateId);
+      if (!Objects.equals(districtId, center.getDistrictId()) || request.getLocationId() != null) {
+        center.setLocationId(request.getLocationId());
+      }
+      center.setDistrictId(districtId);
+    }
+
+    if (request.hasOperationalCapacity()) {
+      if (request.getOperationalCapacity() != null && request.getOperationalCapacity() <= 0) {
         throw new BadRequestException("Operational capacity must be greater than 0", "INVALID_OPERATIONAL_CAPACITY");
       }
       center.setOperationalCapacity(request.getOperationalCapacity());
     }
 
-    if (request.getPincode() != null && !request.getPincode().isBlank()) {
-      String pincode = request.getPincode().trim();
-      if (!pincode.matches(PINCODE_REGEX)) {
-        throw new BadRequestException("Invalid pincode format. Must be 6 digits starting with 1-9", "INVALID_PINCODE");
-      }
+    String pincode = request.hasPincode() ? optionalText(request.getPincode()) : center.getPincode();
+    if (pincode == null || pincode.isBlank()) {
+      throw new BadRequestException("PIN code is required", "PINCODE_REQUIRED");
+    }
+    if (!pincode.matches(PINCODE_REGEX)) {
+      throw new BadRequestException("Invalid pincode format. Must be 6 digits starting with 1-9", "INVALID_PINCODE");
+    }
+    if (request.hasPincode()) {
       center.setPincode(pincode);
     }
 
@@ -319,21 +290,13 @@ public class TrainingCenterServiceImpl implements TrainingCenterService {
       center.setCenterName(request.getCenterName().trim());
     }
     if (request.getAddressLine1() != null) {
-      center.setAddressLine1(request.getAddressLine1().trim());
+      center.setAddressLine1(optionalText(request.getAddressLine1()));
     }
     if (request.getAddressLine2() != null) {
-      center.setAddressLine2(request.getAddressLine2().trim());
+      center.setAddressLine2(optionalText(request.getAddressLine2()));
     }
-    if (request.getLocationId() != null) {
-      center.setLocationId(request.getLocationId());
-    }
-    if (request.getStateId() != null) {
-      center.setStateId(request.getStateId());
-    }
-    if (request.getDistrictId() != null) {
-      center.setDistrictId(request.getDistrictId());
-    }
-    if (request.getLifecycleStatusId() != null) {
+    if (request.getLifecycleStatusId() != null && !request.getLifecycleStatusId().equals(center.getLifecycleStatusId())) {
+      validateLifecycleStatus(request.getLifecycleStatusId());
       center.setLifecycleStatusId(request.getLifecycleStatusId());
     }
 
@@ -346,18 +309,70 @@ public class TrainingCenterServiceImpl implements TrainingCenterService {
   @Transactional
   public void deleteTrainingCenter(Long id) {
     TrainingTenantScopeSupport.CallerScope scope = resolveScope();
-    TrainingCenter center = trainingCenterRepository.findById(id)
+    TrainingCenter center = trainingCenterRepository.findByIdForUpdate(id)
         .orElseThrow(() -> new ResourceNotFoundException("TrainingCenter", "id"));
     TrainingTenantScopeSupport.validateCenterOwnership(
         scope,
         center.getTrainingProvider() != null ? center.getTrainingProvider().getId() : null,
         center.getStateId(),
         center.getDistrictId());
+    if (center.getDeletedAt() != null) {
+      return;
+    }
+    if ("TEMPORARY".equals(center.getVenueType())) {
+      throw new ConflictException("Manage temporary locations through their venue booking.", "VENUE_WORKFLOW_REQUIRED");
+    }
+    if ("SHARED".equals(center.getVenueType())) {
+      requireNoFutureVenueReservations(id);
+    }
+    if (hasTrainingHistory(id)) {
+      throw new ConflictException("This center has training records. Set its status to Inactive to retain those records.",
+          "CENTER_HAS_TRAINING_HISTORY");
+    }
 
     LocalDateTime now = LocalDateTime.now();
     center.setDeletedAt(now);
     center.setUpdatedAt(now);
     trainingCenterRepository.save(center);
+  }
+
+  private void validateGeography(Long stateId, Long districtId, Long locationId) {
+    ActiveGeography.validate(jdbcTemplate, stateId, districtId);
+    if (locationId != null && !Boolean.TRUE.equals(jdbcTemplate.queryForObject("""
+        SELECT EXISTS(SELECT 1 FROM locations WHERE location_id = ? AND district_id = ? AND deleted_at IS NULL)
+        """, Boolean.class, locationId, districtId))) {
+      throw new BadRequestException("The location must belong to the selected district", "INVALID_CENTER_LOCATION");
+    }
+  }
+
+  private void validateLifecycleStatus(Long statusId) {
+    if (!Boolean.TRUE.equals(jdbcTemplate.queryForObject("""
+        SELECT EXISTS(SELECT 1 FROM ref_lifecycle_status WHERE lifecycle_status_id = ? AND is_active = 1)
+        """, Boolean.class, statusId))) {
+      throw new BadRequestException("Select an available center status", "INVALID_CENTER_STATUS");
+    }
+  }
+
+  private boolean hasTrainingHistory(Long centerId) {
+    return !jdbcTemplate.queryForList("SELECT batch_id FROM training_batches WHERE center_id = ? LIMIT 1 FOR SHARE",
+        Long.class, centerId).isEmpty()
+        || !jdbcTemplate.queryForList("SELECT enrollment_id FROM training_enrollments WHERE center_id = ? LIMIT 1 FOR SHARE",
+            Long.class, centerId).isEmpty();
+  }
+
+  private void requireNoFutureVenueReservations(Long centerId) {
+    if (!jdbcTemplate.queryForList("""
+        SELECT s.session_id FROM venue_booking_sessions s JOIN venue_bookings b USING (booking_id)
+        WHERE b.center_id=? AND s.reserved_at IS NOT NULL AND s.released_at IS NULL AND s.ends_at>?
+        LIMIT 1 FOR UPDATE
+        """, Long.class, centerId, LocalDateTime.now(java.time.ZoneId.of("Asia/Kolkata"))).isEmpty()) {
+      throw new ConflictException("This center has upcoming reservations. Resolve them before changing capacity, location or availability.",
+          "VENUE_HAS_RESERVATIONS");
+    }
+  }
+
+  private static String optionalText(String value) {
+    return value == null || value.isBlank() ? null : value.trim();
   }
 
   private TrainingTenantScopeSupport.CallerScope resolveScope() {

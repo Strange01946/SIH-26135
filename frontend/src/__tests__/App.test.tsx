@@ -14,6 +14,6 @@ describe('App', () => {
 
   it('renders the official sign in portal on initial unauthenticated visit', () => {
     render(<App />);
-    expect(screen.getByRole('heading', { name: /Sign In to Official Portal/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^Sign in$/i })).toBeInTheDocument();
   });
 });

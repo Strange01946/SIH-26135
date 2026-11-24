@@ -223,6 +223,11 @@ public class CommunicationWebhookServiceImpl implements CommunicationWebhookServ
     }
 
     CommunicationLog commLog = logOpt.get();
+    if (commLog.getProviderMessageId().startsWith(MockWebhookSignatureValidator.DEMO_RECEIPT_PREFIX)
+        && !"mock".equals(provider) && !"test".equals(provider)) {
+      return WebhookProcessingResult.error(provider, providerMessageId, "PROVIDER_CHANNEL_MISMATCH",
+          "Demo receipt fixtures can only be reconciled by the mock provider");
+    }
     String currentStatusCode = commLog.getCommunicationStatus() != null
         ? commLog.getCommunicationStatus().getStatusCode()
         : "UNKNOWN";

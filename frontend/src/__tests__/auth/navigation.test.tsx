@@ -115,6 +115,7 @@ describe('Navigation, Layout & Multi-Persona Sidebar Filtering', () => {
     });
 
     it('renders training provider links for Training Provider persona', () => {
+      setupAuth({ id: 2, username: 'provider', authorities: ['ROLE_training_provider', 'center.manage'] });
       render(
         <MemoryRouter>
           <Sidebar currentRole="ROLE_TRAINING_PROVIDER" />

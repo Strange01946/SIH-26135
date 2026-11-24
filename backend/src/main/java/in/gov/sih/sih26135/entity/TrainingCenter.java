@@ -24,8 +24,11 @@ public class TrainingCenter {
   private Long id;
 
   @ManyToOne(fetch = FetchType.LAZY)
-  @JoinColumn(name = "provider_id", nullable = false)
+  @JoinColumn(name = "provider_id")
   private TrainingProvider trainingProvider;
+
+  @Column(name = "venue_type", nullable = false, length = 16, updatable = false)
+  private String venueType = "TEMPORARY";
 
   @Column(name = "center_code", length = 32, nullable = false, unique = true)
   private String centerCode;
@@ -90,6 +93,10 @@ public class TrainingCenter {
 
   public TrainingProvider getTrainingProvider() {
     return trainingProvider;
+  }
+
+  public String getVenueType() {
+    return venueType;
   }
 
   public void setTrainingProvider(TrainingProvider trainingProvider) {

@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.repository.analytics;
 
+import in.gov.sih.sih26135.dto.request.AnalyticsFilterCriteria;
+import in.gov.sih.sih26135.repository.analytics.util.AnalyticsQueryFilterBuilder;
 import in.gov.sih.sih26135.repository.analytics.projection.CourseWageProgressionProjection;
 import in.gov.sih.sih26135.repository.analytics.projection.EmployerHiringProjection;
 import in.gov.sih.sih26135.repository.analytics.projection.EmploymentCategoryBreakdownProjection;
@@ -35,26 +37,35 @@ public class EconomicOutcomeDashboardRepository {
    * @return list of employer hiring performance projections
    */
   public List<EmployerHiringProjection> getFormalQ07EmployerLeaderboard() {
+    return getFormalQ07EmployerLeaderboard(null);
+  }
+
+  public List<EmployerHiringProjection> getFormalQ07EmployerLeaderboard(AnalyticsFilterCriteria criteria) {
+    var filter = cohort(criteria, "pf");
     String sql = """
         SELECT
           e.employer_id,
           e.employer_code,
           e.employer_name,
-          v.placement_count,
-          v.trainee_count,
-          v.joined_count,
-          v.join_rate_pct,
-          CASE WHEN sal.salary_contributors >= 5 THEN v.avg_joining_salary ELSE NULL END AS avg_joining_salary
-        FROM vw_employer_hiring_summary v
-        JOIN employers e ON e.employer_id = v.employer_id
-        LEFT JOIN (
-          SELECT employer_id, COUNT(DISTINCT trainee_id) AS salary_contributors
-          FROM vw_placement_fact
-          WHERE employer_id IS NOT NULL AND joining_salary IS NOT NULL
-          GROUP BY employer_id
-        ) sal ON sal.employer_id = e.employer_id
+          COUNT(*) AS placement_count,
+          COUNT(DISTINCT pf.trainee_id) AS trainee_count,
+          CASE WHEN COUNT(DISTINCT IF(pf.joined_flag = 1, pf.trainee_id, NULL)) NOT BETWEEN 1 AND 4
+                 AND COUNT(DISTINCT IF(pf.joined_flag = 0, pf.trainee_id, NULL)) NOT BETWEEN 1 AND 4
+               THEN SUM(pf.joined_flag) END AS joined_count,
+          CASE WHEN COUNT(DISTINCT IF(pf.joined_flag = 1, pf.trainee_id, NULL)) NOT BETWEEN 1 AND 4
+                 AND COUNT(DISTINCT IF(pf.joined_flag = 0, pf.trainee_id, NULL)) NOT BETWEEN 1 AND 4
+               THEN SUM(pf.joined_flag) / COUNT(*) * 100 END AS join_rate_pct,
+          CASE WHEN COUNT(DISTINCT IF(pf.joining_salary IS NOT NULL AND pf.currency_code = 'INR'
+                AND sf.frequency_code = 'MONTHLY', pf.trainee_id, NULL)) >= 5
+               THEN AVG(IF(pf.currency_code = 'INR' AND sf.frequency_code = 'MONTHLY', pf.joining_salary, NULL))
+               END AS avg_joining_salary
+        FROM vw_placement_fact pf
+        JOIN employers e ON e.employer_id = pf.employer_id
+        LEFT JOIN ref_salary_frequency sf ON sf.salary_frequency_id = pf.salary_frequency_id
         WHERE e.deleted_at IS NULL
-        ORDER BY v.joined_count DESC, v.placement_count DESC, e.employer_code ASC, e.employer_id ASC
+        """ + filter.getSqlFragment() + """
+        GROUP BY e.employer_id, e.employer_code, e.employer_name
+        ORDER BY joined_count DESC, placement_count DESC, e.employer_code ASC, e.employer_id ASC
         """;
 
     return jdbcTemplate.query(sql, (rs, rowNum) -> new EmployerHiringProjection(
@@ -66,7 +77,7 @@ public class EconomicOutcomeDashboardRepository {
         getNullableLong(rs, "joined_count"),
         getScaledBigDecimal(rs, "join_rate_pct"),
         getScaledBigDecimal(rs, "avg_joining_salary")
-    ));
+    ), filter.getParameters().toArray());
   }
 
   /**
@@ -75,21 +86,30 @@ public class EconomicOutcomeDashboardRepository {
    * @return employment mix projection
    */
   public EmploymentMixProjection getFormalQ08EmploymentMix() {
+    return getFormalQ08EmploymentMix(null);
+  }
+
+  public EmploymentMixProjection getFormalQ08EmploymentMix(AnalyticsFilterCriteria criteria) {
+    var filter = cohort(criteria, "ef");
     String sql = """
         SELECT
           COUNT(*) AS employment_spell_count,
           COUNT(DISTINCT trainee_id) AS trainee_count,
-          SUM(CASE WHEN is_current = 1 THEN 1 ELSE 0 END) AS current_spell_count,
-          SUM(CASE WHEN is_wage_employment = 1 THEN 1 ELSE 0 END) AS wage_spell_count,
-          SUM(CASE WHEN is_self_employment = 1 THEN 1 ELSE 0 END) AS self_employment_spell_count,
-          SUM(CASE WHEN is_apprenticeship = 1 THEN 1 ELSE 0 END) AS apprenticeship_spell_count,
-          SUM(CASE WHEN is_internship = 1 THEN 1 ELSE 0 END) AS internship_spell_count,
-          SUM(CASE WHEN is_current = 1 AND is_wage_employment = 1 THEN 1 ELSE 0 END) AS current_wage_count,
-          SUM(CASE WHEN is_current = 1 AND is_self_employment = 1 THEN 1 ELSE 0 END) AS current_self_employment_count,
+          %s AS current_spell_count,
+          %s AS wage_spell_count,
+          %s AS self_employment_spell_count,
+          %s AS apprenticeship_spell_count,
+          %s AS internship_spell_count,
+          %s AS current_wage_count,
+          %s AS current_self_employment_count,
           AVG(duration_days) AS avg_duration_days,
-          AVG(CASE WHEN is_current = 1 THEN duration_days END) AS avg_current_spell_duration_days
-        FROM vw_employment_fact
-        """;
+          CASE WHEN COUNT(DISTINCT IF(is_current = 1, trainee_id, NULL)) >= 5
+               THEN AVG(CASE WHEN is_current = 1 THEN duration_days END) END AS avg_current_spell_duration_days
+        FROM vw_employment_fact ef WHERE 1 = 1
+        """.formatted(safeCount("is_current = 1"), safeCount("is_wage_employment = 1"),
+            safeCount("is_self_employment = 1"), safeCount("is_apprenticeship = 1"), safeCount("is_internship = 1"),
+            safeCount("is_current = 1 AND is_wage_employment = 1"), safeCount("is_current = 1 AND is_self_employment = 1"))
+        + filter.getSqlFragment();
 
     return jdbcTemplate.queryForObject(sql, (rs, rowNum) -> new EmploymentMixProjection(
         getNullableLong(rs, "employment_spell_count"),
@@ -103,7 +123,7 @@ public class EconomicOutcomeDashboardRepository {
         getNullableLong(rs, "current_self_employment_count"),
         getScaledBigDecimal(rs, "avg_duration_days"),
         getScaledBigDecimal(rs, "avg_current_spell_duration_days")
-    ));
+    ), filter.getParameters().toArray());
   }
 
   /**
@@ -112,6 +132,11 @@ public class EconomicOutcomeDashboardRepository {
    * @return list of category breakdown projections
    */
   public List<EmploymentCategoryBreakdownProjection> getFormalQ09CategoryBreakdown() {
+    return getFormalQ09CategoryBreakdown(null);
+  }
+
+  public List<EmploymentCategoryBreakdownProjection> getFormalQ09CategoryBreakdown(AnalyticsFilterCriteria criteria) {
+    var filter = cohort(criteria, "ef");
     String sql = """
         SELECT
           ef.engagement_type_code,
@@ -122,10 +147,12 @@ public class EconomicOutcomeDashboardRepository {
           ef.is_internship,
           COUNT(*) AS spell_count,
           COUNT(DISTINCT ef.trainee_id) AS trainee_count,
-          SUM(ef.is_current) AS current_spell_count,
+          %s AS current_spell_count,
           AVG(ef.duration_days) AS avg_duration_days
         FROM vw_employment_fact ef
         LEFT JOIN ref_engagement_type ret ON ret.type_code = ef.engagement_type_code
+        WHERE 1 = 1
+        """.formatted(safeCount("ef.is_current = 1")) + filter.getSqlFragment() + """
         GROUP BY
           ef.engagement_type_code,
           ret.type_name,
@@ -147,7 +174,7 @@ public class EconomicOutcomeDashboardRepository {
         getNullableLong(rs, "trainee_count"),
         getNullableLong(rs, "current_spell_count"),
         getScaledBigDecimal(rs, "avg_duration_days")
-    ));
+    ), filter.getParameters().toArray());
   }
 
   /**
@@ -156,17 +183,23 @@ public class EconomicOutcomeDashboardRepository {
    * @return wage progression projection
    */
   public WageProgressionProjection getFormalQ10WageProgression() {
+    return getFormalQ10WageProgression(null);
+  }
+
+  public WageProgressionProjection getFormalQ10WageProgression(AnalyticsFilterCriteria criteria) {
+    var filter = cohort(criteria, "sp");
     String sql = """
         SELECT
-          COUNT(*) AS employment_spell_count,
-          COUNT(DISTINCT CASE WHEN first_recorded_salary IS NOT NULL THEN trainee_id ELSE NULL END) AS first_salary_count,
-          COUNT(DISTINCT CASE WHEN latest_recorded_salary IS NOT NULL THEN trainee_id ELSE NULL END) AS latest_salary_count,
-          AVG(first_recorded_salary) AS avg_first_recorded_salary,
-          AVG(latest_recorded_salary) AS avg_latest_recorded_salary,
-          AVG(salary_change_amount) AS avg_salary_change_amount,
-          AVG(salary_change_pct) AS avg_salary_change_pct
-        FROM vw_salary_progression_fact
-        """;
+          CASE WHEN COUNT(DISTINCT sp.trainee_id) NOT BETWEEN 1 AND 4 THEN COUNT(*) END AS employment_spell_count,
+          COUNT(DISTINCT IF(%1$s, sp.trainee_id, NULL)) AS first_salary_count,
+          COUNT(DISTINCT IF(%2$s, sp.trainee_id, NULL)) AS latest_salary_count,
+          AVG(IF(%1$s, sp.first_recorded_salary, NULL)) AS avg_first_recorded_salary,
+          AVG(IF(%2$s, sp.latest_recorded_salary, NULL)) AS avg_latest_recorded_salary,
+          CASE WHEN COUNT(DISTINCT IF(%1$s AND %2$s, sp.trainee_id, NULL)) >= 5
+               THEN AVG(IF(%1$s AND %2$s, sp.salary_change_amount, NULL)) END AS avg_salary_change_amount,
+          CASE WHEN COUNT(DISTINCT IF(%1$s AND %2$s AND sp.salary_change_pct IS NOT NULL, sp.trainee_id, NULL)) >= 5
+               THEN AVG(IF(%1$s AND %2$s, sp.salary_change_pct, NULL)) END AS avg_salary_change_pct
+        """.formatted(FIRST_MONTHLY, LATEST_MONTHLY) + SALARY_SOURCE + filter.getSqlFragment();
 
     return jdbcTemplate.queryForObject(sql, (rs, rowNum) -> new WageProgressionProjection(
         getNullableLong(rs, "employment_spell_count"),
@@ -176,7 +209,7 @@ public class EconomicOutcomeDashboardRepository {
         getScaledBigDecimal(rs, "avg_latest_recorded_salary"),
         getScaledBigDecimal(rs, "avg_salary_change_amount"),
         getScaledBigDecimal(rs, "avg_salary_change_pct")
-    ));
+    ), filter.getParameters().toArray());
   }
 
   /**
@@ -186,6 +219,11 @@ public class EconomicOutcomeDashboardRepository {
    * @return list of salary bracket count projections
    */
   public List<SalaryBracketCountProjection> getSalaryDistributionCounts() {
+    return getSalaryDistributionCounts(null);
+  }
+
+  public List<SalaryBracketCountProjection> getSalaryDistributionCounts(AnalyticsFilterCriteria criteria) {
+    var filter = cohort(criteria, "sp");
     String sql = """
         SELECT
           CASE
@@ -194,9 +232,8 @@ public class EconomicOutcomeDashboardRepository {
             WHEN latest_recorded_salary <= 50000 THEN 'FROM_25K_TO_50K'
             ELSE 'ABOVE_50K'
           END AS bracket_code,
-          COUNT(*) AS count
-        FROM vw_salary_progression_fact
-        WHERE latest_recorded_salary IS NOT NULL
+          COUNT(DISTINCT sp.trainee_id) AS count
+        """ + SALARY_SOURCE + " AND " + LATEST_MONTHLY + "\n" + filter.getSqlFragment() + """
         GROUP BY
           CASE
             WHEN latest_recorded_salary < 15000 THEN 'BELOW_15K'
@@ -209,7 +246,7 @@ public class EconomicOutcomeDashboardRepository {
     return jdbcTemplate.query(sql, (rs, rowNum) -> new SalaryBracketCountProjection(
         rs.getString("bracket_code"),
         getNullableLong(rs, "count")
-    ));
+    ), filter.getParameters().toArray());
   }
 
   /**
@@ -218,21 +255,24 @@ public class EconomicOutcomeDashboardRepository {
    * @return list of course wage progression projections
    */
   public List<CourseWageProgressionProjection> getFormalQ11CourseWageProgression() {
+    return getFormalQ11CourseWageProgression(null);
+  }
+
+  public List<CourseWageProgressionProjection> getFormalQ11CourseWageProgression(AnalyticsFilterCriteria criteria) {
+    var filter = cohort(criteria, "sp");
     String sql = """
         SELECT
-          sp.course_id,
-          c.course_code,
-          c.course_name,
-          COUNT(*) AS spell_count,
-          CASE WHEN COUNT(DISTINCT CASE WHEN sp.first_recorded_salary IS NOT NULL THEN sp.trainee_id ELSE NULL END) >= 5
-               THEN AVG(sp.first_recorded_salary) ELSE NULL END AS avg_first_recorded_salary,
-          CASE WHEN COUNT(DISTINCT CASE WHEN sp.latest_recorded_salary IS NOT NULL THEN sp.trainee_id ELSE NULL END) >= 5
-               THEN AVG(sp.latest_recorded_salary) ELSE NULL END AS avg_latest_recorded_salary,
-          CASE WHEN COUNT(DISTINCT CASE WHEN sp.salary_change_pct IS NOT NULL THEN sp.trainee_id ELSE NULL END) >= 5
-               THEN AVG(sp.salary_change_pct) ELSE NULL END AS avg_salary_change_pct
-        FROM vw_salary_progression_fact sp
-        LEFT JOIN courses c ON c.course_id = sp.course_id
-        WHERE sp.course_id IS NOT NULL
+          sp.course_id, c.course_code, c.course_name,
+          CASE WHEN COUNT(DISTINCT sp.trainee_id) NOT BETWEEN 1 AND 4 THEN COUNT(*) END AS spell_count,
+          CASE WHEN COUNT(DISTINCT IF(%1$s, sp.trainee_id, NULL)) >= 5
+               THEN AVG(IF(%1$s, sp.first_recorded_salary, NULL)) END AS avg_first_recorded_salary,
+          CASE WHEN COUNT(DISTINCT IF(%2$s, sp.trainee_id, NULL)) >= 5
+               THEN AVG(IF(%2$s, sp.latest_recorded_salary, NULL)) END AS avg_latest_recorded_salary,
+          CASE WHEN COUNT(DISTINCT IF(%1$s AND %2$s AND sp.salary_change_pct IS NOT NULL, sp.trainee_id, NULL)) >= 5
+               THEN AVG(IF(%1$s AND %2$s, sp.salary_change_pct, NULL)) END AS avg_salary_change_pct
+        """.formatted(FIRST_MONTHLY, LATEST_MONTHLY)
+        + SALARY_SOURCE.replace("WHERE tr.deleted_at IS NULL", "JOIN courses c ON c.course_id = sp.course_id WHERE tr.deleted_at IS NULL AND c.deleted_at IS NULL")
+        + filter.getSqlFragment() + """
         GROUP BY sp.course_id, c.course_code, c.course_name
         ORDER BY avg_salary_change_pct IS NULL, avg_salary_change_pct DESC, c.course_code ASC, sp.course_id ASC
         """;
@@ -245,7 +285,36 @@ public class EconomicOutcomeDashboardRepository {
         getScaledBigDecimal(rs, "avg_first_recorded_salary"),
         getScaledBigDecimal(rs, "avg_latest_recorded_salary"),
         getScaledBigDecimal(rs, "avg_salary_change_pct")
-    ));
+    ), filter.getParameters().toArray());
+  }
+
+  private static final String FIRST_MONTHLY = "first_sh.currency_code = 'INR' AND first_freq.frequency_code = 'MONTHLY'";
+  private static final String LATEST_MONTHLY = "latest_sh.currency_code = 'INR' AND sp.latest_salary_frequency_code = 'MONTHLY'";
+  private static final String SALARY_SOURCE = """
+      FROM vw_salary_progression_fact sp
+      JOIN trainees tr ON tr.trainee_id = sp.trainee_id
+      LEFT JOIN salary_history first_sh ON first_sh.employment_id = sp.employment_id
+          AND first_sh.effective_from = sp.first_salary_effective_from
+      LEFT JOIN ref_salary_frequency first_freq ON first_freq.salary_frequency_id = first_sh.salary_frequency_id
+      LEFT JOIN salary_history latest_sh ON latest_sh.employment_id = sp.employment_id
+          AND latest_sh.effective_from = sp.latest_salary_effective_from
+      WHERE tr.deleted_at IS NULL
+      """;
+
+  private static AnalyticsQueryFilterBuilder.FilterPredicateResult cohort(AnalyticsFilterCriteria criteria, String alias) {
+    var filter = AnalyticsQueryFilterBuilder.buildEnrollmentFactPredicates(criteria, "v");
+    if (!filter.hasPredicates()) {
+      return filter;
+    }
+    return new AnalyticsQueryFilterBuilder.FilterPredicateResult(
+        " AND EXISTS (SELECT 1 FROM vw_enrollment_outcome_fact v WHERE v.enrollment_id = "
+            + alias + ".enrollment_id " + filter.getSqlFragment() + ")", filter.getParameters());
+  }
+
+  private static String safeCount(String condition) {
+    return "CASE WHEN COUNT(DISTINCT IF(" + condition + ", trainee_id, NULL)) NOT BETWEEN 1 AND 4"
+        + " AND COUNT(DISTINCT IF(NOT (" + condition + "), trainee_id, NULL)) NOT BETWEEN 1 AND 4"
+        + " THEN COALESCE(SUM(IF(" + condition + ", 1, 0)), 0) END";
   }
 
   private static Long getNullableLong(ResultSet rs, String column) throws SQLException {

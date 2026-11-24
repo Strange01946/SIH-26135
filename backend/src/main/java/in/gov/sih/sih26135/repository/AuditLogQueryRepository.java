@@ -5,6 +5,7 @@ import in.gov.sih.sih26135.dto.response.AuditLogResponse;
 import in.gov.sih.sih26135.dto.response.AuditTrailTimelineResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.security.AuditPayloadMasker;
+import in.gov.sih.sih26135.service.audit.AuditSnapshot;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -149,7 +150,7 @@ public class AuditLogQueryRepository {
               rs.getString("action_name"),
               occurredAt,
               rs.getString("correlation_id"),
-              sanitizedSummary
+              AuditSnapshot.decode(sanitizedSummary).text()
           );
         },
         entityType.trim().toUpperCase(),

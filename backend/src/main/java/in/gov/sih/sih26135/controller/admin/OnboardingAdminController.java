@@ -52,6 +52,7 @@ public class OnboardingAdminController {
 
   @Operation(summary = "Approve Application", description = "Approve onboarding application, activate user, and grant accreditation")
   @PostMapping("/applications/{id}/approve")
+  @PreAuthorize("hasAnyAuthority('user.manage', 'ROLE_super_admin', 'ROLE_government_admin')")
   public ResponseEntity<ApiResponse<OnboardingApplicationResponse>> approveApplication(
       @PathVariable @Positive Long id,
       @AuthenticationPrincipal UserPrincipal principal) {
@@ -62,6 +63,7 @@ public class OnboardingAdminController {
 
   @Operation(summary = "Reject Application", description = "Reject onboarding application with reason and disable user")
   @PostMapping("/applications/{id}/reject")
+  @PreAuthorize("hasAnyAuthority('user.manage', 'ROLE_super_admin', 'ROLE_government_admin')")
   public ResponseEntity<ApiResponse<OnboardingApplicationResponse>> rejectApplication(
       @PathVariable @Positive Long id,
       @RequestBody(required = false) Map<String, String> body,

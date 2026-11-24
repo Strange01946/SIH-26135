@@ -19,6 +19,7 @@ import in.gov.sih.sih26135.service.TraineeConsentService;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -152,6 +153,33 @@ public class TraineeConsentServiceImpl implements TraineeConsentService {
     RefConsentStatus consentStatus = refConsentStatusRepository.findById(request.getConsentStatusId())
         .orElseThrow(() -> new ResourceNotFoundException("ConsentStatus", "id"));
 
+    return persistConsent(request, trainee, consentType, consentStatus, actorUserId);
+  }
+
+  @Override
+  @Transactional(propagation = Propagation.MANDATORY)
+  public void recordRegistrationConsent(Trainee trainee, Long ownerUserId, LocalDateTime grantedAt) {
+    if (trainee == null || trainee.getId() == null || trainee.getUser() == null
+        || ownerUserId == null || !ownerUserId.equals(trainee.getUser().getId())) {
+      throw new IllegalArgumentException("Registration consent must be tied to the newly created trainee account");
+    }
+    RefConsentType type = refConsentTypeRepository.findByConsentCode("DATA_PROCESSING")
+        .orElseThrow(() -> new IllegalStateException("DATA_PROCESSING consent type is not configured"));
+    RefConsentStatus status = refConsentStatusRepository.findByStatusCode("GRANTED")
+        .orElseThrow(() -> new IllegalStateException("GRANTED consent status is not configured"));
+    var request = new CreateTraineeConsentRequest();
+    request.setTraineeId(trainee.getId());
+    request.setConsentTypeId(type.getId());
+    request.setConsentStatusId(status.getId());
+    request.setPurpose("Process registration and training records");
+    request.setPolicyVersion("v1.0");
+    request.setCapturedChannel("WEB_PORTAL");
+    request.setGrantedAt(grantedAt);
+    persistConsent(request, trainee, type, status, ownerUserId);
+  }
+
+  private TraineeConsentResponse persistConsent(CreateTraineeConsentRequest request, Trainee trainee,
+      RefConsentType consentType, RefConsentStatus consentStatus, Long actorUserId) {
     LocalDateTime grantedAt = request.getGrantedAt() != null ? request.getGrantedAt() : LocalDateTime.now();
     request.setGrantedAt(grantedAt);
 

@@ -339,10 +339,14 @@ public class TraineeImportRowProcessor {
         throw new RowValidationFailureException("FOREIGN_KEY_NOT_FOUND", "Referenced centerId does not exist");
       }
       Map<String, Object> cRow = centerRows.get(0);
-      centerProviderId = ((Number) cRow.get("provider_id")).longValue();
+      centerProviderId = cRow.get("provider_id") instanceof Number owner ? owner.longValue() : null;
       centerStateId = ((Number) cRow.get("state_id")).longValue();
       centerDistrictId = ((Number) cRow.get("district_id")).longValue();
-      if (providerId != null && !centerProviderId.equals(providerId)) {
+      if (centerProviderId == null && batchId == null) {
+        throw new RowValidationFailureException("FOREIGN_KEY_NOT_FOUND",
+            "A shared center reference requires its batchId");
+      }
+      if (providerId != null && centerProviderId != null && !centerProviderId.equals(providerId)) {
         throw new RowValidationFailureException("GEOGRAPHIC_MISMATCH",
             "Referenced centerId does not belong to specified providerId");
       }

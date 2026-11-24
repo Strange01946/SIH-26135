@@ -22,7 +22,7 @@ public interface OnboardingAdminService {
   @PreAuthorize("hasAnyAuthority('user.manage', 'ROLE_super_admin', 'ROLE_government_admin')")
   OnboardingApplicationResponse rejectApplication(Long id, String reason, Long reviewerUserId);
 
-  @PreAuthorize("hasAnyAuthority('user.manage', 'ROLE_super_admin', 'ROLE_government_admin')")
+  @PreAuthorize("hasAnyAuthority('user.manage', 'ROLE_super_admin', 'ROLE_government_admin', 'ROLE_government_officer')")
   UserResponse provisionAssessor(ProvisionAssessorRequest request, Long actorUserId);
 
   @PreAuthorize("hasAnyAuthority('user.manage', 'ROLE_super_admin')")

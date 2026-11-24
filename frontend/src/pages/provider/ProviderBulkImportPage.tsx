@@ -6,9 +6,13 @@ import {
   uploadBulkImportBatch,
   processImportBatch,
   getImportBatchStatus,
+  recoverImportBatch,
 } from '@/api/providerPortalApi';
 import type { ImportBatchItem } from '@/types/provider';
+import type { ApiError } from '@/api/types';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
+import { useAuth } from '@/context/AuthContext';
+import { simulationActive } from '@/lib/demoEnvironment';
 
 const STORAGE_KEY_LAST_IMPORT = 'sih26135_last_import_batch_id';
 const MAX_POLL_COUNT = 60; // Max 60 poll cycles before pausing to protect network/CPU
@@ -17,6 +21,8 @@ const MAX_CONSECUTIVE_FAILURES = 5;
 export function ProviderBulkImportPage(): React.JSX.Element {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const storageKey = user ? `${STORAGE_KEY_LAST_IMPORT}.${user.id}` : STORAGE_KEY_LAST_IMPORT;
 
   // Selected file state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -27,8 +33,9 @@ export function ProviderBulkImportPage(): React.JSX.Element {
 
   // Active Import Batch ID
   const urlBatchId = searchParams.get('batchId') ? Number(searchParams.get('batchId')) : null;
-  const savedBatchId = localStorage.getItem(STORAGE_KEY_LAST_IMPORT)
-    ? Number(localStorage.getItem(STORAGE_KEY_LAST_IMPORT))
+  const batchStorage = simulationActive ? sessionStorage : localStorage;
+  const savedBatchId = batchStorage.getItem(storageKey)
+    ? Number(batchStorage.getItem(storageKey))
     : null;
   const [activeBatchId, setActiveBatchId] = useState<number | null>(urlBatchId || savedBatchId || null);
 
@@ -36,6 +43,7 @@ export function ProviderBulkImportPage(): React.JSX.Element {
   const [isPollingPaused, setIsPollingPaused] = useState<boolean>(false);
   const [isTimedOut, setIsTimedOut] = useState<boolean>(false);
   const [lastNetworkError, setLastNetworkError] = useState<string | null>(null);
+  const [confirmRecovery, setConfirmRecovery] = useState(false);
   const pollCountRef = useRef<number>(0);
   const consecutiveFailuresRef = useRef<number>(0);
 
@@ -51,12 +59,12 @@ export function ProviderBulkImportPage(): React.JSX.Element {
   // Sync activeBatchId with URL and localStorage
   useEffect(() => {
     if (activeBatchId) {
-      localStorage.setItem(STORAGE_KEY_LAST_IMPORT, String(activeBatchId));
+      batchStorage.setItem(storageKey, String(activeBatchId));
       if (searchParams.get('batchId') !== String(activeBatchId)) {
         setSearchParams({ batchId: String(activeBatchId) });
       }
     }
-  }, [activeBatchId, searchParams, setSearchParams]);
+  }, [activeBatchId, batchStorage, searchParams, setSearchParams, storageKey]);
 
   // Upload Mutation
   const uploadMutation = useMutation({
@@ -64,6 +72,7 @@ export function ProviderBulkImportPage(): React.JSX.Element {
     onSuccess: (data: ImportBatchItem) => {
       toast.success(`Import batch ${data.batchCode} staged successfully!`);
       setActiveBatchId(data.id);
+      setConfirmRecovery(false);
       resetPollingBudget();
       setSelectedFile(null);
       setUploadError(null);
@@ -79,29 +88,42 @@ export function ProviderBulkImportPage(): React.JSX.Element {
   // Process Mutation
   const processMutation = useMutation({
     mutationFn: (batchId: number) => processImportBatch(batchId),
-    onSuccess: () => {
-      toast.success('Batch processing started');
+    onSuccess: (status, batchId) => {
+      queryClient.setQueryData(['provider', 'importStatus', batchId], status);
+      if (status.status === 'FAILED') toast.error('Import failed. Review the quarantined rows before uploading again.');
+      else toast.success(`Import status · ${status.status.replace(/_/g, ' ').toLowerCase()}`);
+    },
+    onError: (error: ApiError, batchId) => {
+      toast.error(error.message || 'Unable to confirm processing. Check the current batch status.');
+      void queryClient.invalidateQueries({ queryKey: ['provider', 'importStatus', batchId] });
+    },
+  });
+
+  const recoveryMutation = useMutation({
+    mutationFn: recoverImportBatch,
+    onSuccess: (status, id) => {
+      queryClient.setQueryData(['provider', 'importStatus', id], status);
+      setConfirmRecovery(false);
       resetPollingBudget();
-      queryClient.invalidateQueries({ queryKey: ['provider', 'importStatus', activeBatchId] });
+      toast.success('Batch recovered. Start processing to resume.');
     },
-    onError: (err: any) => {
-      const msg = err.response?.data?.message || err.message || 'Failed to initiate batch processing';
-      toast.error(msg);
-    },
+    onError: (error: ApiError) => toast.error(error.message || 'Unable to recover the batch.'),
   });
 
   // Bounded Polling Status Query with Exponential Backoff
   const statusQuery = useQuery({
     queryKey: ['provider', 'importStatus', activeBatchId],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!activeBatchId) return null;
       pollCountRef.current += 1;
       try {
-        const res = await getImportBatchStatus(activeBatchId);
+        const res = await getImportBatchStatus(activeBatchId, signal);
+        if (signal.aborted) return res;
         consecutiveFailuresRef.current = 0;
         setLastNetworkError(null);
         return res;
       } catch (err: unknown) {
+        if (signal.aborted) throw err;
         consecutiveFailuresRef.current += 1;
         const msg = (err as any)?.message || 'Failed to poll batch status';
         setLastNetworkError(msg);
@@ -131,6 +153,7 @@ export function ProviderBulkImportPage(): React.JSX.Element {
       if (data && (data.isTerminal || ['COMPLETED', 'FAILED', 'PARTIALLY_COMPLETED'].includes(data.status))) {
         return false;
       }
+      if (data?.status === 'PENDING' && !processMutation.isPending) return false;
 
       // 5. Exponential backoff if there are consecutive failures (even when data is undefined on first request!)
       if (consecutiveFailuresRef.current > 0) {
@@ -184,6 +207,7 @@ export function ProviderBulkImportPage(): React.JSX.Element {
 
   const validateAndSetFile = (file: File) => {
     setUploadError(null);
+    setSelectedFile(null);
     const lowerName = file.name.toLowerCase();
     const isCsv = lowerName.endsWith('.csv');
     const isJson = lowerName.endsWith('.json') || lowerName.endsWith('.ndjson');
@@ -200,18 +224,20 @@ export function ProviderBulkImportPage(): React.JSX.Element {
   };
 
   const handleUploadSubmit = () => {
-    if (!selectedFile) return;
+    if (!selectedFile || uploadMutation.isPending) return;
     uploadMutation.mutate(selectedFile);
   };
 
   const handleProcessSubmit = () => {
-    if (!activeBatchId) return;
+    if (!activeBatchId || processMutation.isPending || statusQuery.isError || statusQuery.data?.status !== 'PENDING') return;
+    resetPollingBudget();
     processMutation.mutate(activeBatchId);
   };
 
   const handleClearActiveBatch = () => {
+    setConfirmRecovery(false);
     setActiveBatchId(null);
-    localStorage.removeItem(STORAGE_KEY_LAST_IMPORT);
+    localStorage.removeItem(storageKey);
     setSearchParams({});
     resetPollingBudget();
   };
@@ -364,7 +390,7 @@ export function ProviderBulkImportPage(): React.JSX.Element {
                         : 'bg-gray-200 text-gray-800'
                     }`}
                   >
-                    {statusData?.status || 'STAGED / PENDING'}
+                    {statusQuery.isError ? 'STATUS UNAVAILABLE' : statusData?.status || 'CHECKING STATUS'}
                   </span>
                 </div>
               </div>
@@ -461,7 +487,7 @@ export function ProviderBulkImportPage(): React.JSX.Element {
 
               {/* Trigger / Navigation Actions */}
               <div className="space-y-2 pt-2">
-                {!isTerminal && statusData?.status !== 'RUNNING' && (
+                {statusData?.status === 'PENDING' && !statusQuery.isError && (
                   <button
                     onClick={handleProcessSubmit}
                     disabled={processMutation.isPending}
@@ -474,7 +500,18 @@ export function ProviderBulkImportPage(): React.JSX.Element {
                 {statusData?.status === 'RUNNING' && (
                   <div className="py-2 flex items-center justify-center gap-2 text-xs text-navy font-semibold">
                     <LoadingSpinner size="sm" />
-                    <span>Worker actively validating &amp; committing records...</span>
+                    <span>Processing is recorded as running.</span>
+                  </div>
+                )}
+
+                {statusData?.status === 'RUNNING' && !processMutation.isPending && (
+                  <div className="space-y-2 rounded border p-3 text-sm">
+                    <label className="flex items-start gap-2">
+                      <input type="checkbox" checked={confirmRecovery} onChange={(event) => setConfirmRecovery(event.target.checked)} />
+                      I confirmed the previous processing worker has stopped.
+                    </label>
+                    <button type="button" className="btn-outline" disabled={!confirmRecovery || recoveryMutation.isPending}
+                      onClick={() => activeBatchId && recoveryMutation.mutate(activeBatchId)}>Recover interrupted batch</button>
                   </div>
                 )}
 

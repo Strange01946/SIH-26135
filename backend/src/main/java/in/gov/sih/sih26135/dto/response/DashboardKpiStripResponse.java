@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.dto.response;
 
+import in.gov.sih.sih26135.service.ExecutiveMisService.KpiComparison;
 import java.math.BigDecimal;
 
 /**
@@ -22,5 +23,22 @@ public record DashboardKpiStripResponse(
     BigDecimal completionRatePct,
     BigDecimal certificationRatePct,
     BigDecimal placementRatePct,
-    BigDecimal employmentRatePct
-) {}
+    BigDecimal employmentRatePct,
+    KpiComparison executiveKpis
+) {
+  public DashboardKpiStripResponse(Long traineeCount, Long enrollmentCount, Long enrolledTraineeCount,
+      Long completedEnrollmentCount, Long certifiedEnrollmentCount, Long placementCount, Long joinedPlacementCount,
+      Long employmentSpellCount, Long employedTraineeCount, Long currentEmploymentSpellCount,
+      Long currentSelfEmploymentCount, Long currentApprenticeshipCount, BigDecimal completionRatePct,
+      BigDecimal certificationRatePct, BigDecimal placementRatePct, BigDecimal employmentRatePct) {
+    this(traineeCount, enrollmentCount, enrolledTraineeCount, completedEnrollmentCount, certifiedEnrollmentCount,
+        placementCount, joinedPlacementCount, employmentSpellCount, employedTraineeCount, currentEmploymentSpellCount,
+        currentSelfEmploymentCount, currentApprenticeshipCount, completionRatePct, certificationRatePct, placementRatePct,
+        employmentRatePct, null);
+  }
+
+  public static DashboardKpiStripResponse executive(KpiComparison comparison) {
+    return new DashboardKpiStripResponse(null, null, null, null, null, null, null, null, null, null, null, null,
+        null, null, null, null, comparison);
+  }
+}

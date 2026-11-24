@@ -77,7 +77,7 @@ describe('ProviderBulkImportPage — Resilient Bounded Polling Failure Handling'
     renderWithProviders(<ProviderBulkImportPage />, '/provider/import?batchId=555');
 
     await waitFor(() => {
-      expect(providerApi.getImportBatchStatus).toHaveBeenCalledWith(555);
+      expect(providerApi.getImportBatchStatus).toHaveBeenCalledWith(555, expect.any(AbortSignal));
     });
 
     // Confirms batch header shows active batch even when query.state.data is undefined
@@ -162,7 +162,7 @@ describe('ProviderBulkImportPage — Resilient Bounded Polling Failure Handling'
   });
 
   it('preserves reload recovery by restoring active batch from URL and localStorage', async () => {
-    localStorage.setItem('sih26135_last_import_batch_id', '654');
+    localStorage.setItem('sih26135_last_import_batch_id.100', '654');
 
     vi.mocked(providerApi.getImportBatchStatus).mockResolvedValue({
       importBatchId: 654,
@@ -181,7 +181,7 @@ describe('ProviderBulkImportPage — Resilient Bounded Polling Failure Handling'
     renderWithProviders(<ProviderBulkImportPage />, '/provider/import');
 
     await waitFor(() => {
-      expect(providerApi.getImportBatchStatus).toHaveBeenCalledWith(654);
+      expect(providerApi.getImportBatchStatus).toHaveBeenCalledWith(654, expect.any(AbortSignal));
       expect(screen.getByText('IMP-SAVED-654')).toBeInTheDocument();
     });
   });

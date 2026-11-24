@@ -1,6 +1,5 @@
 package in.gov.sih.sih26135.service;
 
-import in.gov.sih.sih26135.dto.request.CreateTrainingCenterRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTrainingCenterRequest;
 import in.gov.sih.sih26135.dto.response.TrainingCenterResponse;
 import java.util.List;
@@ -8,6 +7,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 public interface TrainingCenterService {
+
+  record LifecycleStatus(long id, String code, String name) {}
+
+  List<LifecycleStatus> getLifecycleStatuses();
 
   TrainingCenterResponse getById(Long id);
 
@@ -28,8 +31,6 @@ public interface TrainingCenterService {
   Page<TrainingCenterResponse> getTrainingCentersByDistrictId(Long districtId, Pageable pageable);
 
   Page<TrainingCenterResponse> getTrainingCentersByStateId(Long stateId, Pageable pageable);
-
-  TrainingCenterResponse createTrainingCenter(CreateTrainingCenterRequest request);
 
   TrainingCenterResponse updateTrainingCenter(Long id, UpdateTrainingCenterRequest request);
 

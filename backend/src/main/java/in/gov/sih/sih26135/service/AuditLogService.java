@@ -4,6 +4,7 @@ import in.gov.sih.sih26135.dto.request.CreateAuditLogRequest;
 import in.gov.sih.sih26135.dto.response.AuditLogResponse;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -12,6 +13,11 @@ public interface AuditLogService {
   AuditLogResponse recordAuditLog(CreateAuditLogRequest request);
 
   AuditLogResponse recordInternalAuditLog(Long actorUserId, Long auditActionId, String entityType, Long entityId, String summary);
+
+  void recordStateChange(String actionCode, String entityType, Long entityId, String summary,
+      Map<String, ?> before, Map<String, ?> after, List<String> redactedFields);
+
+  boolean canSearchNationwide();
 
   AuditLogResponse getAuditLogById(Long id);
 

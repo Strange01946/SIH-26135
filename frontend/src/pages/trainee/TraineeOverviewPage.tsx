@@ -317,7 +317,7 @@ export const TraineeOverviewPage: React.FC = () => {
               Post-Training Placement &amp; Longitudinal Career Outcome
             </h3>
             <p className="text-xs text-gov-neutral-500">
-              Aggregated from the National Employment &amp; Verification register.
+              Summary of the placement and employment records linked to your profile.
             </p>
           </div>
           <Link
@@ -333,45 +333,42 @@ export const TraineeOverviewPage: React.FC = () => {
             <LoadingSpinner size="sm" />
           </div>
         ) : outcomesQuery.isError ? (
-          <div className="text-xs text-gov-neutral-600 bg-gov-neutral-50 p-4 rounded border border-gov-neutral-200">
-            <span>Employment outcome data is updated following post-training verification audits.</span>
+          <div role="alert" className="text-sm text-red-800">
+            Employment outcomes could not be loaded.{' '}
+            <button type="button" className="underline" onClick={() => void outcomesQuery.refetch()}>Retry</button>
           </div>
         ) : outcome ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
             <div>
               <span className="text-xs font-medium text-gov-neutral-500 uppercase tracking-wider">
-                Placement Status
+                Employment status
               </span>
               <p className="text-sm font-bold text-gov-neutral-900 mt-1">
-                {outcome.snapshotIsEmployedFlag ? (
-                  <span className="text-emerald-700">● Employed</span>
-                ) : (
-                  <span className="text-gov-neutral-600">In Transition / Seeking Placement</span>
-                )}
+                {outcome.snapshotEmploymentStatusCode?.replace(/_/g, ' ') ?? 'Unknown'}
               </p>
             </div>
             <div>
               <span className="text-xs font-medium text-gov-neutral-500 uppercase tracking-wider">
-                Employer Name
+                Enrollments with a placement
               </span>
               <p className="text-sm font-semibold text-gov-neutral-800 mt-1">
-                {outcome.lastVerifiedEmployerName || '—'}
+                {outcome.placedEnrollmentCount ?? '—'}
               </p>
             </div>
             <div>
               <span className="text-xs font-medium text-gov-neutral-500 uppercase tracking-wider">
-                Monthly Emolument
+                Current wage employment records
               </span>
               <p className="text-sm font-semibold text-gov-neutral-800 mt-1">
-                {outcome.monthlySalary ? `₹${outcome.monthlySalary.toLocaleString('en-IN')}` : '—'}
+                {outcome.currentWageEmploymentCount ?? '—'}
               </p>
             </div>
             <div>
               <span className="text-xs font-medium text-gov-neutral-500 uppercase tracking-wider">
-                Placement Date
+                Current self-employment records
               </span>
               <p className="text-sm text-gov-neutral-700 mt-1">
-                {outcome.lastPlacementDate ? new Date(outcome.lastPlacementDate).toLocaleDateString() : '—'}
+                {outcome.currentSelfEmploymentCount ?? '—'}
               </p>
             </div>
           </div>

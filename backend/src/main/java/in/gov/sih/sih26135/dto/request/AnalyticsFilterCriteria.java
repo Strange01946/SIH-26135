@@ -30,7 +30,7 @@ import java.util.Set;
  */
 public class AnalyticsFilterCriteria {
 
-  private static final Set<String> SUPPORTED_GENDERS = Set.of("MALE", "FEMALE", "TRANSGENDER");
+  private static final Set<String> SUPPORTED_GENDERS = Set.of("MALE", "FEMALE", "TRANSGENDER", "OTHER", "PREFER_NOT_TO_SAY");
 
   // =========================================================================
   // 1. Temporal Dimensions
@@ -176,7 +176,7 @@ public class AnalyticsFilterCriteria {
       String normalized = gender.trim().toUpperCase();
       if (!SUPPORTED_GENDERS.contains(normalized)) {
         throw new BadRequestException(
-            "Unsupported gender classification '" + gender + "'. Supported values: MALE, FEMALE, TRANSGENDER",
+            "Unsupported gender classification '" + gender + "'",
             "INVALID_DEMOGRAPHIC_FILTER"
         );
       }
@@ -268,25 +268,6 @@ public class AnalyticsFilterCriteria {
    */
   public String resolveGenderCode() {
     return gender == null || gender.isBlank() ? null : gender.trim().toUpperCase();
-  }
-
-  /**
-   * Resolves authoritative gender ID from {@code ref_gender} table:
-   * 1 -> MALE, 2 -> FEMALE, 3 -> TRANSGENDER.
-   *
-   * @return authoritative gender ID, or null if unspecified
-   */
-  public Long resolveGenderId() {
-    String code = resolveGenderCode();
-    if (code == null) {
-      return null;
-    }
-    return switch (code) {
-      case "MALE" -> 1L;
-      case "FEMALE" -> 2L;
-      case "TRANSGENDER" -> 3L;
-      default -> null;
-    };
   }
 
   public boolean isEmpty() {

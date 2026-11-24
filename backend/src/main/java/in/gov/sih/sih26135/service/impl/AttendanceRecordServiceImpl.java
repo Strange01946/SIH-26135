@@ -166,6 +166,14 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
     if (request.getBatchId() != null && !request.getBatchId().equals(batch.getId())) {
       throw new BadRequestException("Batch ID does not match enrollment batch", "BATCH_ENROLLMENT_MISMATCH");
     }
+    if (batch.getTrainingCenter() != null) {
+      LocalDate date = request.getSessionDate();
+      long deliveredSlots = attendanceRecordRepository.countStartedVenueSessions(batch.getId(), date.atStartOfDay(),
+          date.plusDays(1).atStartOfDay(), LocalDateTime.now(java.time.ZoneId.of("Asia/Kolkata")));
+      if (sessionSequence > deliveredSlots) {
+        throw new BadRequestException("Choose a scheduled session that has started.", "VENUE_ATTENDANCE_SESSION_REQUIRED");
+      }
+    }
 
     RefAttendanceStatus status = refAttendanceStatusRepository.findById(request.getAttendanceStatusId())
         .orElseThrow(() -> new ResourceNotFoundException("RefAttendanceStatus", "attendanceStatusId"));

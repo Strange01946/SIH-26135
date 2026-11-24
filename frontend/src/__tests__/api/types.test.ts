@@ -103,25 +103,76 @@ describe('ApiResponse type contract', () => {
     expect(backendError.code).toBe('AUTH_ACCOUNT_LOCKED');
   });
 
-  describe('Persona mapping and Route Authorization', () => {
-    it('maps all five personas accurately from role and authority strings', () => {
-      expect(getUserPersonas(['ROLE_ADMIN'])).toContain('ADMIN');
-      expect(getUserPersonas(['system.manage'])).toContain('ADMIN');
-      expect(getUserPersonas(['ROLE_TRAINING_PROVIDER'])).toContain('TRAINING_PROVIDER');
-      expect(getUserPersonas(['course.manage'])).toContain('TRAINING_PROVIDER');
-      expect(getUserPersonas(['ROLE_ASSESSOR'])).toContain('ASSESSOR');
-      expect(getUserPersonas(['ROLE_EMPLOYER'])).toContain('EMPLOYER');
-      expect(getUserPersonas(['ROLE_TRAINEE'])).toContain('TRAINEE');
-      expect(getUserPersonas(['trainee.read'])).toContain('TRAINEE');
+  describe('Persona mapping and Route Authorization (Fail-Closed RBAC)', () => {
+    it('maps every authoritative backend role accurately to its distinct persona', () => {
+      expect(getUserPersonas(['ROLE_super_admin'])).toEqual(['SUPER_ADMIN']);
+      expect(getUserPersonas(['ROLE_government_admin'])).toEqual(['GOVERNMENT_ADMIN']);
+      expect(getUserPersonas(['ROLE_government_admin'], { stateId: 10 })).toEqual(['STATE_ADMIN']);
+      expect(getUserPersonas(['ROLE_state_admin'])).toEqual(['STATE_ADMIN']);
+      expect(getUserPersonas(['ROLE_government_officer'])).toEqual(['GOVERNMENT_OFFICER']);
+      expect(getUserPersonas(['ROLE_district_officer'])).toEqual(['DISTRICT_OFFICER']);
+      expect(getUserPersonas(['ROLE_analyst'])).toEqual(['ANALYST']);
+      expect(getUserPersonas(['ROLE_verifier'])).toEqual(['VERIFIER']);
+      expect(getUserPersonas(['ROLE_training_provider'])).toEqual(['TRAINING_PROVIDER']);
+      expect(getUserPersonas(['ROLE_tp'])).toEqual(['TRAINING_PROVIDER']);
+      expect(getUserPersonas(['ROLE_assessor'])).toEqual(['ASSESSOR']);
+      expect(getUserPersonas(['ROLE_employer'])).toEqual(['EMPLOYER']);
+      expect(getUserPersonas(['ROLE_trainee'])).toEqual(['TRAINEE']);
+      expect(getUserPersonas(['ROLE_admin'])).toEqual(['SUPER_ADMIN']);
     });
 
-    it('computes default landing route following government hierarchy', () => {
+    it('fails closed when authorities array is empty or non-array', () => {
+      expect(getUserPersonas([])).toEqual([]);
+      expect(getUserPersonas(null as unknown as string[])).toEqual([]);
+      expect(getUserPersonas(undefined as unknown as string[])).toEqual([]);
+    });
+
+    it('fails closed when only granular operational permissions are provided without ROLE_*', () => {
+      // Must NOT infer ADMIN from system.manage
+      expect(getUserPersonas(['system.manage'])).toEqual([]);
+      // Must NOT infer TRAINING_PROVIDER from course.manage or batch.manage
+      expect(getUserPersonas(['course.manage', 'batch.manage'])).toEqual([]);
+      // Must NOT infer ASSESSOR from assessment.manage
+      expect(getUserPersonas(['assessment.manage'])).toEqual([]);
+      // Must NOT infer EMPLOYER from placement.manage
+      expect(getUserPersonas(['placement.manage'])).toEqual([]);
+      // Must NOT infer TRAINEE from trainee.read
+      expect(getUserPersonas(['trainee.read'])).toEqual([]);
+      // Combinations of permissions without role
+      expect(getUserPersonas(['system.manage', 'course.manage', 'trainee.read'])).toEqual([]);
+    });
+
+    it('fails closed when only unknown or unsupported role authorities are present', () => {
+      expect(getUserPersonas(['ROLE_UNKNOWN_CUSTOM_ROLE'])).toEqual([]);
+      expect(getUserPersonas(['ROLE_EXTERNAL_VENDOR'])).toEqual([]);
+    });
+
+    it('supports legitimate multi-role assignments correctly', () => {
+      const multi = getUserPersonas(['ROLE_super_admin', 'ROLE_assessor']);
+      expect(multi).toContain('SUPER_ADMIN');
+      expect(multi).toContain('ASSESSOR');
+      expect(multi).toHaveLength(2);
+    });
+
+    it('prevents shared operational permissions from granting unrelated personas', () => {
+      // An assessor with trainee.read and batch.manage must only get ASSESSOR persona
+      const assessor = getUserPersonas(['ROLE_ASSESSOR', 'trainee.read', 'batch.manage']);
+      expect(assessor).toEqual(['ASSESSOR']);
+
+      // A provider with system.manage permission must only get TRAINING_PROVIDER persona
+      const provider = getUserPersonas(['ROLE_TRAINING_PROVIDER', 'system.manage']);
+      expect(provider).toEqual(['TRAINING_PROVIDER']);
+    });
+
+    it('computes default landing route following government hierarchy and fails closed for unauthorized', () => {
       expect(getDefaultLandingRoute(['ROLE_ADMIN'])).toBe('/admin/dashboard');
       expect(getDefaultLandingRoute(['ROLE_TRAINING_PROVIDER'])).toBe('/provider/dashboard');
       expect(getDefaultLandingRoute(['ROLE_ASSESSOR'])).toBe('/assessor/dashboard');
       expect(getDefaultLandingRoute(['ROLE_EMPLOYER'])).toBe('/employer/dashboard');
       expect(getDefaultLandingRoute(['ROLE_TRAINEE'])).toBe('/trainee/dashboard');
-      expect(getDefaultLandingRoute([])).toBe('/dashboard');
+      expect(getDefaultLandingRoute([])).toBe('/forbidden');
+      expect(getDefaultLandingRoute(['system.manage'])).toBe('/forbidden');
+      expect(getDefaultLandingRoute(['ROLE_UNKNOWN'])).toBe('/forbidden');
     });
 
     it('validates whether a route is authorized for given authorities', () => {

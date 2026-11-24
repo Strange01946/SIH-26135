@@ -162,6 +162,7 @@ public class SkillGapRemediationWorkflowController {
    * @return 200 OK with TraineeSkillGapProfileResponse enveloped in ApiResponse
    */
   @GetMapping("/profile")
+  @PreAuthorize("hasAnyAuthority('assessment.manage', 'enrollment.manage', 'ROLE_trainee')")
   public ResponseEntity<ApiResponse<TraineeSkillGapProfileResponse>> getTraineeSkillGapProfile(
       @RequestParam("traineeId") @Positive Long traineeId,
       HttpServletRequest httpRequest) {

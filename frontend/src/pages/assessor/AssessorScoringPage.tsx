@@ -108,8 +108,8 @@ export function AssessorScoringPage(): React.JSX.Element {
     assessment?.lifecycleStatusCode === 'COMPLETED' ||
     (roster?.candidates != null && roster.candidates.length > 0 && roster.candidates.every((c) => c.isFinalized));
 
-  const maxScore = assessment?.maximumScore || 100;
-  const passScore = assessment?.passScore || 50;
+  const maxScore = assessment?.maximumScore ?? 100;
+  const passScore = assessment?.passScore ?? maxScore / 2;
   const theoryMax = assessment?.theoryMaxScore ?? assessment?.theoryMax ?? 30;
   const practicalMax = assessment?.practicalMaxScore ?? assessment?.practicalMax ?? 50;
   const vivaMax = assessment?.vivaMaxScore ?? assessment?.vivaMax ?? 20;
@@ -208,12 +208,12 @@ export function AssessorScoringPage(): React.JSX.Element {
         const hasAllScores = theoryVal !== null && practicalVal !== null && vivaVal !== null;
 
         if (hasAnyScore) {
-          total = (theoryVal || 0) + (practicalVal || 0) + (vivaVal || 0);
+          total = [theoryVal, practicalVal, vivaVal].reduce<number>((sum, score) => sum + Math.round((score ?? 0) * 100), 0) / 100;
           percentage = Math.round(((total / maxScore) * 100) * 100) / 100;
 
           if (isFinalized) {
             outcomePreview = (c.assessmentOutcomeCode || c.outcome || 'PENDING') as any;
-          } else if (hasAllScores) {
+          } else if (hasAllScores && !hasInvalidTheory && !hasInvalidPractical && !hasInvalidViva) {
             outcomePreview = total >= passScore ? 'PASS' : 'FAIL';
           } else {
             outcomePreview = 'PENDING';
@@ -313,7 +313,7 @@ export function AssessorScoringPage(): React.JSX.Element {
       const candidates = buildPayload();
       const resp = await finalizeAssessment(assessmentId, candidates);
       setSuccessMessage(
-        `Assessment successfully finalized! ${resp.passedCount} candidates passed, ${resp.certificatesIssued} NCVET certificates issued.`,
+        `Assessment finalized. ${resp.passedCount} candidates passed and ${resp.certificatesIssued} certificates were issued.`,
       );
       setIsDirty(false);
       setShowFinalizeModal(false);
@@ -441,7 +441,7 @@ export function AssessorScoringPage(): React.JSX.Element {
               Assessment Finalized &amp; Authoritatively Certified
             </h3>
             <p className="text-xs text-emerald-700 mt-0.5">
-              Results have been finalized and immutable NCVET digital credentials issued. Editing is locked.
+              Scores are finalized. Each candidate’s certificate status appears in the roster.
             </p>
           </div>
         </div>
@@ -805,7 +805,7 @@ export function AssessorScoringPage(): React.JSX.Element {
               <div>
                 <h3 className="text-lg font-bold text-gray-900">Finalize &amp; Issue Certificates</h3>
                 <p className="text-xs text-gray-500 mt-1">
-                  This action is permanent and cannot be undone. Evaluated records will become authoritative and immutable.
+                  Finalizing locks the scores. Passing candidates receive certificates when the backend confirms their eligibility.
                 </p>
               </div>
             </div>
@@ -817,7 +817,7 @@ export function AssessorScoringPage(): React.JSX.Element {
                 <span className="font-bold text-gray-900">{stats.total}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-emerald-700">Declared Passed (Certificates Issued):</span>
+                <span className="text-emerald-700">Expected to pass</span>
                 <span className="font-bold text-emerald-800">{stats.passed}</span>
               </div>
               <div className="flex justify-between">

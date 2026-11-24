@@ -217,7 +217,7 @@ describe('TraineeTrainingPage Component', () => {
     });
   });
 
-  it('displays administrative notice when attendance service returns 403', async () => {
+  it('shows the backend denial when the attendance service returns 403', async () => {
     vi.spyOn(traineeApi, 'getTraineeEnrollments').mockResolvedValueOnce(emptyEnrollmentPaged);
     vi.spyOn(traineeApi, 'getTraineeAttendance').mockRejectedValueOnce({
       status: 403,
@@ -227,7 +227,7 @@ describe('TraineeTrainingPage Component', () => {
     renderTrainingWithContext({ traineeId: 42, isUnlinked: false, isLoading: false });
 
     await waitFor(() => {
-      expect(screen.getByText(/Attendance records are restricted to verified biometric/i)).toBeInTheDocument();
+      expect(screen.getByRole('alert')).toHaveTextContent('Forbidden');
     });
   });
 

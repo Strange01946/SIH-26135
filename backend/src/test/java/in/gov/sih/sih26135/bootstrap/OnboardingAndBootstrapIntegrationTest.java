@@ -132,6 +132,7 @@ class OnboardingAndBootstrapIntegrationTest {
     req.setFirstName("Ramesh");
     req.setLastName("Kumar");
     req.setGenderId(2L);
+    req.setDataProcessingConsent(true);
     req.setDateOfBirth(LocalDate.of(2000, 1, 15));
     req.setStateId(101L);
     req.setDistrictId(1001L);

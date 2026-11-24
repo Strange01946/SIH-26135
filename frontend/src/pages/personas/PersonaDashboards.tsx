@@ -88,18 +88,6 @@ function BasePersonaDashboard({
   );
 }
 
-export function AdminDashboard(): React.JSX.Element {
-  return (
-    <BasePersonaDashboard
-      title="Government Administrator Portal"
-      subtitle="National and State-Level Oversight, Governance & System Auditing"
-      personaTag="ROLE_ADMIN"
-      description="Central command console for government officers and system administrators. Authorized for trainee lifecycle management, data quality audits, batch oversight, and analytics exports."
-      nextPhases="Phase 30.3 (Admin Dashboard & Trainee Management), Phase 30.4 (Batches, Centers & Attendance), Phase 30.6 (Analytics, Visualizations & Data Exports), Phase 30.7 (Data Quality, System Auditing & User Management)."
-    />
-  );
-}
-
 export function ProviderDashboard(): React.JSX.Element {
   return (
     <BasePersonaDashboard
@@ -120,18 +108,6 @@ export function AssessorDashboard(): React.JSX.Element {
       personaTag="ROLE_ASSESSOR"
       description="Independent evaluation console for accredited assessment agencies and verification officers. Authorized to record assessment outcomes, grade evaluations, and conduct employment verifications."
       nextPhases="Phase 30.8 (Assessor & Verifier Portal — Assessment Rosters, Scoring, Employment Evidence Verification)."
-    />
-  );
-}
-
-export function EmployerDashboard(): React.JSX.Element {
-  return (
-    <BasePersonaDashboard
-      title="Employer Portal"
-      subtitle="Talent Acquisition, Job Postings & Placement Milestone Tracking"
-      personaTag="ROLE_EMPLOYER"
-      description="Corporate and industrial portal for partner enterprises hiring certified vocational candidates. Authorized to confirm candidate placements, verify ongoing employment, and report retention milestones."
-      nextPhases="Phase 30.9 (Employer Portal — Candidate Search, Offer Records, Employment Retention Confirmations)."
     />
   );
 }

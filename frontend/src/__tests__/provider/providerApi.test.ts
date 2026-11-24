@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { requestVenue } from '@/api/venueBookingApi';
 import * as client from '@/api/client';
 import {
   getTrainingCenters,
   getCourses,
-  createTrainingBatch,
   updateTrainingBatchStatus,
   searchTraineeByRegNumber,
   createTrainingEnrollment,
@@ -82,22 +82,15 @@ describe('providerPortalApi', () => {
     expect(result).toEqual(mockPaged);
   });
 
-  it('creates training batch with payload', async () => {
+  it('requests a booked batch through the venue workflow', async () => {
     const payload = {
-      batchCode: 'BATCH-2026-001',
-      centerId: 1,
-      courseId: 101,
-      providerId: 10,
-      capacity: 30,
-      startDate: '2026-06-01',
-      endDate: '2026-08-31',
+      batchCode: 'BATCH-2026-001', centerId: 1, courseId: 101, programId: 10, seats: 30,
+      sessions: [{ startsAt: '2027-06-01T09:00:00', endsAt: '2027-06-01T11:00:00' }],
     };
-    const mockResponse = { id: 50, ...payload };
+    const mockResponse = { booking: { id: 50, status: 'PENDING' }, sessions: payload.sessions };
     vi.mocked(client.apiPost).mockResolvedValue(mockResponse);
-
-    const result = await createTrainingBatch(payload);
-    expect(client.apiPost).toHaveBeenCalledWith('/api/v1/training-batches', payload);
-    expect(result).toEqual(mockResponse);
+    expect(await requestVenue(payload)).toEqual(mockResponse);
+    expect(client.apiPost).toHaveBeenCalledWith('/api/v1/venue-bookings', payload);
   });
 
   it('updates training batch status', async () => {
@@ -175,7 +168,7 @@ describe('providerPortalApi', () => {
     vi.mocked(client.apiGet).mockResolvedValue(mockStatus);
 
     const result = await getImportBatchStatus(12);
-    expect(client.apiGet).toHaveBeenCalledWith('/api/v1/import-batches/12/status');
+    expect(client.apiGet).toHaveBeenCalledWith('/api/v1/import-batches/12/status', { signal: undefined });
     expect(result).toEqual(mockStatus);
   });
 

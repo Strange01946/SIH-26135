@@ -1,6 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { localDemoAccountsEnabled } from '@/lib/demoAccounts';
+import { simulationActive } from '@/lib/demoEnvironment';
+import { headerText, readHeaderLanguage, writeHeaderLanguage, type HeaderLanguage } from '@/lib/headerLanguage';
 import {
   type UserPersona,
   formatPersonaLabel,
@@ -32,6 +35,8 @@ export function Header({
   const navigate = useNavigate();
 
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
+  const [language, setLanguage] = useState(readHeaderLanguage);
+  const strings = headerText[language];
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const displayUsername = propUsername || user?.username;
@@ -66,18 +71,18 @@ export function Header({
   };
 
   return (
-    <header className="bg-navy text-white shadow-md relative z-20">
+    <header lang={language} className="bg-navy text-white shadow-md relative z-20">
       {/* Top stripe: Indian flag tricolor accent (GIGW branding) */}
       <div className="h-1 bg-gradient-to-r from-saffron via-white to-india-green" />
 
-      <div className="flex items-center justify-between px-4 py-3 max-w-screen-2xl mx-auto">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 max-w-screen-2xl mx-auto">
         {/* Left: Mobile hamburger + Portal identity */}
         <div className="flex items-center gap-3">
           {onToggleMobileMenu && (
             <button
               type="button"
               onClick={onToggleMobileMenu}
-              aria-label={isMobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+              aria-label={isMobileMenuOpen ? strings.closeMenu : strings.openMenu}
               aria-expanded={isMobileMenuOpen}
               aria-controls="main-sidebar"
               className="md:hidden p-2 rounded-md hover:bg-navy-800 focus:outline-none focus:ring-2 focus:ring-white text-white text-lg transition-colors"
@@ -100,10 +105,10 @@ export function Header({
 
             <div>
               <div className="text-sm md:text-base font-bold leading-tight tracking-wide">
-                National Skill &amp; Placement Tracking Platform
+                {strings.name}
               </div>
               <div className="text-xs text-blue-200 leading-tight">
-                SIH-26135 · Ministry of Skill Development &amp; Entrepreneurship
+                {strings.subtitle}
               </div>
             </div>
           </Link>
@@ -111,6 +116,18 @@ export function Header({
 
         {/* Right: User session badge & Sign Out action */}
         <div className="flex items-center gap-3">
+          <select value={language} onChange={(event) => {
+            const selected = event.target.value as HeaderLanguage;
+            setLanguage(selected);
+            writeHeaderLanguage(selected);
+          }} aria-label={language === 'hi' ? 'शीर्षक की भाषा' : 'Header language'}
+            className="rounded border border-blue-200 bg-navy px-2 py-1 text-xs font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-white">
+            <option value="en" lang="en">English</option>
+            <option value="hi" lang="hi">हिन्दी</option>
+          </select>
+          {isAuthenticated && localDemoAccountsEnabled && !simulationActive && (
+            <Link className="hidden text-xs font-medium underline sm:inline" to="/login?demo=1">{strings.demo}</Link>
+          )}
           {showAuthInfo ? (
             <div className="flex items-center gap-3 text-sm flex-shrink-0">
               {/* Multi-role switcher dropdown or single role badge */}
@@ -120,10 +137,10 @@ export function Header({
                     type="button"
                     onClick={() => setRoleMenuOpen(!roleMenuOpen)}
                     className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded bg-white/10 hover:bg-white/20 border border-white/30 text-white transition-colors focus:outline-none focus:ring-2 focus:ring-white"
-                    aria-label="Switch operational role"
+                    aria-label={strings.selectRole}
                     aria-expanded={roleMenuOpen}
                   >
-                    <span className="text-blue-200">Role:</span>
+                    <span className="text-blue-200">{strings.role}</span>
                     <span className="font-bold text-white">
                       {formatPersonaLabel(currentPersona)}
                     </span>
@@ -131,8 +148,8 @@ export function Header({
                   </button>
                   {roleMenuOpen && (
                     <div className="absolute right-0 mt-1 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50 py-1 text-gray-800">
-                      <div className="px-3 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-100">
-                        Switch Role Context
+                      <div className="px-3 py-1 text-[10px] font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-100">
+                        {strings.roleContext}
                       </div>
                       {personas.map((p) => {
                         const isCurrent = p === currentPersona;
@@ -175,7 +192,7 @@ export function Header({
                 onClick={handleSignOut}
                 className="px-2.5 py-1 text-xs font-medium rounded border border-white/30 hover:bg-white/10 text-white transition-colors focus:outline-none focus:ring-2 focus:ring-white"
               >
-                Sign Out
+                {strings.logout}
               </button>
             </div>
           ) : (
@@ -183,7 +200,7 @@ export function Header({
               to="/login"
               className="px-3 py-1.5 text-xs font-semibold rounded bg-white text-navy hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-white"
             >
-              Sign In
+              {strings.login}
             </Link>
           )}
         </div>

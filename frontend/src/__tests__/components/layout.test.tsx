@@ -21,7 +21,7 @@ describe('Header', () => {
         <Header />
       </MemoryRouter>,
     );
-    expect(screen.getByText(/SIH-26135/i)).toBeInTheDocument();
+    expect(screen.getByText(/SIH26135/i)).toBeInTheDocument();
   });
 
   it('renders username when provided', () => {

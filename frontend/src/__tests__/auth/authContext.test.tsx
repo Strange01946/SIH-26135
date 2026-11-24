@@ -79,7 +79,7 @@ describe('AuthContext & AuthProvider', () => {
 
     expect(screen.getByTestId('isAuthenticated').textContent).toBe('false');
     expect(screen.getByTestId('username').textContent).toBe('none');
-    expect(screen.getByTestId('landingRoute').textContent).toBe('/dashboard');
+    expect(screen.getByTestId('landingRoute').textContent).toBe('/forbidden');
   });
 
   it('restores authenticated user profile from storage on mount (Session Restoration)', async () => {
@@ -115,8 +115,8 @@ describe('AuthContext & AuthProvider', () => {
 
     expect(screen.getByTestId('isAuthenticated').textContent).toBe('true');
     expect(screen.getByTestId('username').textContent).toBe('restored_admin');
-    expect(screen.getByTestId('personas').textContent).toBe('ADMIN');
-    expect(screen.getByTestId('primaryPersona').textContent).toBe('ADMIN');
+    expect(screen.getByTestId('personas').textContent).toBe('SUPER_ADMIN');
+    expect(screen.getByTestId('primaryPersona').textContent).toBe('SUPER_ADMIN');
     expect(screen.getByTestId('landingRoute').textContent).toBe('/admin/dashboard');
     expect(screen.getByTestId('hasRoleAdmin').textContent).toBe('true');
     expect(screen.getByTestId('hasAuthoritySystemManage').textContent).toBe('true');

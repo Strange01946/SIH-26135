@@ -48,7 +48,7 @@ public class RestAccessDeniedHandler implements AccessDeniedHandler {
       AccessDeniedException accessDeniedException) throws IOException, ServletException {
 
     String path = request.getRequestURI();
-    log.warn("Access denied for request to {}", path);
+    log.warn("Access denied for request to {}: {}", path, accessDeniedException.getMessage(), accessDeniedException);
 
     String correlationId = CorrelationContextHolder.getCorrelationId();
     if (correlationId != null && !correlationId.isBlank()) {

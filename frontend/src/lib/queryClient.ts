@@ -1,9 +1,11 @@
 import { QueryClient } from '@tanstack/react-query';
 import type { ApiError } from '@/api/types';
+import { simulationActive } from './demoEnvironment';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
+      networkMode: simulationActive ? 'always' : 'online',
       staleTime: 30_000, // 30 seconds
       gcTime: 5 * 60_000, // 5 minutes
       retry: (failureCount: number, error: unknown) => {
@@ -15,6 +17,7 @@ export const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
     },
     mutations: {
+      networkMode: simulationActive ? 'always' : 'online',
       retry: 0,
     },
   },

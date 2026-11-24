@@ -1,5 +1,8 @@
 package in.gov.sih.sih26135.controller;
 
+import in.gov.sih.sih26135.dto.request.AnalyticsFilterCriteria;
+import org.springdoc.core.annotations.ParameterObject;
+
 import in.gov.sih.sih26135.dto.response.EconomicOutcomeSummaryResponse;
 import in.gov.sih.sih26135.dto.response.EmployerHiringPerformanceResponse;
 import in.gov.sih.sih26135.dto.response.LeaderboardResponse;
@@ -49,10 +52,12 @@ public class EconomicOutcomeDashboardController {
    */
   @GetMapping("/employers")
   public ResponseEntity<ApiResponse<LeaderboardResponse<EmployerHiringPerformanceResponse>>> getEmployerLeaderboard(
-      HttpServletRequest httpRequest) {
+      @ParameterObject AnalyticsFilterCriteria criteria, HttpServletRequest httpRequest) {
     scopeValidator.validateNationwideScope();
+    scopeValidator.validateAnalyticsFilterScope(criteria);
     LeaderboardResponse<EmployerHiringPerformanceResponse> response =
-        economicOutcomeDashboardService.getEmployerLeaderboard();
+        criteria.isEmpty() ? economicOutcomeDashboardService.getEmployerLeaderboard()
+            : economicOutcomeDashboardService.getEmployerLeaderboard(criteria);
     return ResponseEntity.ok(ApiResponse.success(
         "Employer hiring leaderboard retrieved successfully",
         response,
@@ -70,10 +75,12 @@ public class EconomicOutcomeDashboardController {
    */
   @GetMapping("/economic-outcomes")
   public ResponseEntity<ApiResponse<EconomicOutcomeSummaryResponse>> getEconomicOutcomeSummary(
-      HttpServletRequest httpRequest) {
+      @ParameterObject AnalyticsFilterCriteria criteria, HttpServletRequest httpRequest) {
     scopeValidator.validateNationwideScope();
+    scopeValidator.validateAnalyticsFilterScope(criteria);
     EconomicOutcomeSummaryResponse response =
-        economicOutcomeDashboardService.getEconomicOutcomeSummary();
+        criteria.isEmpty() ? economicOutcomeDashboardService.getEconomicOutcomeSummary()
+            : economicOutcomeDashboardService.getEconomicOutcomeSummary(criteria);
     return ResponseEntity.ok(ApiResponse.success(
         "Economic outcome analytics retrieved successfully",
         response,

@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.LongAdder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -59,6 +60,9 @@ public class SystemEventLoggingServiceImpl implements SystemEventLoggingService 
 
   private final ConcurrentMap<String, Long> dedupTimestamps = new ConcurrentHashMap<>();
   private final ConcurrentMap<String, Long> cooldownTimestamps = new ConcurrentHashMap<>();
+  private final LongAdder duplicateEvents = new LongAdder();
+  private final LongAdder rateLimitAlerts = new LongAdder();
+  private final LongAdder dataQualityAlerts = new LongAdder();
 
   public SystemEventLoggingServiceImpl(
       SystemEventLogRepository systemEventLogRepository,
@@ -111,6 +115,7 @@ public class SystemEventLoggingServiceImpl implements SystemEventLoggingService 
         corr.correlationId(),
         corr.requestId());
     if (isWithinWindow(dedupTimestamps, requestDedupKey, properties.getDedupWindowSeconds())) {
+      duplicateEvents.increment();
       log.debug("Suppressed duplicate system event within request context: key={}", requestDedupKey);
       return Optional.empty();
     }
@@ -138,6 +143,7 @@ public class SystemEventLoggingServiceImpl implements SystemEventLoggingService 
     String cooldownKey = "RL|" + (actorUserId != null ? actorUserId : "ANON") + "|" + safeCode + "|" + safeRoute;
     int cooldownSeconds = properties.getRateLimitAlertCooldownSeconds();
     if (cooldownSeconds > 0 && isWithinWindow(cooldownTimestamps, cooldownKey, cooldownSeconds)) {
+      rateLimitAlerts.increment();
       log.warn("Rate-limit DB event suppressed within {}s cooldown: actorUserId={}, code={}, route={}",
           cooldownSeconds, actorUserId, safeCode, safeRoute);
       return Optional.empty();
@@ -179,6 +185,7 @@ public class SystemEventLoggingServiceImpl implements SystemEventLoggingService 
         + "|" + safeCode + "|" + (spikeSignalKey != null ? spikeSignalKey : "SCAN");
 
     if (cooldownSeconds > 0 && isWithinWindow(cooldownTimestamps, throttleKey, cooldownSeconds)) {
+      dataQualityAlerts.increment();
       log.info("Suppressed repeated data-quality spike alert within {}s cooldown: key={}",
           cooldownSeconds, throttleKey);
       return Optional.empty();
@@ -202,9 +209,17 @@ public class SystemEventLoggingServiceImpl implements SystemEventLoggingService 
   }
 
   @Override
+  public ThrottleCounters getThrottleCounters() {
+    return new ThrottleCounters(duplicateEvents.sum(), rateLimitAlerts.sum(), dataQualityAlerts.sum());
+  }
+
+  @Override
   public void resetThrottleState() {
     dedupTimestamps.clear();
     cooldownTimestamps.clear();
+    duplicateEvents.reset();
+    rateLimitAlerts.reset();
+    dataQualityAlerts.reset();
   }
 
   private Optional<SystemEventLogResponse> persistIsolated(

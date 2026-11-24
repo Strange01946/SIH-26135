@@ -13,7 +13,6 @@ import in.gov.sih.sih26135.dto.request.CreateJobApplicationRequest;
 import in.gov.sih.sih26135.dto.request.CreateTrainingEnrollmentRequest;
 import in.gov.sih.sih26135.dto.request.UpdateAssessmentRequest;
 import in.gov.sih.sih26135.dto.request.UpdateCertificationRequest;
-import in.gov.sih.sih26135.dto.request.UpdateTrainingBatchRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTrainingEnrollmentRequest;
 import in.gov.sih.sih26135.entity.Assessment;
 import in.gov.sih.sih26135.entity.Certification;
@@ -555,12 +554,8 @@ class StateTransitionAndBusinessInvariantsTest {
   class TrainingBatchTests {
 
     @Mock private TrainingBatchRepository trainingBatchRepository;
-    @Mock private CourseRepository courseRepository;
-    @Mock private TrainingProviderRepository trainingProviderRepository;
     @Mock private TrainingCenterRepository trainingCenterRepository;
-    @Mock private ProgramRepository programRepository;
     @Mock private RefBatchStatusRepository refBatchStatusRepository;
-    @Mock private CourseProgramRepository courseProgramRepository;
     @Mock private TrainingBatchMapper trainingBatchMapper;
 
     private TrainingBatchServiceImpl trainingBatchService;
@@ -569,39 +564,10 @@ class StateTransitionAndBusinessInvariantsTest {
     void setUp() {
       trainingBatchService = new TrainingBatchServiceImpl(
           trainingBatchRepository,
-          courseRepository,
-          trainingProviderRepository,
           trainingCenterRepository,
-          programRepository,
           refBatchStatusRepository,
-          courseProgramRepository,
-          trainingBatchMapper
+          trainingBatchMapper, null, null, null
       );
-    }
-
-    @Test
-    @DisplayName("Updating a soft-deleted batch throws BadRequestException with BATCH_DELETED")
-    void testUpdateBatch_whenSoftDeleted_throwsBadRequestExceptionBatchDeleted() {
-      TrainingBatch deletedBatch = new TrainingBatch();
-      deletedBatch.setId(30L);
-      deletedBatch.setStartDate(LocalDate.of(2026, 1, 1));
-      deletedBatch.setEndDate(LocalDate.of(2026, 3, 1));
-      deletedBatch.setDeletedAt(LocalDateTime.now().minusDays(2));
-
-      when(trainingBatchRepository.findById(30L)).thenReturn(Optional.of(deletedBatch));
-
-      UpdateTrainingBatchRequest request = new UpdateTrainingBatchRequest();
-      request.setCapacity(25);
-
-      assertThatThrownBy(() -> trainingBatchService.updateBatch(30L, request))
-          .isInstanceOf(BadRequestException.class)
-          .satisfies(ex -> {
-            BadRequestException bre = (BadRequestException) ex;
-            assertThat(bre.getMessage()).isEqualTo("Cannot update a deleted training batch");
-            assertThat(bre.getErrorCode()).isEqualTo("BATCH_DELETED");
-          });
-
-      verify(trainingBatchRepository, never()).save(any());
     }
 
     @Test
@@ -624,22 +590,6 @@ class StateTransitionAndBusinessInvariantsTest {
           });
 
       verify(trainingBatchRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("Deleting an already soft-deleted batch is idempotent and does not overwrite deletedAt")
-    void testDeleteBatch_whenAlreadySoftDeleted_isIdempotent() {
-      LocalDateTime originalDeletedAt = LocalDateTime.now().minusDays(3);
-      TrainingBatch deletedBatch = new TrainingBatch();
-      deletedBatch.setId(30L);
-      deletedBatch.setDeletedAt(originalDeletedAt);
-
-      when(trainingBatchRepository.findById(30L)).thenReturn(Optional.of(deletedBatch));
-
-      trainingBatchService.deleteBatch(30L);
-
-      verify(trainingBatchRepository, never()).save(any());
-      assertThat(deletedBatch.getDeletedAt()).isEqualTo(originalDeletedAt);
     }
   }
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { StateDistrictFields } from '@/components/common/StateDistrictFields';
 import {
   listUsers,
   provisionAssessor,
@@ -15,8 +16,15 @@ import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import type { ApiError } from '@/api/types';
 
 export function AdminUsersPage(): React.JSX.Element {
-  const { hasRole } = useAuth();
+  const { hasRole, hasAuthority } = useAuth();
   const isSuperAdmin = hasRole('ROLE_super_admin') || hasRole('super_admin');
+  const canProvisionGovAdmin = isSuperAdmin || hasAuthority('user.manage');
+  const canProvisionAssessor =
+    isSuperAdmin ||
+    hasRole('ROLE_government_admin') ||
+    hasRole('ROLE_government_officer') ||
+    hasAuthority('user.manage');
+  const canProvisionAny = isSuperAdmin || canProvisionGovAdmin || canProvisionAssessor;
 
   const [users, setUsers] = useState<AdminUserResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,6 +33,7 @@ export function AdminUsersPage(): React.JSX.Element {
 
   // Geographic Reference Data State
   const [refData, setRefData] = useState<RegistrationReferenceData | null>(null);
+  const [refError, setRefError] = useState(false);
 
   // Modal State
   const [showModal, setShowModal] = useState(false);
@@ -48,7 +57,7 @@ export function AdminUsersPage(): React.JSX.Element {
     email: '',
     password: '',
     fullName: '',
-    roleCode: 'district_officer' as 'government_admin' | 'government_officer' | 'district_officer' | 'analyst',
+    roleCode: 'district_officer' as 'government_admin' | 'state_admin' | 'government_officer' | 'district_officer' | 'analyst',
     stateId: 0,
     districtId: 0,
   });
@@ -61,42 +70,18 @@ export function AdminUsersPage(): React.JSX.Element {
     fullName: '',
   });
 
-  useEffect(() => {
-    getRegistrationReferenceData()
-      .then((data) => {
-        setRefData(data);
-        if (data.states && data.states.length > 0) {
-          const defaultState = data.states[0].id;
-          const matching = data.districts?.filter((d) => d.parentId === defaultState) ?? [];
-          const defaultDistrict = matching.length > 0 ? matching[0].id : 0;
-          setAssessorForm((prev) => ({
-            ...prev,
-            stateId: prev.stateId || defaultState,
-            districtId: prev.districtId || defaultDistrict,
-          }));
-          setGovForm((prev) => ({
-            ...prev,
-            stateId: prev.stateId || defaultState,
-            districtId: prev.districtId || defaultDistrict,
-          }));
-        }
-      })
-      .catch((err) => {
-        console.error('Failed to load reference data in AdminUsersPage:', err);
-      });
+  const loadGeography = useCallback(async () => {
+    setRefError(false);
+    try {
+      const data = await getRegistrationReferenceData();
+      if (!data.states.length || !data.districts.length) setRefError(true);
+      else setRefData(data);
+    } catch {
+      setRefError(true);
+    }
   }, []);
-
-  const handleAssessorStateChange = (stateId: number) => {
-    const matching = refData?.districts?.filter((d) => d.parentId === stateId) ?? [];
-    const newDistrictId = matching.length > 0 ? matching[0].id : 0;
-    setAssessorForm((prev) => ({ ...prev, stateId, districtId: newDistrictId }));
-  };
-
-  const handleGovStateChange = (stateId: number) => {
-    const matching = refData?.districts?.filter((d) => d.parentId === stateId) ?? [];
-    const newDistrictId = matching.length > 0 ? matching[0].id : 0;
-    setGovForm((prev) => ({ ...prev, stateId, districtId: newDistrictId }));
-  };
+  useEffect(() => { void loadGeography(); }, [loadGeography]);
+  const requiresJurisdiction = ['district_officer', 'government_officer', 'state_admin'].includes(govForm.roleCode);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -128,14 +113,12 @@ export function AdminUsersPage(): React.JSX.Element {
         password: assessorForm.password,
         fullName: assessorForm.fullName || undefined,
         phone: assessorForm.phone || undefined,
-        stateId: Number(assessorForm.stateId),
-        districtId: Number(assessorForm.districtId),
+        stateId: assessorForm.stateId || undefined,
+        districtId: assessorForm.districtId || undefined,
       });
       setSuccessMsg(`Assessor "${res.username}" provisioned successfully with assessor authorities.`);
       setShowModal(false);
-      const defState = refData?.states?.[0]?.id ?? 0;
-      const defDist = refData?.districts?.find((d) => d.parentId === defState)?.id ?? 0;
-      setAssessorForm({ username: '', email: '', password: '', fullName: '', phone: '', stateId: defState, districtId: defDist });
+      setAssessorForm({ username: '', email: '', password: '', fullName: '', phone: '', stateId: 0, districtId: 0 });
       await fetchUsers();
     } catch (err) {
       const apiErr = err as ApiError;
@@ -157,14 +140,12 @@ export function AdminUsersPage(): React.JSX.Element {
         password: govForm.password,
         fullName: govForm.fullName || undefined,
         roleCode: govForm.roleCode,
-        stateId: Number(govForm.stateId),
-        districtId: Number(govForm.districtId),
+        stateId: govForm.stateId || undefined,
+        districtId: govForm.districtId || undefined,
       });
       setSuccessMsg(`Government officer "${res.username}" provisioned with role "${govForm.roleCode}".`);
       setShowModal(false);
-      const defState = refData?.states?.[0]?.id ?? 0;
-      const defDist = refData?.districts?.find((d) => d.parentId === defState)?.id ?? 0;
-      setGovForm({ username: '', email: '', password: '', fullName: '', roleCode: 'district_officer', stateId: defState, districtId: defDist });
+      setGovForm({ username: '', email: '', password: '', fullName: '', roleCode: 'district_officer', stateId: 0, districtId: 0 });
       await fetchUsers();
     } catch (err) {
       const apiErr = err as ApiError;
@@ -220,13 +201,22 @@ export function AdminUsersPage(): React.JSX.Element {
           >
             Refresh
           </button>
-          <button
-            type="button"
-            onClick={() => { setShowModal(true); setErrorMsg(null); setSuccessMsg(null); }}
-            className="btn-primary text-xs px-4 py-2 font-medium"
-          >
-            + Provision Privileged User
-          </button>
+          {canProvisionAny && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowModal(true);
+                setErrorMsg(null);
+                setSuccessMsg(null);
+                if (canProvisionAssessor) setProvisionTab('assessor');
+                else if (canProvisionGovAdmin) setProvisionTab('gov');
+                else if (isSuperAdmin) setProvisionTab('super');
+              }}
+              className="btn-primary text-xs px-4 py-2 font-medium"
+            >
+              + Provision Privileged User
+            </button>
+          )}
         </div>
       </div>
 
@@ -316,28 +306,32 @@ export function AdminUsersPage(): React.JSX.Element {
 
             {/* Role Provision Tabs */}
             <div className="flex border-b mb-4 text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => setProvisionTab('assessor')}
-                className={`flex-1 py-2 text-center border-b-2 ${
-                  provisionTab === 'assessor'
-                    ? 'border-navy text-navy font-bold'
-                    : 'border-transparent text-gray-500 hover:text-navy'
-                }`}
-              >
-                Assessor
-              </button>
-              <button
-                type="button"
-                onClick={() => setProvisionTab('gov')}
-                className={`flex-1 py-2 text-center border-b-2 ${
-                  provisionTab === 'gov'
-                    ? 'border-navy text-navy font-bold'
-                    : 'border-transparent text-gray-500 hover:text-navy'
-                }`}
-              >
-                Government Admin
-              </button>
+              {canProvisionAssessor && (
+                <button
+                  type="button"
+                  onClick={() => setProvisionTab('assessor')}
+                  className={`flex-1 py-2 text-center border-b-2 ${
+                    provisionTab === 'assessor'
+                      ? 'border-navy text-navy font-bold'
+                      : 'border-transparent text-gray-500 hover:text-navy'
+                  }`}
+                >
+                  Assessor
+                </button>
+              )}
+              {canProvisionGovAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setProvisionTab('gov')}
+                  className={`flex-1 py-2 text-center border-b-2 ${
+                    provisionTab === 'gov'
+                      ? 'border-navy text-navy font-bold'
+                      : 'border-transparent text-gray-500 hover:text-navy'
+                  }`}
+                >
+                  Government Admin
+                </button>
+              )}
               {isSuperAdmin && (
                 <button
                   type="button"
@@ -354,6 +348,12 @@ export function AdminUsersPage(): React.JSX.Element {
             </div>
 
             {/* Assessor Form */}
+            {provisionTab !== 'super' && refError && (
+              <div className="flex flex-wrap items-center gap-2 text-sm text-red-800" role="alert">
+                <span>The location directory is unavailable.</span>
+                <button type="button" className="btn-secondary" onClick={() => void loadGeography()}>Retry locations</button>
+              </div>
+            )}
             {provisionTab === 'assessor' && (
               <form onSubmit={handleProvisionAssessor} className="space-y-4 text-sm">
                 <p className="text-xs text-gray-500">
@@ -400,32 +400,9 @@ export function AdminUsersPage(): React.JSX.Element {
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">State Jurisdiction</label>
-                    <select
-                      value={assessorForm.stateId}
-                      onChange={(e) => handleAssessorStateChange(Number(e.target.value))}
-                      className="w-full px-3 py-2 border rounded-md text-xs focus:ring-1 focus:ring-navy focus:outline-none"
-                    >
-                      {refData?.states?.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">District Jurisdiction</label>
-                    <select
-                      value={assessorForm.districtId}
-                      onChange={(e) => setAssessorForm({ ...assessorForm, districtId: Number(e.target.value) })}
-                      className="w-full px-3 py-2 border rounded-md text-xs focus:ring-1 focus:ring-navy focus:outline-none"
-                    >
-                      {refData?.districts
-                        ?.filter((d) => d.parentId === assessorForm.stateId)
-                        .map((d) => (
-                          <option key={d.id} value={d.id}>{d.name}</option>
-                        ))}
-                    </select>
-                  </div>
+                  <StateDistrictFields prefix="assessor" reference={refData}
+                    stateId={assessorForm.stateId} districtId={assessorForm.districtId} disabled={!refData || refError}
+                    onChange={(stateId, districtId) => setAssessorForm((form) => ({ ...form, stateId, districtId }))} />
                 </div>
                 <div className="flex justify-end gap-3 pt-3 border-t">
                   <button type="button" onClick={() => setShowModal(false)} className="btn-secondary text-xs">
@@ -448,12 +425,14 @@ export function AdminUsersPage(): React.JSX.Element {
                   <label className="block text-xs font-medium text-gray-700 mb-1">Role Classification *</label>
                   <select
                     value={govForm.roleCode}
-                    onChange={(e) => setGovForm({ ...govForm, roleCode: e.target.value as any })}
+                    onChange={(e) => setGovForm({ ...govForm, roleCode: e.target.value as typeof govForm.roleCode,
+                      districtId: e.target.value === 'state_admin' ? 0 : govForm.districtId })}
                     className="w-full px-3 py-2 border rounded-md text-xs focus:ring-1 focus:ring-navy focus:outline-none bg-white"
                   >
                     <option value="district_officer">District Officer (district_officer)</option>
                     <option value="government_officer">Government Officer (government_officer)</option>
                     <option value="government_admin">Government Administrator (government_admin)</option>
+                    <option value="state_admin">State Administrator (state_admin)</option>
                     <option value="analyst">Policy Analyst (analyst)</option>
                   </select>
                 </div>
@@ -489,38 +468,16 @@ export function AdminUsersPage(): React.JSX.Element {
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">State Jurisdiction</label>
-                    <select
-                      value={govForm.stateId}
-                      onChange={(e) => handleGovStateChange(Number(e.target.value))}
-                      className="w-full px-3 py-2 border rounded-md text-xs focus:ring-1 focus:ring-navy focus:outline-none"
-                    >
-                      {refData?.states?.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">District Jurisdiction</label>
-                    <select
-                      value={govForm.districtId}
-                      onChange={(e) => setGovForm({ ...govForm, districtId: Number(e.target.value) })}
-                      className="w-full px-3 py-2 border rounded-md text-xs focus:ring-1 focus:ring-navy focus:outline-none"
-                    >
-                      {refData?.districts
-                        ?.filter((d) => d.parentId === govForm.stateId)
-                        .map((d) => (
-                          <option key={d.id} value={d.id}>{d.name}</option>
-                        ))}
-                    </select>
-                  </div>
+                  <StateDistrictFields prefix="gov" reference={refData} required={requiresJurisdiction}
+                    showDistrict={govForm.roleCode !== 'state_admin'}
+                    stateId={govForm.stateId} districtId={govForm.districtId} disabled={!refData || refError}
+                    onChange={(stateId, districtId) => setGovForm((form) => ({ ...form, stateId, districtId }))} />
                 </div>
                 <div className="flex justify-end gap-3 pt-3 border-t">
                   <button type="button" onClick={() => setShowModal(false)} className="btn-secondary text-xs">
                     Cancel
                   </button>
-                  <button type="submit" disabled={submitting} className="btn-primary text-xs">
+                  <button type="submit" disabled={submitting || (requiresJurisdiction && (!refData || refError))} className="btn-primary text-xs">
                     {submitting ? 'Provisioning...' : 'Provision Officer'}
                   </button>
                 </div>

@@ -1012,23 +1012,13 @@ public class CrossFieldAndBusinessConstraintValidationTest {
     }
 
     @Test
-    @DisplayName("TrainingBatch: endDate < startDate rejected with 400 VALIDATION_ERROR before service execution")
-    void testTrainingBatch_invalidDateSequence_rejectedBeforeService() throws Exception {
-      CreateTrainingBatchRequest invalidRequest = new CreateTrainingBatchRequest();
-      invalidRequest.setBatchCode("BATCH-2026-999");
-      invalidRequest.setStartDate(LocalDate.of(2026, 8, 1));
-      invalidRequest.setEndDate(LocalDate.of(2026, 7, 31)); // Earlier than start date
-
+    @DisplayName("Direct batch creation requires the venue booking workflow")
+    void testTrainingBatch_directCreationEndpointRemoved() throws Exception {
       mockMvc.perform(post("/api/v1/training-batches")
               .header("Authorization", tokenCourseManage)
               .contentType(MediaType.APPLICATION_JSON)
-              .content(objectMapper.writeValueAsString(invalidRequest)))
-          .andExpect(status().isBadRequest())
-          .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
-          .andExpect(jsonPath("$.message").value("Request validation failed"))
-          .andExpect(jsonPath("$.details[0]").value("endDate: must be greater than or equal to start date"));
-
-      verify(trainingBatchService, never()).createBatch(any());
+              .content("{}"))
+          .andExpect(status().isMethodNotAllowed());
     }
 
     @Test

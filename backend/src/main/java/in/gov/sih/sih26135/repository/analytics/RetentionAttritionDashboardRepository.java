@@ -38,21 +38,13 @@ public class RetentionAttritionDashboardRepository {
   public RetentionSurvivalProjection getFormalQ12RetentionSurvival() {
     String sql = """
         SELECT
-          COUNT(*) AS employment_spell_count,
-          COUNT(retained_6m_flag) AS observable_6m_count,
-          SUM(retained_6m_flag) AS retained_6m_count,
-          ROUND(SUM(retained_6m_flag) / NULLIF(COUNT(retained_6m_flag), 0) * 100, 2) AS retention_6m_pct,
-          COUNT(retained_12m_flag) AS observable_12m_count,
-          SUM(retained_12m_flag) AS retained_12m_count,
-          ROUND(SUM(retained_12m_flag) / NULLIF(COUNT(retained_12m_flag), 0) * 100, 2) AS retention_12m_pct,
-          COUNT(retained_24m_flag) AS observable_24m_count,
-          SUM(retained_24m_flag) AS retained_24m_count,
-          ROUND(SUM(retained_24m_flag) / NULLIF(COUNT(retained_24m_flag), 0) * 100, 2) AS retention_24m_pct,
-          COUNT(retained_36m_flag) AS observable_36m_count,
-          SUM(retained_36m_flag) AS retained_36m_count,
-          ROUND(SUM(retained_36m_flag) / NULLIF(COUNT(retained_36m_flag), 0) * 100, 2) AS retention_36m_pct
+          CASE WHEN COUNT(DISTINCT trainee_id) NOT BETWEEN 1 AND 4 THEN COUNT(*) END AS employment_spell_count,
+          %s,
+          %s,
+          %s,
+          %s
         FROM vw_employment_retention_fact
-        """;
+        """.formatted(retentionFields(6), retentionFields(12), retentionFields(24), retentionFields(36));
 
     return jdbcTemplate.queryForObject(sql, (rs, rowNum) -> new RetentionSurvivalProjection(
         getNullableLong(rs, "employment_spell_count"),
@@ -71,6 +63,18 @@ public class RetentionAttritionDashboardRepository {
     ));
   }
 
+  private static String retentionFields(int months) {
+    String flag = "retained_" + months + "m_flag";
+    String disclosed = "COUNT(DISTINCT IF(" + flag + " = 1, trainee_id, NULL)) NOT BETWEEN 1 AND 4"
+        + " AND COUNT(DISTINCT IF(" + flag + " = 0, trainee_id, NULL)) NOT BETWEEN 1 AND 4";
+    String period = months + "m";
+    return """
+        CASE WHEN %1$s THEN COUNT(%2$s) END AS observable_%3$s_count,
+        CASE WHEN %1$s THEN COALESCE(SUM(%2$s), 0) END AS retained_%3$s_count,
+        CASE WHEN %1$s THEN ROUND(SUM(%2$s) / NULLIF(COUNT(%2$s), 0) * 100, 2) END AS retention_%3$s_pct
+        """.formatted(disclosed, flag, period).stripTrailing();
+  }
+
   /**
    * Executes formal Query Q15 to retrieve aggregate unemployment metrics, spell counts,
    * duration statistics, and re-employment conversion from {@code vw_unemployment_fact}.
@@ -82,13 +86,15 @@ public class RetentionAttritionDashboardRepository {
         SELECT
           COUNT(*) AS unemployment_period_count,
           COUNT(DISTINCT trainee_id) AS trainee_count,
-          SUM(is_current) AS current_unemployment_count,
-          SUM(reemployed_flag) AS reemployed_count,
-          SUM(never_preceded_by_employment_flag) AS never_preceded_by_employment_count,
+          %s AS current_unemployment_count,
+          %s AS reemployed_count,
+          %s AS never_preceded_by_employment_count,
           AVG(duration_days) AS avg_duration_days,
-          AVG(CASE WHEN is_current = 1 THEN duration_days END) AS avg_open_period_duration_days
+          CASE WHEN COUNT(DISTINCT IF(is_current = 1, trainee_id, NULL)) >= 5
+               THEN AVG(CASE WHEN is_current = 1 THEN duration_days END) END AS avg_open_period_duration_days
         FROM vw_unemployment_fact
-        """;
+        """.formatted(publishBinaryCount("is_current"), publishBinaryCount("reemployed_flag"),
+            publishBinaryCount("never_preceded_by_employment_flag"));
 
     return jdbcTemplate.queryForObject(sql, (rs, rowNum) -> new UnemploymentSummaryProjection(
         getNullableLong(rs, "unemployment_period_count"),
@@ -99,6 +105,12 @@ public class RetentionAttritionDashboardRepository {
         getScaledBigDecimal(rs, "avg_duration_days"),
         getScaledBigDecimal(rs, "avg_open_period_duration_days")
     ));
+  }
+
+  private static String publishBinaryCount(String flag) {
+    return "CASE WHEN COUNT(DISTINCT IF(" + flag + " = 1, trainee_id, NULL)) NOT BETWEEN 1 AND 4"
+        + " AND COUNT(DISTINCT IF(" + flag + " = 0, trainee_id, NULL)) NOT BETWEEN 1 AND 4"
+        + " THEN COALESCE(SUM(" + flag + "), 0) END";
   }
 
   /**

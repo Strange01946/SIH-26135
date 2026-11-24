@@ -1,4 +1,5 @@
 import { apiGet, apiPost } from './client';
+import type { components } from './generated/api.types';
 import type { OnboardingApplicationResponse } from './registrationApi';
 
 export interface AdminUserResponse {
@@ -36,7 +37,7 @@ export interface ProvisionGovernmentAdminPayload {
   email: string;
   password: string;
   fullName?: string;
-  roleCode: 'government_admin' | 'government_officer' | 'district_officer' | 'analyst';
+  roleCode: 'government_admin' | 'state_admin' | 'government_officer' | 'district_officer' | 'analyst';
   organizationId?: number;
   stateId?: number;
   districtId?: number;
@@ -50,13 +51,19 @@ export interface ProvisionSuperAdminPayload {
 }
 
 export async function listOnboardingApplications(
-  status?: string
+  status?: string, signal?: AbortSignal,
 ): Promise<OnboardingApplicationResponse[]> {
   const params: Record<string, string> = {};
   if (status) {
     params.status = status;
   }
-  return apiGet<OnboardingApplicationResponse[]>('/api/v1/admin/onboarding/applications', { params });
+  return apiGet<OnboardingApplicationResponse[]>('/api/v1/admin/onboarding/applications', { params, signal });
+}
+
+export const pendingOnboardingKey = ['admin', 'onboarding', 'pending'] as const;
+
+export function getAdminImportMetrics(signal?: AbortSignal) {
+  return apiGet<components['schemas']['OperationalImportMetricsResponse']>('/api/v1/operational/import-metrics', { signal });
 }
 
 export async function getOnboardingApplication(

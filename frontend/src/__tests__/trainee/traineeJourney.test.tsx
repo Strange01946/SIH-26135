@@ -6,20 +6,14 @@ import { TraineeJourneyPage } from '@/pages/trainee/TraineeJourneyPage';
 import * as traineeApi from '@/api/traineeApi';
 import type { TraineeOutcomeSummary, TraineeSkillGapProfile } from '@/types/trainee';
 import type { PagedResponse } from '@/api/types';
-import type { SurveyResponse } from '@/types/trainee';
+import type { EmploymentPeriod } from '@/api/traineeApi';
 
 vi.mock('@/api/traineeApi');
 
-const emptySurveyPaged: PagedResponse<SurveyResponse> = {
-  content: [],
-  page: 0,
-  size: 20,
-  totalElements: 0,
-  totalPages: 0,
-  first: true,
-  last: true,
-  hasNext: false,
-  hasPrevious: false,
+const emptySurveys = { followupConsentGranted: true, assignments: [], recentSubmissions: [] };
+const employmentHistory: PagedResponse<EmploymentPeriod> = {
+  content: [{ id: 1, employer: 'Tata Power Solar Systems', startingPay: 35000, currency: 'INR', payFrequency: 'MONTHLY' }],
+  page: 0, size: 10, totalElements: 1, totalPages: 1, first: true, last: true, hasNext: false, hasPrevious: false,
 };
 
 function renderJourneyWithContext(contextValue: any) {
@@ -45,10 +39,7 @@ function renderJourneyWithContext(contextValue: any) {
 describe('TraineeJourneyPage Component', () => {
   const mockOutcome: TraineeOutcomeSummary = {
     traineeId: 42,
-    snapshotIsEmployedFlag: true,
-    lastVerifiedEmployerName: 'Tata Power Solar Systems',
-    monthlySalary: 35000,
-    lastPlacementDate: '2026-10-01',
+    snapshotEmploymentStatusCode: 'EMPLOYED',
   };
 
   const mockSkillProfile: TraineeSkillGapProfile = {
@@ -67,12 +58,13 @@ describe('TraineeJourneyPage Component', () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.mocked(traineeApi.getEmploymentHistory).mockResolvedValue(employmentHistory);
+    vi.mocked(traineeApi.getFollowupSurveys).mockResolvedValue(emptySurveys);
   });
 
   it('renders career milestones with verified employer, salary, and status', async () => {
     vi.spyOn(traineeApi, 'getTraineeOutcomeSummary').mockResolvedValue(mockOutcome);
     vi.spyOn(traineeApi, 'getTraineeSkillGapProfile').mockResolvedValue(mockSkillProfile);
-    vi.spyOn(traineeApi, 'getTraineeSurveyResponses').mockResolvedValue(emptySurveyPaged);
 
     renderJourneyWithContext({ traineeId: 42, isUnlinked: false, isLoading: false });
 
@@ -81,13 +73,12 @@ describe('TraineeJourneyPage Component', () => {
     });
 
     expect(screen.getByText(/35,000/)).toBeInTheDocument();
-    expect(screen.getByText(/Gainfully Employed/i)).toBeInTheDocument();
+    expect(await screen.findByText('employed')).toBeInTheDocument();
   });
 
   it('renders skill gap recommendations and handles Accept action', async () => {
     vi.spyOn(traineeApi, 'getTraineeOutcomeSummary').mockResolvedValue(mockOutcome);
     vi.spyOn(traineeApi, 'getTraineeSkillGapProfile').mockResolvedValue(mockSkillProfile);
-    vi.spyOn(traineeApi, 'getTraineeSurveyResponses').mockResolvedValue(emptySurveyPaged);
     const acceptSpy = vi.spyOn(traineeApi, 'acceptSkillGapRecommendation').mockResolvedValueOnce({
       id: 77,
       status: 'ACCEPTED',
@@ -113,7 +104,6 @@ describe('TraineeJourneyPage Component', () => {
   it('handles Decline recommendation action with mandatory remarks input', async () => {
     vi.spyOn(traineeApi, 'getTraineeOutcomeSummary').mockResolvedValue(mockOutcome);
     vi.spyOn(traineeApi, 'getTraineeSkillGapProfile').mockResolvedValue(mockSkillProfile);
-    vi.spyOn(traineeApi, 'getTraineeSurveyResponses').mockResolvedValue(emptySurveyPaged);
     const rejectSpy = vi.spyOn(traineeApi, 'rejectSkillGapRecommendation').mockResolvedValueOnce({
       id: 77,
       status: 'REJECTED',
@@ -147,55 +137,34 @@ describe('TraineeJourneyPage Component', () => {
     });
   });
 
-  it('renders honest campaign-required notice for surveys and shows empty past responses', async () => {
-    vi.spyOn(traineeApi, 'getTraineeOutcomeSummary').mockResolvedValue(mockOutcome);
-    vi.spyOn(traineeApi, 'getTraineeSkillGapProfile').mockResolvedValue({ traineeId: 42, hasAssessment: false });
-    vi.spyOn(traineeApi, 'getTraineeSurveyResponses').mockResolvedValue(emptySurveyPaged);
-
+  it('shows when no campaign assigned an open survey', async () => {
+    vi.mocked(traineeApi.getTraineeOutcomeSummary).mockResolvedValue(mockOutcome);
+    vi.mocked(traineeApi.getTraineeSkillGapProfile).mockResolvedValue({ traineeId: 42, hasAssessment: false });
     renderJourneyWithContext({ traineeId: 42, isUnlinked: false, isLoading: false });
-
-    await waitFor(() => {
-      expect(screen.getByText('Post-Training Feedback & Verification Survey')).toBeInTheDocument();
-      expect(
-        screen.getByText(/No previous survey responses recorded for your profile/i),
-      ).toBeInTheDocument();
-    });
-
-    expect(screen.getByText('Campaign-Assigned System')).toBeInTheDocument();
-    expect(
-      screen.getByText(/Feedback Surveys Require an Active Campaign Invitation/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('You have no open survey assignments.')).toBeInTheDocument();
+    expect(screen.getByText('You have no previous survey submissions.')).toBeInTheDocument();
   });
 
-  it('renders completed survey responses history when records exist', async () => {
-    const mockPastSurveys: PagedResponse<SurveyResponse> = {
-      content: [
-        {
-          id: 555,
-          surveyId: 10,
-          traineeId: 42,
-          attemptNumber: 1,
-          submittedAt: '2026-10-25T14:30:00Z',
-        },
-      ],
-      page: 0,
-      size: 20,
-      totalElements: 1,
-      totalPages: 1,
-      first: true,
-      last: true,
-      hasNext: false,
-      hasPrevious: false,
-    };
-
-    vi.spyOn(traineeApi, 'getTraineeOutcomeSummary').mockResolvedValue(mockOutcome);
-    vi.spyOn(traineeApi, 'getTraineeSkillGapProfile').mockResolvedValue({ traineeId: 42, hasAssessment: false });
-    vi.spyOn(traineeApi, 'getTraineeSurveyResponses').mockResolvedValue(mockPastSurveys);
-
+  it('validates required answers and records a survey receipt in history', async () => {
+    vi.mocked(traineeApi.getTraineeOutcomeSummary).mockResolvedValue(mockOutcome);
+    vi.mocked(traineeApi.getTraineeSkillGapProfile).mockResolvedValue({ traineeId: 42, hasAssessment: false });
+    const assignment = { taskId: 7, name: 'Six-month follow-up' };
+    vi.mocked(traineeApi.getFollowupSurveys)
+      .mockResolvedValueOnce({ ...emptySurveys, assignments: [assignment] })
+      .mockResolvedValue({ ...emptySurveys, recentSubmissions: [{ id: 55, name: assignment.name }] });
+    const question = { id: 1, text: 'Are you currently employed?', type: 'BOOLEAN', required: true, options: [] };
+    vi.mocked(traineeApi.getFollowupQuestionnaire).mockResolvedValue({ assignment, versionId: 9, questions: [question] });
+    const submit = vi.mocked(traineeApi.submitFollowupQuestionnaire).mockResolvedValue({ id: 55, name: assignment.name });
     renderJourneyWithContext({ traineeId: 42, isUnlinked: false, isLoading: false });
-
-    await waitFor(() => {
-      expect(screen.getByText(/Survey Response #555 \(Attempt 1\)/i)).toBeInTheDocument();
-    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Six-month follow-up' }));
+    const submitButton = await screen.findByRole('button', { name: 'Submit survey' });
+    fireEvent.click(submitButton);
+    expect(screen.getByRole('alert')).toHaveTextContent('Answer this question');
+    expect(submit).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText(question.text), { target: { value: 'false' } });
+    fireEvent.click(submitButton);
+    expect(await screen.findByText('Survey submitted · Six-month follow-up')).toBeInTheDocument();
+    expect(submit).toHaveBeenCalledWith(7, { versionId: 9, answers: [{ questionId: 1, yes: false }] });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Open Six-month follow-up' })).not.toBeInTheDocument());
   });
 });

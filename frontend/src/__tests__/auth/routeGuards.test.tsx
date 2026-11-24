@@ -1,16 +1,17 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { ForbiddenPage } from '@/pages/auth/ForbiddenPage';
+import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import {
-  AdminDashboard,
   ProviderDashboard,
   AssessorDashboard,
-  EmployerDashboard,
   TraineeDashboard,
 } from '@/pages/personas/PersonaDashboards';
+import { EmployerDashboardPage } from '@/pages/employer/EmployerDashboardPage';
 import * as authContext from '@/context/AuthContext';
 
 describe('Route Guards & Persona Access Control (ProtectedRoute, RoleGuard, PersonaDashboards)', () => {
@@ -225,13 +226,11 @@ describe('Route Guards & Persona Access Control (ProtectedRoute, RoleGuard, Pers
     expect(screen.queryByText('Audit Log Viewer')).toBeNull();
   });
 
-  // 7. Verify all 5 persona dashboard stubs render clean government layout
-  it('renders all 5 persona dashboard stubs with correct government portal headings', () => {
+  it('renders the other persona dashboards with their portal headings', () => {
     const dashboards = [
       { comp: <AdminDashboard />, heading: /Government Administrator Portal/i },
       { comp: <ProviderDashboard />, heading: /Training Provider Portal/i },
       { comp: <AssessorDashboard />, heading: /Assessor & Verifier Portal/i },
-      { comp: <EmployerDashboard />, heading: /Employer Portal/i },
       { comp: <TraineeDashboard />, heading: /Trainee Self-Service Portal/i },
     ];
 
@@ -240,5 +239,22 @@ describe('Route Guards & Persona Access Control (ProtectedRoute, RoleGuard, Pers
       expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument();
       unmount();
     });
+  });
+
+  it('renders the employer workspace with links to all three workflows', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
+    client.setQueryData(['employer', 'references'], { employerName: 'Example Engineering' });
+    client.setQueryData(['employer', 'vacancies', 0], { totalElements: 1 });
+    client.setQueryData(['employer', 'placements', 0], { totalElements: 2 });
+    client.setQueryData(['employer', 'verifications', 'pending', 0], { totalElements: 3 });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter><EmployerDashboardPage /></MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(screen.getByRole('heading', { name: 'Example Engineering' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Job vacancies/ })).toHaveAttribute('href', '/employer/vacancies');
+    expect(screen.getByRole('link', { name: /Candidate placements/ })).toHaveAttribute('href', '/employer/placements');
+    expect(screen.getByRole('link', { name: /Open verification requests/ })).toHaveAttribute('href', '/employer/verifications');
   });
 });

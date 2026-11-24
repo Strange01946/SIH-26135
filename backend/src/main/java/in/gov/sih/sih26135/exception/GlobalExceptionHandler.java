@@ -605,6 +605,7 @@ public class GlobalExceptionHandler {
       "At least one skill gap is required",
       "Rating must be between 0.00 and 5.00",
       "Invalid pincode format. Must be 6 digits starting with 1-9",
+      "PIN code is required",
       "Invalid sort field provided",
       "Invalid sort direction provided",
       "Search term is invalid or exceeds maximum length",
@@ -649,6 +650,39 @@ public class GlobalExceptionHandler {
       "Skill gap recommendation number already exists",
       "Training enrollment number already exists",
       "Training batch capacity has been reached",
+      "Select one shared center or propose one temporary location.",
+      "The requested batch size exceeds the center capacity.",
+      "The selected venue is unavailable for booking.",
+      "Select a date range of up to 93 days.",
+      "Only future sessions can be rescheduled.",
+      "There is already a rescheduling request awaiting review.",
+      "Only pending venue requests can be reviewed.",
+      "Enter a reason for declining this booking.",
+      "Start the batch and begin a reserved session before completing training.",
+      "The booking changed while you were reviewing it. Refresh and retry.",
+      "This training batch is already closed.",
+      "This action requires the current approved booking.",
+      "At least one requested session overlaps an existing reservation or center closure.",
+      "Enter a future start time and a later end time for each session.",
+      "Sessions in the same request cannot overlap.",
+      "The training provider is unavailable for venue booking.",
+      "Select an active course and its linked program.",
+      "Request a venue booking before scheduling training here.",
+      "This batch requires an approved venue booking.",
+      "Manage this batch schedule from Venue Bookings.",
+      "Training can start when the first approved session begins.",
+      "Open the approved venue batch for enrollment first.",
+      "Manage temporary locations through their venue booking.",
+      "This center has upcoming reservations. Resolve them before changing capacity, location or availability.",
+      "Enter the seating capacity of the shared center.",
+      "Choose a scheduled session that has started.",
+      "Assign a state or union territory to a State Administrator.",
+      "This center has training records. Create a center for the new district to preserve history.",
+      "This center has training records. Set its status to Inactive to retain those records.",
+      "Select an active training center for a new batch",
+      "Select an available center status",
+      "The location must belong to the selected district",
+      "Select an active district within the selected state or union territory.",
 
       // 6. Analytics Multi-Dimensional Filtering Constraints
       "Demographic dimension 'socialCategory' is not supported by the existing database schema",
@@ -2084,7 +2118,7 @@ public class GlobalExceptionHandler {
       return conflictResponse("COURSE_CODE_ALREADY_EXISTS",
           "Course code already exists", request);
     }
-    if (errorMsg.contains("uk_training_centers_code")) {
+    if (errorMsg.contains("uk_training_centers_code") || errorMsg.contains("uk_training_centers_provider_code")) {
       return conflictResponse("CENTER_CODE_ALREADY_EXISTS",
           "Center code already exists", request);
     }

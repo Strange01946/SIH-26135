@@ -34,7 +34,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @Validated
 @RestController
 @RequestMapping("/api/v1/employment-verification-evidence")
-@PreAuthorize("hasAuthority('verification.manage')")
+@PreAuthorize("hasAuthority('verification.manage') and (!hasAuthority('ROLE_employer') or hasAnyAuthority('ROLE_super_admin', 'ROLE_government_admin'))")
 public class EmploymentVerificationEvidenceController {
 
   private final EmploymentVerificationEvidenceService employmentVerificationEvidenceService;

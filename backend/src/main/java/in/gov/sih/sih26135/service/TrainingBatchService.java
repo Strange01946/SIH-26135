@@ -1,8 +1,6 @@
 package in.gov.sih.sih26135.service;
 
 import in.gov.sih.sih26135.dto.request.ChangeBatchStatusRequest;
-import in.gov.sih.sih26135.dto.request.CreateTrainingBatchRequest;
-import in.gov.sih.sih26135.dto.request.UpdateTrainingBatchRequest;
 import in.gov.sih.sih26135.dto.response.TrainingBatchResponse;
 import java.util.List;
 import org.springframework.data.domain.Page;
@@ -38,11 +36,8 @@ public interface TrainingBatchService {
 
   Page<TrainingBatchResponse> getBatchesByStatusId(Long batchStatusId, Pageable pageable);
 
-  TrainingBatchResponse createBatch(CreateTrainingBatchRequest request);
 
-  TrainingBatchResponse updateBatch(Long id, UpdateTrainingBatchRequest request);
 
   TrainingBatchResponse updateBatchStatus(Long id, ChangeBatchStatusRequest request);
 
-  void deleteBatch(Long id);
 }

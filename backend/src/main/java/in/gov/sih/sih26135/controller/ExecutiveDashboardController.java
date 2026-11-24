@@ -9,6 +9,9 @@ import in.gov.sih.sih26135.dto.response.SchemeProgramPerformanceResponse;
 import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.ExecutiveDashboardService;
+import in.gov.sih.sih26135.service.ExecutiveMisService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.RequestParam;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,12 +38,20 @@ public class ExecutiveDashboardController {
 
   private final ExecutiveDashboardService executiveDashboardService;
   private final WorkflowSecurityScopeValidator scopeValidator;
+  private final ExecutiveMisService mis;
 
   public ExecutiveDashboardController(
       ExecutiveDashboardService executiveDashboardService,
       WorkflowSecurityScopeValidator scopeValidator) {
+    this(executiveDashboardService, scopeValidator, null);
+  }
+
+  @Autowired
+  public ExecutiveDashboardController(ExecutiveDashboardService executiveDashboardService,
+      WorkflowSecurityScopeValidator scopeValidator, ExecutiveMisService mis) {
     this.executiveDashboardService = java.util.Objects.requireNonNull(executiveDashboardService, "ExecutiveDashboardService is required");
     this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
+    this.mis = mis;
   }
 
   /**
@@ -105,12 +116,13 @@ public class ExecutiveDashboardController {
   @GetMapping("/kpis")
   public ResponseEntity<ApiResponse<DashboardKpiStripResponse>> getKpiStrip(
       @Valid AnalyticsFilterCriteria criteria,
+      @RequestParam(defaultValue = "false") boolean executive,
       HttpServletRequest httpRequest) {
     scopeValidator.validateNationwideScope();
     scopeValidator.validateAnalyticsFilterScope(criteria);
-    DashboardKpiStripResponse response = (criteria == null || criteria.isEmpty())
-        ? executiveDashboardService.getDashboardKpiStrip()
-        : executiveDashboardService.getDashboardKpiStrip(criteria);
+    DashboardKpiStripResponse response = executive ? DashboardKpiStripResponse.executive(mis.compareKpis(criteria))
+        : criteria == null || criteria.isEmpty() ? executiveDashboardService.getDashboardKpiStrip()
+            : executiveDashboardService.getDashboardKpiStrip(criteria);
     return ResponseEntity.ok(ApiResponse.success(
         "Dashboard KPI strip retrieved successfully",
         response,
@@ -128,12 +140,13 @@ public class ExecutiveDashboardController {
   @GetMapping("/pipeline-funnel")
   public ResponseEntity<ApiResponse<PipelineFunnelResponse>> getPipelineFunnel(
       @Valid AnalyticsFilterCriteria criteria,
+      @RequestParam(defaultValue = "false") boolean executive,
       HttpServletRequest httpRequest) {
     scopeValidator.validateNationwideScope();
     scopeValidator.validateAnalyticsFilterScope(criteria);
-    PipelineFunnelResponse response = (criteria == null || criteria.isEmpty())
-        ? executiveDashboardService.getTrainingPipelineFunnel()
-        : executiveDashboardService.getTrainingPipelineFunnel(criteria);
+    PipelineFunnelResponse response = executive ? PipelineFunnelResponse.executive(mis.pipeline(criteria))
+        : criteria == null || criteria.isEmpty() ? executiveDashboardService.getTrainingPipelineFunnel()
+            : executiveDashboardService.getTrainingPipelineFunnel(criteria);
     return ResponseEntity.ok(ApiResponse.success(
         "Training pipeline conversion funnel retrieved successfully",
         response,

@@ -8,28 +8,88 @@ export interface NavItem {
   label: string;
   to: string;
   icon: string;
-  persona: UserPersona;
+  persona?: UserPersona;
+  personas?: UserPersona[];
+  authorities?: string[];
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  // Admin Persona Console
+  // Administrative & Government Role Consoles
   {
     label: 'Admin Console',
     to: '/admin/dashboard',
     icon: '🛡️',
-    persona: 'ADMIN',
+    personas: [
+      'SUPER_ADMIN',
+      'GOVERNMENT_ADMIN',
+      'STATE_ADMIN',
+      'GOVERNMENT_OFFICER',
+      'DISTRICT_OFFICER',
+      'ANALYST',
+      'ADMIN',
+    ],
   },
   {
     label: 'Onboarding Requests',
     to: '/admin/onboarding',
     icon: '📥',
-    persona: 'ADMIN',
+    personas: [
+      'SUPER_ADMIN',
+      'GOVERNMENT_ADMIN',
+      'STATE_ADMIN',
+      'GOVERNMENT_OFFICER',
+      'ADMIN',
+    ],
   },
   {
     label: 'User Provisioning',
     to: '/admin/users',
     icon: '👤',
-    persona: 'ADMIN',
+    personas: [
+      'SUPER_ADMIN',
+      'GOVERNMENT_ADMIN',
+      'STATE_ADMIN',
+      'ADMIN',
+    ],
+  },
+
+  {
+    label: 'Training Centers',
+    to: '/admin/centers',
+    icon: '🏢',
+    personas: ['SUPER_ADMIN', 'GOVERNMENT_ADMIN'],
+    authorities: ['center.manage'],
+  },
+  {
+    label: 'Venue Bookings',
+    to: '/admin/venue-bookings',
+    icon: '📅',
+    personas: ['SUPER_ADMIN', 'GOVERNMENT_ADMIN', 'STATE_ADMIN', 'DISTRICT_OFFICER'],
+    authorities: ['venue.booking.review'],
+  },
+  {
+    label: 'Career Progression',
+    to: '/admin/careers',
+    icon: '📈',
+    personas: ['SUPER_ADMIN', 'GOVERNMENT_ADMIN'],
+  },
+  {
+    label: 'Government MIS',
+    to: '/analytics',
+    icon: '📊',
+    personas: ['SUPER_ADMIN', 'GOVERNMENT_ADMIN', 'ANALYST'],
+  },
+  {
+    label: 'Communication Center',
+    to: '/communication',
+    icon: '✉️',
+    personas: ['SUPER_ADMIN', 'GOVERNMENT_ADMIN', 'ASSESSOR'],
+  },
+  {
+    label: 'Governance and diagnostics',
+    to: '/audit',
+    icon: '📋',
+    authorities: ['audit.read', 'system.manage', 'system.event.read', 'system.event.manage', 'role_admin', 'role_super_admin'],
   },
 
   // Training Provider Persona Console
@@ -44,6 +104,14 @@ export const NAV_ITEMS: NavItem[] = [
     to: '/provider/centers',
     icon: '🏢',
     persona: 'TRAINING_PROVIDER',
+    authorities: ['center.manage'],
+  },
+  {
+    label: 'Venue Bookings',
+    to: '/provider/venue-bookings',
+    icon: '📅',
+    persona: 'TRAINING_PROVIDER',
+    authorities: ['venue.booking.request'],
   },
   {
     label: 'Approved Courses',
@@ -103,6 +171,24 @@ export const NAV_ITEMS: NavItem[] = [
     icon: '💼',
     persona: 'EMPLOYER',
   },
+  {
+    label: 'Job vacancies',
+    to: '/employer/vacancies',
+    icon: '📋',
+    persona: 'EMPLOYER',
+  },
+  {
+    label: 'Candidate placements',
+    to: '/employer/placements',
+    icon: '👥',
+    persona: 'EMPLOYER',
+  },
+  {
+    label: 'Employment verification',
+    to: '/employer/verifications',
+    icon: '✓',
+    persona: 'EMPLOYER',
+  },
 
   // Trainee Persona Console
   {
@@ -139,30 +225,18 @@ export const NAV_ITEMS: NavItem[] = [
 
 function resolvePersonaFromRole(roleStr: string): UserPersona | null {
   const normalized = roleStr.toUpperCase().replace(/^ROLE_/, '');
-  if (
-    [
-      'ADMIN',
-      'SUPER_ADMIN',
-      'GOVERNMENT_ADMIN',
-      'GOVERNMENT_OFFICER',
-      'DISTRICT_OFFICER',
-      'ANALYST',
-    ].includes(normalized)
-  ) {
-    return 'ADMIN';
-  }
-  if (['TRAINING_PROVIDER', 'TP'].includes(normalized)) {
-    return 'TRAINING_PROVIDER';
-  }
-  if (['ASSESSOR', 'VERIFIER'].includes(normalized)) {
-    return 'ASSESSOR';
-  }
-  if (['EMPLOYER'].includes(normalized)) {
-    return 'EMPLOYER';
-  }
-  if (['TRAINEE'].includes(normalized)) {
-    return 'TRAINEE';
-  }
+  if (['SUPER_ADMIN'].includes(normalized)) return 'SUPER_ADMIN';
+  if (['GOVERNMENT_ADMIN'].includes(normalized)) return 'GOVERNMENT_ADMIN';
+  if (['STATE_ADMIN'].includes(normalized)) return 'STATE_ADMIN';
+  if (['GOVERNMENT_OFFICER'].includes(normalized)) return 'GOVERNMENT_OFFICER';
+  if (['DISTRICT_OFFICER'].includes(normalized)) return 'DISTRICT_OFFICER';
+  if (['ANALYST'].includes(normalized)) return 'ANALYST';
+  if (['VERIFIER'].includes(normalized)) return 'VERIFIER';
+  if (['ADMIN'].includes(normalized)) return 'SUPER_ADMIN';
+  if (['TRAINING_PROVIDER', 'TP'].includes(normalized)) return 'TRAINING_PROVIDER';
+  if (['ASSESSOR'].includes(normalized)) return 'ASSESSOR';
+  if (['EMPLOYER'].includes(normalized)) return 'EMPLOYER';
+  if (['TRAINEE'].includes(normalized)) return 'TRAINEE';
   return null;
 }
 
@@ -207,7 +281,17 @@ export function Sidebar({
 
   // Filter items strictly by effective persona
   const visibleItems = NAV_ITEMS.filter((item) => {
+    if (item.authorities && user) {
+      if (!user.authorities?.some((authority) => item.authorities?.includes(authority.trim().toLowerCase()))) return false;
+      if (!item.persona && !item.personas) return true;
+    }
     if (effectivePersona) {
+      if (item.personas) {
+        return (
+          item.personas.includes(effectivePersona) ||
+          (effectivePersona === 'ADMIN' && item.personas.includes('SUPER_ADMIN'))
+        );
+      }
       return item.persona === effectivePersona;
     }
     // Standalone / unauthenticated test view: show all items

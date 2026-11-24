@@ -3,6 +3,7 @@ import jakarta.validation.constraints.*;
 
 public class CreateTrainingCenterRequest {
 
+  @NotNull @Positive
   private Long providerId;
   @NotBlank(message = "centerCode is required")
   @Size(max = 32, message = "centerCode cannot exceed 32 characters")
@@ -17,9 +18,12 @@ public class CreateTrainingCenterRequest {
   @Pattern(regexp = "^[1-9][0-9]{5}$", message = "Pincode must be 6 digits and cannot start with 0")
   private String pincode;
   private Long locationId;
+  @NotNull @Positive
   private Long stateId;
+  @NotNull @Positive
   private Long districtId;
   private Integer operationalCapacity;
+  @NotNull @Positive
   private Long lifecycleStatusId;
 
   public CreateTrainingCenterRequest() {

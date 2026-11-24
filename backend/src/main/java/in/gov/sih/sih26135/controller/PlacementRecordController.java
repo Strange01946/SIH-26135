@@ -14,6 +14,7 @@ import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.response.PagedResponse;
 import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.service.PlacementRecordService;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Set;
@@ -43,13 +44,15 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @Validated
 @RestController
 @RequestMapping("/api/v1/placement-records")
-@PreAuthorize("hasAuthority('placement.manage')")
+@PreAuthorize("hasAuthority('placement.manage') and (!hasAuthority('ROLE_employer') or hasAnyAuthority('ROLE_super_admin', 'ROLE_government_admin'))")
 public class PlacementRecordController {
 
   private final PlacementRecordService placementRecordService;
+  private final WorkflowSecurityScopeValidator scope;
 
-  public PlacementRecordController(PlacementRecordService placementRecordService) {
+  public PlacementRecordController(PlacementRecordService placementRecordService, WorkflowSecurityScopeValidator scope) {
     this.placementRecordService = placementRecordService;
+    this.scope = scope;
   }
 
   /**
@@ -161,6 +164,7 @@ public class PlacementRecordController {
    * @return 200 OK with paginated PlacementRecordResponse enveloped in ApiResponse
    */
   @GetMapping(params = {"employerId", "!placementNumber", "!jobApplicationId", "!traineeId", "!enrollmentId", "!jobPostingId", "!courseId", "!statusId", "!includeDeleted"})
+  @PreAuthorize("hasAuthority('placement.manage')")
   public ResponseEntity<ApiResponse<PagedResponse<PlacementRecordResponse>>> getByEmployer(
       @RequestParam("employerId") @Positive Long employerId,
       @RequestParam(value = "page", defaultValue = "0") @Min(0) int page,
@@ -168,6 +172,7 @@ public class PlacementRecordController {
       @RequestParam(value = "sort", defaultValue = "createdAt") String sort,
       @RequestParam(value = "direction", defaultValue = "DESC") String direction,
       HttpServletRequest httpRequest) {
+    scope.requireEmployerOwnershipForEmployerCaller(employerId);
     validateAllowedQueryParameters(httpRequest, Set.of("employerId", "page", "size", "sort", "direction"));
     Pageable pageable = PaginationUtils.buildPageable(
         page, size, sort, direction, PaginationUtils.PLACEMENT_RECORD_SORT_FIELDS, "createdAt", Sort.Direction.DESC

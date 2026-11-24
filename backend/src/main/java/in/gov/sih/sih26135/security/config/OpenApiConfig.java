@@ -3,11 +3,14 @@ package in.gov.sih.sih26135.security.config;
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import org.springdoc.core.customizers.GlobalOpenApiCustomizer;
 import org.springdoc.core.customizers.OperationCustomizer;
 import org.springdoc.core.models.GroupedOpenApi;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,6 +30,45 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration
 public class OpenApiConfig {
+
+  @Bean
+  public GlobalOpenApiCustomizer workflowResponseNullability() {
+    return api -> {
+      nullable(api, "DashboardKpiStripResponse", "traineeCount", "enrollmentCount", "enrolledTraineeCount",
+          "completedEnrollmentCount", "certifiedEnrollmentCount", "placementCount", "joinedPlacementCount",
+          "employmentSpellCount", "employedTraineeCount", "currentEmploymentSpellCount", "currentSelfEmploymentCount",
+          "currentApprenticeshipCount", "completionRatePct", "certificationRatePct", "placementRatePct", "employmentRatePct");
+      nullable(api, "KpiComparison", "previousFinancialYear");
+      nullable(api, "Kpi", "changePct");
+      nullable(api, "Measure", "value");
+      nullable(api, "TrainingBatchResponse", "deletedAt");
+      nullable(api, "TrainingEnrollmentResponse", "expectedCompletionDate", "actualCompletionDate", "dropoutReasonId",
+          "dropoutReasonCode", "dropoutReasonName", "dropoutRemarks", "deletedAt");
+      nullable(api, "AssessorCandidateRosterItemResponse", "gender", "email", "phone", "traineeAssessmentId",
+          "attemptNumber", "assessmentDate", "assessmentResultId", "theoryScore", "practicalScore", "vivaScore",
+          "totalScore", "scorePercentage", "assessmentOutcomeId", "assessmentOutcomeCode", "assessmentOutcomeName",
+          "isPassFlag", "remarks", "certificateId", "certificateNumber", "certificateStatusCode", "resultDeclaredAt");
+      nullable(api, "Verification", "jobRole", "endedOn", "startingPay", "payFrequency", "dueAt", "verdict", "evidenceId", "evidenceName");
+      nullable(api, "TraineeConsentResponse", "revokedAt", "expiresAt", "capturedByUserId");
+      nullable(api, "ImportBatchResponse", "startedAt", "completedAt");
+      nullable(api, "ImportBatchProgressResponse", "startedAt", "completedAt", "durationMs");
+    };
+  }
+
+  private static void nullable(OpenAPI api, String schemaName, String... propertyNames) {
+    if (api.getComponents() == null || api.getComponents().getSchemas() == null) return;
+    var schema = api.getComponents().getSchemas().get(schemaName);
+    if (schema == null || schema.getProperties() == null) return;
+    for (String name : propertyNames) {
+      if (!(schema.getProperties().get(name) instanceof Schema<?> property)) continue;
+      var types = new LinkedHashSet<String>();
+      if (property.getTypes() != null) types.addAll(property.getTypes());
+      if (property.getType() != null) types.add(property.getType());
+      if (types.isEmpty()) continue;
+      types.add("null");
+      property.setTypes(types);
+    }
+  }
 
   public static final String SECURITY_SCHEME_NAME = "bearerAuth";
 

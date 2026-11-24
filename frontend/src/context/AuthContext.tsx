@@ -24,6 +24,10 @@ import {
   getDefaultLandingRoute,
   getDefaultLandingRouteForPersona,
 } from '@/api/types';
+import { queryClient } from '@/lib/queryClient';
+import { simulationActive } from '@/lib/demoEnvironment';
+
+const personaStorageKey = simulationActive ? 'sih_evaluator_active_persona' : 'sih_active_persona';
 
 export interface AuthContextType {
   user: AuthenticatedUserResponse | null;
@@ -78,12 +82,16 @@ export function AuthProvider({
   const [isInitializing, setIsInitializing] = useState<boolean>(true);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
-  // Synchronize state when sessionManager terminates session externally (e.g. 401 refresh failure)
+  // Keep route permissions synchronized with refresh results and session expiry.
   useEffect(() => {
-    const unsubscribe = subscribeToSession((active) => {
+    const unsubscribe = subscribeToSession((active, renewedSession) => {
       if (!active) {
         setUser(null);
         setConnectionError(null);
+      } else if (renewedSession && Array.isArray(renewedSession.authorities)) {
+        setUser((current) => current?.id === renewedSession.userId
+          ? { ...current, authorities: renewedSession.authorities }
+          : current);
       }
     });
     return unsubscribe;
@@ -212,6 +220,14 @@ export function AuthProvider({
 
   // Establish authenticated session directly from AuthResponse (used by login and registration)
   const establishSession = useCallback((response: AuthResponse): void => {
+    // Clear any previous user's cached queries and persona
+    try {
+      localStorage.removeItem(personaStorageKey);
+    } catch {
+      // Ignore storage errors
+    }
+    queryClient.clear();
+
     // Store in-memory access token and persistent refresh token (increments sessionGeneration)
     setTokens(response.accessToken, response.refreshToken);
     const sessionGen = getSessionGeneration();
@@ -269,7 +285,7 @@ export function AuthProvider({
   // Active Persona Context for role-specific workbench navigation & multi-role switching
   const [activePersonaState, setActivePersonaState] = useState<UserPersona | null>(() => {
     try {
-      const saved = localStorage.getItem('sih_active_persona');
+      const saved = localStorage.getItem(personaStorageKey);
       return (saved as UserPersona) || null;
     } catch {
       return null;
@@ -277,8 +293,8 @@ export function AuthProvider({
   });
 
   const personas = useMemo(
-    () => getUserPersonas(user?.authorities ?? []),
-    [user?.authorities],
+    () => getUserPersonas(user?.authorities ?? [], user),
+    [user?.authorities, user?.stateId, user?.districtId],
   );
 
   const primaryPersona = useMemo(
@@ -292,7 +308,7 @@ export function AuthProvider({
       if (activePersonaState !== null) {
         setActivePersonaState(null);
         try {
-          localStorage.removeItem('sih_active_persona');
+          localStorage.removeItem(personaStorageKey);
         } catch {
           // Ignore storage errors
         }
@@ -301,7 +317,7 @@ export function AuthProvider({
       const fallbackPersona = personas[0];
       setActivePersonaState(fallbackPersona);
       try {
-        localStorage.setItem('sih_active_persona', fallbackPersona);
+        localStorage.setItem(personaStorageKey, fallbackPersona);
       } catch {
         // Ignore storage errors
       }
@@ -313,10 +329,11 @@ export function AuthProvider({
       if (personas.includes(newPersona)) {
         setActivePersonaState(newPersona);
         try {
-          localStorage.setItem('sih_active_persona', newPersona);
+          localStorage.setItem(personaStorageKey, newPersona);
         } catch {
           // Ignore storage errors
         }
+        queryClient.invalidateQueries();
       }
     },
     [personas],
@@ -328,10 +345,11 @@ export function AuthProvider({
     setUser(null);
     setActivePersonaState(null);
     try {
-      localStorage.removeItem('sih_active_persona');
+      localStorage.removeItem(personaStorageKey);
     } catch {
       // Ignore storage errors
     }
+    queryClient.clear();
   }, []);
 
   // Check single authority or role (case-insensitive)

@@ -6,7 +6,6 @@ import { ProviderDataQualityPage } from '@/pages/provider/ProviderDataQualityPag
 import * as authContext from '@/context/AuthContext';
 import * as providerDqApi from '@/api/providerDataQualityApi';
 import * as providerApi from '@/api/providerPortalApi';
-import * as clientApi from '@/api/client';
 import type { AuthenticatedUserResponse } from '@/api/types';
 import type { ProviderDataQualityIssue, DataQualityIssueEvent } from '@/types/providerDataQuality';
 
@@ -155,7 +154,7 @@ describe('Provider Data Quality Remediation Workbench', () => {
 
     vi.mocked(providerDqApi.getDataQualityIssueById).mockResolvedValue(mockIssue);
     vi.mocked(providerDqApi.getDataQualityIssueEvents).mockResolvedValue(mockEvents);
-    vi.mocked(clientApi.apiPut).mockResolvedValue({ success: true });
+    vi.mocked(providerApi.correctTrainingEnrollment).mockResolvedValue({ id: 999 });
   });
 
   it('renders workbench title, tabs, and filter controls', async () => {
@@ -190,7 +189,8 @@ describe('Provider Data Quality Remediation Workbench', () => {
     });
   });
 
-  it('opens remediation modal and submits resolution with notes', async () => {
+  it('resolves an issue with notes without overwriting the enrollment', async () => {
+    vi.mocked(providerApi.getTrainingEnrollmentById).mockResolvedValue({ id: 999, startDate: '2026-11-01', enrollmentStatusId: 1 });
     vi.mocked(providerDqApi.resolveDataQualityIssue).mockResolvedValue({
       ...mockIssue,
       statusCode: 'RESOLVED',
@@ -223,14 +223,27 @@ describe('Provider Data Quality Remediation Workbench', () => {
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
-      expect(clientApi.apiPut).toHaveBeenCalledWith(
-        '/api/v1/training-enrollments/999',
-        expect.any(Object)
-      );
+      expect(providerApi.correctTrainingEnrollment).not.toHaveBeenCalled();
       expect(providerDqApi.resolveDataQualityIssue).toHaveBeenCalledWith(42, {
         resolutionNotes: 'Corrected enrollment completion date to adhere to batch schedule.',
       });
     });
+  });
+
+  it('saves only the enrollment field changed by the provider', async () => {
+    vi.mocked(providerApi.getTrainingEnrollmentById).mockResolvedValue({
+      id: 999, startDate: '2026-11-01', expectedCompletionDate: '2026-11-20', enrollmentStatusId: 1,
+    });
+    renderWorkbench();
+    fireEvent.click(await screen.findByTestId('btn-remediate-42'));
+    const date = await screen.findByTestId('input-exp-comp-date');
+    expect(date).toHaveValue('2026-11-20');
+    fireEvent.change(date, { target: { value: '2026-11-24' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save correction' }));
+    await waitFor(() => expect(providerApi.correctTrainingEnrollment).toHaveBeenCalledWith(999, {
+      expectedCompletionDate: '2026-11-24',
+    }));
+    expect(providerDqApi.resolveDataQualityIssue).not.toHaveBeenCalled();
   });
 
   it('opens dismissal modal and requires remarks before submitting', async () => {

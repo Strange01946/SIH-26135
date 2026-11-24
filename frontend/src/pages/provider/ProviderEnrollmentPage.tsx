@@ -11,6 +11,7 @@ import {
 } from '@/api/providerPortalApi';
 import type { TraineeProfile } from '@/types/trainee';
 import type { CreateEnrollmentPayload, CreateAttendancePayload } from '@/types/provider';
+import type { ApiError } from '@/api/types';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 
 export function ProviderEnrollmentPage(): React.JSX.Element {
@@ -32,6 +33,7 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
   // Quick Attendance State
   const [attendanceEnrollmentId, setAttendanceEnrollmentId] = useState<number | ''>('');
   const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [attendanceSequence, setAttendanceSequence] = useState(1);
   const [attendanceStatusId, setAttendanceStatusId] = useState<number>(1); // PRESENT
   const [attendanceRemarks, setAttendanceRemarks] = useState('');
 
@@ -85,10 +87,10 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
       setSearchedTrainee(null);
       setSearchRegNumber('');
     },
-    onError: (err: any) => {
-      const resp = err.response?.data;
-      const code = resp?.code || (err.response?.status === 409 ? 'CONFLICT_DETECTED' : 'ENROLLMENT_FAILED');
-      const message = resp?.message || err.message || 'Failed to complete trainee enrollment';
+    onError: (err: ApiError) => {
+      const code = err.code || (err.status === 409 ? 'CONFLICT_DETECTED' : 'ENROLLMENT_FAILED');
+      const message = err.message || 'Failed to complete trainee enrollment';
+      if (err.status === 409) void queryClient.invalidateQueries({ queryKey: ['provider', 'batches'] });
       setEnrollmentError({ message, code });
       toast.error(message);
     },
@@ -109,6 +111,7 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
 
   const handleEnrollSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (enrollMutation.isPending) return;
     setEnrollmentError(null);
 
     if (!searchedTrainee) {
@@ -149,6 +152,7 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
 
   const handleAttendanceSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (attendanceMutation.isPending) return;
     if (!attendanceEnrollmentId) {
       toast.error('Please select an enrollment record');
       return;
@@ -156,6 +160,7 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
     attendanceMutation.mutate({
       enrollmentId: Number(attendanceEnrollmentId),
       sessionDate: attendanceDate,
+      sessionSequence: attendanceSequence,
       attendanceStatusId,
       remarks: attendanceRemarks.trim() || undefined,
     });
@@ -411,6 +416,11 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
                 onChange={(e) => setAttendanceDate(e.target.value)}
               />
             </div>
+
+            <label className="form-label">Session number for this date
+              <input type="number" min={1} required value={attendanceSequence}
+                className="input-field w-full text-xs" onChange={e => setAttendanceSequence(Number(e.target.value))} />
+            </label>
 
             <div>
               <label className="block font-semibold text-gray-700 mb-1">Attendance Status *</label>

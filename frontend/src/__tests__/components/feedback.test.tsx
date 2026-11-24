@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { ErrorState } from '@/components/feedback/ErrorState';
+import { ErrorBoundary } from '@/components/feedback/ErrorBoundary';
 import { LoadingSpinner, PageLoading } from '@/components/feedback/LoadingSpinner';
 import type { ApiError } from '@/api/types';
 
@@ -42,6 +43,44 @@ describe('ErrorState', () => {
     const error: ApiError = { code: 'HTTP_404', message: 'Not found', status: 404 };
     const { container } = render(<ErrorState error={error} />);
     expect(container.querySelector('[role="alert"]')).toBeInTheDocument();
+  });
+});
+
+describe('ErrorBoundary', () => {
+  it('reports a render failure and retries the child successfully', () => {
+    const error = new Error('Fixture route failed');
+    const report = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let shouldFail = true;
+    function RouteContent() {
+      if (shouldFail) throw error;
+      return <h2>Recovered route</h2>;
+    }
+    try {
+      render(<ErrorBoundary><RouteContent /></ErrorBoundary>);
+      expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
+      expect(screen.queryByText(error.message)).not.toBeInTheDocument();
+      expect(report).toHaveBeenCalledWith('[ErrorBoundary] Uncaught error:', error, expect.any(Object));
+      shouldFail = false;
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      expect(screen.getByRole('heading', { name: 'Recovered route' })).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    } finally {
+      report.mockRestore();
+    }
+  });
+
+  it('renders a caller-provided fallback', () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => {});
+    function BrokenRoute(): never {
+      throw new Error('Fixture route failed');
+    }
+    try {
+      render(<ErrorBoundary fallback={<p role="alert">The workspace could not open</p>}><BrokenRoute /></ErrorBoundary>);
+      expect(screen.getByRole('alert')).toHaveTextContent('The workspace could not open');
+      expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+    } finally {
+      report.mockRestore();
+    }
   });
 });
 
