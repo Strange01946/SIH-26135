@@ -88,6 +88,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/training-batches/{batchId}/attendance/sessions/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["batchAttendanceRoster"];
+        put: operations["saveBatchAttendanceRoster"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/trainees/{id}": {
         parameters: {
             query?: never;
@@ -111,6 +127,24 @@ export interface paths {
          * @description Soft-deletes an existing trainee record by ID.
          */
         delete: operations["deleteTrainee"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trainees/me/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the signed-in trainee's profile */
+        get: operations["getOwnProfile"];
+        /** Update the signed-in trainee's personal details */
+        put: operations["updateOwnProfile"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -708,6 +742,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/career-skills/roles/{roleId}/requirements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["saveCareerRoleRequirement"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/career-skills/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["myCareerSkills"];
+        put: operations["saveMyCareerSkills"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/career-skills/me/training/{batchId}/interest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["saveMyTrainingInterest"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/career-skills/assessments/{assessmentId}/trainees/{traineeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["assessmentCareerSkills"];
+        put: operations["recordCareerSkillObservation"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attendance-records/{id}": {
         parameters: {
             query?: never;
@@ -974,38 +1072,6 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["acceptRecommendation_1"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workflows/skill-gap-remediations/enroll-remediation-course": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["enrollRemediationCourse"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workflows/skill-gap-remediation/enroll-remediation-course": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["enrollRemediationCourse_1"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1428,6 +1494,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/trainees/me/training/{batchId}/enrollment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["registerForTraining"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/trainees/me/followup-surveys/{taskId}/responses": {
         parameters: {
             query?: never;
@@ -1438,6 +1520,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["submitQuestionnaire"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trainees/me/followup-surveys/career-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getCareerUpdate"];
+        put?: never;
+        post: operations["submitCareerUpdate"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2604,7 +2702,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/career-progress/recommendations/{id}/enrollment": {
+    "/api/v1/career-skills/catalog/{kind}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2613,7 +2711,23 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["enrollCareerRemediation"];
+        post: operations["createCareerCatalogEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/career-progress/candidates/{id}/surveys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getCandidateFollowups"];
+        put?: never;
+        post: operations["scheduleCandidateFollowup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3327,6 +3441,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/training-batches/{batchId}/roster": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["viewTrainingBatchRoster"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-batches/{batchId}/attendance/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["batchAttendanceTimetable"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trainees/me/training": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["findOpenTraining"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trainees/me/training/{batchId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["viewTraining"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/trainees/me/followup-surveys": {
         parameters: {
             query?: never;
@@ -3359,6 +3537,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/trainees/me/followup-surveys/submissions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getOwnSurveySubmission"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/trainees/me/employment-history": {
         parameters: {
             query?: never;
@@ -3367,6 +3561,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getEmploymentHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trainees/me/career-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getCareerStatus"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4487,14 +4697,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/career-progress/recommendations/{id}/batches": {
+    "/api/v1/career-skills/trainees/{traineeId}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["getRemediationBatches"];
+        get: operations["governmentCareerSkills"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/career-skills/reference": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["careerSkillsReference"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/career-skills/provider/batches/{batchId}/interest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["providerTrainingInterest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/career-skills/me/training": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["myCareerTraining"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/career-skills/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["careerCatalogOptions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4543,6 +4817,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getCareerHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/career-progress/candidates/{id}/surveys/{submissionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getCandidateSurveySubmission"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6327,6 +6617,76 @@ export interface components {
              */
             deletedAt?: string | null;
         };
+        SaveAttendanceRoster: {
+            marks: components["schemas"]["SessionAttendanceMark"][];
+        };
+        SessionAttendanceMark: {
+            /** Format: int64 */
+            enrollmentId?: number;
+            status: string;
+            remarks?: string;
+            expectedVersion?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseAttendanceSessionRoster: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["AttendanceSessionRoster"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        AttendanceRosterRow: {
+            /** Format: int64 */
+            enrollmentId?: number;
+            name?: string;
+            registrationNumber?: string;
+            eligible?: boolean;
+            status?: string;
+            remarks?: string;
+            version?: string;
+        };
+        AttendanceSession: {
+            /** Format: int64 */
+            id?: number;
+            /** Format: date-time */
+            startsAt?: string;
+            /** Format: date-time */
+            endsAt?: string;
+            started?: boolean;
+            canMark?: boolean;
+        };
+        AttendanceSessionRoster: {
+            session?: components["schemas"]["AttendanceSession"];
+            rows?: components["schemas"]["AttendanceRosterRow"][];
+        };
         UpdateTraineeRequest: {
             firstName?: string;
             middleName?: string;
@@ -6523,6 +6883,95 @@ export interface components {
              * @example null
              */
             deletedAt?: string;
+        };
+        Update: {
+            firstName: string;
+            middleName?: string;
+            lastName?: string;
+            /** Format: date */
+            dateOfBirth?: string;
+            /** Format: int64 */
+            genderId: number;
+            /** Format: email */
+            email?: string;
+            phone?: string;
+            addressLine1?: string;
+            addressLine2?: string;
+            /** Format: int64 */
+            stateId: number;
+            /** Format: int64 */
+            districtId: number;
+            pincode: string;
+            /** Format: int64 */
+            educationLevelId?: number;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseTraineeSelfProfile: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["TraineeSelfProfile"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        CareerUpdate: {
+            /** Format: int64 */
+            submissionId?: number;
+            /** Format: date-time */
+            submittedAt?: string;
+            /** Format: int64 */
+            statusId?: number;
+            statusCode?: string;
+            status?: string;
+            organization?: string;
+            role?: string;
+            /** Format: date */
+            since?: string;
+            monthlyIncome?: number;
+            location?: string;
+            skills?: string;
+            barriers?: string;
+        };
+        EducationOption: {
+            /** Format: int64 */
+            id?: number;
+            name?: string;
+        };
+        TraineeSelfProfile: {
+            profile?: components["schemas"]["TraineeResponse"];
+            profileStatus?: string;
+            employmentStatus?: string;
+            blockName?: string;
+            locationName?: string;
+            educationLevels?: components["schemas"]["EducationOption"][];
+            reportedUpdate?: components["schemas"]["CareerUpdate"];
         };
         UpdateTraineeUnemploymentEventRequest: {
             /** Format: int32 */
@@ -7138,6 +7587,7 @@ export interface components {
             createdAt?: string;
             /** Format: date-time */
             updatedAt?: string;
+            status?: string;
         };
         UpdateSkillGapObservationRequest: {
             /** Format: int64 */
@@ -9644,6 +10094,115 @@ export interface components {
             /** Format: date-time */
             deletedAt?: string;
         };
+        RoleRequirement: {
+            /** Format: int64 */
+            skillId: number;
+            /** Format: int64 */
+            levelId: number;
+        };
+        SaveCareerSkills: {
+            /** Format: int64 */
+            revision: number;
+            /** Format: int64 */
+            desiredRoleId?: number;
+            desiredJobTitle?: string;
+            skills: components["schemas"]["SkillInput"][];
+        };
+        SkillInput: {
+            name: string;
+            /** Format: int64 */
+            levelId?: number;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseCareerSkillsProfile: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["CareerSkillsProfile"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        CareerProfileSkill: {
+            name?: string;
+            /** Format: int64 */
+            skillId?: number;
+            /** Format: int64 */
+            levelId?: number;
+            level?: string;
+            /** Format: int32 */
+            rank?: number;
+        };
+        CareerSkillEvidence: {
+            /** Format: int64 */
+            skillId?: number;
+            skill?: string;
+            level?: string;
+            /** Format: int32 */
+            rank?: number;
+            /** Format: date-time */
+            observedAt?: string;
+            source?: string;
+        };
+        CareerSkillRequirement: {
+            /** Format: int64 */
+            skillId?: number;
+            skill?: string;
+            requiredLevel?: string;
+            /** Format: int32 */
+            requiredRank?: number;
+            currentLevel?: string;
+            /** Format: int32 */
+            currentRank?: number;
+            source?: string;
+            needsTraining?: boolean;
+        };
+        CareerSkillsProfile: {
+            /** Format: int64 */
+            revision?: number;
+            /** Format: int64 */
+            desiredRoleId?: number;
+            desiredJobTitle?: string;
+            skills?: components["schemas"]["CareerProfileSkill"][];
+            evidence?: components["schemas"]["CareerSkillEvidence"][];
+            requirements?: components["schemas"]["CareerSkillRequirement"][];
+        };
+        Interest: {
+            /** @enum {string} */
+            choice: "INTERESTED" | "DISMISSED" | "UNDECIDED";
+        };
+        Observe: {
+            /** Format: int64 */
+            skillId: number;
+            /** Format: int64 */
+            levelId: number;
+        };
         UpdateAttendanceRecordRequest: {
             sessionStartTime?: string;
             sessionEndTime?: string;
@@ -9708,6 +10267,10 @@ export interface components {
             sessionSequence?: number;
             sessionStartTime?: string;
             sessionEndTime?: string;
+            /** Format: date-time */
+            scheduledStart?: string;
+            /** Format: date-time */
+            scheduledEnd?: string;
             /** Format: int64 */
             attendanceStatusId?: number;
             attendanceStatusCode?: string;
@@ -10253,80 +10816,6 @@ export interface components {
             remarks?: string;
             /** Format: int64 */
             actorUserId?: number;
-        };
-        CreateTrainingEnrollmentRequest: {
-            enrollmentNumber?: string;
-            /** Format: int64 */
-            traineeId?: number;
-            /** Format: int64 */
-            programId?: number;
-            /** Format: int64 */
-            courseId?: number;
-            /** Format: int64 */
-            providerId?: number;
-            /** Format: int64 */
-            centerId?: number;
-            /** Format: int64 */
-            batchId?: number;
-            /** Format: date */
-            enrollmentDate?: string;
-            /** Format: date */
-            startDate?: string;
-            /** Format: date */
-            expectedCompletionDate?: string;
-            /** Format: date */
-            actualCompletionDate?: string;
-            /** Format: int64 */
-            enrollmentStatusId?: number;
-            /** Format: int64 */
-            dropoutReasonId?: number;
-            dropoutRemarks?: string;
-        };
-        SkillGapRemediationEnrollmentRequest: {
-            /** Format: int64 */
-            recommendationId?: number;
-            enrollmentRequest?: components["schemas"]["CreateTrainingEnrollmentRequest"];
-            recommendationStatusUpdate?: components["schemas"]["UpdateSkillGapRecommendationRequest"];
-        };
-        /** @description Standard generic envelope for REST API responses */
-        ApiResponseSkillGapRemediationEnrollmentResponse: {
-            /**
-             * @description Whether the request completed successfully
-             * @example true
-             */
-            success?: boolean;
-            /**
-             * @description Machine-readable status or error code
-             * @example SUCCESS
-             */
-            code?: string;
-            /**
-             * @description Human-readable result or status message
-             * @example Operation completed successfully
-             */
-            message?: string;
-            /** @description Payload data of type T */
-            data?: components["schemas"]["SkillGapRemediationEnrollmentResponse"];
-            /**
-             * Format: date-time
-             * @description UTC ISO-8601 timestamp of response generation
-             * @example 2026-11-19T18:00:00Z
-             */
-            timestamp?: string;
-            /**
-             * @description Request URI path
-             * @example /api/v1/trainees
-             */
-            path?: string;
-            /**
-             * @description Unique correlation identifier for request tracing across services
-             * @example c8f9b2a1-0000-4000-a000-000000000001
-             */
-            correlationId?: string;
-        };
-        SkillGapRemediationEnrollmentResponse: {
-            recommendation?: components["schemas"]["SkillGapRecommendationResponse"];
-            createdEnrollment?: components["schemas"]["TrainingEnrollmentResponse"];
         };
         CreateEmploymentRecordRequest: {
             employmentNumber?: string;
@@ -11285,6 +11774,34 @@ export interface components {
             rating?: number;
             /** Format: int64 */
             lifecycleStatusId?: number;
+        };
+        CreateTrainingEnrollmentRequest: {
+            enrollmentNumber?: string;
+            /** Format: int64 */
+            traineeId?: number;
+            /** Format: int64 */
+            programId?: number;
+            /** Format: int64 */
+            courseId?: number;
+            /** Format: int64 */
+            providerId?: number;
+            /** Format: int64 */
+            centerId?: number;
+            /** Format: int64 */
+            batchId?: number;
+            /** Format: date */
+            enrollmentDate?: string;
+            /** Format: date */
+            startDate?: string;
+            /** Format: date */
+            expectedCompletionDate?: string;
+            /** Format: date */
+            actualCompletionDate?: string;
+            /** Format: int64 */
+            enrollmentStatusId?: number;
+            /** Format: int64 */
+            dropoutReasonId?: number;
+            dropoutRemarks?: string;
         };
         /** @description Request payload for creating a new trainee profile */
         CreateTraineeRequest: {
@@ -12865,9 +13382,100 @@ export interface components {
             /** Format: int64 */
             jobId?: number;
         };
-        RemediationRequest: {
+        CareerCatalogEntry: {
+            name: string;
             /** Format: int64 */
-            batchId: number;
+            parentId?: number;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseCareerSkillsOption: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["CareerSkillsOption"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        CareerSkillsOption: {
+            /** Format: int64 */
+            id?: number;
+            name?: string;
+        };
+        ScheduleRequest: {
+            /** Format: int64 */
+            campaignId: number;
+            /** Format: date */
+            scheduledOn: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseAssignment: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Assignment"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        Assignment: {
+            /** Format: int64 */
+            taskId?: number;
+            name?: string;
+            /** Format: date */
+            closesOn?: string;
         };
         RegisterTrainingProviderRequest: {
             username: string;
@@ -14040,6 +14648,212 @@ export interface components {
             name?: string;
         };
         /** @description Standard generic envelope for REST API responses */
+        ApiResponseTrainingRosterPage: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["TrainingRosterPage"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        TrainingRosterEntry: {
+            /** Format: int64 */
+            enrollmentId?: number;
+            enrollmentNumber?: string;
+            name?: string;
+            registrationNumber?: string;
+            status?: string;
+            email?: string;
+            phone?: string;
+        };
+        TrainingRosterPage: {
+            entries?: components["schemas"]["TrainingRosterEntry"][];
+            hasNext?: boolean;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseAttendanceTimetable: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["AttendanceTimetable"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        AttendanceTimetable: {
+            batchCode?: string;
+            title?: string;
+            batchStatus?: string;
+            sessions?: components["schemas"]["AttendanceSession"][];
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseRegistrationBatchPage: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["RegistrationBatchPage"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        RegistrationBatch: {
+            /** Format: int64 */
+            id?: number;
+            code?: string;
+            title?: string;
+            skills?: string;
+            provider?: string;
+            venue?: string;
+            /** Format: int64 */
+            districtId?: number;
+            district?: string;
+            state?: string;
+            /** Format: date */
+            startsOn?: string;
+            /** Format: date */
+            endsOn?: string;
+            /** Format: date-time */
+            firstSession?: string;
+            status?: string;
+            governmentLed?: boolean;
+            /** Format: int64 */
+            seatsAvailable?: number;
+        };
+        RegistrationBatchPage: {
+            batches?: components["schemas"]["RegistrationBatch"][];
+            hasNext?: boolean;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseTrainingBatchDetails: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["TrainingBatchDetails"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        TrainingBatchDetails: {
+            batch?: components["schemas"]["RegistrationBatch"];
+            address?: string;
+            sessions?: components["schemas"]["TrainingTimetableSession"][];
+            registrationOpen?: boolean;
+            consentGranted?: boolean;
+            enrollmentNumber?: string;
+            enrollmentStatus?: string;
+        };
+        TrainingTimetableSession: {
+            /** Format: date-time */
+            startsAt?: string;
+            /** Format: date-time */
+            endsAt?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
         ApiResponseOverview: {
             /**
              * @description Whether the request completed successfully
@@ -14075,17 +14889,11 @@ export interface components {
              */
             correlationId?: string;
         };
-        Assignment: {
-            /** Format: int64 */
-            taskId?: number;
-            name?: string;
-            /** Format: date */
-            closesOn?: string;
-        };
         Overview: {
             followupConsentGranted?: boolean;
             assignments?: components["schemas"]["Assignment"][];
             recentSubmissions?: components["schemas"]["Submission"][];
+            careerUpdateAvailable?: boolean;
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseQuestionnaire: {
@@ -14141,6 +14949,93 @@ export interface components {
             /** Format: int64 */
             versionId?: number;
             questions?: components["schemas"]["Question"][];
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseSubmissionDetail: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["SubmissionDetail"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        RecordedAnswer: {
+            question?: string;
+            value?: string;
+        };
+        SubmissionDetail: {
+            submission?: components["schemas"]["Submission"];
+            answers?: components["schemas"]["RecordedAnswer"][];
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseCareerUpdateQuestionnaire: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["CareerUpdateQuestionnaire"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        CareerUpdateQuestionnaire: {
+            name?: string;
+            /** Format: int64 */
+            versionId?: number;
+            questions?: components["schemas"]["Question"][];
+            initialAnswers?: components["schemas"]["Answer"][];
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponsePagedResponseEmploymentPeriod: {
@@ -14242,6 +15137,65 @@ export interface components {
              * @example false
              */
             hasPrevious?: boolean;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseCareerStatus: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["CareerStatus"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        CareerRecordStatus: {
+            /** Format: int64 */
+            id?: number;
+            code?: string;
+            name?: string;
+            source?: string;
+        };
+        CareerStatus: {
+            status?: components["schemas"]["CareerRecordStatus"];
+            unemploymentPeriods?: components["schemas"]["UnemploymentPeriod"][];
+            reportedUpdate?: components["schemas"]["CareerUpdate"];
+        };
+        UnemploymentPeriod: {
+            /** Format: int64 */
+            id?: number;
+            /** Format: date */
+            startsOn?: string;
+            /** Format: date */
+            endsOn?: string;
+            reason?: string;
+            current?: boolean;
+            verificationStatus?: string;
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseListTraineeUnemploymentEventResponse: {
@@ -18970,7 +19924,7 @@ export interface components {
             correlationId?: string;
         };
         /** @description Standard generic envelope for REST API responses */
-        ApiResponseListBatchOption: {
+        ApiResponseCareerSkillsReference: {
             /**
              * @description Whether the request completed successfully
              * @example true
@@ -18987,7 +19941,7 @@ export interface components {
              */
             message?: string;
             /** @description Payload data of type T */
-            data?: components["schemas"]["BatchOption"][];
+            data?: components["schemas"]["CareerSkillsReference"];
             /**
              * Format: date-time
              * @description UTC ISO-8601 timestamp of response generation
@@ -19005,18 +19959,151 @@ export interface components {
              */
             correlationId?: string;
         };
-        BatchOption: {
-            /** Format: int64 */
-            id?: number;
+        CareerSkillsReference: {
+            roles?: components["schemas"]["CareerSkillsOption"][];
+            skills?: components["schemas"]["CareerSkillsOption"][];
+            levels?: components["schemas"]["CareerSkillsOption"][];
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseInterestCount: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
             code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["InterestCount"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        InterestCount: {
+            /** Format: int64 */
+            interested?: number;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseListCareerTrainingSuggestion: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["CareerTrainingSuggestion"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        CareerTrainingSuggestion: {
+            /** Format: int64 */
+            batchId?: number;
+            code?: string;
+            topic?: string;
+            skillsToTeach?: string;
             provider?: string;
-            center?: string;
+            venue?: string;
+            district?: string;
+            state?: string;
             /** Format: date */
             startsOn?: string;
             /** Format: date */
             endsOn?: string;
+            /** Format: date-time */
+            firstSession?: string;
+            status?: string;
             /** Format: int64 */
-            availableSeats?: number;
+            seatsAvailable?: number;
+            /** @enum {string} */
+            choice?: "INTERESTED" | "DISMISSED" | "UNDECIDED";
+            matchedSkills?: string[];
+            enrolled?: boolean;
+            relatedToJobGoal?: boolean;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseCareerCatalogOptions: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["CareerCatalogOptions"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        CareerCatalogOptions: {
+            categories?: components["schemas"]["CareerSkillsOption"][];
+            sectors?: components["schemas"]["CareerSkillsOption"][];
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseExitOptions: {
@@ -19143,6 +20230,65 @@ export interface components {
             employments?: components["schemas"]["Employment"][];
             exitEvents?: components["schemas"]["EmploymentExitEventResponse"][];
             unemploymentEvents?: components["schemas"]["TraineeUnemploymentEventResponse"][];
+            reportedUpdate?: components["schemas"]["CareerUpdate"];
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseStaffOverview: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["StaffOverview"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        Campaign: {
+            /** Format: int64 */
+            id?: number;
+            name?: string;
+            survey?: string;
+            /** Format: date */
+            closesOn?: string;
+        };
+        StaffAssignment: {
+            /** Format: int64 */
+            id?: number;
+            name?: string;
+            /** Format: date */
+            scheduledOn?: string;
+            status?: string;
+        };
+        StaffOverview: {
+            followupConsentGranted?: boolean;
+            campaigns?: components["schemas"]["Campaign"][];
+            assignments?: components["schemas"]["StaffAssignment"][];
+            recentSubmissions?: components["schemas"]["Submission"][];
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseApplicationStatusResponse: {
@@ -22912,6 +24058,56 @@ export interface operations {
             };
         };
     };
+    batchAttendanceRoster: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batchId: number;
+                sessionId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseAttendanceSessionRoster"];
+                };
+            };
+        };
+    };
+    saveBatchAttendanceRoster: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batchId: number;
+                sessionId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveAttendanceRoster"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseAttendanceSessionRoster"];
+                };
+            };
+        };
+    };
     getById_4: {
         parameters: {
             query?: never;
@@ -23018,6 +24214,50 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseVoid"];
+                };
+            };
+        };
+    };
+    getOwnProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseTraineeSelfProfile"];
+                };
+            };
+        };
+    };
+    updateOwnProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Update"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseTraineeSelfProfile"];
                 };
             };
         };
@@ -25463,6 +26703,148 @@ export interface operations {
             };
         };
     };
+    saveCareerRoleRequirement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roleId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleRequirement"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    myCareerSkills: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCareerSkillsProfile"];
+                };
+            };
+        };
+    };
+    saveMyCareerSkills: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveCareerSkills"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCareerSkillsProfile"];
+                };
+            };
+        };
+    };
+    saveMyTrainingInterest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batchId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Interest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    assessmentCareerSkills: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assessmentId: number;
+                traineeId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCareerSkillsProfile"];
+                };
+            };
+        };
+    };
+    recordCareerSkillObservation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assessmentId: number;
+                traineeId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Observe"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCareerSkillsProfile"];
+                };
+            };
+        };
+    };
     getById_40: {
         parameters: {
             query?: never;
@@ -26071,54 +27453,6 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseSkillGapRecommendationResponse"];
-                };
-            };
-        };
-    };
-    enrollRemediationCourse: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SkillGapRemediationEnrollmentRequest"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseSkillGapRemediationEnrollmentResponse"];
-                };
-            };
-        };
-    };
-    enrollRemediationCourse_1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SkillGapRemediationEnrollmentRequest"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseSkillGapRemediationEnrollmentResponse"];
                 };
             };
         };
@@ -26978,6 +28312,28 @@ export interface operations {
             };
         };
     };
+    registerForTraining: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batchId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseTrainingEnrollmentResponse"];
+                };
+            };
+        };
+    };
     submitQuestionnaire: {
         parameters: {
             query?: never;
@@ -26985,6 +28341,50 @@ export interface operations {
             path: {
                 taskId: number;
             };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseSubmission"];
+                };
+            };
+        };
+    };
+    getCareerUpdate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCareerUpdateQuestionnaire"];
+                };
+            };
+        };
+    };
+    submitCareerUpdate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody: {
@@ -29054,6 +30454,7 @@ export interface operations {
             query?: {
                 page?: number;
                 size?: number;
+                search?: string;
             };
             header?: never;
             path?: never;
@@ -29995,7 +31396,55 @@ export interface operations {
             };
         };
     };
-    enrollCareerRemediation: {
+    createCareerCatalogEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "CATEGORY" | "SKILL" | "ROLE";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CareerCatalogEntry"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCareerSkillsOption"];
+                };
+            };
+        };
+    };
+    getCandidateFollowups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseStaffOverview"];
+                };
+            };
+        };
+    };
+    scheduleCandidateFollowup: {
         parameters: {
             query?: never;
             header?: never;
@@ -30006,17 +31455,17 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RemediationRequest"];
+                "application/json": components["schemas"]["ScheduleRequest"];
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseSkillGapRemediationEnrollmentResponse"];
+                    "*/*": components["schemas"]["ApiResponseAssignment"];
                 };
             };
         };
@@ -31216,6 +32665,103 @@ export interface operations {
             };
         };
     };
+    viewTrainingBatchRoster: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path: {
+                batchId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseTrainingRosterPage"];
+                };
+            };
+        };
+    };
+    batchAttendanceTimetable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batchId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseAttendanceTimetable"];
+                };
+            };
+        };
+    };
+    findOpenTraining: {
+        parameters: {
+            query?: {
+                search?: string;
+                stateId?: number;
+                districtId?: number;
+                from?: string;
+                through?: string;
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseRegistrationBatchPage"];
+                };
+            };
+        };
+    };
+    viewTraining: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batchId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseTrainingBatchDetails"];
+                };
+            };
+        };
+    };
     getOverview: {
         parameters: {
             query?: never;
@@ -31258,6 +32804,28 @@ export interface operations {
             };
         };
     };
+    getOwnSurveySubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseSubmissionDetail"];
+                };
+            };
+        };
+    };
     getEmploymentHistory: {
         parameters: {
             query?: {
@@ -31277,6 +32845,26 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponsePagedResponseEmploymentPeriod"];
+                };
+            };
+        };
+    };
+    getCareerStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCareerStatus"];
                 };
             };
         };
@@ -33006,12 +34594,12 @@ export interface operations {
             };
         };
     };
-    getRemediationBatches: {
+    governmentCareerSkills: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                traineeId: number;
             };
             cookie?: never;
         };
@@ -33023,7 +34611,91 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseListBatchOption"];
+                    "*/*": components["schemas"]["ApiResponseCareerSkillsProfile"];
+                };
+            };
+        };
+    };
+    careerSkillsReference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCareerSkillsReference"];
+                };
+            };
+        };
+    };
+    providerTrainingInterest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batchId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseInterestCount"];
+                };
+            };
+        };
+    };
+    myCareerTraining: {
+        parameters: {
+            query?: {
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListCareerTrainingSuggestion"];
+                };
+            };
+        };
+    };
+    careerCatalogOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCareerCatalogOptions"];
                 };
             };
         };
@@ -33088,6 +34760,29 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseCandidateHistory"];
+                };
+            };
+        };
+    };
+    getCandidateSurveySubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                submissionId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseSubmissionDetail"];
                 };
             };
         };

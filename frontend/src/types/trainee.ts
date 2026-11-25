@@ -84,6 +84,8 @@ export interface AttendanceRecord {
   sessionSequence?: number | null;
   sessionStartTime?: string | null;
   sessionEndTime?: string | null;
+  scheduledStart?: string | null;
+  scheduledEnd?: string | null;
   attendanceStatusId?: number | null;
   attendanceStatusCode: string;
   attendanceStatusName: string;
@@ -100,6 +102,9 @@ export type ConsentTypeCode =
   | 'COMMUNICATION_SMS'
   | 'COMMUNICATION_EMAIL'
   | 'COMMUNICATION_WHATSAPP'
+  | 'COMMUNICATION_PHONE'
+  | 'PROVIDER_CONTACT_SHARING'
+  | 'ANALYTICS'
   | 'EMPLOYER_SHARING'
   | 'EMPLOYMENT_FOLLOW_UP';
 

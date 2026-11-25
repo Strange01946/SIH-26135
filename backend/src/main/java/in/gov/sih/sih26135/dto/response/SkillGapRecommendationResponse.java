@@ -22,5 +22,15 @@ public record SkillGapRecommendationResponse(
     String remarks,
     Long createdByUserId,
     LocalDateTime createdAt,
-    LocalDateTime updatedAt
-) {}
+    LocalDateTime updatedAt,
+    String status
+) {
+  public SkillGapRecommendationResponse(Long id, Long skillGapId, String skillGapNumber, Integer recommendationNumber,
+      Long actionTypeId, String actionTypeCode, String actionTypeName, Long courseId, String courseCode,
+      String courseName, Long skillId, String skillCode, String skillName, Boolean accepted, LocalDate acceptedOn,
+      String remarks, Long createdBy, LocalDateTime createdAt, LocalDateTime updatedAt) {
+    this(id, skillGapId, skillGapNumber, recommendationNumber, actionTypeId, actionTypeCode, actionTypeName,
+        courseId, courseCode, courseName, skillId, skillCode, skillName, accepted, acceptedOn, remarks,
+        createdBy, createdAt, updatedAt, Boolean.TRUE.equals(accepted) ? "ACCEPTED" : "PROPOSED");
+  }
+}

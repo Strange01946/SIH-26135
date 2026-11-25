@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { Link, useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type {
   TraineeProfile,
@@ -10,6 +10,8 @@ import { getTraineeEnrollments, getTraineeAttendance } from '@/api/traineeApi';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { ErrorState } from '@/components/feedback/ErrorState';
+import { simulationActive } from '@/lib/demoEnvironment';
+import { careerDate } from '@/components/career/CareerInsights';
 
 interface TraineeContextType {
   trainee: TraineeProfile | null;
@@ -56,12 +58,15 @@ export const TraineeTrainingPage: React.FC = () => {
     useOutletContext<TraineeContextType>();
 
   const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<number | 'ALL'>('ALL');
+  const [page, setPage] = useState(0);
 
   // Query enrollments
   const enrollmentsQuery = useQuery({
-    queryKey: ['trainee', 'enrollments', traineeId],
-    queryFn: () => getTraineeEnrollments(traineeId!),
+    queryKey: ['trainee', 'enrollments', traineeId, 'training', page],
+    queryFn: () => getTraineeEnrollments(traineeId!, page, 20, true),
     enabled: Boolean(traineeId),
+    refetchOnMount: 'always',
+    refetchInterval: simulationActive ? false : 15_000,
     retry: false,
   });
 
@@ -70,6 +75,8 @@ export const TraineeTrainingPage: React.FC = () => {
     queryKey: ['trainee', 'attendance', traineeId],
     queryFn: () => getTraineeAttendance(traineeId!),
     enabled: Boolean(traineeId),
+    refetchOnMount: 'always',
+    refetchInterval: simulationActive ? false : 15_000,
     retry: false,
   });
 
@@ -107,6 +114,10 @@ export const TraineeTrainingPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="page-title">My Training &amp; Attendance</h1>
+        {!simulationActive && <Link className="btn-primary" to="/trainee/find-training">Find training</Link>}
+      </header>
       {/* Attendance Metrics Header */}
       <section
         aria-labelledby="attendance-summary-heading"
@@ -181,7 +192,7 @@ export const TraineeTrainingPage: React.FC = () => {
             Enrolled Training Batches &amp; Schemes
           </h3>
           <p className="text-xs text-gov-neutral-500">
-            Certified courses and centers associated with this candidate profile.
+            Your training registrations and session timetables.
           </p>
         </div>
 
@@ -245,7 +256,9 @@ export const TraineeTrainingPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="mt-3 flex justify-end">
+                  <div className="mt-3 flex flex-wrap justify-end gap-3">
+                    {!simulationActive && enr.batchId && <Link className="text-xs font-bold text-gov-navy underline"
+                      to={`/trainee/find-training/${enr.batchId}`}>View timetable</Link>}
                     <button
                       type="button"
                       onClick={() =>
@@ -264,6 +277,15 @@ export const TraineeTrainingPage: React.FC = () => {
               ))}
             </div>
           </div>
+        )}
+        {(page > 0 || enrollmentsQuery.data?.hasNext) && (
+          <nav className="mt-4 flex items-center gap-3" aria-label="Enrollment pages">
+            <button className="btn-secondary" type="button" disabled={page === 0 || enrollmentsQuery.isFetching}
+              onClick={() => setPage(page - 1)}>Previous</button>
+            <span className="text-sm">Page {page + 1}</span>
+            <button className="btn-secondary" type="button" disabled={!enrollmentsQuery.data?.hasNext || enrollmentsQuery.isFetching}
+              onClick={() => setPage(page + 1)}>Next</button>
+          </nav>
         )}
       </section>
 
@@ -337,7 +359,16 @@ export const TraineeTrainingPage: React.FC = () => {
                 {filteredAttendance.map((record) => (
                   <tr key={record.id} className="hover:bg-gov-neutral-50 transition-colors">
                     <td className="px-6 py-3.5 font-medium text-gov-neutral-900 whitespace-nowrap">
-                      {new Date(record.sessionDate).toLocaleDateString()}
+                      {careerDate(record.sessionDate)}
+                      {(record.scheduledStart || record.sessionStartTime) && <p className="mt-1 text-xs font-normal text-slate-600">
+                        {record.scheduledStart?.slice(11, 16) ?? record.sessionStartTime?.slice(0, 5)}
+                        {(record.scheduledEnd || record.sessionEndTime) && <>
+                          {' – '}
+                          {record.scheduledEnd && record.scheduledEnd.slice(0, 10) !== record.sessionDate &&
+                            `${careerDate(record.scheduledEnd.slice(0, 10))}, `}
+                          {record.scheduledEnd?.slice(11, 16) ?? record.sessionEndTime?.slice(0, 5)}
+                        </>} IST
+                      </p>}
                     </td>
                     <td className="px-6 py-3.5 text-gov-neutral-600 whitespace-nowrap font-mono">
                       #{record.sessionSequence ?? 1}

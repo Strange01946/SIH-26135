@@ -5,6 +5,7 @@ import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 
 const TABS = [
   { name: 'Overview', to: '/trainee/dashboard', end: true },
+  { name: 'My Profile', to: '/trainee/profile' },
   { name: 'Training & Attendance', to: '/trainee/training' },
   { name: 'DPDP Privacy & Consent', to: '/trainee/consent' },
   { name: 'Assessments & Certificates', to: '/trainee/assessments' },

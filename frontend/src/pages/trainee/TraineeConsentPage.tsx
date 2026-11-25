@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useOutletContext } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type {
   TraineeProfile,
   TraineeConsent,
   ConsentTypeCode,
-  CreateTraineeConsentPayload,
 } from '@/types/trainee';
+import type { ApiError } from '@/api/types';
 import {
   getTraineeConsents,
   createTraineeConsent,
@@ -31,13 +31,23 @@ export interface ConsentTypeConfig {
   defaultPurpose: string;
 }
 
+interface ConsentChange {
+  type: ConsentTypeConfig;
+  withdrawal?: TraineeConsent;
+}
+
+interface ConsentFeedback {
+  code: ConsentTypeCode;
+  message: string;
+}
+
 export const CONSENT_TYPES_CATALOG: ConsentTypeConfig[] = [
   {
     code: 'DATA_PROCESSING',
     id: 1,
     name: 'Core Scheme Data Processing',
     description:
-      'Process your registration and training records.',
+      'Process your registration and training records. Withdrawing this consent prevents new enrollments and platform communications that require it.',
     isRequired: true,
     defaultPurpose: 'Process registration and training records',
   },
@@ -46,9 +56,17 @@ export const CONSENT_TYPES_CATALOG: ConsentTypeConfig[] = [
     id: 2,
     name: 'Employment Outcome Follow-Up & Verification',
     description:
-      'Permission to follow up regarding post-training job placement, apprenticeship opportunities, employer verification, and career tracking.',
+      'Allow employment follow-up, including post-training surveys and self-reported employment updates. You can withdraw this permission at any time.',
     isRequired: false,
     defaultPurpose: 'Contact the trainee about employment outcomes over time',
+  },
+  {
+    code: 'ANALYTICS',
+    id: 4,
+    name: 'Outcome Analytics Export',
+    description: 'Allow your training outcomes to be included in de-identified candidate MIS exports.',
+    isRequired: false,
+    defaultPurpose: 'Use de-identified data in outcome analytics',
   },
   {
     code: 'EMPLOYER_SHARING',
@@ -59,11 +77,19 @@ export const CONSENT_TYPES_CATALOG: ConsentTypeConfig[] = [
     defaultPurpose: 'Share relevant profile data with prospective employers',
   },
   {
+    code: 'PROVIDER_CONTACT_SHARING',
+    id: 9,
+    name: 'Share contact details with training providers',
+    description: 'Allow providers for the batches you join to see your email and phone for training coordination.',
+    isRequired: false,
+    defaultPurpose: 'Share email and phone with providers for training batches I have joined',
+  },
+  {
     code: 'COMMUNICATION_SMS',
     id: 5,
     name: 'Transactional SMS Communication',
     description:
-      'Delivery of mandatory operational alerts, batch schedule reminders, examination hall tickets, and authentication OTPs via SMS.',
+      'Receive platform messages such as training reminders and assessment updates by SMS.',
     isRequired: false,
     defaultPurpose: 'Send operational SMS messages',
   },
@@ -72,7 +98,7 @@ export const CONSENT_TYPES_CATALOG: ConsentTypeConfig[] = [
     id: 7,
     name: 'Official Email Communications',
     description:
-      'Transmission of digitally signed course completion certificates, survey invitations, and circular notices via email.',
+      'Receive platform messages such as certificate notices and survey invitations by email.',
     isRequired: false,
     defaultPurpose: 'Send operational email messages',
   },
@@ -84,6 +110,14 @@ export const CONSENT_TYPES_CATALOG: ConsentTypeConfig[] = [
       'Optional channel for receiving automated timetable updates, skill assessment tips, and interview schedules on WhatsApp.',
     isRequired: false,
     defaultPurpose: 'Send operational WhatsApp messages',
+  },
+  {
+    code: 'COMMUNICATION_PHONE',
+    id: 8,
+    name: 'Phone Follow-Up',
+    description: 'Allow follow-up calls for training or employment outcomes.',
+    isRequired: false,
+    defaultPurpose: 'Contact by phone for follow-up',
   },
 ];
 
@@ -194,12 +228,12 @@ export function resolveEffectiveConsent(
  * Normalizes API and network error states into clear, safe user-facing notices
  * without leaking backend internal technical details, SQL messages, or stack traces.
  */
-export function getConsentErrorMessage(error: any): string {
+export function getConsentErrorMessage(error?: (Partial<ApiError> & { response?: { status?: number } }) | null): string {
   if (!error) {
     return 'Unable to retrieve consent records from the Central Privacy Register.';
   }
 
-  const status = error?.status || error?.response?.status;
+  const status = error.status ?? error.response?.status;
   const code = error?.code;
 
   if (status === 401 || status === 403) {
@@ -232,56 +266,52 @@ export const TraineeConsentPage: React.FC = () => {
   const { traineeId, isUnlinked, isLoading: isIdentityLoading } =
     useOutletContext<TraineeContextType>();
   const queryClient = useQueryClient();
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<ConsentFeedback>();
+  const [savedChoice, setSavedChoice] = useState<ConsentFeedback>();
+  const { hash } = useLocation();
+  const followupHeading = useRef<HTMLHeadingElement>(null);
+  const showEmploymentFollowup = hash === '#employment-follow-up';
 
-  // Query consents
+  const consentsKey = ['trainee', 'consents', traineeId];
   const consentsQuery = useQuery({
-    queryKey: ['trainee', 'consents', traineeId],
+    queryKey: consentsKey,
     queryFn: () => getTraineeConsents(traineeId!),
     enabled: Boolean(traineeId),
     retry: false,
   });
 
-  // Mutation to create new consent
-  const createConsentMutation = useMutation({
-    mutationFn: (payload: CreateTraineeConsentPayload) => createTraineeConsent(payload),
-    onSuccess: () => {
-      setActionError(null);
-      queryClient.invalidateQueries({ queryKey: ['trainee', 'consents', traineeId] });
-      queryClient.invalidateQueries({ queryKey: ['trainee', 'surveys', traineeId] });
+  useEffect(() => {
+    if (showEmploymentFollowup && consentsQuery.isSuccess) followupHeading.current?.focus();
+  }, [showEmploymentFollowup, consentsQuery.isSuccess]);
+
+  const saveConsent = useMutation<TraineeConsent, ApiError, ConsentChange>({
+    mutationFn: ({ type, withdrawal }) => withdrawal
+      ? updateTraineeConsentStatus(withdrawal.id, { consentStatusId: 2 })
+      : createTraineeConsent({
+          traineeId: traineeId!,
+          consentTypeId: type.id,
+          consentStatusId: 1,
+          purpose: type.defaultPurpose,
+          policyVersion: 'v1.0',
+          capturedChannel: 'WEB_PORTAL',
+        }),
+    onMutate: () => {
+      setActionError(undefined);
+      setSavedChoice(undefined);
     },
-    onError: (err: any) => {
-      setActionError(err?.message || 'Failed to record consent. Please try again.');
+    onSuccess: (saved, { type, withdrawal }) => {
+      queryClient.setQueryData<TraineeConsent[]>(consentsKey, (records) =>
+        [saved, ...(records ?? []).filter((record) => record.id !== saved.id)]);
+      setSavedChoice({ code: type.code, message: withdrawal ? 'Consent withdrawn.' : 'Consent granted.' });
+      void queryClient.invalidateQueries({ queryKey: ['trainee', 'surveys', traineeId] });
+    },
+    onError: (error, { type }) => {
+      setActionError({ code: type.code, message: error.message || 'Unable to save consent. Try again.' });
+      if (error.code === 'CONSENT_CHANGED') void consentsQuery.refetch();
     },
   });
 
-  // Mutation to update existing consent status
-  const updateConsentMutation = useMutation({
-    mutationFn: ({
-      consentId,
-      statusId,
-      revokedAt,
-    }: {
-      consentId: number;
-      statusId: number;
-      revokedAt?: string | null;
-    }) =>
-      updateTraineeConsentStatus(consentId, {
-        consentStatusId: statusId,
-        revokedAt: revokedAt ?? null,
-      }),
-    onSuccess: () => {
-      setActionError(null);
-      queryClient.invalidateQueries({ queryKey: ['trainee', 'consents', traineeId] });
-      queryClient.invalidateQueries({ queryKey: ['trainee', 'surveys', traineeId] });
-    },
-    onError: (err: any) => {
-      setActionError(err?.message || 'Failed to update consent status. Please try again.');
-    },
-  });
-
-  const isMutating =
-    createConsentMutation.isPending || updateConsentMutation.isPending;
+  const isMutating = saveConsent.isPending;
 
   if (isIdentityLoading) {
     return (
@@ -304,47 +334,13 @@ export const TraineeConsentPage: React.FC = () => {
 
   const existingConsents = consentsQuery.data ?? [];
 
-  // Handle Grant action
-  const handleGrant = (typeConfig: ConsentTypeConfig) => {
-    setActionError(null);
-    if (!consentsQuery.isSuccess || consentsQuery.isLoading || consentsQuery.isError) {
-      setActionError(
-        'Consent state is unavailable. Please retry loading consent records before updating preferences.',
-      );
+  const handleChoice = (choice: ConsentChange) => {
+    if (isMutating) return;
+    if (!consentsQuery.isSuccess || consentsQuery.isFetching) {
+      setActionError({ code: choice.type.code, message: 'Wait for your current preferences to load before changing consent.' });
       return;
     }
-
-    // Creating a fresh consent record ensures an immutable, clean consent grant
-    // with statusId: 1 (GRANTED), grantedAt = now, and revokedAt = null.
-    // In accordance with DPDP statutory multi-record audit trail and backend
-    // hasActiveConsent() semantics, a new record has a newer timestamp and higher ID,
-    // becoming the authoritative active record and avoiding stale revocation timestamps.
-    createConsentMutation.mutate({
-      traineeId: traineeId!,
-      consentTypeId: typeConfig.id,
-      consentStatusId: 1, // GRANTED per ref_consent_status
-      purpose: typeConfig.defaultPurpose,
-      policyVersion: 'v1.0',
-      grantedAt: new Date().toISOString(),
-      capturedChannel: 'WEB_PORTAL',
-    });
-  };
-
-  // Handle Revoke action
-  const handleRevoke = (consent: TraineeConsent) => {
-    setActionError(null);
-    if (!consentsQuery.isSuccess || consentsQuery.isLoading || consentsQuery.isError) {
-      setActionError(
-        'Consent state is unavailable. Please retry loading consent records before updating preferences.',
-      );
-      return;
-    }
-
-    updateConsentMutation.mutate({
-      consentId: consent.id,
-      statusId: 2, // REVOKED per ref_consent_status
-      revokedAt: new Date().toISOString(),
-    });
+    saveConsent.mutate(choice);
   };
 
   return (
@@ -373,7 +369,7 @@ export const TraineeConsentPage: React.FC = () => {
               Statutory Privacy &amp; Data Consent Notice (Digital Personal Data Protection Act, 2023 § 6)
             </h2>
             <p className="text-xs md:text-sm text-gov-neutral-700 leading-relaxed">
-              Under Section 6 of the DPDP Act, personal data is processed solely for the specified purposes of skill qualification, certification verification, and employment outcome analytics. You have the statutory right to give, manage, or withdraw consent at any time without punitive consequences, except where processing is mandated by law for educational qualification records.
+              Choose which permissions to grant or withdraw below. Each choice applies to its stated purpose. You can review your saved choices in the consent register.
             </p>
             <div className="text-xs text-gov-neutral-500 pt-1 flex flex-wrap gap-x-6 gap-y-1">
               <span><strong>Statutory Basis:</strong> Digital Personal Data Protection Act, 2023 (§ 6)</span>
@@ -382,23 +378,6 @@ export const TraineeConsentPage: React.FC = () => {
           </div>
         </div>
       </section>
-
-      {/* Mutation Error Notification */}
-      {actionError && (
-        <div
-          role="alert"
-          className="bg-red-50 border border-red-200 p-4 rounded-lg text-red-900 text-sm flex items-center justify-between"
-        >
-          <span>{actionError}</span>
-          <button
-            type="button"
-            onClick={() => setActionError(null)}
-            className="text-xs font-bold text-red-700 hover:underline ml-4"
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
 
       {/* Consent Categories Management Cards */}
       <section
@@ -451,7 +430,7 @@ export const TraineeConsentPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => consentsQuery.refetch()}
-                className="px-4 py-2 text-xs font-bold rounded bg-gov-navy text-white hover:bg-gov-navy-light focus:outline-none focus:ring-2 focus:ring-gov-navy focus:ring-offset-2 transition-colors"
+                className="btn-primary"
               >
                 Retry Loading Consents
               </button>
@@ -460,6 +439,8 @@ export const TraineeConsentPage: React.FC = () => {
         ) : (
           <div className="grid grid-cols-1 gap-4">
             {CONSENT_TYPES_CATALOG.map((typeConfig) => {
+              const isEmploymentFollowup = typeConfig.code === 'EMPLOYMENT_FOLLOW_UP';
+              const headingId = isEmploymentFollowup ? 'employment-follow-up' : `consent-type-${typeConfig.id}`;
               const {
                 authoritativeConsent,
                 isCurrentlyGranted,
@@ -470,20 +451,31 @@ export const TraineeConsentPage: React.FC = () => {
                 typeConfig.code,
                 typeConfig.id,
               );
+              const canWithdraw = isCurrentlyGranted || (statusName === 'Pending Effective Date'
+                && authoritativeConsent?.consentStatusCode === 'GRANTED');
+              const withdrawal = canWithdraw ? authoritativeConsent : undefined;
+              const saving = isMutating && saveConsent.variables?.type.code === typeConfig.code;
 
               return (
                 <div
                   key={typeConfig.code}
+                  role="group"
+                  aria-labelledby={headingId}
                   className="bg-white rounded-lg border border-gov-neutral-200 p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4"
                 >
                   <div className="space-y-1 max-w-2xl">
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-sm font-bold text-gov-neutral-900">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4
+                        className="scroll-mt-24 text-sm font-bold text-gov-neutral-900"
+                        id={headingId}
+                        ref={isEmploymentFollowup ? followupHeading : undefined}
+                        tabIndex={isEmploymentFollowup ? -1 : undefined}
+                      >
                         {typeConfig.name}
                       </h4>
                       {typeConfig.isRequired && (
                         <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-gov-neutral-100 text-gov-neutral-700 border border-gov-neutral-300">
-                          Mandatory
+                          Required for enrollment
                         </span>
                       )}
                       <span
@@ -499,31 +491,42 @@ export const TraineeConsentPage: React.FC = () => {
                     <p className="text-xs text-gov-neutral-600 leading-normal">
                       {typeConfig.description}
                     </p>
+                    {savedChoice?.code === typeConfig.code && (
+                      <p role="status" className="text-sm text-emerald-800">{savedChoice.message}</p>
+                    )}
+                    {actionError?.code === typeConfig.code && (
+                      <p role="alert" className="text-sm text-red-800">{actionError.message}</p>
+                    )}
                     {authoritativeConsent && isCurrentlyGranted && (
-                      <p className="text-[11px] text-gov-neutral-400 font-mono">
+                      <p className="text-xs text-gov-neutral-600">
                         Active consent recorded on: {grantedAt ? new Date(grantedAt).toLocaleString() : 'System Default'}
                       </p>
                     )}
+                    {isEmploymentFollowup && showEmploymentFollowup && (
+                      <Link className="inline-block text-sm font-semibold text-navy underline" to="/trainee/journey">
+                        Return to Career Journey &amp; Surveys
+                      </Link>
+                    )}
                   </div>
 
-                  <div className="flex items-center gap-3 shrink-0">
-                    {isCurrentlyGranted ? (
+                  <div className="shrink-0">
+                    {withdrawal ? (
                       <button
                         type="button"
-                        disabled={isMutating}
-                        onClick={() => handleRevoke(authoritativeConsent!)}
-                        className="px-4 py-2 text-xs font-bold rounded border border-red-300 bg-white text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 transition-colors"
+                        disabled={isMutating || consentsQuery.isFetching}
+                        onClick={() => handleChoice({ type: typeConfig, withdrawal })}
+                        className="btn-secondary min-h-11 w-full justify-center border-red-300 text-red-700 hover:bg-red-50 md:w-auto"
                       >
-                        {isMutating ? 'Updating...' : 'Revoke Consent'}
+                        {saving ? 'Saving...' : 'Revoke Consent'}
                       </button>
                     ) : (
                       <button
                         type="button"
-                        disabled={isMutating}
-                        onClick={() => handleGrant(typeConfig)}
-                        className="px-4 py-2 text-xs font-bold rounded bg-gov-navy text-white hover:bg-gov-navy-light focus:outline-none focus:ring-2 focus:ring-gov-navy focus:ring-offset-2 disabled:opacity-50 transition-colors"
+                        disabled={isMutating || consentsQuery.isFetching}
+                        onClick={() => handleChoice({ type: typeConfig })}
+                        className="btn-primary min-h-11 w-full justify-center md:w-auto"
                       >
-                        {isMutating ? 'Recording...' : 'Grant Consent'}
+                        {saving ? 'Saving...' : 'Grant Consent'}
                       </button>
                     )}
                   </div>

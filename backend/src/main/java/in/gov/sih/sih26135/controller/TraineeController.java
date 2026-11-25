@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.CreateTraineeRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTraineeRequest;
 import in.gov.sih.sih26135.dto.response.TraineeResponse;
+import in.gov.sih.sih26135.dto.trainee.TraineeSelfProfile;
 import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.response.PagedResponse;
 import in.gov.sih.sih26135.response.PaginationUtils;
@@ -50,6 +51,20 @@ public class TraineeController {
 
   public TraineeController(TraineeService traineeService) {
     this.traineeService = traineeService;
+  }
+
+  @GetMapping("/me/profile")
+  @PreAuthorize("hasAuthority('ROLE_trainee')")
+  @Operation(summary = "Read the signed-in trainee's profile", security = @SecurityRequirement(name = "bearerAuth"))
+  public ApiResponse<TraineeSelfProfile> getOwnProfile() {
+    return ApiResponse.ok(traineeService.getOwnProfile());
+  }
+
+  @PutMapping("/me/profile")
+  @PreAuthorize("hasAuthority('ROLE_trainee')")
+  @Operation(summary = "Update the signed-in trainee's personal details", security = @SecurityRequirement(name = "bearerAuth"))
+  public ApiResponse<TraineeSelfProfile> updateOwnProfile(@Valid @RequestBody TraineeSelfProfile.Update request) {
+    return ApiResponse.ok(traineeService.updateOwnProfile(request));
   }
 
   /**

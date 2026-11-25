@@ -60,7 +60,7 @@ export function AdminDashboard() {
   const scope = access.national ? 'Nationwide'
     : user?.districtId ? `District ${user.districtId}` : user?.stateId ? `State ${user.stateId}` : undefined;
   const workspaces = [
-    { show: access.careers, title: 'Candidate career records', to: '/admin/careers', detail: 'Find a candidate, review employment and wage history, record exits, or arrange skill-gap training.' },
+    { show: access.careers, title: 'Candidate career records', to: '/admin/careers', detail: 'Find a candidate, review employment, wages and skill gaps, or record an employment exit.' },
     { show: access.outcomes, title: 'Retention, skill gaps and attrition', to: '/analytics/specialized?view=outcomes', detail: 'Compare longer-term employment outcomes and identify where candidates need more support.' },
     { show: access.outcomes, title: 'Data quality reports', to: '/analytics/specialized?view=operations', detail: 'Inspect data-quality rules, system health and incident trends.' },
     { show: access.users, title: 'User provisioning', to: '/admin/users', detail: 'Review accounts and provision roles within your permissions.' },

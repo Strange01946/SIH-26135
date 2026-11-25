@@ -62,8 +62,9 @@ public class EmployerPortalController {
   @PreAuthorize("hasAuthority('ROLE_employer') and hasAuthority('placement.manage')")
   public ApiResponse<PagedResponse<EmployerPortal.Vacancy>> employerVacancies(
       @RequestParam(defaultValue = "0") @Min(0) int page,
-      @RequestParam(defaultValue = "10") @Min(1) @Max(50) int size) {
-    return ApiResponse.ok(employer.vacancies(page, size));
+      @RequestParam(defaultValue = "10") @Min(1) @Max(50) int size,
+      @RequestParam(required = false) @Size(max = 120) String search) {
+    return ApiResponse.ok(employer.vacancies(page, size, search));
   }
 
   @PostMapping("/job-postings")

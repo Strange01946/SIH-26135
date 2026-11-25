@@ -246,10 +246,6 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
       throw new ConflictException("Training enrollment number already exists", "DUPLICATE_ENROLLMENT_NUMBER");
     }
 
-    if (trainingEnrollmentRepository.existsByTraineeIdAndTrainingBatchId(request.getTraineeId(), request.getBatchId())) {
-      throw new ConflictException("Trainee is already enrolled in this training batch", "DUPLICATE_ENROLLMENT");
-    }
-
     Trainee trainee = traineeRepository.findById(request.getTraineeId())
         .orElseThrow(() -> new ResourceNotFoundException("Trainee", "traineeId"));
 
@@ -263,6 +259,9 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
 
     if (batch.getDeletedAt() != null) {
       throw new BadRequestException("Cannot create training enrollment for soft-deleted training batch", "BATCH_DELETED");
+    }
+    if (trainingEnrollmentRepository.existsByTraineeIdAndTrainingBatchId(request.getTraineeId(), batch.getId())) {
+      throw new ConflictException("Trainee is already enrolled in this training batch", "DUPLICATE_ENROLLMENT");
     }
     if (batch.getTrainingCenter() != null
         && (batch.getBatchStatus() == null

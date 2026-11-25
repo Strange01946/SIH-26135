@@ -26,6 +26,9 @@ public class SkillGapRecommendationMapper {
     Long recommendedSkillId = entity.getRecommendedSkill() != null ? entity.getRecommendedSkill().getId() : null;
     String recommendedSkillCode = entity.getRecommendedSkill() != null ? entity.getRecommendedSkill().getSkillCode() : null;
     String recommendedSkillName = entity.getRecommendedSkill() != null ? entity.getRecommendedSkill().getSkillName() : null;
+    String status = "PROPOSED";
+    if (Boolean.TRUE.equals(entity.getIsAcceptedFlag())) status = "ACCEPTED";
+    else if (entity.getRejectedOn() != null) status = "DECLINED";
 
     return new SkillGapRecommendationResponse(
         entity.getId(),
@@ -46,7 +49,7 @@ public class SkillGapRecommendationMapper {
         entity.getRemarks(),
         entity.getCreatedByUserId(),
         entity.getCreatedAt(),
-        entity.getUpdatedAt()
+        entity.getUpdatedAt(), status
     );
   }
 }

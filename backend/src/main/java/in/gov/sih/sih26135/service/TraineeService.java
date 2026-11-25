@@ -3,6 +3,7 @@ package in.gov.sih.sih26135.service;
 import in.gov.sih.sih26135.dto.request.CreateTraineeRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTraineeRequest;
 import in.gov.sih.sih26135.dto.response.TraineeResponse;
+import in.gov.sih.sih26135.dto.trainee.TraineeSelfProfile;
 import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -14,6 +15,10 @@ public interface TraineeService {
   TraineeResponse getByRegistrationNumber(String registrationNumber);
 
   TraineeResponse getByUserId(Long userId);
+
+  TraineeSelfProfile getOwnProfile();
+
+  TraineeSelfProfile updateOwnProfile(TraineeSelfProfile.Update request);
 
   List<TraineeResponse> getAllTrainees();
 

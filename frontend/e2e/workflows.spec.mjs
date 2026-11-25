@@ -59,7 +59,7 @@ test('provider enrolls a trainee in a batch created through an approved venue', 
   await page.getByPlaceholder('e.g. TRN-2026-0001').fill(run.enrollmentCandidate);
   await page.getByRole('button', { name: 'Find Trainee' }).click();
   await expect(page.getByText('Neel Smoke', { exact: true }).first()).toBeVisible();
-  const batchSelector = page.getByRole('combobox').filter({ has: page.locator(`option[value="${batch.id}"]`) }).first();
+  const batchSelector = page.getByRole('combobox', { name: /Target Training Batch/i });
   await batchSelector.selectOption(String(batch.id));
   const [accepted] = await Promise.all([smoke.waitApi('POST', enrollments),
     page.getByRole('button', { name: 'Confirm Candidate Enrollment' }).click()]);
@@ -123,18 +123,35 @@ test('employer attests a pending verification with multipart salary proof', asyn
   expect(await readFile(await download.path())).toEqual(evidence);
 });
 
-test('trainee grants consent, validates the questionnaire and submits a survey', async ({ page, request, smoke }) => {
+test('trainee reports employment and authorized staff can assign and review follow-ups', async ({ page, request, smoke }) => {
   const { run } = smoke;
   const consentPath = '/api/v1/consents';
   const surveyPath = `/api/v1/trainees/me/followup-surveys/${run.task}/responses`;
-  await smoke.signIn('trainee', '/trainee/consent');
+  const surveyRoot = '/api/v1/trainees/me/followup-surveys';
+  const careerUpdate = surveyRoot + '/career-update';
+  const staffSurveys = '/api/v1/career-progress/candidates/' + run.trainee + '/surveys';
+  sql(`UPDATE trainees SET current_employment_status_id=(SELECT employment_status_id FROM ref_employment_status
+    WHERE status_code='UNKNOWN') WHERE trainee_id=${run.trainee};`);
+  const initialTrainee = await smoke.signIn('trainee', '/trainee/journey');
+  expect((await request.get(careerUpdate, { headers: auth(initialTrainee.accessToken) })).ok()).toBe(false);
+  const careerReport = page.getByRole('region', { name: 'Report employment update' });
+  await expect(careerReport.getByText(/Employment follow-up consent is required/)).toBeVisible();
+  await expect(careerReport.getByRole('button', { name: 'Report employment update' })).toHaveCount(0);
+  await careerReport.getByRole('link', { name: 'Review employment follow-up consent' }).click();
+  await expect(page).toHaveURL(/\/trainee\/consent#employment-follow-up$/);
   const consentTitle = page.getByRole('heading', { name: 'Employment Outcome Follow-Up & Verification' });
+  await expect(consentTitle).toBeFocused();
   const consentButton = consentTitle.locator('xpath=ancestor::*[.//button[normalize-space()="Grant Consent"]][1]')
     .getByRole('button', { name: 'Grant Consent' });
   const [saved] = await Promise.all([smoke.waitApi('POST', consentPath), consentButton.click()]);
   const consent = await expectJson(saved, 'POST', consentPath, 201, ['consentTypeCode', 'consentStatusCode']);
   expect(consent).toMatchObject({ traineeId: run.trainee, consentTypeCode: 'EMPLOYMENT_FOLLOW_UP', consentStatusCode: 'GRANTED' });
-  await page.getByRole('link', { name: 'Career Journey & Surveys' }).last().click();
+  const surveyOverview = await request.get(surveyRoot, { headers: { authorization: saved.request().headers().authorization } });
+  expect((await surveyOverview.json()).data).toMatchObject({ followupConsentGranted: true, careerUpdateAvailable: true });
+  await page.getByRole('link', { name: 'Return to Career Journey & Surveys' }).click();
+  await expect(careerReport.getByRole('button', { name: 'Report employment update' })).toBeVisible();
+  await expect(page.getByText('Wage employed', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Starting pay.*18,500/)).toBeVisible();
   await page.getByRole('button', { name: 'Open Smoke Six-month Follow-up' }).click();
   const submit = page.getByRole('button', { name: 'Submit survey' });
   await submit.click();
@@ -148,6 +165,146 @@ test('trainee grants consent, validates the questionnaire and submits a survey',
     data: response.request().postDataJSON() });
   expect(duplicate.status()).toBe(409);
   expect(await duplicate.json()).toMatchObject({ status: 409, code: 'SURVEY_ASSIGNMENT_CLOSED' });
+
+  await page.getByRole('button', { name: 'Report employment update' }).click();
+  const next = page.getByRole('button', { name: 'Next question' });
+  await page.getByRole('combobox', { name: /current work or education status/ }).selectOption({ label: 'Self-employed' });
+  await next.click();
+  await page.getByRole('textbox', { name: /name of your employer or business/ }).fill('Repair workshop');
+  await next.click();
+  await page.getByRole('textbox', { name: /role, occupation or apprenticeship/ }).fill('Workshop technician');
+  await next.click();
+  await next.click();
+  await page.getByRole('spinbutton', { name: /current monthly wage/ }).fill('26000.50');
+  await next.click();
+  await next.click();
+  await page.getByRole('textbox', { name: /skills from your training/ }).fill('Motor diagnostics');
+  await next.click();
+  const [reported] = await Promise.all([smoke.waitApi('POST', careerUpdate), submit.click()]);
+  const report = await expectJson(reported, 'POST', careerUpdate, 201, ['id', 'name', 'submittedAt']);
+  await expect(page.getByText('Survey submitted · Employment outcome update')).toBeVisible();
+  const reportRow = page.getByRole('listitem').filter({ hasText: 'Employment outcome update' });
+  await reportRow.getByRole('button', { name: 'View answers' }).click();
+  await expect(reportRow.getByText('Self-employed', { exact: true })).toBeVisible();
+  await expect(reportRow.getByText('26000.50', { exact: true })).toBeVisible();
+  const current = page.getByRole('region', { name: 'Current career information' });
+  await expect(current).toContainText('Self-employed');
+  await expect(current).toContainText('₹26,000.50');
+  await expect(current).toContainText('Workshop technician');
+  await expect(current).toContainText('Motor diagnostics');
+  await expect(page.getByText(/Starting pay.*18,500/)).toBeVisible();
+  expect(sql(`SELECT r.followup_task_id IS NULL,a.numeric_value FROM survey_responses r
+    JOIN survey_response_answers a USING(survey_response_id) JOIN survey_questions q USING(survey_question_id)
+    WHERE r.survey_response_id=${report.id} AND r.trainee_id=${run.trainee} AND q.question_code='MONTHLY_INCOME';`))
+    .toBe('1\t26000.50');
+  expect(sql(`SELECT COUNT(*) FROM employment_records WHERE trainee_id=${run.trainee} AND deleted_at IS NULL;`)).toBe('1');
+
+  const traineeHeaders = { authorization: reported.request().headers().authorization };
+  await page.getByRole('button', { name: 'Report employment update' }).click();
+  const workStatus = page.getByRole('combobox', { name: /current work or education status/ });
+  await expect(workStatus.locator('option:checked')).toHaveText('Self-employed');
+  await next.click();
+  await expect(page.getByRole('textbox', { name: /name of your employer or business/ })).toHaveValue('Repair workshop');
+  await page.getByRole('button', { name: 'Close survey' }).click();
+  const wrongVersion = await request.post(careerUpdate, {
+    headers: traineeHeaders, data: { ...reported.request().postDataJSON(), versionId: 2147483647 },
+  });
+  expect(wrongVersion.status()).toBe(409);
+  const denied = await request.get(staffSurveys, { headers: traineeHeaders });
+  expect(denied.status()).toBe(403);
+
+  await page.getByRole('button', { name: 'Sign Out' }).click();
+  await smoke.signIn('admin', '/admin/careers');
+  const registration = sql(`SELECT registration_number FROM trainees WHERE trainee_id=${run.trainee};`);
+  await page.getByLabel('Candidate name or registration number').fill(registration);
+  await page.getByRole('button', { name: 'Search candidates' }).click();
+  await page.getByRole('button', { name: new RegExp(registration) }).click();
+  await expect(current).toContainText('Self-employed');
+  await expect(current).toContainText('₹26,000.50');
+  await expect(current).toContainText('Motor diagnostics');
+  const workbench = page.getByRole('region', { name: 'Candidate follow-up surveys' });
+  const pastReport = workbench.getByRole('listitem').filter({ hasText: 'Employment outcome update' });
+  await pastReport.getByRole('button', { name: 'View answers' }).click();
+  await expect(pastReport.getByText('Repair workshop', { exact: true })).toBeVisible();
+
+  const traineeLogin = await request.post('/api/v1/auth/login', {
+    data: { usernameOrEmail: run.users.trainee, password: run.password },
+  });
+  expect(traineeLogin.status()).toBe(200);
+  const freshTrainee = auth((await traineeLogin.json()).data.accessToken);
+  const fields = (await (await request.get(careerUpdate, { headers: freshTrainee })).json()).data;
+  const incomeId = fields.questions.find(question => question.text.includes('current monthly wage')).id;
+  const skillsId = fields.questions.find(question => question.text.includes('skills from your training')).id;
+  const revisedAnswers = fields.initialAnswers.map(answer => {
+    if (answer.questionId === incomeId) return { questionId: incomeId, number: 29500 };
+    if (answer.questionId === skillsId) return { questionId: skillsId, text: 'Electrical troubleshooting' };
+    return answer;
+  });
+  const updated = await request.post(careerUpdate, { headers: freshTrainee,
+    data: { versionId: fields.versionId, answers: revisedAnswers } });
+  expect(updated.status()).toBe(201);
+  const currentReport = (await updated.json()).data;
+  expect(currentReport.id).not.toBe(report.id);
+  await expect(current).toContainText('₹29,500.00', { timeout: 13_000 });
+  await expect(current).toContainText('Electrical troubleshooting');
+  await expect(current).toContainText('Repair workshop');
+  await expect(pastReport).toHaveCount(2);
+
+  await workbench.getByLabel('Campaign', { exact: true }).selectOption({ label: 'Employment outcome follow-up' });
+  const [scheduled] = await Promise.all([smoke.waitApi('POST', staffSurveys),
+    workbench.getByRole('button', { name: 'Assign survey' }).click()]);
+  const task = await expectJson(scheduled, 'POST', '/api/v1/career-progress/candidates/{id}/surveys', 201, ['taskId', 'name']);
+  await expect(workbench.getByText('Survey assigned.', { exact: true })).toBeVisible();
+  expect(sql(`SELECT trainee_id,completed_at IS NULL FROM followup_tasks WHERE followup_task_id=${task.taskId};`))
+    .toBe([run.trainee, 1].join('\t'));
+  const staffHeaders = { authorization: scheduled.request().headers().authorization };
+  const assignmentRetry = await request.post(staffSurveys, { headers: staffHeaders, data: scheduled.request().postDataJSON() });
+  expect(assignmentRetry.status()).toBe(409);
+  const crossCandidate = await request.get('/api/v1/career-progress/candidates/' + run.prospect + '/surveys/' + report.id,
+    { headers: staffHeaders });
+  expect(crossCandidate.ok()).toBe(false);
+
+  await page.getByRole('button', { name: 'Sign Out' }).click();
+  await smoke.signIn('trainee', '/trainee/journey');
+  const [opened] = await Promise.all([smoke.waitApi('GET', surveyRoot + '/' + task.taskId),
+    page.getByRole('button', { name: 'Open Employment outcome update' }).click()]);
+  expect(opened.status()).toBe(200);
+  await expect(page.getByRole('combobox', { name: /current work or education status/ })).toBeVisible();
+  const [profile] = await Promise.all([smoke.waitApi('GET', '/api/v1/trainees/me/profile'),
+    page.getByRole('link', { name: 'My Profile', exact: true }).last().click()]);
+  expect((await profile.json()).data).toMatchObject({ employmentStatus: 'Self-employed',
+    reportedUpdate: { submissionId: currentReport.id, statusCode: 'SELF_EMPLOYED', monthlyIncome: 29500, skills: 'Electrical troubleshooting' } });
+  await expect(page.getByRole('heading', { name: 'My Profile', exact: true })).toBeVisible();
+  await expect(current).toContainText('Self-employed');
+  await expect(current).toContainText('₹29,500.00');
+  await expect(current).toContainText('Electrical troubleshooting');
+  await page.getByRole('link', { name: 'Overview', exact: true }).click();
+  await expect(current).toContainText('Self-employed');
+  await expect(current).toContainText('₹29,500.00');
+  await expect(current).toContainText('Electrical troubleshooting');
+  await page.getByRole('link', { name: 'My Profile', exact: true }).last().click();
+  await page.getByRole('link', { name: 'Manage consent' }).click();
+  const followup = page.getByRole('group', { name: 'Employment Outcome Follow-Up & Verification' });
+  const consentStatusPath = `${consentPath}/${consent.id}/status`;
+  const [withdrawn] = await Promise.all([smoke.waitApi('PUT', consentStatusPath),
+    followup.getByRole('button', { name: 'Revoke Consent' }).click()]);
+  expect((await withdrawn.json()).data.consentStatusCode).toBe('REVOKED');
+  await expect(followup.getByRole('status')).toHaveText('Consent withdrawn.');
+  const deniedUpdate = await request.get(careerUpdate, { headers: { authorization: withdrawn.request().headers().authorization } });
+  expect(deniedUpdate.ok()).toBe(false);
+  await page.getByRole('link', { name: 'Career Journey & Surveys' }).last().click();
+  await expect(careerReport.getByRole('link', { name: 'Review employment follow-up consent' })).toBeVisible();
+  await expect(current).toContainText('₹29,500.00');
+  const adminLogin = await request.post('/api/v1/auth/login', {
+    data: { usernameOrEmail: run.users.admin, password: run.password },
+  });
+  expect(adminLogin.status()).toBe(200);
+  const freshAdmin = auth((await adminLogin.json()).data.accessToken);
+  const history = await request.get('/api/v1/career-progress/candidates/' + run.trainee, { headers: freshAdmin });
+  expect(history.status()).toBe(200);
+  const restricted = (await history.json()).data;
+  expect(restricted).not.toHaveProperty('reportedUpdate');
+  expect(restricted.candidate.status).toBe('Wage employed');
 });
 
 test('backend enforces authority and provider tenancy', async ({ page, request, smoke }) => {

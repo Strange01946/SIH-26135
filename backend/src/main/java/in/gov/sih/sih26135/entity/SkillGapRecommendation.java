@@ -58,6 +58,9 @@ public class SkillGapRecommendation {
   @Column(name = "accepted_on")
   private LocalDate acceptedOn;
 
+  @Column(name = "rejected_on")
+  private LocalDate rejectedOn;
+
   @Column(name = "remarks", length = 500)
   private String remarks;
 
@@ -142,6 +145,14 @@ public class SkillGapRecommendation {
 
   public void setAcceptedOn(LocalDate acceptedOn) {
     this.acceptedOn = acceptedOn;
+  }
+
+  public LocalDate getRejectedOn() {
+    return rejectedOn;
+  }
+
+  public void setRejectedOn(LocalDate rejectedOn) {
+    this.rejectedOn = rejectedOn;
   }
 
   public String getRemarks() {

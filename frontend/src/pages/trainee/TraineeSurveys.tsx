@@ -5,42 +5,70 @@ import {
   getFollowupSurveys,
   getFollowupQuestionnaire,
   submitFollowupQuestionnaire,
+  getCareerUpdateQuestionnaire,
+  submitCareerUpdate,
+  getOwnSurveySubmission,
   type FollowupQuestion,
-  type FollowupQuestionnaire,
+  type FollowupSubmitRequest,
+  type FollowupSubmission,
   type FollowupAnswer,
 } from '@/api/traineeApi';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
+import { SurveySubmissions } from '@/components/career/SurveySubmissions';
+import { careerDate } from '@/components/career/CareerInsights';
 
 export function TraineeSurveys({ traineeId }: { traineeId: number }) {
   const queryClient = useQueryClient();
-  const [taskId, setTaskId] = useState<number>();
+  const [taskId, setTaskId] = useState<number | 'career-update'>();
   const [receipt, setReceipt] = useState('');
   const overviewKey = ['trainee', 'surveys', traineeId];
-  const overview = useQuery({ queryKey: overviewKey, queryFn: ({ signal }) => getFollowupSurveys(signal) });
+  const overview = useQuery({
+    queryKey: overviewKey, queryFn: ({ signal }) => getFollowupSurveys(signal),
+    refetchOnMount: 'always', refetchOnWindowFocus: 'always',
+  });
   const questionnaire = useQuery({
     queryKey: ['trainee', 'questionnaire', traineeId, taskId],
-    queryFn: ({ signal }) => getFollowupQuestionnaire(taskId!, signal),
-    enabled: taskId !== undefined,
+    queryFn: async ({ signal }) => {
+      if (typeof taskId === 'number') {
+        const result = await getFollowupQuestionnaire(taskId, signal);
+        return { name: result.assignment.name, versionId: result.versionId, questions: result.questions, initialAnswers: [] };
+      }
+      return getCareerUpdateQuestionnaire(signal);
+    },
+    enabled: taskId !== undefined && overview.data?.followupConsentGranted === true,
+    retry: false,
+    staleTime: taskId === 'career-update' ? 0 : undefined,
   });
 
+  const open = (id: number | 'career-update') => { setTaskId(id); setReceipt(''); };
+
   return (
-    <section className="card space-y-4" aria-labelledby="followup-surveys-heading">
+    <section className="card space-y-4 p-4 sm:p-6" aria-labelledby="followup-surveys-heading">
       <h2 id="followup-surveys-heading" className="text-lg font-bold text-navy">Post-training follow-up surveys</h2>
       <p className="text-sm text-gray-600">
-        Report what happened after training so providers can improve courses and help trainees find suitable work.
+        Share changes in work, income or skills. Your answers are stored as self-reported outcomes for follow-up.
       </p>
       {receipt && <p role="status" className="text-sm text-emerald-800">{receipt}</p>}
       {overview.isPending ? <LoadingSpinner label="Loading follow-up surveys" /> : overview.isError ? (
         <ErrorState error={overview.error} title="Unable to load follow-up surveys" onRetry={() => void overview.refetch()} />
       ) : (
         <>
-          {!overview.data.followupConsentGranted ? (
-            <p className="text-sm">
-              Employment follow-up consent is required to take an assigned survey.{' '}
-              <Link className="font-semibold text-navy underline" to="/trainee/consent">Manage consent</Link>
-            </p>
-          ) : overview.data.assignments.length === 0 ? (
+          <section className="space-y-2 rounded border bg-slate-50 p-4" aria-labelledby="employment-update-heading">
+            <h3 id="employment-update-heading" className="font-semibold text-navy">Report employment update</h3>
+            <p className="text-sm text-gray-600">Update your work status, wages, job details or skills. Submitted answers appear in your current career information immediately.</p>
+            {!overview.data.followupConsentGranted ? (
+              <>
+                <p className="text-sm">Employment follow-up consent is required to report an update or take an assigned survey.</p>
+                <Link className="btn-secondary" to="/trainee/consent#employment-follow-up">Review employment follow-up consent</Link>
+              </>
+            ) : !overview.data.careerUpdateAvailable ? (
+              <p className="text-sm text-gray-600">The employment update questionnaire is currently unavailable.</p>
+            ) : taskId !== 'career-update' && (
+              <button type="button" className="btn-primary" onClick={() => open('career-update')}>Report employment update</button>
+            )}
+          </section>
+          {overview.data.followupConsentGranted && (overview.data.assignments.length === 0 ? (
             <p className="text-sm text-gray-600">You have no open survey assignments.</p>
           ) : (
             <ul className="space-y-2">
@@ -48,61 +76,66 @@ export function TraineeSurveys({ traineeId }: { traineeId: number }) {
                 <li key={assignment.taskId} className="flex flex-wrap items-center justify-between gap-3 rounded border p-3">
                   <div>
                     <p className="font-medium">{assignment.name}</p>
-                    {assignment.closesOn && <p className="text-sm text-gray-600">Closes {assignment.closesOn}</p>}
+                    {assignment.closesOn && <p className="text-sm text-gray-600">Closes {careerDate(assignment.closesOn)}</p>}
                   </div>
                   {assignment.taskId !== taskId && (
-                    <button type="button" className="btn-outline" onClick={() => { setTaskId(assignment.taskId); setReceipt(''); }}>
+                    <button type="button" className="btn-secondary" onClick={() => open(assignment.taskId)}>
                       Open {assignment.name}
                     </button>
                   )}
                 </li>
               ))}
             </ul>
-          )}
+          ))}
           {taskId !== undefined && overview.data.followupConsentGranted && (
-            questionnaire.isLoading ? <LoadingSpinner label="Loading questionnaire" /> : questionnaire.isError ? (
-              <ErrorState error={questionnaire.error} title="Unable to open questionnaire" onRetry={() => void questionnaire.refetch()} />
+            questionnaire.isLoading || (taskId === 'career-update' && questionnaire.isFetching)
+              ? <LoadingSpinner label="Loading questionnaire" /> : questionnaire.isError ? (
+              <div className="space-y-2">
+                <ErrorState error={questionnaire.error} title="Unable to open questionnaire" onRetry={() => void questionnaire.refetch()} />
+                <button type="button" className="btn-secondary" onClick={() => { setTaskId(undefined); void overview.refetch(); }}>Back to surveys</button>
+              </div>
             ) : questionnaire.data && (
               <QuestionnaireForm
                 key={`${taskId}-${questionnaire.data.versionId}`}
                 questionnaire={questionnaire.data}
+                submitAnswers={payload => typeof taskId === 'number'
+                  ? submitFollowupQuestionnaire(taskId, payload) : submitCareerUpdate(payload)}
                 onCancel={() => setTaskId(undefined)}
                 onSubmitted={async (name) => {
                   setTaskId(undefined);
                   setReceipt(`Survey submitted · ${name}`);
-                  await queryClient.invalidateQueries({ queryKey: overviewKey });
+                  await Promise.all([
+                    queryClient.invalidateQueries({ queryKey: overviewKey }),
+                    queryClient.invalidateQueries({ queryKey: ['trainee', 'recorded-career-status', traineeId] }),
+                    queryClient.invalidateQueries({ queryKey: ['trainee', 'own-profile'] }),
+                  ]);
                 }}
               />
             )
           )}
-          <h3 className="border-t pt-4 font-semibold">Recent submissions</h3>
-          {overview.data.recentSubmissions.length ? (
-            <ul className="space-y-2 text-sm">
-              {overview.data.recentSubmissions.map((submission) => (
-                <li key={submission.id}>{submission.name}{submission.submittedAt && ` · ${new Date(submission.submittedAt).toLocaleDateString('en-IN')}`}</li>
-              ))}
-            </ul>
-          ) : <p className="text-sm text-gray-600">You have no previous survey submissions.</p>}
+          <SurveySubmissions entries={overview.data.recentSubmissions} scopeKey={overviewKey} load={getOwnSurveySubmission} />
         </>
       )}
     </section>
   );
 }
 
-function QuestionnaireForm({ questionnaire, onCancel, onSubmitted }: {
-  questionnaire: FollowupQuestionnaire;
+function QuestionnaireForm({ questionnaire, submitAnswers, onCancel, onSubmitted }: {
+  questionnaire: { name: string; versionId: number; questions: FollowupQuestion[]; initialAnswers?: FollowupAnswer[] };
+  submitAnswers: (payload: FollowupSubmitRequest) => Promise<FollowupSubmission>;
   onCancel: () => void;
   onSubmitted: (name: string) => Promise<void>;
 }) {
   const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState<Record<number, FollowupAnswer>>({});
+  const [answers, setAnswers] = useState<Record<number, FollowupAnswer>>(() =>
+    Object.fromEntries((questionnaire.initialAnswers ?? []).map(answer => [answer.questionId, answer])));
   const [fieldError, setFieldError] = useState('');
   const submitting = useRef(false);
-  const { assignment, questions, versionId } = questionnaire;
+  const { name, questions, versionId } = questionnaire;
   const question = questions[step];
   const currentAnswer = question && answers[question.id];
   const submit = useMutation({
-    mutationFn: () => submitFollowupQuestionnaire(assignment.taskId, {
+    mutationFn: () => submitAnswers({
       versionId,
       answers: questions.flatMap((item) => answers[item.id] ? [answers[item.id]] : []),
     }),
@@ -140,10 +173,10 @@ function QuestionnaireForm({ questionnaire, onCancel, onSubmitted }: {
 
   return (
     <form className="space-y-4 rounded border bg-gray-50 p-4" onSubmit={next}>
-      <h3 className="font-semibold">{assignment.name}</h3>
+      <h3 className="font-semibold">{name}</h3>
       {question ? (
         <fieldset disabled={submit.isPending} key={question.id} className="space-y-2" aria-describedby={fieldError ? 'survey-answer-error' : undefined}>
-          <legend className="font-medium">{question.text} {question.required && <span className="text-sm text-gray-600">(required)</span>}</legend>
+          <legend className="font-medium">{question.text} <span className="text-sm text-gray-600">({question.required ? 'required' : 'optional'})</span></legend>
           <p className="text-sm text-gray-600">Question {step + 1} of {questions.length}</p>
           <QuestionInput question={question} answer={currentAnswer} update={update} />
           {fieldError && <p id="survey-answer-error" role="alert" className="text-sm text-red-800">{fieldError}</p>}
@@ -151,8 +184,8 @@ function QuestionnaireForm({ questionnaire, onCancel, onSubmitted }: {
       ) : <p role="status">This questionnaire has no questions yet.</p>}
       {submit.isError && <p role="alert" className="text-sm text-red-800">{submit.error.message}</p>}
       <div className="flex flex-wrap gap-2">
-        <button type="button" className="btn-outline" disabled={submit.isPending} onClick={onCancel}>Close survey</button>
-        {step > 0 && <button type="button" className="btn-outline" disabled={submit.isPending} onClick={() => { setStep(step - 1); setFieldError(''); }}>Previous question</button>}
+        <button type="button" className="btn-secondary" disabled={submit.isPending} onClick={onCancel}>Close survey</button>
+        {step > 0 && <button type="button" className="btn-secondary" disabled={submit.isPending} onClick={() => { setStep(step - 1); setFieldError(''); }}>Previous question</button>}
         {question && <button type="submit" className="btn-primary" disabled={submit.isPending}>
           {step < questions.length - 1 ? 'Next question' : submit.isPending ? 'Submitting…' : 'Submit survey'}
         </button>}

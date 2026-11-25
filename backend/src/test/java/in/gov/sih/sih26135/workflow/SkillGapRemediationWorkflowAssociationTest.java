@@ -809,12 +809,14 @@ class SkillGapRemediationWorkflowAssociationTest {
       assertThat(response.isAcceptedFlag()).isFalse();
       assertThat(response.acceptedOn()).isNull();
       assertThat(response.remarks()).isEqualTo("Prefer alternative certification");
+      assertThat(response.status()).isEqualTo("DECLINED");
 
       ArgumentCaptor<SkillGapRecommendation> captor = ArgumentCaptor.forClass(SkillGapRecommendation.class);
       verify(skillGapRecommendationRepository).save(captor.capture());
       assertThat(captor.getValue().getIsAcceptedFlag()).isFalse();
       assertThat(captor.getValue().getAcceptedOn()).isNull();
       assertThat(captor.getValue().getRemarks()).isEqualTo("Prefer alternative certification");
+      assertThat(captor.getValue().getRejectedOn()).isEqualTo(LocalDate.now());
     }
 
     @Test

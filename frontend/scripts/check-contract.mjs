@@ -16,6 +16,20 @@ const operations = [
   ['post', '/api/v1/auth/login'], ['post', '/api/v1/auth/refresh'], ['get', '/api/v1/auth/me'],
   ['post', '/api/v1/auth/register/trainee'], ['post', '/api/v1/auth/register/training-provider'],
   ['post', '/api/v1/auth/register/employer'],
+  ['get', '/api/v1/trainees/me/profile'], ['put', '/api/v1/trainees/me/profile'],
+  ['get', '/api/v1/career-skills/reference'], ['get', '/api/v1/career-skills/me'], ['put', '/api/v1/career-skills/me'],
+  ['get', '/api/v1/career-skills/me/training'], ['put', '/api/v1/career-skills/me/training/{batchId}/interest'],
+  ['get', '/api/v1/career-skills/trainees/{traineeId}'], ['put', '/api/v1/career-skills/roles/{roleId}/requirements'],
+  ['get', '/api/v1/career-skills/assessments/{assessmentId}/trainees/{traineeId}'],
+  ['put', '/api/v1/career-skills/assessments/{assessmentId}/trainees/{traineeId}'],
+  ['get', '/api/v1/career-skills/provider/batches/{batchId}/interest'],
+  ['get', '/api/v1/career-skills/catalog'], ['post', '/api/v1/career-skills/catalog/{kind}'],
+  ['get', '/api/v1/trainees/me/training'], ['get', '/api/v1/trainees/me/training/{batchId}'],
+  ['post', '/api/v1/trainees/me/training/{batchId}/enrollment'], ['get', '/api/v1/training-batches/{batchId}/roster'],
+  ['get', '/api/v1/training-batches/{batchId}/attendance/sessions'],
+  ['get', '/api/v1/training-batches/{batchId}/attendance/sessions/{sessionId}'],
+  ['put', '/api/v1/training-batches/{batchId}/attendance/sessions/{sessionId}'],
+  ['get', '/api/v1/employer/job-postings'], ['get', '/api/v1/employer/skills'],
   ['get', '/api/v1/admin/onboarding/applications'], ['get', '/api/v1/admin/onboarding/applications/{id}'],
   ['post', '/api/v1/admin/onboarding/applications/{id}/approve'], ['post', '/api/v1/admin/onboarding/applications/{id}/reject'],
   ['get', '/api/v1/courses'], ['get', '/api/v1/courses/{id}'],
@@ -40,6 +54,13 @@ const operations = [
   ['get', '/api/v1/certifications/{id}/download'], ['get', '/api/v1/employer/verifications/pending'],
   ['post', '/api/v1/employer/verifications/{requestId}/verdict'], ['post', '/api/v1/consents'],
   ['post', '/api/v1/trainees/me/followup-surveys/{taskId}/responses'], ['post', '/api/v1/import-batches'],
+  ['get', '/api/v1/trainees/me/career-status'],
+  ['get', '/api/v1/trainees/me/followup-surveys/career-update'],
+  ['post', '/api/v1/trainees/me/followup-surveys/career-update'],
+  ['get', '/api/v1/trainees/me/followup-surveys/submissions/{id}'],
+  ['get', '/api/v1/career-progress/candidates/{id}/surveys'],
+  ['post', '/api/v1/career-progress/candidates/{id}/surveys'],
+  ['get', '/api/v1/career-progress/candidates/{id}/surveys/{submissionId}'],
   ['get', '/api/v1/import-batches/{id}/quarantine/export'],
 ];
 
@@ -66,7 +87,12 @@ export async function checkContract({ liveUrl } = {}) {
       assert(fields.skillsToTeach && !fields.courseId && !fields.programId, name + ' must use skills as its training input');
     }
     assert(verified.components.schemas.Publish.required.includes('centerId'), 'Government training must require a fixed center');
-    for (const name of ['RegisterTraineeRequest', 'RegisterTrainingProviderRequest', 'NewSharedVenue']) {
+    const updateProfile = verified.components.schemas.Update;
+    assert.deepEqual(Object.keys(updateProfile.properties).sort(), [
+      'addressLine1', 'addressLine2', 'dateOfBirth', 'districtId', 'educationLevelId', 'email', 'firstName',
+      'genderId', 'lastName', 'middleName', 'phone', 'pincode', 'stateId',
+    ], 'Self-service profile accepts only personal details');
+    for (const name of ['RegisterTraineeRequest', 'RegisterTrainingProviderRequest', 'NewSharedVenue', 'Update']) {
       assert(verified.components?.schemas?.[name]?.required?.includes('pincode'), name + ' must require a PIN code');
     }
     const generate = (input) => {

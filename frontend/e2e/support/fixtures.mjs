@@ -4,7 +4,7 @@ import { assertRunId, quote, sql } from './database.mjs';
 
 const roles = {
   admin: 'super_admin', govadmin: 'government_admin', stateadmin: 'state_admin', provider: 'training_provider', outsider: 'training_provider',
-  assessor: 'assessor', employer: 'employer', trainee: 'trainee',
+  assessor: 'assessor', employer: 'employer', trainee: 'trainee', trainee2: 'trainee',
   applicant: 'training_provider', district: 'district_officer',
 };
 const publicOrganizations = {
@@ -28,7 +28,8 @@ function passwordHash(password) {
 
 export function fixtureNames(id) {
   assertRunId(id);
-  const names = [...Object.keys(roles), 'registered', 'invalid_registration', 'invalid_provisioning', ...Object.keys(publicOrganizations)];
+  const names = [...Object.keys(roles), 'registered', 'profile_registration', 'invalid_registration', 'invalid_provisioning',
+    ...Object.keys(publicOrganizations)];
   return Object.fromEntries(names.map((name) => [name, id + '_' + name]));
 }
 
@@ -167,7 +168,7 @@ export function cleanFixtures(id) {
   assertRunId(id);
   const names = fixtureNames(id);
   const users = Object.values(names).map(quote).join(',');
-  const publicRegistrants = [names.registered, names.invalid_registration].map(quote).join(',');
+  const publicRegistrants = [names.registered, names.profile_registration, names.invalid_registration].map(quote).join(',');
   const publicOrganizationUsers = Object.keys(publicOrganizations).map((name) => quote(names[name])).join(',');
   const publicOrganizationNames = Object.keys(publicOrganizations).map((name) => quote(id + '-' + name.replaceAll('_', '-'))).join(',');
   const collectPublicOrganizations = Object.entries(publicOrganizations).map(([name, type]) => `
@@ -194,8 +195,12 @@ export function cleanFixtures(id) {
     SET @campaign=(SELECT followup_campaign_id FROM followup_campaigns WHERE campaign_code='${id}-campaign');
     ${collectPublicOrganizations}
     SET @venue_shared=(SELECT center_id FROM training_centers WHERE center_code='${id}-shared');
+    SET @venue_career=(SELECT center_id FROM venue_bookings WHERE batch_code='${id}-venue-career'
+      AND venue_type='TEMPORARY' ORDER BY booking_id DESC LIMIT 1);
     SET @venue_shared_admin=(SELECT center_id FROM training_centers WHERE center_code='${id}-center-admin' AND venue_type='SHARED');
     SET @venue_enrollment=(SELECT center_id FROM venue_bookings WHERE batch_code='${id}-venue-enroll'
+      AND venue_type='TEMPORARY' AND center_id IS NOT NULL LIMIT 1);
+    SET @venue_self_enrollment=(SELECT center_id FROM venue_bookings WHERE batch_code='${id}-venue-self'
       AND venue_type='TEMPORARY' AND center_id IS NOT NULL LIMIT 1);
     SET @venue_race=(SELECT center_id FROM training_centers WHERE center_code='${id}-shared-race');
     SET @venue_temporary=(SELECT center_id FROM venue_bookings WHERE batch_code='${id}-venue-temp'
@@ -228,7 +233,14 @@ export function cleanFixtures(id) {
     DELETE FROM employment_verifications WHERE employment_verification_request_id=@verreq;
     DELETE FROM employment_verification_requests WHERE employment_verification_request_id=@verreq;
     DELETE a FROM survey_response_answers a JOIN survey_responses r USING (survey_response_id) WHERE r.survey_id=@survey;
+    DELETE a FROM survey_response_answers a JOIN survey_responses r USING (survey_response_id)
+      JOIN trainees t USING (trainee_id) JOIN surveys s USING (survey_id)
+      WHERE s.survey_code='SIH-CAREER-UPDATE' AND t.registration_number IN (${candidates});
+    DELETE r FROM survey_responses r JOIN trainees t USING (trainee_id) JOIN surveys s USING (survey_id)
+      WHERE s.survey_code='SIH-CAREER-UPDATE' AND t.registration_number IN (${candidates});
     DELETE FROM survey_responses WHERE survey_id=@survey;
+    DELETE f FROM followup_tasks f JOIN trainees t USING (trainee_id) JOIN followup_campaigns c USING (followup_campaign_id)
+      WHERE c.campaign_code='SIH-CAREER-FOLLOWUP' AND t.registration_number IN (${candidates});
     DELETE FROM followup_tasks WHERE followup_campaign_id=@campaign;
     DELETE FROM followup_campaigns WHERE followup_campaign_id=@campaign;
     DELETE FROM surveys WHERE survey_id=@survey;
@@ -256,16 +268,20 @@ export function cleanFixtures(id) {
     DELETE a FROM onboarding_applications a JOIN users u USING (user_id) WHERE u.username IN (${publicOrganizationUsers});
     DELETE ur FROM user_roles ur JOIN users u USING (user_id) WHERE u.username IN (${users});
     DELETE FROM users WHERE username IN (${users});
-    DELETE FROM training_centers WHERE center_id IN (@venue_shared,@venue_race,@venue_temporary,@venue_shared_admin,@venue_enrollment);
+    DELETE FROM training_centers WHERE center_id IN (@venue_shared,@venue_race,@venue_temporary,@venue_shared_admin,@venue_enrollment,
+      @venue_career,@venue_self_enrollment);
     DELETE FROM training_centers WHERE LEFT(center_code,LENGTH('${id}-gov-lab-'))='${id}-gov-lab-';
     DELETE FROM training_centers WHERE provider_id=@provider AND center_code IN ('${id}-center','${id}-center-provider');
     DELETE c FROM training_centers c JOIN training_providers p USING (provider_id)
       WHERE c.center_code='${id}-center-admin' AND p.provider_code='${id}-outsider';
     DELETE FROM training_providers WHERE provider_code IN ('${id}-provider','${id}-outsider');
+    DELETE FROM job_postings WHERE employer_id=@employer AND posting_title='${id} career skills vacancy';
     DELETE FROM employers WHERE employer_id=@employer AND employer_code='${id}-employer';
     ${removePublicOrganizations}
     DELETE FROM organizations WHERE organization_code IN ('${id}-provider','${id}-outsider','${id}-employer',${publicOrganizationCodes});
-    DELETE FROM job_roles WHERE job_role_code='${id}-role';
+    DELETE FROM job_roles WHERE job_role_code='${id}-role' OR job_role_name='${id} Torque Technician';
+    DELETE FROM skills WHERE skill_code='${id}-career-skill' OR skill_name='Torque diagnostics ${id}';
+    DELETE FROM skill_categories WHERE category_name='${id} Workshop Skills';
     DELETE c FROM courses c JOIN sectors s USING(sector_id)
       WHERE s.sector_code='SKILLS-UNCLASSIFIED' AND c.course_code LIKE 'SKL-%'
         AND LEFT(LOWER(c.description),LENGTH('${id} '))='${id} ';
@@ -280,7 +296,10 @@ export function cleanFixtures(id) {
       (SELECT COUNT(*) FROM training_centers WHERE center_code IN ('${id}-center','${id}-center-provider','${id}-center-admin')) +
       (SELECT COUNT(*) FROM venue_bookings WHERE LEFT(batch_code,LENGTH('${id}-venue-'))='${id}-venue-') +
       (SELECT COUNT(*) FROM training_batches WHERE LEFT(batch_code,LENGTH('${id}-venue-'))='${id}-venue-') +
-      (SELECT COUNT(*) FROM training_centers WHERE center_id IN (@venue_shared,@venue_race,@venue_temporary,@venue_shared_admin,@venue_enrollment)) +
+      (SELECT COUNT(*) FROM training_centers WHERE center_id IN (@venue_shared,@venue_race,@venue_temporary,@venue_shared_admin,@venue_enrollment,@venue_career)) +
+      (SELECT COUNT(*) FROM skills WHERE skill_code='${id}-career-skill' OR skill_name='Torque diagnostics ${id}') +
+      (SELECT COUNT(*) FROM skill_categories WHERE category_name='${id} Workshop Skills') +
+      (SELECT COUNT(*) FROM job_roles WHERE job_role_name='${id} Torque Technician') +
       (SELECT COUNT(*) FROM training_centers WHERE LEFT(center_code,LENGTH('${id}-gov-lab-'))='${id}-gov-lab-') +
       @remaining_government_bookings + @remaining_government_batches +
       (SELECT COUNT(*) FROM training_requirements WHERE LEFT(title,LENGTH('${id}-requirement-'))='${id}-requirement-') +

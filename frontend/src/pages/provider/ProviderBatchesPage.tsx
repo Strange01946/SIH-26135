@@ -77,10 +77,11 @@ export function ProviderBatchesPage(): React.JSX.Element {
             className="input-field text-xs py-1.5 px-3 min-w-[140px]"
           >
             <option value="">All Statuses</option>
-            <option value="1">SCHEDULED</option>
-            <option value="2">IN_PROGRESS</option>
-            <option value="3">COMPLETED</option>
-            <option value="4">CANCELLED</option>
+            <option value="1">Planned</option>
+            <option value="2">Open</option>
+            <option value="3">Ongoing</option>
+            <option value="4">Completed</option>
+            <option value="5">Cancelled</option>
           </select>
           {statusFilter !== undefined && (
             <button
@@ -196,37 +197,29 @@ export function ProviderBatchesPage(): React.JSX.Element {
                             className={`inline-block px-2.5 py-0.5 text-xs font-semibold rounded-full ${
                               batch.batchStatusCode === 'COMPLETED'
                                 ? 'bg-blue-100 text-blue-800'
-                                : batch.batchStatusCode === 'IN_PROGRESS'
+                                : batch.batchStatusCode === 'ONGOING'
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : batch.batchStatusCode === 'CANCELLED'
                                 ? 'bg-red-100 text-red-800'
                                 : 'bg-amber-100 text-amber-800'
                             }`}
                           >
-                            {batch.batchStatusName || batch.batchStatusCode || 'SCHEDULED'}
+                            {batch.batchStatusName || batch.batchStatusCode || '—'}
                           </span>
                         </td>
-                        <td className="py-3 px-3">
-                          {batch.batchStatusCode === 'SCHEDULED' && (
+                        <td className="space-y-2 py-3 px-3">
+                          {batch.batchStatusCode === 'PLANNED' && (
                             <button
                               onClick={() => updateStatusMutation.mutate({ batchId: batch.id, statusId: 2 })}
                               disabled={updateStatusMutation.isPending}
                               className="btn-outline text-[11px] py-1 px-2.5 border-emerald-500 text-emerald-700 hover:bg-emerald-50"
                             >
-                              Start Batch
+                              Open enrollment
                             </button>
                           )}
-                          {batch.batchStatusCode === 'IN_PROGRESS' && (
-                            <button
-                              onClick={() => updateStatusMutation.mutate({ batchId: batch.id, statusId: 3 })}
-                              disabled={updateStatusMutation.isPending}
-                              className="btn-outline text-[11px] py-1 px-2.5 border-blue-500 text-blue-700 hover:bg-blue-50"
-                            >
-                              Complete
-                            </button>
-                          )}
-                          {batch.batchStatusCode === 'COMPLETED' && (
-                            <span className="text-xs text-gray-400 italic">Finalized</span>
+                          {hasAuthority('enrollment.manage') && (
+                            <Link className="block text-sm font-semibold text-navy underline"
+                              to={`/provider/batches/${batch.id}/attendance`}>Session attendance</Link>
                           )}
                         </td>
                       </tr>

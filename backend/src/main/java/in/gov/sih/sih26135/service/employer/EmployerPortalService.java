@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.service.employer;
 
+import in.gov.sih.sih26135.service.KeywordSearch;
+
 import in.gov.sih.sih26135.service.ActiveGeography;
 
 import in.gov.sih.sih26135.dto.employer.EmployerPortal;
@@ -131,21 +133,49 @@ public class EmployerPortalService {
 
   public List<EmployerPortal.Reference> searchSkills(String search) {
     employer();
-    String filter = search.strip().replace("!", "!!").replace("%", "!%").replace("_", "!_");
-    return references("""
-        SELECT sk.skill_id, sk.skill_name FROM skills sk
+    var keywords = new KeywordSearch(search);
+    String select = """
+        SELECT sk.skill_id, sk.skill_name, sk.skill_code FROM skills sk
         JOIN ref_lifecycle_status s ON s.lifecycle_status_id = sk.lifecycle_status_id
         WHERE sk.deleted_at IS NULL AND s.status_code = 'ACTIVE'
-          AND (sk.skill_name LIKE ? ESCAPE '!' OR sk.skill_code LIKE ? ESCAPE '!')
-        ORDER BY sk.skill_name, sk.skill_id LIMIT 30
-        """, "%" + filter + "%", "%" + filter + "%");
+        ORDER BY sk.skill_name, sk.skill_id
+        """;
+    if (keywords.isEmpty()) return references(select + " LIMIT 30");
+    var skills = jdbc.query(select, (rs, row) -> new SkillSearchRow(
+        new EmployerPortal.Reference(rs.getLong(1), rs.getString(2)), rs.getString(2) + " " + rs.getString(3)));
+    return keywords.rank(skills, SkillSearchRow::terms).stream().limit(30).map(SkillSearchRow::reference).toList();
   }
 
-  public PagedResponse<EmployerPortal.Vacancy> vacancies(int page, int size) {
+  public PagedResponse<EmployerPortal.Vacancy> vacancies(int page, int size, String search) {
     long employerId = employer().id();
-    return paged(JOB_SELECT, "SELECT COUNT(*) FROM job_postings WHERE employer_id = ? AND deleted_at IS NULL",
-        "p.job_posting_id DESC", page, size, this::vacancy, employerId);
+    var keywords = new KeywordSearch(search);
+    if (keywords.isEmpty()) {
+      return paged(JOB_SELECT, "SELECT COUNT(*) FROM job_postings WHERE employer_id = ? AND deleted_at IS NULL",
+          "p.job_posting_id DESC", page, size, this::vacancy, employerId);
+    }
+    var candidates = jdbc.query("""
+        SELECT p.job_posting_id, CONCAT_WS(' ',p.posting_title,j.job_role_name,p.posting_code,
+          (SELECT GROUP_CONCAT(sk.skill_name SEPARATOR ' ') FROM job_posting_skills x
+            JOIN skills sk USING (skill_id) WHERE x.job_posting_id=p.job_posting_id))
+        FROM job_postings p JOIN job_roles j USING (job_role_id)
+        WHERE p.employer_id=? AND p.deleted_at IS NULL ORDER BY p.job_posting_id DESC
+        """, (rs, row) -> new VacancySearchRow(rs.getLong(1), rs.getString(2)), employerId);
+    var matches = keywords.rank(candidates, VacancySearchRow::terms);
+    var pageable = PageRequest.of(page, size);
+    var ids = matches.stream().skip(pageable.getOffset()).limit(size).map(VacancySearchRow::id).toList();
+    if (ids.isEmpty()) return PagedResponse.of(new PageImpl<>(List.of(), pageable, matches.size()));
+    var placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
+    var params = new java.util.ArrayList<Object>();
+    params.add(employerId);
+    params.addAll(ids);
+    var byId = jdbc.query(JOB_SELECT + " AND p.job_posting_id IN (" + placeholders + ")", this::vacancy, params.toArray())
+        .stream().collect(java.util.stream.Collectors.toMap(EmployerPortal.Vacancy::id, item -> item));
+    return PagedResponse.of(new PageImpl<>(ids.stream().map(byId::get).filter(java.util.Objects::nonNull).toList(),
+        pageable, matches.size()));
   }
+
+  private record SkillSearchRow(EmployerPortal.Reference reference, String terms) {}
+  private record VacancySearchRow(long id, String terms) {}
 
   @Transactional
   public EmployerPortal.Vacancy publish(EmployerPortal.VacancyRequest input) {

@@ -21,6 +21,9 @@ public interface TraineeRepository extends JpaRepository<Trainee, Long> {
 
   Optional<Trainee> findByUserId(Long userId);
 
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  Optional<Trainee> findLockedByUserId(Long userId);
+
   boolean existsByUserId(Long userId);
 
   Page<Trainee> findByDeletedAtIsNull(Pageable pageable);

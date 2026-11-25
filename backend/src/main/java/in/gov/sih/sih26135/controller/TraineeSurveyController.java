@@ -34,6 +34,22 @@ public class TraineeSurveyController {
     return ApiResponse.ok(service.getOverview());
   }
 
+  @GetMapping("/career-update")
+  public ApiResponse<TraineeSurvey.CareerUpdateQuestionnaire> getCareerUpdate() {
+    return ApiResponse.ok(service.getCareerUpdate());
+  }
+
+  @PostMapping("/career-update")
+  @ResponseStatus(HttpStatus.CREATED)
+  public ApiResponse<TraineeSurvey.Submission> submitCareerUpdate(@Valid @RequestBody TraineeSurvey.SubmitRequest request) {
+    return ApiResponse.ok(service.submitCareerUpdate(request));
+  }
+
+  @GetMapping("/submissions/{id}")
+  public ApiResponse<TraineeSurvey.SubmissionDetail> getOwnSurveySubmission(@PathVariable @Positive long id) {
+    return ApiResponse.ok(service.getOwnSubmission(id));
+  }
+
   @GetMapping("/{taskId}")
   public ApiResponse<TraineeSurvey.Questionnaire> getQuestionnaire(@PathVariable @Positive long taskId) {
     return ApiResponse.ok(service.getQuestionnaire(taskId));

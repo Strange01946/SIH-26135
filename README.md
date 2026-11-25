@@ -145,6 +145,14 @@ Government reviewers publish training needs and select an active shared centre i
 
 Providers can submit their own training plans through **Venue Bookings** by describing the skills to teach. Venue approval creates the batch and supplies the internal references used by enrollment, assessments, and outcome reporting.
 
+Trainees can complete their personal details in **My Profile** after registration. Changes to residence use the active state and district directory, and follow-up contact details are stored on the trainee record. The profile shows registration and recorded employment status, with links to existing training, certificates, and consent.
+
+Run `node database/install-test-career-followup.mjs` to install the employment outcome questionnaire and follow-up campaign in `SIH26135_TEST`. Other deployments can apply [the career follow-up migration](database/phase-26-career-followup.sql) after the existing schema and reference data. In **Career Journey & Surveys**, consenting trainees can submit an employment update and review their answers. Authorized staff can assign open campaigns and review submissions in **Career Progression**. Survey answers retain their self-reported source, and recorded work periods and wages follow the employment workflow.
+
+Run `node database/install-test-career-skills.mjs` to install career profiles, assessor evidence and training interest in `SIH26135_TEST`. Other deployments can apply [the career skills migration](database/phase-27-trainee-career-skills.sql). Trainees edit skills and their desired job in **My Profile** and see upcoming matches in **Career Journey & Surveys**. Government admins can set job role requirements, and assessors can record observations for trainees on their assigned roster. Providers see aggregate interest for their own batches.
+
+Run `node database/install-test-training-contact-consent.mjs` to add the optional provider contact-sharing preference in `SIH26135_TEST`. Other deployments can apply [the consent seed](database/phase-28-training-contact-consent.sql). Trainees confirm seats through **Find training** and providers can enroll a trainee through **Candidate Enrollment**. In **Training Batches → Session attendance**, providers choose a session from the approved timetable and save marks for its roster. Trainees see the timetable and saved marks in **My Training & Attendance**. Email and phone visibility in the batch roster requires the trainee's contact-sharing permission.
+
 Execute the following commands from the `backend/` directory:
 
 ```bash

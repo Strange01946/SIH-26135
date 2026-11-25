@@ -4,11 +4,9 @@ import org.springframework.validation.annotation.Validated;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import in.gov.sih.sih26135.dto.request.RecordSkillGapAssessmentWithGapsRequest;
-import in.gov.sih.sih26135.dto.request.SkillGapRemediationEnrollmentRequest;
 import in.gov.sih.sih26135.dto.request.TraineeRecommendationDecisionRequest;
 import in.gov.sih.sih26135.dto.response.RecordSkillGapAssessmentWithGapsResponse;
 import in.gov.sih.sih26135.dto.response.SkillGapRecommendationResponse;
-import in.gov.sih.sih26135.dto.response.SkillGapRemediationEnrollmentResponse;
 import in.gov.sih.sih26135.dto.response.TraineeSkillGapProfileResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.response.ApiResponse;
@@ -29,7 +27,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
  * REST controller for orchestrating Skill Gap Assessment and Remediation workflows.
  *
  * <p>Coordinates cross-domain actions across comprehensive skill gap assessments,
- * identified gap items, upskilling recommendations, and remediation course enrollments.
+ * identified gap items and upskilling recommendations.
  *
  * <p>Base Route: /api/v1/workflows/skill-gap-remediation (alias: /api/v1/workflows/skill-gap-remediations)
  */
@@ -63,37 +61,15 @@ public class SkillGapRemediationWorkflowController {
           "UNSUPPORTED_PARAMETER"
       );
     }
+    if (request.getRecommendationRequests() != null && request.getRecommendationRequests().stream()
+        .filter(java.util.Objects::nonNull).anyMatch(item -> Boolean.TRUE.equals(item.getIsAcceptedFlag()) || item.getAcceptedOn() != null)) {
+      throw new BadRequestException("Only the trainee can decide on a recommendation.", "TRAINEE_DECISION_REQUIRED");
+    }
     RecordSkillGapAssessmentWithGapsResponse response =
         skillGapRemediationWorkflowService.recordAssessmentWithGapsAndRecommendations(request);
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(ApiResponse.success(
             "Skill gap assessment, gaps, and recommendations recorded successfully",
-            response,
-            httpRequest.getRequestURI()));
-  }
-
-  /**
-   * Enrolls a trainee into a recommended remediation course and updates the recommendation status.
-   *
-   * @param request workflow payload containing recommendation ID, enrollment specs, and recommendation status updates
-   * @param httpRequest HTTP servlet request for URI extraction and parameter validation
-   * @return 201 Created with SkillGapRemediationEnrollmentResponse enveloped in ApiResponse
-   */
-  @PostMapping("/enroll-remediation-course")
-  public ResponseEntity<ApiResponse<SkillGapRemediationEnrollmentResponse>> enrollRemediationCourse(
-      @Valid @RequestBody SkillGapRemediationEnrollmentRequest request,
-      HttpServletRequest httpRequest) {
-    if (!httpRequest.getParameterMap().isEmpty()) {
-      throw new BadRequestException(
-          "Unsupported query parameters: " + httpRequest.getParameterMap().keySet(),
-          "UNSUPPORTED_PARAMETER"
-      );
-    }
-    SkillGapRemediationEnrollmentResponse response =
-        skillGapRemediationWorkflowService.enrollTraineeInRemediationCourse(request);
-    return ResponseEntity.status(HttpStatus.CREATED)
-        .body(ApiResponse.success(
-            "Trainee enrolled in remediation course successfully",
             response,
             httpRequest.getRequestURI()));
   }
@@ -107,7 +83,7 @@ public class SkillGapRemediationWorkflowController {
    * @return 200 OK with updated SkillGapRecommendationResponse enveloped in ApiResponse
    */
   @PostMapping("/recommendations/{id}/accept")
-  @PreAuthorize("hasAnyAuthority('assessment.manage', 'enrollment.manage') or hasRole('trainee')")
+  @PreAuthorize("hasRole('trainee')")
   public ResponseEntity<ApiResponse<SkillGapRecommendationResponse>> acceptRecommendation(
       @PathVariable("id") @Positive Long id,
       @Valid @RequestBody(required = false) TraineeRecommendationDecisionRequest request,
@@ -135,7 +111,7 @@ public class SkillGapRemediationWorkflowController {
    * @return 200 OK with updated SkillGapRecommendationResponse enveloped in ApiResponse
    */
   @PostMapping("/recommendations/{id}/reject")
-  @PreAuthorize("hasAnyAuthority('assessment.manage', 'enrollment.manage') or hasRole('trainee')")
+  @PreAuthorize("hasRole('trainee')")
   public ResponseEntity<ApiResponse<SkillGapRecommendationResponse>> rejectRecommendation(
       @PathVariable("id") @Positive Long id,
       @Valid @RequestBody(required = false) TraineeRecommendationDecisionRequest request,

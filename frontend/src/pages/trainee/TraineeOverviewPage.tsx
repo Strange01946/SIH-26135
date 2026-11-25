@@ -7,9 +7,12 @@ import {
   getTraineeAttendance,
   getTraineeConsents,
   getTraineeOutcomeSummary,
+  getRecordedCareerStatus,
 } from '@/api/traineeApi';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { EmptyState } from '@/components/feedback/EmptyState';
+import { ReportedCareer } from '@/components/career/ReportedCareer';
+import { OwnCareerSkills } from '@/components/career/CareerSkillsPanel';
 import { calculateAttendanceStats } from './TraineeTrainingPage';
 import {
   resolveEffectiveConsent,
@@ -59,6 +62,13 @@ export const TraineeOverviewPage: React.FC = () => {
     queryFn: () => getTraineeOutcomeSummary(traineeId!),
     enabled: Boolean(traineeId),
     retry: false,
+  });
+  const career = useQuery({
+    queryKey: ['trainee', 'recorded-career-status', traineeId],
+    queryFn: ({ signal }) => getRecordedCareerStatus(signal),
+    enabled: Boolean(traineeId),
+    retry: false,
+    refetchOnWindowFocus: 'always',
   });
 
   if (isIdentityLoading) {
@@ -120,13 +130,8 @@ export const TraineeOverviewPage: React.FC = () => {
             >
               Candidate Profile &amp; Identity
             </h2>
-            <p className="text-xs text-gov-neutral-500">
-              Verified operational identity in the National Skills Qualification Register.
-            </p>
           </div>
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 w-fit">
-            ● Active Registration
-          </span>
+          <Link to="/trainee/profile" className="btn-outline w-fit">Edit profile</Link>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 pt-5">
@@ -328,6 +333,7 @@ export const TraineeOverviewPage: React.FC = () => {
           </Link>
         </div>
 
+        {career.data?.reportedUpdate && <div className="mb-4"><ReportedCareer update={career.data.reportedUpdate} /></div>}
         {outcomesQuery.isLoading ? (
           <div className="py-6 flex justify-center">
             <LoadingSpinner size="sm" />
@@ -339,14 +345,14 @@ export const TraineeOverviewPage: React.FC = () => {
           </div>
         ) : outcome ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-            <div>
+            {!career.data?.reportedUpdate && <div>
               <span className="text-xs font-medium text-gov-neutral-500 uppercase tracking-wider">
                 Employment status
               </span>
               <p className="text-sm font-bold text-gov-neutral-900 mt-1">
-                {outcome.snapshotEmploymentStatusCode?.replace(/_/g, ' ') ?? 'Unknown'}
+                {career.data?.status.name ?? outcome.snapshotEmploymentStatusCode?.replace(/_/g, ' ') ?? 'Unknown'}
               </p>
-            </div>
+            </div>}
             <div>
               <span className="text-xs font-medium text-gov-neutral-500 uppercase tracking-wider">
                 Enrollments with a placement
@@ -378,6 +384,7 @@ export const TraineeOverviewPage: React.FC = () => {
           </p>
         )}
       </section>
+      {traineeId && <OwnCareerSkills traineeId={traineeId} />}
     </div>
   );
 };

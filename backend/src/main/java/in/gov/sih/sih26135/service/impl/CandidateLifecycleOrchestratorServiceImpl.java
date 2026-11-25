@@ -51,6 +51,7 @@ import in.gov.sih.sih26135.service.TraineeConsentService;
 import in.gov.sih.sih26135.service.TrainingEnrollmentService;
 import in.gov.sih.sih26135.service.TrainingOutcomeWorkflowService;
 import in.gov.sih.sih26135.service.VerificationWorkflowService;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
@@ -58,6 +59,8 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -135,6 +138,26 @@ public class CandidateLifecycleOrchestratorServiceImpl implements CandidateLifec
   @AuditTrail(action = "CREATE", entityType = "TrainingEnrollment", summary = "Candidate enrolled with validated consent")
   public TraineeEnrollmentOrchestrationResponse enrollCandidateWithConsentValidation(
       TraineeEnrollmentOrchestrationRequest request) {
+    return enrollCandidate(request, false);
+  }
+
+  @Override
+  @Transactional(propagation = Propagation.MANDATORY)
+  @PreAuthorize("hasRole('trainee')")
+  @AuditTrail(action = "CREATE", entityType = "TrainingEnrollment", summary = "Trainee confirmed their own training seat")
+  public TraineeEnrollmentOrchestrationResponse confirmSelfEnrollment(long batchId, LocalDate enrollmentDate) {
+    ensureScopeValidator();
+    Trainee trainee = scopeValidator.resolveAuthenticatedTrainee()
+        .orElseThrow(() -> new ResourceNotFoundException("No trainee profile is linked to this account."));
+    var request = new TraineeEnrollmentOrchestrationRequest();
+    request.setTraineeId(trainee.getId());
+    request.setBatchId(batchId);
+    request.setEnrollmentDate(enrollmentDate);
+    return enrollCandidate(request, true);
+  }
+
+  private TraineeEnrollmentOrchestrationResponse enrollCandidate(
+      TraineeEnrollmentOrchestrationRequest request, boolean selfEnrollment) {
     if (request == null) {
       throw new BadRequestException("Request body cannot be null", "REQUEST_BODY_NULL");
     }
@@ -183,7 +206,7 @@ public class CandidateLifecycleOrchestratorServiceImpl implements CandidateLifec
     }
 
     ensureScopeValidator();
-    if (batch.getTrainingProvider() != null && batch.getTrainingProvider().getId() != null) {
+    if (!selfEnrollment && batch.getTrainingProvider() != null && batch.getTrainingProvider().getId() != null) {
       scopeValidator.validateProviderScope(batch.getTrainingProvider().getId());
     }
     scopeValidator.validateTraineeScope(request.getTraineeId());

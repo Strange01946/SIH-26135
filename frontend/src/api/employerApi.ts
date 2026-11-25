@@ -92,8 +92,8 @@ export function searchEmployerSkills(search: string, signal?: AbortSignal) {
   return apiGet<EmployerReference[]>(`${employer}/skills`, { params: { search }, signal });
 }
 
-export function getEmployerVacancies(page: number, signal?: AbortSignal) {
-  return apiGetPaged<EmployerVacancy>(`${employer}/job-postings`, { params: { page }, signal });
+export function getEmployerVacancies(page: number, signal?: AbortSignal, search?: string) {
+  return apiGetPaged<EmployerVacancy>(`${employer}/job-postings`, { params: { page, ...(search ? { search } : {}) }, signal });
 }
 
 export function publishEmployerVacancy(input: VacancyInput) {

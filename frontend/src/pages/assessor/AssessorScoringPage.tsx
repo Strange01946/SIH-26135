@@ -25,6 +25,8 @@ import type {
   AssessorRosterResponse,
   CandidateScoreInput,
 } from '@/types/assessor';
+import { StaffCareerSkills } from '@/components/career/CareerSkillsPanel';
+import { simulationActive } from '@/lib/demoEnvironment';
 
 interface CandidateRowState {
   appeared: boolean;
@@ -51,6 +53,7 @@ export function AssessorScoringPage(): React.JSX.Element {
   const [isDirty, setIsDirty] = useState<boolean>(false);
   const [showFinalizeModal, setShowFinalizeModal] = useState<boolean>(false);
   const [downloadingCertId, setDownloadingCertId] = useState<number | null>(null);
+  const [skillCandidate, setSkillCandidate] = useState('');
 
   // Load roster data
   const loadRoster = async () => {
@@ -373,6 +376,20 @@ export function AssessorScoringPage(): React.JSX.Element {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      {!simulationActive && roster && roster.candidates.length > 0 && (
+        <details className="card space-y-3 p-4">
+          <summary className="cursor-pointer font-semibold text-navy">Candidate skills and job goals</summary>
+          <label className="form-label max-w-sm">Candidate for skill observations
+            <select className="form-input" value={skillCandidate} onChange={event => setSkillCandidate(event.target.value)}>
+              <option value="">Select a trainee</option>
+              {roster.candidates.map(candidate => <option key={candidate.traineeId} value={candidate.traineeId}>
+                {candidate.fullName} · {candidate.registrationNumber}
+              </option>)}
+            </select>
+          </label>
+          {skillCandidate && <StaffCareerSkills key={skillCandidate} traineeId={Number(skillCandidate)} assessmentId={assessmentId} />}
+        </details>
+      )}
       {/* Top Breadcrumb & Actions Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">

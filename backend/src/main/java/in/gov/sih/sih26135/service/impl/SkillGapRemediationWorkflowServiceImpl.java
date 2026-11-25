@@ -335,6 +335,7 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
 
     rec.setIsAcceptedFlag(true);
     rec.setAcceptedOn(LocalDate.now());
+    rec.setRejectedOn(null);
     if (request != null && request.getRemarks() != null && !request.getRemarks().isBlank()) {
       rec.setRemarks(request.getRemarks().trim());
     }
@@ -446,6 +447,7 @@ public class SkillGapRemediationWorkflowServiceImpl implements SkillGapRemediati
 
     rec.setIsAcceptedFlag(false);
     rec.setAcceptedOn(null);
+    rec.setRejectedOn(LocalDate.now());
     rec.setRemarks(request.getRemarks().trim());
 
     // Preserve original creator if already present; only populate from authenticated user if null

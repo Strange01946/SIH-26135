@@ -196,6 +196,7 @@ public class SkillGapRecommendationController {
   public ResponseEntity<ApiResponse<SkillGapRecommendationResponse>> createRecommendation(
       @Valid @RequestBody CreateSkillGapRecommendationRequest request,
       HttpServletRequest httpRequest) {
+    requireTraineeDecision(Boolean.TRUE.equals(request.getIsAcceptedFlag()) || request.getAcceptedOn() != null);
     SkillGapRecommendationResponse response = skillGapRecommendationService.createRecommendation(request);
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(ApiResponse.success(
@@ -215,6 +216,7 @@ public class SkillGapRecommendationController {
   public ResponseEntity<ApiResponse<SkillGapRecommendationResponse>> updateRecommendation(
       @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateSkillGapRecommendationRequest request) {
+    requireTraineeDecision(request.getIsAcceptedFlag() != null || request.getAcceptedOn() != null);
     SkillGapRecommendationResponse response = skillGapRecommendationService.updateRecommendation(id, request);
     return ResponseEntity.ok(ApiResponse.success(
         "Skill gap recommendation updated successfully",
@@ -231,6 +233,10 @@ public class SkillGapRecommendationController {
   public ResponseEntity<ApiResponse<Void>> deleteRecommendation(@PathVariable @Positive Long id) {
     skillGapRecommendationService.deleteRecommendation(id);
     return ResponseEntity.ok(ApiResponse.success("Skill gap recommendation deleted successfully"));
+  }
+
+  private void requireTraineeDecision(boolean decisionSupplied) {
+    if (decisionSupplied) throw new BadRequestException("Only the trainee can decide on a recommendation.", "TRAINEE_DECISION_REQUIRED");
   }
 
   private void validateOnlyQueryParameter(HttpServletRequest request, String allowedParam) {

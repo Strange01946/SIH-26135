@@ -13,6 +13,7 @@ import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.response.PagedResponse;
 import in.gov.sih.sih26135.response.PaginationUtils;
 import in.gov.sih.sih26135.service.CandidateLifecycleOrchestratorService;
+import in.gov.sih.sih26135.service.TrainingBatchService;
 import in.gov.sih.sih26135.service.TrainingEnrollmentService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -33,6 +34,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.access.AccessDeniedException;
 
 /**
  * REST controller for managing Training Enrollment domain resources.
@@ -52,6 +54,9 @@ public class TrainingEnrollmentController {
 
   @Autowired(required = false)
   private in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator securityScopeValidator;
+
+  @Autowired(required = false)
+  private TrainingBatchService trainingBatchService;
 
   @Autowired
   public TrainingEnrollmentController(
@@ -75,6 +80,7 @@ public class TrainingEnrollmentController {
   @GetMapping("/{id}")
   public ResponseEntity<ApiResponse<TrainingEnrollmentResponse>> getById(@PathVariable @Positive Long id) {
     TrainingEnrollmentResponse response = trainingEnrollmentService.getById(id);
+    requireEnrollmentAccess(response);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
 
@@ -88,6 +94,7 @@ public class TrainingEnrollmentController {
   public ResponseEntity<ApiResponse<TrainingEnrollmentResponse>> getByEnrollmentNumber(
       @RequestParam("enrollmentNumber") @NotBlank String enrollmentNumber) {
     TrainingEnrollmentResponse response = trainingEnrollmentService.getByEnrollmentNumber(enrollmentNumber);
+    requireEnrollmentAccess(response);
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
 
@@ -131,6 +138,12 @@ public class TrainingEnrollmentController {
       @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
+    if (securityScopeValidator != null && securityScopeValidator.isTraineeCaller()) {
+      throw new AccessDeniedException("Trainees can view their own enrollments.");
+    }
+    if (securityScopeValidator != null && securityScopeValidator.isTrainingProviderCaller()) {
+      trainingBatchService.getById(batchId);
+    }
     Pageable pageable = PaginationUtils.buildPageable(
         page, size, sort, direction, PaginationUtils.TRAINING_ENROLLMENT_SORT_FIELDS, "id"
     );
@@ -155,6 +168,7 @@ public class TrainingEnrollmentController {
       @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
+    requireAggregateEnrollmentAccess();
     Pageable pageable = PaginationUtils.buildPageable(
         page, size, sort, direction, PaginationUtils.TRAINING_ENROLLMENT_SORT_FIELDS, "id"
     );
@@ -179,6 +193,7 @@ public class TrainingEnrollmentController {
       @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
+    requireAggregateEnrollmentAccess();
     Pageable pageable = PaginationUtils.buildPageable(
         page, size, sort, direction, PaginationUtils.TRAINING_ENROLLMENT_SORT_FIELDS, "id"
     );
@@ -203,6 +218,10 @@ public class TrainingEnrollmentController {
       @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
+    requireProviderAccess(providerId);
+    if (securityScopeValidator != null && securityScopeValidator.isTraineeCaller()) {
+      throw new AccessDeniedException("Trainees can view their own enrollments.");
+    }
     Pageable pageable = PaginationUtils.buildPageable(
         page, size, sort, direction, PaginationUtils.TRAINING_ENROLLMENT_SORT_FIELDS, "id"
     );
@@ -227,6 +246,7 @@ public class TrainingEnrollmentController {
       @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
+    requireAggregateEnrollmentAccess();
     Pageable pageable = PaginationUtils.buildPageable(
         page, size, sort, direction, PaginationUtils.TRAINING_ENROLLMENT_SORT_FIELDS, "id"
     );
@@ -251,6 +271,7 @@ public class TrainingEnrollmentController {
       @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
+    requireAggregateEnrollmentAccess();
     Pageable pageable = PaginationUtils.buildPageable(
         page, size, sort, direction, PaginationUtils.TRAINING_ENROLLMENT_SORT_FIELDS, "id"
     );
@@ -273,6 +294,7 @@ public class TrainingEnrollmentController {
       @RequestParam(value = "size", defaultValue = "20") @Min(1) @Max(100) int size,
       @RequestParam(value = "sort", defaultValue = "id") String sort,
       @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
+    requireAggregateEnrollmentAccess();
     Pageable pageable = PaginationUtils.buildPageable(
         page, size, sort, direction, PaginationUtils.TRAINING_ENROLLMENT_SORT_FIELDS, "id"
     );
@@ -333,6 +355,9 @@ public class TrainingEnrollmentController {
   public ResponseEntity<ApiResponse<TrainingEnrollmentResponse>> updateEnrollment(
       @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateTrainingEnrollmentRequest request) {
+    if (securityScopeValidator != null && securityScopeValidator.isTrainingProviderCaller()) {
+      requireEnrollmentAccess(trainingEnrollmentService.getById(id));
+    }
     TrainingEnrollmentResponse response = trainingEnrollmentService.updateEnrollment(id, request);
     return ResponseEntity.ok(ApiResponse.success("Training enrollment updated successfully", response));
   }
@@ -346,7 +371,32 @@ public class TrainingEnrollmentController {
   @DeleteMapping("/{id}")
   @PreAuthorize("hasAuthority('enrollment.manage')")
   public ResponseEntity<ApiResponse<Void>> deleteEnrollment(@PathVariable @Positive Long id) {
+    if (securityScopeValidator != null && securityScopeValidator.isTrainingProviderCaller()) {
+      requireEnrollmentAccess(trainingEnrollmentService.getById(id));
+    }
     trainingEnrollmentService.deleteEnrollment(id);
     return ResponseEntity.ok(ApiResponse.success("Training enrollment deleted successfully"));
+  }
+
+  private void requireEnrollmentAccess(TrainingEnrollmentResponse enrollment) {
+    requireProviderAccess(enrollment.getProviderId());
+    if (securityScopeValidator != null && securityScopeValidator.isTraineeCaller()) {
+      securityScopeValidator.validateTraineeScope(enrollment.getTraineeId());
+    }
+  }
+
+  private void requireProviderAccess(Long providerId) {
+    if (securityScopeValidator == null || !securityScopeValidator.isTrainingProviderCaller()) return;
+    if (securityScopeValidator.resolveAuthenticatedUser().map(user -> user.getTrainingProviderId())
+        .filter(id -> id.equals(providerId)).isEmpty()) {
+      throw new AccessDeniedException("Enrollment records are limited to your training provider.");
+    }
+  }
+
+  private void requireAggregateEnrollmentAccess() {
+    if (securityScopeValidator != null && (securityScopeValidator.isTraineeCaller()
+        || securityScopeValidator.isTrainingProviderCaller())) {
+      throw new AccessDeniedException("Choose your trainee profile or an affiliated batch or provider.");
+    }
   }
 }

@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { getRegistrationReferenceData } from '@/api/registrationApi';
 import { updateTrainingBatchStatus } from '@/api/providerPortalApi';
 import { trainingRequirementsKey } from '@/api/trainingRequirementApi';
+import { careerSkillsKey, getProviderTrainingInterest } from '@/api/careerSkillsApi';
 import type { ApiError } from '@/api/types';
 import { closeBooking, getBookingDetails, getBookings, reviewBooking,
   type BookingDetails, type BookingStatus, type SharedVenue } from '@/api/venueBookingApi';
@@ -111,6 +112,7 @@ function BookingRecord({ id, admin, onDraft, onDecision }: {
       {booking.skillsToTeach && <p className="whitespace-pre-wrap text-sm"><strong>Skills to teach</strong> · {booking.skillsToTeach}</p>}
       {!booking.skillsToTeach && booking.courseName && <p className="text-sm"><strong>Training topic</strong> · {booking.courseName}</p>}
       {booking.trainingNotes && <p className="whitespace-pre-wrap text-sm"><strong>Training notes</strong> · {booking.trainingNotes}</p>}
+      {!admin && approved && batchId && <TrainingInterestCount batchId={batchId} />}
       {booking.premisesPermission && <p className="text-sm">Premises permission · {booking.premisesPermission}</p>}
       {booking.decisionNote && <p className="rounded bg-slate-50 p-3 text-sm">{booking.decisionNote}</p>}
       <div>
@@ -138,13 +140,29 @@ function BookingRecord({ id, admin, onDraft, onDecision }: {
           disabled={advance.isPending} onClick={() => advance.mutate({ batchId, status: 3 })}>Start training</button>}
         {!admin && approved && booking.batchStatus === 'ONGOING' && <button type="button" className="btn-primary"
           onClick={() => onDecision(detail.data, 'complete')}>Complete training</button>}
-        {!admin && bookedForEnrollment(booking.batchStatus) && <Link className="btn-outline" to="/provider/enrollment">Candidate enrollment</Link>}
+        {!admin && batchId && bookedForEnrollment(booking.batchStatus) && <Link className="btn-outline"
+          to={`/provider/enrollment?batch=${batchId}`}>Candidate enrollment</Link>}
+        {!admin && batchId && ['APPROVED', 'COMPLETED', 'CANCELLED'].includes(booking.status) && <Link className="btn-outline"
+          to={`/provider/batches/${batchId}/attendance`}>Session attendance</Link>}
       </div>
     </section>
   );
 }
 
 const bookedForEnrollment = (status?: string | null) => status === 'OPEN' || status === 'ONGOING';
+
+function TrainingInterestCount({ batchId }: { batchId: number }) {
+  const interest = useQuery({ queryKey: [...careerSkillsKey, 'provider-interest', batchId],
+    queryFn: ({ signal }) => getProviderTrainingInterest(batchId, signal), enabled: !simulationActive,
+    retry: false, refetchOnMount: 'always', refetchOnWindowFocus: 'always' });
+  if (simulationActive) return null;
+  return <div className="rounded bg-navy-50 p-3 text-sm">
+    <strong>Trainees interested</strong>{' '}
+    {interest.data ? <span>{interest.data.interested}</span> : interest.isError ? (
+      <button className="text-navy underline" type="button" onClick={() => void interest.refetch()}>Retry loading interest</button>
+    ) : <span>Loading…</span>}
+  </div>;
+}
 
 export function VenueBookingsPage({ admin = false }: { admin?: boolean }) {
   const { user, hasAuthority } = useAuth();

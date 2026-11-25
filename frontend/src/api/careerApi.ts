@@ -1,5 +1,6 @@
 import { apiGet, apiPost } from './client';
 import type { components } from './generated/api.types';
+import type { FollowupSubmission, FollowupSubmissionDetail, ReportedCareerUpdate } from './traineeApi';
 
 type Schemas = components['schemas'];
 const career = '/api/v1/career-progress';
@@ -30,6 +31,7 @@ export interface CareerHistory {
   employments: EmploymentPeriod[];
   exitEvents: Schemas['EmploymentExitEventResponse'][];
   unemploymentEvents: Schemas['TraineeUnemploymentEventResponse'][];
+  reportedUpdate?: ReportedCareerUpdate;
 }
 
 export interface EmploymentRetention {
@@ -67,16 +69,6 @@ export interface ExitInput {
   remarks?: string;
 }
 
-export interface RemediationBatch {
-  id: number;
-  code: string;
-  provider: string;
-  center: string;
-  startsOn: string;
-  endsOn?: string;
-  availableSeats: number;
-}
-
 export const findCareerCandidates = (search: string, signal?: AbortSignal) =>
   apiGet<CareerCandidate[]>(`${career}/candidates`, { params: { search }, signal });
 
@@ -96,8 +88,19 @@ export const confirmCareerUnemployment = (employmentId: number, unemploymentReas
   apiPost<{ unemploymentReasonId: number; remarks?: string }, Schemas['TraineeUnemploymentEventResponse']>(`${employment}/${employmentId}/unemployment`,
     { unemploymentReasonId, remarks });
 
-export const getRemediationBatches = (recommendationId: number, signal?: AbortSignal) =>
-  apiGet<RemediationBatch[]>(`${career}/recommendations/${recommendationId}/batches`, { signal });
+type CandidateFollowups = {
+  followupConsentGranted: boolean;
+  campaigns: Array<{ id: number; name: string; survey: string; closesOn?: string | null }>;
+  assignments: Array<{ id: number; name: string; scheduledOn: string; status: string }>;
+  recentSubmissions: FollowupSubmission[];
+};
+const surveysFor = (traineeId: number) => `${career}/candidates/${traineeId}/surveys`;
 
-export const enrollCareerRemediation = (recommendationId: number, batchId: number) =>
-  apiPost<{ batchId: number }, Schemas['SkillGapRemediationEnrollmentResponse']>(`${career}/recommendations/${recommendationId}/enrollment`, { batchId });
+export const getCandidateFollowups = (traineeId: number, signal?: AbortSignal) =>
+  apiGet<CandidateFollowups>(surveysFor(traineeId), { signal });
+
+export const scheduleCandidateFollowup = (traineeId: number, input: Schemas['ScheduleRequest']) =>
+  apiPost<Schemas['ScheduleRequest'], Schemas['Assignment']>(surveysFor(traineeId), input);
+
+export const getCandidateSurveySubmission = (traineeId: number, submissionId: number, signal?: AbortSignal) =>
+  apiGet<FollowupSubmissionDetail>(`${surveysFor(traineeId)}/${submissionId}`, { signal });

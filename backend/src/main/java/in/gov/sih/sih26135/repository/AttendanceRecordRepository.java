@@ -31,6 +31,9 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
 
   List<AttendanceRecord> findByAttendanceStatusId(Long attendanceStatusId);
 
+  @Query("SELECT a.trainingBatch.id FROM AttendanceRecord a WHERE a.id=:id")
+  Optional<Long> findBatchIdForRecord(@Param("id") Long id);
+
   @Query(value = """
       SELECT COUNT(*) FROM venue_booking_sessions s JOIN venue_bookings b USING (booking_id)
       WHERE b.batch_id=:batch AND s.reserved_at IS NOT NULL AND s.released_at IS NULL

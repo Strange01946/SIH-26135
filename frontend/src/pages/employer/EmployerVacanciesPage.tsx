@@ -8,18 +8,21 @@ import { Modal } from '@/components/common/Modal';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
+import { matchKeywords } from '@/lib/keywordSearch';
 import { EmployerFormError, EmployerPageHeading, EmployerPager, EmployerSelect, formatPay, indiaToday, showStatus, useEmployerReferences } from './EmployerUi';
 
 export function EmployerVacanciesPage() {
   const [page, setPage] = useState(0);
+  const [search, setSearch] = useState('');
+  const keyword = useDeferredValue(search.trim());
   const [open, setOpen] = useState(false);
   const [receipt, setReceipt] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const queryClient = useQueryClient();
   const reference = useEmployerReferences();
   const jobs = useQuery({
-    queryKey: ['employer', 'vacancies', page],
-    queryFn: ({ signal }) => getEmployerVacancies(page, signal),
+    queryKey: ['employer', 'vacancies', page, keyword],
+    queryFn: ({ signal }) => getEmployerVacancies(page, signal, keyword),
   });
 
   return (
@@ -27,11 +30,16 @@ export function EmployerVacanciesPage() {
       <EmployerPageHeading title="Job vacancies">
         <button type="button" className="btn-primary" onClick={() => setOpen(true)}>New vacancy</button>
       </EmployerPageHeading>
+      <label className="form-label max-w-md">Search by job title, role, or skill
+        <input type="search" className="form-input" maxLength={120} value={search}
+          onChange={event => { setSearch(event.target.value); setPage(0); }} />
+      </label>
       {receipt && <p role="status" className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{receipt}</p>}
       {jobs.isPending ? <LoadingSpinner label="Loading vacancies" /> : jobs.isError ? (
         <ErrorState error={jobs.error} title="Unable to load vacancies" onRetry={() => void jobs.refetch()} />
       ) : jobs.data.content.length === 0 ? (
-        <EmptyState title="No vacancies yet" description="Publish a vacancy to record the role, location, pay and skills your organisation needs." />
+        <EmptyState title={keyword ? 'No vacancies match this search' : 'No vacancies yet'}
+          description={keyword ? 'Try a different job title or skill.' : 'Publish a vacancy to record the role, location, pay and skills your organisation needs.'} />
       ) : (
         <>
           <ul className="grid gap-4 lg:grid-cols-2">
@@ -89,6 +97,11 @@ function VacancyForm({ references, onPublished, onPending }: {
   onPending: (pending: boolean) => void;
 }) {
   const [search, setSearch] = useState('');
+  const [roleSearch, setRoleSearch] = useState('');
+  const [roleId, setRoleId] = useState('');
+  const matchingRoles = matchKeywords(references.jobRoles, roleSearch, role => role.label);
+  const selectedRole = references.jobRoles.find(role => String(role.id) === roleId);
+  const roleOptions = selectedRole && !matchingRoles.includes(selectedRole) ? [selectedRole, ...matchingRoles] : matchingRoles;
   const [skillId, setSkillId] = useState('');
   const [skillLevel, setSkillLevel] = useState('');
   const [selected, setSelected] = useState<{ skillId: number; levelId: number; label: string }[]>([]);
@@ -143,7 +156,12 @@ function VacancyForm({ references, onPublished, onPending }: {
         <label className="space-y-1 text-sm font-medium sm:col-span-2">
           <span>Vacancy title</span><input name="title" className="form-input" required maxLength={200} />
         </label>
-        <EmployerSelect name="jobRoleId" label="Job role" options={references.jobRoles} required />
+        <div className="space-y-2">
+          <input type="search" className="form-input" aria-label="Search job roles" placeholder="Search job roles"
+            maxLength={120} value={roleSearch} onChange={event => setRoleSearch(event.target.value)} />
+          <EmployerSelect name="jobRoleId" label="Job role" options={roleOptions} required
+            value={roleId} onChange={event => setRoleId(event.target.value)} />
+        </div>
         <EmployerSelect name="engagementTypeId" label="Engagement type" options={references.engagementTypes} required />
         <EmployerSelect name="qualificationId" label="Required qualification" options={references.qualifications} required />
         <EmployerSelect name="districtId" label="Work district" options={references.districts} required />
@@ -161,6 +179,7 @@ function VacancyForm({ references, onPublished, onPending }: {
       </fieldset>
       <fieldset disabled={submit.isPending} className="space-y-2 rounded-lg border border-slate-200 p-3">
         <legend className="px-1 text-sm font-semibold">Required skills</legend>
+        <p className="text-sm text-slate-600">Skill requirements from open vacancies help trainees compare their skills with their job goal.</p>
         <label className="block space-y-1 text-sm font-medium"><span>Search skills by name or code</span>
           <input className="form-input" value={search} onChange={(event) => { setSearch(event.target.value); setSkillId(''); }} maxLength={100} /></label>
         {skills.isError && <p role="alert" className="text-sm text-red-800">Skill search failed. <button type="button" className="underline" onClick={() => void skills.refetch()}>Retry</button></p>}

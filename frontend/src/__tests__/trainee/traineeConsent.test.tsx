@@ -637,7 +637,7 @@ describe('TraineeConsentPage Component', () => {
               consentStatusId: payload.consentStatusId,
               consentStatusCode: payload.consentStatusId === 2 ? 'REVOKED' : 'GRANTED',
               consentStatusName: payload.consentStatusId === 2 ? 'Revoked' : 'Granted',
-              revokedAt: payload.revokedAt || r.revokedAt,
+              revokedAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             };
           }
@@ -682,10 +682,7 @@ describe('TraineeConsentPage Component', () => {
         expect(updateSpy).toHaveBeenCalledTimes(1);
         expect(updateSpy).toHaveBeenLastCalledWith(
           201,
-          expect.objectContaining({
-            consentStatusId: 2,
-            revokedAt: expect.any(String),
-          }),
+          { consentStatusId: 2 },
         );
       });
 

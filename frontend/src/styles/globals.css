@@ -17,6 +17,21 @@
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
+@theme inline {
+  --color-gov-navy: var(--color-navy);
+  --color-gov-navy-light: var(--color-navy-700);
+  --color-gov-neutral-50: var(--color-slate-50);
+  --color-gov-neutral-100: var(--color-slate-100);
+  --color-gov-neutral-200: var(--color-slate-200);
+  --color-gov-neutral-300: var(--color-slate-300);
+  --color-gov-neutral-400: var(--color-slate-400);
+  --color-gov-neutral-500: var(--color-slate-500);
+  --color-gov-neutral-600: var(--color-slate-600);
+  --color-gov-neutral-700: var(--color-slate-700);
+  --color-gov-neutral-800: var(--color-slate-800);
+  --color-gov-neutral-900: var(--color-slate-900);
+}
+
 @layer base {
   body {
     font-family: var(--font-sans);

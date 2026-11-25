@@ -176,6 +176,7 @@ public class AuditTrailAspect {
       case "TRAININGENROLLMENT", "TRAINING" -> {
         if (result != null) {
           Object enrollment = invokeMethod(result, "updatedEnrollment");
+          if (enrollment == null) enrollment = invokeMethod(result, "enrollment");
           if (enrollment != null) {
             Long eid = invokeIdGetter(enrollment, "id");
             if (eid == null) eid = invokeIdGetter(enrollment, "getId");

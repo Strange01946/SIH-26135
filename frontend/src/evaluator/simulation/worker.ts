@@ -120,32 +120,50 @@ async function traineeRequest(path: string, request: Request, url: URL, sample: 
     }] : [], url));
     if (path === '/attendance-records') return ok([]);
     if (path === '/trainees/me/employment-history') return ok(page([], url));
+    if (path === '/trainees/me/career-status') return ok({
+      status: { code: hasHistory ? 'WAGE_EMPLOYED' : 'UNEMPLOYED',
+        name: hasHistory ? 'Wage employed' : 'Unemployed', source: 'PROFILE' },
+      unemploymentPeriods: [],
+    });
     if (path === '/analytics/summaries/trainee-outcomes') return ok({ traineeId: profile.id, snapshotEmploymentStatusCode: hasHistory ? 'WAGE_EMPLOYED' : 'UNEMPLOYED',
       snapshotIsEmployedFlag: hasHistory, placedEnrollmentCount: hasHistory ? 1 : 0, currentWageEmploymentCount: hasHistory ? 1 : 0 });
     if (path.endsWith('/skill-gap-profile')) return ok({ traineeId: profile.id, hasAssessment: false, recommendations: [] });
-    if (path === '/trainees/me/followup-surveys') return ok({ followupConsentGranted: false, tasks: [], pending: [], history: [] });
+    if (path === '/trainees/me/followup-surveys') return ok({
+      followupConsentGranted: false, careerUpdateAvailable: false, assignments: [], recentSubmissions: [],
+    });
   }
   if (path === '/consents' && request.method === 'POST') {
     const data = await request.json() as { traineeId: number; consentTypeId: number };
     if (data.traineeId !== profile.id) return failure(403, 'ACCESS_DENIED', 'This sample profile is outside your session.');
+    const latest = latestSampleConsent(sample, profile.id, data.consentTypeId);
+    if (latest?.consentStatusCode === 'GRANTED') return ok(latest, 201);
     const created = sampleConsent(100 + sample.consents.size, profile.id, data.consentTypeId, true);
     if (!created) return missing();
-    sample.consents.set(created.id, created);
-    return ok(created, 201);
+    const saved = { ...created, grantedAt: timestamp() };
+    sample.consents.set(saved.id, saved);
+    return ok(saved, 201);
   }
   const consentId = /^\/consents\/(\d+)\/status$/.exec(path);
   if (request.method === 'PUT' && consentId) {
     const stored = sample.consents.get(Number(consentId[1]));
     if (!stored || stored.traineeId !== profile.id) return missing();
     const { consentStatusId } = await request.json() as { consentStatusId: number };
-    if (stored.consentTypeId === 1 && consentStatusId !== 1) {
-      return failure(409, 'CONSENT_REQUIRED', 'Core processing consent is required for this active sample profile.');
+    if (consentStatusId !== 2) return failure(400, 'INVALID_CONSENT_STATUS', 'Use the grant action to grant consent.');
+    if (latestSampleConsent(sample, profile.id, stored.consentTypeId)?.id !== stored.id) {
+      return failure(409, 'CONSENT_CHANGED', 'This consent changed. Review the current choice and try again.');
     }
-    const next = sampleConsent(stored.id, stored.traineeId, stored.consentTypeId, consentStatusId === 1)!;
+    if (stored.consentStatusCode === 'REVOKED') return ok(stored);
+    const next = { ...stored, consentStatusId: 2, consentStatusCode: 'REVOKED', consentStatusName: 'Revoked',
+      revokedAt: timestamp(), updatedAt: timestamp() };
     sample.consents.set(next.id, next);
     return ok(next);
   }
   return unsupported();
+}
+
+function latestSampleConsent(sample: SampleState, traineeId: number, consentTypeId: number) {
+  return [...sample.consents.values()].reverse().find((consent) =>
+    consent.traineeId === traineeId && consent.consentTypeId === consentTypeId);
 }
 
 async function importRequest(path: string, request: Request, url: URL, sample: SampleState) {

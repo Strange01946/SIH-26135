@@ -232,6 +232,7 @@ public class SkillGapRecommendationServiceImpl implements SkillGapRecommendation
 
     if (request.getIsAcceptedFlag() != null) {
       recommendation.setIsAcceptedFlag(request.getIsAcceptedFlag());
+      if (Boolean.TRUE.equals(request.getIsAcceptedFlag())) recommendation.setRejectedOn(null);
     }
 
     if (request.getAcceptedOn() != null) {

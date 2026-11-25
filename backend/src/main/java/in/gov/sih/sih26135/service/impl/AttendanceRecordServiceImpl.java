@@ -14,14 +14,20 @@ import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.mapper.AttendanceRecordMapper;
 import in.gov.sih.sih26135.repository.AttendanceRecordRepository;
 import in.gov.sih.sih26135.repository.RefAttendanceStatusRepository;
+import in.gov.sih.sih26135.repository.TrainingBatchRepository;
 import in.gov.sih.sih26135.repository.TrainingEnrollmentRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
+import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.AttendanceRecordService;
+import in.gov.sih.sih26135.service.BatchSessionAttendanceService;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Objects;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -33,18 +39,25 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
   private final RefAttendanceStatusRepository refAttendanceStatusRepository;
   private final UserRepository userRepository;
   private final AttendanceRecordMapper attendanceRecordMapper;
+  private final WorkflowSecurityScopeValidator scope;
+  private final TrainingBatchRepository batches;
+  private final BatchSessionAttendanceService timetable;
 
   public AttendanceRecordServiceImpl(
       AttendanceRecordRepository attendanceRecordRepository,
       TrainingEnrollmentRepository trainingEnrollmentRepository,
       RefAttendanceStatusRepository refAttendanceStatusRepository,
       UserRepository userRepository,
-      AttendanceRecordMapper attendanceRecordMapper) {
+      AttendanceRecordMapper attendanceRecordMapper,
+      WorkflowSecurityScopeValidator scope, TrainingBatchRepository batches, BatchSessionAttendanceService timetable) {
     this.attendanceRecordRepository = attendanceRecordRepository;
     this.trainingEnrollmentRepository = trainingEnrollmentRepository;
     this.refAttendanceStatusRepository = refAttendanceStatusRepository;
     this.userRepository = userRepository;
     this.attendanceRecordMapper = attendanceRecordMapper;
+    this.scope = scope;
+    this.batches = batches;
+    this.timetable = timetable;
   }
 
   @Override
@@ -72,8 +85,18 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
     if (traineeId == null) {
       throw new BadRequestException("Trainee ID is required");
     }
-    return attendanceRecordRepository.findByTraineeId(traineeId).stream()
+    var records = attendanceRecordRepository.findByTraineeId(traineeId);
+    if (records.isEmpty()) return List.of();
+    var times = timetable.recordedTimes(traineeId);
+    return records.stream()
         .map(attendanceRecordMapper::toResponse)
+        .peek(record -> {
+          var slot = times.get(record.getId());
+          if (slot != null) {
+            record.setScheduledStart(slot.startsAt());
+            record.setScheduledEnd(slot.endsAt());
+          }
+        })
         .toList();
   }
 
@@ -121,7 +144,7 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
   }
 
   @Override
-  @Transactional
+  @Transactional(isolation = Isolation.READ_COMMITTED)
   public AttendanceRecordResponse createAttendanceRecord(CreateAttendanceRecordRequest request) {
     if (request == null) {
       throw new BadRequestException("Attendance record creation request cannot be null");
@@ -146,6 +169,14 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
       throw new BadRequestException("Session end time cannot precede session start time", "INVALID_SESSION_TIMES");
     }
 
+    trainingEnrollmentRepository.findBatchIdForEnrollment(request.getEnrollmentId()).ifPresent(batches::findByIdForUpdate);
+    TrainingEnrollment enrollment = trainingEnrollmentRepository.findById(request.getEnrollmentId())
+        .orElseThrow(() -> new ResourceNotFoundException("TrainingEnrollment", "enrollmentId"));
+    requireAttendanceOwnership(enrollment);
+    if (enrollment.getDeletedAt() != null) {
+      throw new BadRequestException("Attendance requires a current enrollment record.", "ENROLLMENT_DELETED");
+    }
+
     if (attendanceRecordRepository.existsByTrainingEnrollmentIdAndSessionDateAndSessionSequence(
         request.getEnrollmentId(), request.getSessionDate(), sessionSequence)) {
       throw new ConflictException(
@@ -153,9 +184,6 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
           "ATTENDANCE_ALREADY_EXISTS"
       );
     }
-
-    TrainingEnrollment enrollment = trainingEnrollmentRepository.findById(request.getEnrollmentId())
-        .orElseThrow(() -> new ResourceNotFoundException("TrainingEnrollment", "enrollmentId"));
 
     Trainee trainee = enrollment.getTrainee();
     if (request.getTraineeId() != null && !request.getTraineeId().equals(trainee.getId())) {
@@ -184,6 +212,9 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
     }
 
     AttendanceRecord entity = attendanceRecordMapper.toEntity(request, enrollment, trainee, batch, status);
+    if (scope.isTrainingProviderCaller()) {
+      entity.setMarkedByUserId(scope.resolveAuthenticatedUserId());
+    }
     entity.setSessionSequence(sessionSequence);
     if (request.getRemarks() != null) {
       entity.setRemarks(request.getRemarks().trim());
@@ -198,7 +229,7 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
   }
 
   @Override
-  @Transactional
+  @Transactional(isolation = Isolation.READ_COMMITTED)
   public AttendanceRecordResponse updateAttendanceRecord(Long id, UpdateAttendanceRecordRequest request) {
     if (id == null) {
       throw new BadRequestException("Attendance ID is required");
@@ -207,8 +238,10 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
       throw new BadRequestException("Attendance record update request cannot be null");
     }
 
+    attendanceRecordRepository.findBatchIdForRecord(id).ifPresent(batches::findByIdForUpdate);
     AttendanceRecord record = attendanceRecordRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("AttendanceRecord", "id"));
+    requireAttendanceOwnership(record.getTrainingEnrollment());
 
     LocalTime effectiveStartTime = request.getSessionStartTime() != null
         ? request.getSessionStartTime()
@@ -258,14 +291,25 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
   }
 
   @Override
-  @Transactional
+  @Transactional(isolation = Isolation.READ_COMMITTED)
   public void deleteAttendanceRecord(Long id) {
     if (id == null) {
       throw new BadRequestException("Attendance ID is required");
     }
+    attendanceRecordRepository.findBatchIdForRecord(id).ifPresent(batches::findByIdForUpdate);
     AttendanceRecord record = attendanceRecordRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("AttendanceRecord", "id"));
+    requireAttendanceOwnership(record.getTrainingEnrollment());
 
     attendanceRecordRepository.delete(record);
+  }
+
+  private void requireAttendanceOwnership(TrainingEnrollment enrollment) {
+    if (!scope.isTrainingProviderCaller()) return;
+    Long providerId = scope.resolveAuthenticatedUser().map(user -> user.getTrainingProviderId())
+        .orElseThrow(() -> new AccessDeniedException("A training provider assignment is required."));
+    if (enrollment.getTrainingProvider() == null || !Objects.equals(providerId, enrollment.getTrainingProvider().getId())) {
+      throw new AccessDeniedException("Attendance is limited to enrollments for your training provider.");
+    }
   }
 }

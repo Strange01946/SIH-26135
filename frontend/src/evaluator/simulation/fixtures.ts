@@ -46,9 +46,11 @@ const consentTypes: Record<number, [string, string]> = {
   1: ['DATA_PROCESSING', 'Core Scheme Data Processing'],
   2: ['EMPLOYMENT_FOLLOW_UP', 'Employment Outcome Follow-Up & Verification'],
   3: ['EMPLOYER_SHARING', 'Share with employers'],
+  4: ['ANALYTICS', 'Outcome Analytics Export'],
   5: ['COMMUNICATION_SMS', 'Transactional SMS Communication'],
   6: ['COMMUNICATION_WHATSAPP', 'WhatsApp Operational Messaging'],
   7: ['COMMUNICATION_EMAIL', 'Official Email Communications'],
+  8: ['COMMUNICATION_PHONE', 'Phone Follow-Up'],
 };
 
 export function sampleConsent(id: number, traineeId: number, typeId: number, granted: boolean): TraineeConsent | undefined {

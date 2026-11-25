@@ -708,6 +708,10 @@ public class GlobalExceptionHandler {
       "Select an available center status",
       "The location must belong to the selected district",
       "Select an active district within the selected state or union territory.",
+      "Select a valid gender option.",
+      "Select a valid education level.",
+      "This campaign is unavailable or already assigned.",
+      "Choose a date within the open campaign window.",
 
       // 6. Analytics Multi-Dimensional Filtering Constraints
       "Demographic dimension 'socialCategory' is not supported by the existing database schema",

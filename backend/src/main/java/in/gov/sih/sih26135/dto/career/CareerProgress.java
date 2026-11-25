@@ -1,7 +1,9 @@
 package in.gov.sih.sih26135.dto.career;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import in.gov.sih.sih26135.dto.response.EmploymentExitEventResponse;
 import in.gov.sih.sih26135.dto.response.TraineeUnemploymentEventResponse;
+import in.gov.sih.sih26135.dto.trainee.TraineeSurvey;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PastOrPresent;
 import jakarta.validation.constraints.Positive;
@@ -18,9 +20,11 @@ public final class CareerProgress {
   public record Employment(long id, String number, String employer, String role, LocalDate startDate,
                            LocalDate endDate, String status, String verificationStatus, boolean canRecordExit) {}
 
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   public record CandidateHistory(Candidate candidate, List<Employment> employments,
                                  List<EmploymentExitEventResponse> exitEvents,
-                                 List<TraineeUnemploymentEventResponse> unemploymentEvents) {}
+                                 List<TraineeUnemploymentEventResponse> unemploymentEvents,
+                                 TraineeSurvey.CareerUpdate reportedUpdate) {}
 
   public enum RetentionStatus { NOT_YET_DUE, RETAINED, ENDED_BEFORE_MILESTONE }
   public record RetentionMilestone(int months, LocalDate dueOn, RetentionStatus status) {}
@@ -62,7 +66,4 @@ public final class CareerProgress {
 
   public record ReportUnemploymentRequest(@NotNull @Positive Long unemploymentReasonId,
                                           @Size(max = 500) String remarks) {}
-  public record BatchOption(long id, String code, String provider, String center, LocalDate startsOn,
-                            LocalDate endsOn, long availableSeats) {}
-  public record RemediationRequest(@NotNull @Positive Long batchId) {}
 }

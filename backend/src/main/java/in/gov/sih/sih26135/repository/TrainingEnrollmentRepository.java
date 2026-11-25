@@ -15,6 +15,9 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface TrainingEnrollmentRepository extends JpaRepository<TrainingEnrollment, Long> {
 
+  @Query("SELECT e.trainingBatch.id FROM TrainingEnrollment e WHERE e.id=:id")
+  Optional<Long> findBatchIdForEnrollment(@Param("id") Long id);
+
   Optional<TrainingEnrollment> findByEnrollmentNumber(String enrollmentNumber);
 
   boolean existsByEnrollmentNumber(String enrollmentNumber);

@@ -1,21 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import {
-  confirmCareerUnemployment, enrollCareerRemediation, findCareerCandidates, getCareerExitOptions,
-  getCareerHistory, getRemediationBatches, recordCareerExit,
+  confirmCareerUnemployment, findCareerCandidates, getCareerExitOptions,
+  getCareerHistory, recordCareerExit,
   type CareerHistory, type EmploymentPeriod, type ExitInput,
 } from '@/api/careerApi';
 import { getTraineeSkillGapProfile } from '@/api/traineeApi';
 import { careerDate, RetentionPanel, SkillGapInsights } from '@/components/career/CareerInsights';
+import { ReportedCareer } from '@/components/career/ReportedCareer';
+import { StaffCareerSkills } from '@/components/career/CareerSkillsPanel';
+import { CareerSkillsCatalog } from '@/components/career/CareerSkillsCatalog';
 import { Modal } from '@/components/common/Modal';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { useAuth } from '@/context/AuthContext';
-import type { TraineeSkillGapProfile } from '@/types/trainee';
-
-type Recommendation = NonNullable<TraineeSkillGapProfile['recommendations']>[number];
+import { CandidateFollowups } from './CandidateFollowups';
 
 export function AdminCareersPage() {
+  const { hasAuthority } = useAuth();
   const [search, setSearch] = useState('');
   const [term, setTerm] = useState('');
   const [traineeId, setTraineeId] = useState<number>();
@@ -38,8 +40,9 @@ export function AdminCareersPage() {
     <div className="space-y-5">
       <header>
         <h1 className="page-title">Career progression</h1>
-        <p className="mt-1 text-sm text-slate-600">Track employment and wages, record exits, and arrange training for assessed skill deficits.</p>
+        <p className="mt-1 text-sm text-slate-600">Review employment, wages, and skill gaps, and record employment exits.</p>
       </header>
+      {hasAuthority('assessment.manage') && <CareerSkillsCatalog />}
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)]">
         <aside className="card space-y-4 p-4" aria-label="Candidate search">
           <form onSubmit={submitSearch} className="space-y-2">
@@ -88,7 +91,13 @@ function CandidateWorkbench({ traineeId }: { traineeId: number }) {
     queryKey: ['career', 'history', traineeId],
     queryFn: ({ signal }) => getCareerHistory(traineeId, signal),
     retry: false,
+    refetchOnWindowFocus: 'always',
+    refetchInterval: hasAuthority('survey.manage') ? 10_000 : false,
   });
+  const latestSubmissionId = history.data?.reportedUpdate?.submissionId;
+  useEffect(() => {
+    void queryClient.invalidateQueries({ queryKey: ['career', 'candidate-surveys', traineeId] });
+  }, [latestSubmissionId, queryClient, traineeId]);
 
   if (history.isPending) return <LoadingSpinner label="Loading career history" />;
   if (history.isError) return <ErrorState error={history.error} title="Unable to load career history" onRetry={() => void history.refetch()} />;
@@ -113,11 +122,13 @@ function CandidateWorkbench({ traineeId }: { traineeId: number }) {
           <p className="text-xs font-medium text-slate-600">{candidate.registrationNumber}</p>
           <h2 className="text-xl font-semibold text-navy">{candidate.name}</h2>
         </div>
-        <div className="text-sm">
+        {!history.data.reportedUpdate && <div className="text-sm">
           <p className="text-xs text-slate-600">Current employment status</p>
           <strong className={candidate.statusCode === 'UNEMPLOYED' ? 'badge-warning' : 'badge bg-navy-50 text-navy'}>{candidate.status}</strong>
-        </div>
+        </div>}
       </header>
+      {history.data.reportedUpdate && <ReportedCareer update={history.data.reportedUpdate} />}
+      <StaffCareerSkills traineeId={traineeId} />
       {notice && <p className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-900" role="status">{notice}</p>}
       <section className="card space-y-4 p-4 sm:p-5" aria-labelledby="career-employment-heading">
         <h2 id="career-employment-heading" className="section-title">Employment and retention</h2>
@@ -161,6 +172,7 @@ function CandidateWorkbench({ traineeId }: { traineeId: number }) {
         )}
       </section>
       {canManageRemediation && <RemediationWorkbench traineeId={traineeId} />}
+      {hasAuthority('survey.manage') && <CandidateFollowups traineeId={traineeId} />}
       {employment && exitMode && (
         <ExitDialog employment={employment} mode={exitMode}
           unemploymentPossible={unemploymentCanStart(history.data, employment)}
@@ -268,97 +280,27 @@ function ExitDialog({ employment, mode, unemploymentPossible, onClose, onSaved }
 }
 
 function RemediationWorkbench({ traineeId }: { traineeId: number }) {
-  const [selected, setSelected] = useState<Recommendation>();
-  const [enrollmentNumber, setEnrollmentNumber] = useState<string>();
-  const queryClient = useQueryClient();
-  const profileKey = ['trainee', 'skillgap', traineeId];
   const profile = useQuery({
-    queryKey: profileKey,
+    queryKey: ['trainee', 'skillgap', traineeId],
     queryFn: () => getTraineeSkillGapProfile(traineeId),
     retry: false,
+    refetchOnWindowFocus: 'always',
   });
 
   return (
-    <section className="card space-y-4 p-4 sm:p-5" aria-labelledby="career-remediation-heading">
-      <h2 id="career-remediation-heading" className="section-title">Skill gap remediation</h2>
-      {enrollmentNumber && <p className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-900" role="status">Remediation enrollment {enrollmentNumber} created.</p>}
+    <section className="card space-y-4 p-4 sm:p-5" aria-label="Recorded skill gap assessments">
+      <h2 className="section-title">Recorded skill gap assessments</h2>
       {profile.isPending ? <LoadingSpinner label="Loading skill gap profile" /> : profile.isError ? (
         <ErrorState error={profile.error} title="Unable to load skill gap profile" onRetry={() => void profile.refetch()} />
-      ) : (
-        <>
-          <SkillGapInsights profile={profile.data} />
-          <h3 className="font-bold text-navy">Personalized recommendations</h3>
-          {!profile.data.recommendations?.length ? <p className="text-sm text-slate-600">There are no recommendations for this candidate’s recorded skill gaps.</p> : (
-            <ul className="grid gap-3 md:grid-cols-2">
-              {profile.data.recommendations.map((recommendation) => {
-                const gap = profile.data.currentSkillGaps?.find((item) => item.id === recommendation.skillGapId);
-                const inRemediation = gap?.skillGapStatusCode === 'IN_REMEDIATION';
-                return (
-                  <li key={recommendation.id} className="flex flex-col items-start gap-2 rounded-lg border border-slate-200 p-4">
-                    <h4 className="font-semibold text-navy">{recommendation.recommendedCourseName || recommendation.skillGapActionTypeName || 'Skill recommendation'}</h4>
-                    {(recommendation.recommendedSkillName || gap?.skillName) && <p className="text-sm text-slate-700">{recommendation.recommendedSkillName || gap?.skillName}</p>}
-                    <p className={inRemediation ? 'badge-success' : 'badge bg-slate-100 text-slate-700'}>
-                      {inRemediation ? 'Skill gap in remediation' : recommendation.isAcceptedFlag ? `Accepted ${careerDate(recommendation.acceptedOn)}` : 'Candidate acceptance required'}
-                    </p>
-                    {recommendation.remarks && <p className="text-sm text-slate-600">{recommendation.remarks}</p>}
-                    {recommendation.isAcceptedFlag && recommendation.recommendedCourseId && gap?.isCurrent && gap.skillGapStatusCode === 'OPEN'
-                      && <button type="button" className="btn-secondary mt-auto" onClick={() => setSelected(recommendation)}>Choose remediation batch</button>}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </>
-      )}
-      {selected && <EnrollDialog recommendation={selected} onClose={() => setSelected(undefined)} onSaved={(number) => {
-        setSelected(undefined);
-        setEnrollmentNumber(number);
-        void queryClient.invalidateQueries({ queryKey: profileKey });
-      }} />}
+      ) : <>
+        <SkillGapInsights profile={profile.data} />
+        {Boolean(profile.data.recommendations?.length) && <ul className="space-y-2">
+          {profile.data.recommendations?.map(recommendation => <li key={recommendation.id} className="rounded border p-3 text-sm">
+            <strong>{recommendation.recommendedCourseName || recommendation.recommendedSkillName || 'Training recommendation'}</strong>
+            <p>{recommendation.status === 'DECLINED' ? 'Declined' : recommendation.isAcceptedFlag ? 'Trainee interested' : 'Suggested'}</p>
+          </li>)}
+        </ul>}
+      </>}
     </section>
-  );
-}
-
-function EnrollDialog({ recommendation, onClose, onSaved }: {
-  recommendation: Recommendation;
-  onClose: () => void;
-  onSaved: (enrollmentNumber: string) => void;
-}) {
-  const [batchId, setBatchId] = useState<number>();
-  const batches = useQuery({
-    queryKey: ['career', 'remediation-batches', recommendation.id],
-    queryFn: ({ signal }) => getRemediationBatches(recommendation.id, signal),
-    retry: false,
-  });
-  const save = useMutation({
-    mutationFn: (id: number) => enrollCareerRemediation(recommendation.id, id),
-    onSuccess: (result) => onSaved(result.createdEnrollment?.enrollmentNumber ?? ''),
-    onError: () => { void batches.refetch(); },
-  });
-  const batch = batches.data?.find((item) => item.id === batchId);
-  return (
-    <Modal open title="Enroll in remediation course" onClose={() => { if (!save.isPending) onClose(); }}>
-      <form className="space-y-4 p-6" onSubmit={(event) => { event.preventDefault(); if (batch) save.mutate(batch.id); }}>
-        <p className="font-semibold text-navy">{recommendation.recommendedCourseName}</p>
-        {batches.isPending ? <LoadingSpinner label="Loading training batches" /> : batches.isError ? (
-          <ErrorState error={batches.error} title="Unable to load training batches" onRetry={() => void batches.refetch()} />
-        ) : batches.data.length === 0 ? (
-          <p className="text-sm text-slate-600">No open batch with an available seat was found for this course.</p>
-        ) : (
-          <label className="form-label">Training batch
-            <select className="form-input" value={batch?.id ?? ''} onChange={(event) => setBatchId(Number(event.target.value))} required>
-              <option value="">Select a batch</option>
-              {batches.data.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.center} · {careerDate(item.startsOn)}</option>)}
-            </select>
-          </label>
-        )}
-        {batch && <p className="text-sm text-slate-600">{batch.provider} · {batch.availableSeats} {batch.availableSeats === 1 ? 'seat' : 'seats'} available</p>}
-        {save.isError && <ErrorState error={save.error} title="Unable to enroll candidate" />}
-        <div className="flex justify-end gap-2">
-          <button type="button" className="btn-secondary" onClick={onClose} disabled={save.isPending}>Cancel</button>
-          <button type="submit" className="btn-primary" disabled={!batch || save.isPending}>{save.isPending ? 'Enrolling…' : 'Confirm enrollment'}</button>
-        </div>
-      </form>
-    </Modal>
   );
 }

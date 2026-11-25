@@ -209,6 +209,18 @@ export const NAV_ITEMS: NavItem[] = [
     persona: 'TRAINEE',
   },
   {
+    label: 'My Profile',
+    to: '/trainee/profile',
+    icon: '👤',
+    persona: 'TRAINEE',
+  },
+  {
+    label: 'Find training',
+    to: '/trainee/find-training',
+    icon: '🔎',
+    persona: 'TRAINEE',
+  },
+  {
     label: 'My Training & Attendance',
     to: '/trainee/training',
     icon: '📖',

@@ -44,6 +44,18 @@ export async function getTraineeById(id: number): Promise<TraineeProfile> {
   return apiGet<TraineeProfile>(`/api/v1/trainees/${id}`);
 }
 
+export type TraineeSelfProfile = Omit<components['schemas']['TraineeSelfProfile'], 'profile'> & { profile: TraineeProfile };
+export type UpdateOwnTraineeProfile = components['schemas']['Update'];
+const ownProfilePath = '/api/v1/trainees/me/profile';
+
+export function getOwnTraineeProfile(signal?: AbortSignal) {
+  return apiGet<TraineeSelfProfile>(ownProfilePath, { signal });
+}
+
+export function updateOwnTraineeProfile(profile: UpdateOwnTraineeProfile) {
+  return apiPut<UpdateOwnTraineeProfile, TraineeSelfProfile>(ownProfilePath, profile);
+}
+
 /**
  * Retrieves paginated training enrollments for a trainee.
  * Backend route: GET /api/v1/training-enrollments?traineeId={traineeId}
@@ -53,9 +65,10 @@ export async function getTraineeEnrollments(
   traineeId: number,
   page = 0,
   size = 20,
+  newestFirst = false,
 ): Promise<PagedResponse<TrainingEnrollment>> {
   return apiGetPaged<TrainingEnrollment>('/api/v1/training-enrollments', {
-    params: { traineeId, page, size },
+    params: { traineeId, page, size, ...(newestFirst ? { sort: 'id', direction: 'DESC' } : {}) },
   });
 }
 
@@ -244,10 +257,15 @@ const FOLLOWUP_SURVEYS = '/api/v1/trainees/me/followup-surveys';
 type SurveySchemas = components['schemas'];
 export type FollowupAnswer = SurveySchemas['Answer'];
 type FollowupAssignment = Required<Pick<SurveySchemas['Assignment'], 'taskId' | 'name'>> & Pick<SurveySchemas['Assignment'], 'closesOn'>;
-type FollowupSubmission = Required<Pick<SurveySchemas['Submission'], 'id' | 'name'>> & Pick<SurveySchemas['Submission'], 'submittedAt'>;
+export type FollowupSubmission = Required<Pick<SurveySchemas['Submission'], 'id' | 'name'>> & Pick<SurveySchemas['Submission'], 'submittedAt'>;
+export type FollowupSubmissionDetail = {
+  submission: FollowupSubmission;
+  answers: SurveySchemas['RecordedAnswer'][];
+};
 interface FollowupOverview {
   assignments: FollowupAssignment[];
   recentSubmissions: FollowupSubmission[];
+  careerUpdateAvailable: boolean;
 }
 
 export type FollowupQuestion = Required<Omit<SurveySchemas['Question'], 'options'>> & { options: Required<SurveySchemas['Option']>[] };
@@ -256,7 +274,7 @@ export type FollowupQuestionnaire = Required<Pick<SurveySchemas['Questionnaire']
   assignment: FollowupAssignment;
   questions: FollowupQuestion[];
 };
-type FollowupSubmitRequest = paths['/api/v1/trainees/me/followup-surveys/{taskId}/responses']['post']['requestBody']['content']['application/json'];
+export type FollowupSubmitRequest = paths['/api/v1/trainees/me/followup-surveys/{taskId}/responses']['post']['requestBody']['content']['application/json'];
 
 export function getFollowupSurveys(signal?: AbortSignal) {
   return apiGet<FollowupOverview & Required<Pick<SurveySchemas['Overview'], 'followupConsentGranted'>>>(FOLLOWUP_SURVEYS, { signal });
@@ -270,8 +288,28 @@ export function submitFollowupQuestionnaire(taskId: number, payload: FollowupSub
   return apiPost<FollowupSubmitRequest, FollowupSubmission>(`${FOLLOWUP_SURVEYS}/${taskId}/responses`, payload);
 }
 
+export function getCareerUpdateQuestionnaire(signal?: AbortSignal) {
+  return apiGet<{ name: string; versionId: number; questions: FollowupQuestion[]; initialAnswers?: FollowupAnswer[] }>(
+    `${FOLLOWUP_SURVEYS}/career-update`, { signal });
+}
+
+export function submitCareerUpdate(payload: FollowupSubmitRequest) {
+  return apiPost<FollowupSubmitRequest, FollowupSubmission>(`${FOLLOWUP_SURVEYS}/career-update`, payload);
+}
+
+export function getOwnSurveySubmission(id: number, signal?: AbortSignal) {
+  return apiGet<FollowupSubmissionDetail>(`${FOLLOWUP_SURVEYS}/submissions/${id}`, { signal });
+}
+
 export type EmploymentPeriod = SurveySchemas['EmploymentPeriod'] & { id: number };
 
 export function getEmploymentHistory(page: number, signal?: AbortSignal) {
   return apiGetPaged<EmploymentPeriod>('/api/v1/trainees/me/employment-history', { params: { page }, signal });
 }
+
+export function getRecordedCareerStatus(signal?: AbortSignal) {
+  return apiGet<Required<Pick<SurveySchemas['CareerStatus'], 'status' | 'unemploymentPeriods'>>
+    & Pick<SurveySchemas['CareerStatus'], 'reportedUpdate'>>('/api/v1/trainees/me/career-status', { signal });
+}
+
+export type ReportedCareerUpdate = SurveySchemas['CareerUpdate'];

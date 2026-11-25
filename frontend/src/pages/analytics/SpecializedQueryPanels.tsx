@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import type { getSpecializedOutcomes, getSpecializedOutreach, Schema } from '@/api/specializedAnalyticsApi';
 import { MisTable, Panel, Value, type Format, type TableColumn } from './MisUi';
+import { matchKeywords } from '@/lib/keywordSearch';
 
 type Outcomes = Awaited<ReturnType<typeof getSpecializedOutcomes>>;
 type Outreach = Awaited<ReturnType<typeof getSpecializedOutreach>>;
@@ -15,13 +16,15 @@ function tableColumns<T>(name: TableColumn<T>, fields: [keyof T, string, Format?
   }))];
 }
 
-function QueryTable<T>({ code, title, rows, columns, rowKey, sort, searchLabel }: {
+function QueryTable<T>({ code, title, rows, columns, rowKey, sort, searchLabel, keywordSearch = false }: {
   code: string; title: string; rows: T[]; columns: TableColumn<T>[]; rowKey: (row: T) => string | number | undefined;
-  sort?: string; searchLabel?: string;
+  sort?: string; searchLabel?: string; keywordSearch?: boolean;
 }) {
   const [search, setSearch] = useState('');
   const term = search.trim().toLocaleLowerCase();
-  const filtered = rows.filter((row) => String(columns[0].value(row) ?? '').toLocaleLowerCase().includes(term));
+  const filtered = keywordSearch
+    ? matchKeywords(rows, term, row => String(columns[0].value(row) ?? ''))
+    : rows.filter(row => String(columns[0].value(row) ?? '').toLocaleLowerCase().includes(term));
   return (
     <Panel code={code} title={title}>
       {searchLabel && rows.length > 0 && (
@@ -92,7 +95,7 @@ export function OutcomePanels({ retention, skills, attrition }: Outcomes) {
         </ol>
       </Panel>
       <QueryTable code="Q13" title="Top current skill gaps" rows={skills.topSkillGaps ?? []}
-        columns={gapColumns} rowKey={(row) => `${row.skillId}-${row.severityCode}`} sort="currentGapCount" searchLabel="Search skills" />
+        columns={gapColumns} rowKey={(row) => `${row.skillId}-${row.severityCode}`} sort="currentGapCount" searchLabel="Search skills" keywordSearch />
       <QueryTable code="Q14" title="Skill gap severity and recommendation uptake" rows={skills.severityBreakdown ?? []}
         columns={severityColumns} rowKey={(row) => row.severityCode} sort="currentGapCount" />
       <Panel code="Q15" title="Unemployment and re-employment">

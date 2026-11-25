@@ -4,30 +4,25 @@ import in.gov.sih.sih26135.config.cache.AnalyticsCacheEvictionService;
 import in.gov.sih.sih26135.dto.career.CareerProgress.*;
 import in.gov.sih.sih26135.dto.request.CreateEmploymentExitEventRequest;
 import in.gov.sih.sih26135.dto.request.CreateTraineeUnemploymentEventRequest;
-import in.gov.sih.sih26135.dto.request.CreateTrainingEnrollmentRequest;
 import in.gov.sih.sih26135.dto.request.EmploymentExitAndUnemploymentRequest;
-import in.gov.sih.sih26135.dto.request.SkillGapRemediationEnrollmentRequest;
 import in.gov.sih.sih26135.dto.response.EmploymentExitAndUnemploymentResponse;
 import in.gov.sih.sih26135.dto.response.EmploymentRecordResponse;
-import in.gov.sih.sih26135.dto.response.SkillGapRemediationEnrollmentResponse;
 import in.gov.sih.sih26135.dto.response.TraineeUnemploymentEventResponse;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ConflictException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.repository.EmploymentRecordRepository;
 import in.gov.sih.sih26135.repository.RefEmploymentSpellStatusRepository;
-import in.gov.sih.sih26135.repository.RefEnrollmentStatusRepository;
-import in.gov.sih.sih26135.repository.TrainingBatchRepository;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
-import java.util.UUID;
 import java.util.stream.Stream;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,19 +49,15 @@ public class CareerProgressService {
   private final TraineeUnemploymentEventService unemployment;
   private final SalaryHistoryService wages;
   private final RefEmploymentSpellStatusRepository spellStatuses;
-  private final SkillGapRecommendationService recommendations;
-  private final SkillGapRemediationWorkflowService remediation;
-  private final TrainingBatchRepository trainingBatches;
-  private final RefEnrollmentStatusRepository enrollmentStatuses;
   private final AnalyticsCacheEvictionService analyticsCache;
+  private final TraineeConsentService consent;
 
   public CareerProgressService(JdbcTemplate jdbc, WorkflowSecurityScopeValidator scope,
       EmploymentLifecycleWorkflowService lifecycle, EmploymentRecordService employments,
       EmploymentRecordRepository employmentRecords, EmploymentExitEventService exits,
       TraineeUnemploymentEventService unemployment, SalaryHistoryService wages,
-      RefEmploymentSpellStatusRepository spellStatuses, SkillGapRecommendationService recommendations,
-      SkillGapRemediationWorkflowService remediation, TrainingBatchRepository trainingBatches,
-      RefEnrollmentStatusRepository enrollmentStatuses, AnalyticsCacheEvictionService analyticsCache) {
+      RefEmploymentSpellStatusRepository spellStatuses, AnalyticsCacheEvictionService analyticsCache,
+      TraineeConsentService consent) {
     this.jdbc = jdbc;
     this.scope = scope;
     this.lifecycle = lifecycle;
@@ -76,11 +67,8 @@ public class CareerProgressService {
     this.unemployment = unemployment;
     this.wages = wages;
     this.spellStatuses = spellStatuses;
-    this.recommendations = recommendations;
-    this.remediation = remediation;
-    this.trainingBatches = trainingBatches;
-    this.enrollmentStatuses = enrollmentStatuses;
     this.analyticsCache = analyticsCache;
+    this.consent = consent;
   }
 
   public List<Candidate> findCandidates(String search) {
@@ -99,7 +87,14 @@ public class CareerProgressService {
     var periods = timeline.employmentRecords().stream()
         .sorted(Comparator.comparing(EmploymentRecordResponse::startDate).thenComparing(EmploymentRecordResponse::id).reversed())
         .map(CareerProgressService::period).toList();
-    return new CandidateHistory(candidate, periods, timeline.exitEvents(), timeline.unemploymentEvents());
+    var authentication = SecurityContextHolder.getContext().getAuthentication();
+    boolean canViewReport = authentication != null && authentication.getAuthorities().stream()
+        .anyMatch(authority -> "survey.manage".equals(authority.getAuthority()));
+    var report = canViewReport && consent.hasActiveConsent(traineeId, LatestCareerUpdate.CONSENT_CODE)
+        ? LatestCareerUpdate.find(jdbc, traineeId) : null;
+    var status = CareerRecordStatus.current(jdbc, traineeId, report);
+    var current = new Candidate(candidate.id(), candidate.registrationNumber(), candidate.name(), status.code(), status.name());
+    return new CandidateHistory(current, periods, timeline.exitEvents(), timeline.unemploymentEvents(), report);
   }
 
   public EmploymentRetention retention(long employmentId) {
@@ -185,58 +180,6 @@ public class CareerProgressService {
     setUnemployed(employment.traineeId(), request.getLabourStatusId());
     analyticsCache.evictOnEmploymentExitOrTransition(this);
     return result;
-  }
-
-  public List<BatchOption> batches(long recommendationId) {
-    var recommendation = recommendations.getRecommendationById(recommendationId);
-    if (recommendation.recommendedCourseId() == null) {
-      return List.of();
-    }
-    return batchesForRecommendation(recommendationId, null);
-  }
-
-  @Transactional(isolation = Isolation.READ_COMMITTED)
-  public SkillGapRemediationEnrollmentResponse enroll(long recommendationId, long batchId) {
-    // Serialize enrollment across all recommendation cards for the same skill gap.
-    jdbc.query("""
-        SELECT g.skill_gap_id FROM skill_gaps g
-        WHERE g.skill_gap_id = (SELECT r.skill_gap_id FROM skill_gap_recommendations r
-                               WHERE r.skill_gap_recommendation_id = ?) FOR UPDATE
-        """, (rs, row) -> rs.getLong(1), recommendationId).stream().findFirst()
-        .orElseThrow(() -> new ResourceNotFoundException("SkillGapRecommendation", "recommendationId"));
-    trainingBatches.findByIdForUpdate(batchId)
-        .orElseThrow(() -> new ResourceNotFoundException("TrainingBatch", "batchId"));
-    if (batchesForRecommendation(recommendationId, batchId).isEmpty()) {
-      throw new ConflictException("This batch is no longer available to the candidate", "REMEDIATION_BATCH_UNAVAILABLE");
-    }
-    var status = enrollmentStatuses.findByStatusCode("ENROLLED").orElseThrow();
-    var input = new CreateTrainingEnrollmentRequest(
-        "RM-" + UUID.randomUUID().toString().replace("-", "").substring(0, 28),
-        null, batchId, LocalDate.now(), status.getId());
-    return remediation.enrollTraineeInRemediationCourse(new SkillGapRemediationEnrollmentRequest(recommendationId, input, null));
-  }
-
-  private List<BatchOption> batchesForRecommendation(long recommendationId, Long batchId) {
-    return jdbc.query("""
-        SELECT b.batch_id, b.batch_code, p.provider_name, c.center_name, b.start_date, b.end_date,
-            CAST(b.capacity AS SIGNED) - CAST((SELECT COUNT(*) FROM training_enrollments e
-                WHERE e.batch_id = b.batch_id AND e.deleted_at IS NULL) AS SIGNED) available_seats
-        FROM skill_gap_recommendations r
-        JOIN skill_gaps g ON g.skill_gap_id = r.skill_gap_id
-        JOIN training_batches b ON b.course_id = r.recommended_course_id
-        JOIN ref_batch_status s ON s.batch_status_id = b.batch_status_id
-        JOIN training_providers p ON p.provider_id = b.provider_id
-        JOIN training_centers c ON c.center_id = b.center_id
-        WHERE r.skill_gap_recommendation_id = ? AND b.deleted_at IS NULL AND s.status_code = 'OPEN'
-          AND p.deleted_at IS NULL AND c.deleted_at IS NULL
-          AND (b.end_date IS NULL OR b.end_date >= ?) AND (b.batch_id = ? OR ? IS NULL)
-          AND NOT EXISTS (SELECT 1 FROM training_enrollments e
-                         WHERE e.batch_id = b.batch_id AND e.trainee_id = g.trainee_id)
-        HAVING available_seats > 0
-        ORDER BY b.start_date, b.batch_id
-        """, (rs, row) -> new BatchOption(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4),
-            rs.getObject(5, LocalDate.class), rs.getObject(6, LocalDate.class), rs.getLong(7)),
-        recommendationId, LocalDate.now(), batchId, batchId);
   }
 
   private EmploymentRecordResponse employment(long id) {

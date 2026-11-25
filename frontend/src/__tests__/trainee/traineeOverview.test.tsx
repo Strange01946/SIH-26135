@@ -8,6 +8,10 @@ import type { TraineeProfile, TrainingEnrollment, AttendanceRecord, TraineeOutco
 import type { PagedResponse } from '@/api/types';
 
 vi.mock('@/api/traineeApi');
+vi.mock('@/api/careerSkillsApi', () => ({ careerSkillsKey: ['career-skills'],
+  getOwnCareerSkills: async () => ({ revision: 0, skills: [], evidence: [], requirements: [] }),
+  saveOwnCareerSkills: vi.fn(),
+}));
 
 const emptyEnrollmentPaged: PagedResponse<TrainingEnrollment> = {
   content: [],
@@ -58,6 +62,9 @@ describe('TraineeOverviewPage Component', () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.mocked(traineeApi.getRecordedCareerStatus).mockResolvedValue({
+      status: { name: 'Unemployed', source: 'PROFILE' }, unemploymentPeriods: [],
+    });
   });
 
   it('renders candidate profile demographic details and registration number', async () => {
@@ -80,7 +87,7 @@ describe('TraineeOverviewPage Component', () => {
     expect(screen.getByText('Priya Sharma')).toBeInTheDocument();
     expect(screen.getByText('priya.sharma@example.gov.in')).toBeInTheDocument();
     expect(screen.getByText('+919876543210')).toBeInTheDocument();
-    expect(screen.getByText(/Active Registration/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Edit profile' })).toHaveAttribute('href', '/trainee/profile');
   });
 
   it('renders active enrollment information when enrollment records exist', async () => {
@@ -208,6 +215,9 @@ describe('TraineeOverviewPage Component', () => {
   });
 
   it('renders longitudinal placement outcome when candidate is employed', async () => {
+    vi.mocked(traineeApi.getRecordedCareerStatus).mockResolvedValueOnce({
+      status: { name: 'Wage employed', source: 'EMPLOYMENT_RECORD' }, unemploymentPeriods: [],
+    });
     const mockOutcome: TraineeOutcomeSummary = {
       traineeId: 42,
       snapshotIsEmployedFlag: true,
@@ -230,7 +240,7 @@ describe('TraineeOverviewPage Component', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText('EMPLOYED')).toBeInTheDocument();
+      expect(screen.getByText('Wage employed')).toBeInTheDocument();
     });
     expect(screen.getByText('Current wage employment records')).toBeInTheDocument();
   });

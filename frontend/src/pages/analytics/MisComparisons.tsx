@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Category, Course, CourseWages, Employer, MisOptions, MisSnapshot, Provider, SchemeProgram } from '@/api/misApi';
 import { MisTable, Panel, Value, type TableColumn } from './MisUi';
+import { matchKeywords } from '@/lib/keywordSearch';
 
 const administration = { CENTRAL: 'Central administration', STATE: 'State administration', OTHER: 'Other administration' };
 type Program = SchemeProgram & { administration: keyof typeof administration };
@@ -88,10 +89,15 @@ const courseColumns: TableColumn<Course>[] = [
 ];
 
 export function CourseOutcomes({ courses }: Pick<MisSnapshot, 'courses'>) {
+  const [search, setSearch] = useState('');
+  const filtered = matchKeywords(courses, search, row => String(courseColumns[0].value(row) ?? ''));
   return (
     <Panel code="Q05" title="Course outcomes">
       <p className="text-sm text-slate-600">Starting wage uses the first recorded monthly pay in INR.</p>
-      <MisTable title="Course outcomes" rows={courses} columns={courseColumns} rowKey={(row) => row.courseId} initialSort="placed" />
+      <label className="form-label max-w-xs">Search courses
+        <input type="search" className="form-input" value={search} maxLength={120} onChange={event => setSearch(event.target.value)} />
+      </label>
+      <MisTable title="Course outcomes" rows={filtered} columns={courseColumns} rowKey={(row) => row.courseId} initialSort="placed" />
     </Panel>
   );
 }

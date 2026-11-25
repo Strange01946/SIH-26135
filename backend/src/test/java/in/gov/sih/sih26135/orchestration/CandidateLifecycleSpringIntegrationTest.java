@@ -9,7 +9,7 @@ import in.gov.sih.sih26135.config.cache.AnalyticsCacheEvictionService;
 import in.gov.sih.sih26135.controller.TrainingEnrollmentController;
 import in.gov.sih.sih26135.controller.workflow.EmploymentLifecycleWorkflowController;
 import in.gov.sih.sih26135.controller.workflow.PlacementEmploymentWorkflowController;
-import in.gov.sih.sih26135.controller.workflow.SkillGapRemediationWorkflowController;
+import in.gov.sih.sih26135.service.SkillGapRemediationWorkflowService;
 import in.gov.sih.sih26135.controller.workflow.TrainingOutcomeWorkflowController;
 import in.gov.sih.sih26135.controller.workflow.VerificationWorkflowController;
 import in.gov.sih.sih26135.dto.request.CreateSkillGapAssessmentRequest;
@@ -123,7 +123,7 @@ class CandidateLifecycleSpringIntegrationTest {
   private TrainingEnrollmentController trainingEnrollmentController;
 
   @Autowired
-  private SkillGapRemediationWorkflowController skillGapRemediationWorkflowController;
+  private SkillGapRemediationWorkflowService skillGapRemediationWorkflowService;
 
   @Autowired
   private TrainingEnrollmentService trainingEnrollmentService;
@@ -722,10 +722,6 @@ class CandidateLifecycleSpringIntegrationTest {
     remedReq.setRecommendationId(FIXTURE_REC_ID);
     remedReq.setEnrollmentRequest(enrolReq);
 
-    MockHttpServletRequest mockHttpRequest = new MockHttpServletRequest(
-        "POST", "/api/v1/workflows/skill-gap-remediation/enroll-remediation-course"
-    );
-
     // 1. Normal enrollment directly via TrainingEnrollmentService without DATA_PROCESSING consent is rejected
     assertThatThrownBy(() -> trainingEnrollmentService.createEnrollment(enrolReq))
         .isInstanceOf(BadRequestException.class)
@@ -736,7 +732,7 @@ class CandidateLifecycleSpringIntegrationTest {
         });
 
     // 2. Remediation-course enrollment without DATA_PROCESSING consent is rejected (CONSENT_REQUIRED)
-    assertThatThrownBy(() -> skillGapRemediationWorkflowController.enrollRemediationCourse(remedReq, mockHttpRequest))
+    assertThatThrownBy(() -> skillGapRemediationWorkflowService.enrollTraineeInRemediationCourse(remedReq))
         .isInstanceOf(BadRequestException.class)
         .satisfies(ex -> {
           BadRequestException bre = (BadRequestException) ex;
@@ -763,7 +759,7 @@ class CandidateLifecycleSpringIntegrationTest {
             + "VALUES (?, 2, 'Follow up only', 1, 'v1.0', NOW(), NOW(), NOW())",
         FIXTURE_TRAINEE_ID);
 
-    assertThatThrownBy(() -> skillGapRemediationWorkflowController.enrollRemediationCourse(remedReq, mockHttpRequest))
+    assertThatThrownBy(() -> skillGapRemediationWorkflowService.enrollTraineeInRemediationCourse(remedReq))
         .isInstanceOf(BadRequestException.class)
         .satisfies(ex -> {
           BadRequestException bre = (BadRequestException) ex;
@@ -778,7 +774,7 @@ class CandidateLifecycleSpringIntegrationTest {
             + "VALUES (?, 1, 'Data processing revoked', 2, 'v1.0', NOW(), NOW(), NOW(), NOW())",
         FIXTURE_TRAINEE_ID);
 
-    assertThatThrownBy(() -> skillGapRemediationWorkflowController.enrollRemediationCourse(remedReq, mockHttpRequest))
+    assertThatThrownBy(() -> skillGapRemediationWorkflowService.enrollTraineeInRemediationCourse(remedReq))
         .isInstanceOf(BadRequestException.class)
         .satisfies(ex -> {
           BadRequestException bre = (BadRequestException) ex;
@@ -805,14 +801,11 @@ class CandidateLifecycleSpringIntegrationTest {
             + "VALUES (?, 1, 'Data processing granted', 1, 'v1.0', NOW(), NOW(), NOW())",
         FIXTURE_TRAINEE_ID);
 
-    ResponseEntity<ApiResponse<SkillGapRemediationEnrollmentResponse>> response =
-        skillGapRemediationWorkflowController.enrollRemediationCourse(remedReq, mockHttpRequest);
+    SkillGapRemediationEnrollmentResponse response =
+        skillGapRemediationWorkflowService.enrollTraineeInRemediationCourse(remedReq);
 
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-    assertThat(response.getBody()).isNotNull();
-    assertThat(response.getBody().getData()).isNotNull();
-    assertThat(response.getBody().getData().createdEnrollment()).isNotNull();
-    assertThat(response.getBody().getData().createdEnrollment().getEnrollmentNumber()).isEqualTo("ENR-REMED-9981");
+    assertThat(response.createdEnrollment()).isNotNull();
+    assertThat(response.createdEnrollment().getEnrollmentNumber()).isEqualTo("ENR-REMED-9981");
 
     // Verify enrollment committed in database
     Integer countCommitted = jdbcTemplate.queryForObject(

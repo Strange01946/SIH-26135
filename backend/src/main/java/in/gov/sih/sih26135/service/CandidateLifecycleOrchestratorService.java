@@ -13,6 +13,7 @@ import in.gov.sih.sih26135.dto.response.RecordAssessmentAndIssueCertificateRespo
 import in.gov.sih.sih26135.dto.response.RecordVerificationVerdictResponse;
 import in.gov.sih.sih26135.dto.response.RemediationTriggerResponse;
 import in.gov.sih.sih26135.dto.response.TraineeEnrollmentOrchestrationResponse;
+import java.time.LocalDate;
 
 /**
  * Authoritative orchestrator coordinating end-to-end domain transactions across the candidate lifecycle:
@@ -39,6 +40,8 @@ public interface CandidateLifecycleOrchestratorService {
    */
   TraineeEnrollmentOrchestrationResponse enrollCandidateWithConsentValidation(
       TraineeEnrollmentOrchestrationRequest request);
+
+  TraineeEnrollmentOrchestrationResponse confirmSelfEnrollment(long batchId, LocalDate enrollmentDate);
 
   /**
    * Stage B: Orchestrates assessment outcome recording and eligibility-gated certificate issuance.

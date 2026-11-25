@@ -3,6 +3,7 @@ package in.gov.sih.sih26135.service.impl;
 import in.gov.sih.sih26135.dto.request.CreateTraineeRequest;
 import in.gov.sih.sih26135.dto.request.UpdateTraineeRequest;
 import in.gov.sih.sih26135.dto.response.TraineeResponse;
+import in.gov.sih.sih26135.dto.trainee.TraineeSelfProfile;
 import in.gov.sih.sih26135.entity.Trainee;
 import in.gov.sih.sih26135.entity.User;
 import in.gov.sih.sih26135.exception.BadRequestException;
@@ -12,6 +13,9 @@ import in.gov.sih.sih26135.mapper.TraineeMapper;
 import in.gov.sih.sih26135.repository.TraineeRepository;
 import in.gov.sih.sih26135.repository.UserRepository;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
+import in.gov.sih.sih26135.service.ActiveGeography;
+import in.gov.sih.sih26135.service.CareerRecordStatus;
+import in.gov.sih.sih26135.service.LatestCareerUpdate;
 import in.gov.sih.sih26135.service.TraineeService;
 import in.gov.sih.sih26135.service.AuditLogService;
 import java.time.LocalDateTime;
@@ -22,6 +26,8 @@ import java.util.Objects;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,12 +42,13 @@ public class TraineeServiceImpl implements TraineeService {
   private final TraineeMapper traineeMapper;
   private final WorkflowSecurityScopeValidator securityScopeValidator;
   private final AuditLogService auditLogs;
+  private final JdbcTemplate jdbc;
 
   public TraineeServiceImpl(
       TraineeRepository traineeRepository,
       UserRepository userRepository,
       TraineeMapper traineeMapper) {
-    this(traineeRepository, userRepository, traineeMapper, null, null);
+    this(traineeRepository, userRepository, traineeMapper, null, null, null);
   }
 
   public TraineeServiceImpl(
@@ -49,7 +56,7 @@ public class TraineeServiceImpl implements TraineeService {
       UserRepository userRepository,
       TraineeMapper traineeMapper,
       WorkflowSecurityScopeValidator securityScopeValidator) {
-    this(traineeRepository, userRepository, traineeMapper, securityScopeValidator, null);
+    this(traineeRepository, userRepository, traineeMapper, securityScopeValidator, null, null);
   }
 
   @Autowired
@@ -58,12 +65,13 @@ public class TraineeServiceImpl implements TraineeService {
       UserRepository userRepository,
       TraineeMapper traineeMapper,
       WorkflowSecurityScopeValidator securityScopeValidator,
-      AuditLogService auditLogs) {
+      AuditLogService auditLogs, JdbcTemplate jdbc) {
     this.traineeRepository = traineeRepository;
     this.userRepository = userRepository;
     this.traineeMapper = traineeMapper;
     this.securityScopeValidator = securityScopeValidator;
     this.auditLogs = auditLogs;
+    this.jdbc = jdbc;
   }
 
   @Override
@@ -73,7 +81,7 @@ public class TraineeServiceImpl implements TraineeService {
     }
     Trainee trainee = traineeRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("Trainee", "id"));
-    return traineeMapper.toResponse(trainee);
+    return readForCaller(trainee);
   }
 
   @Override
@@ -83,7 +91,7 @@ public class TraineeServiceImpl implements TraineeService {
     if (securityScopeValidator != null) {
       securityScopeValidator.validateTraineeScope(trainee.getId());
     }
-    return traineeMapper.toResponse(trainee);
+    return readForCaller(trainee);
   }
 
   @Override
@@ -93,20 +101,105 @@ public class TraineeServiceImpl implements TraineeService {
     if (securityScopeValidator != null) {
       securityScopeValidator.validateTraineeScope(trainee.getId());
     }
-    return traineeMapper.toResponse(trainee);
+    return readForCaller(trainee);
+  }
+
+  private TraineeResponse readForCaller(Trainee trainee) {
+    TraineeResponse response = traineeMapper.toResponse(trainee);
+    if (securityScopeValidator != null && securityScopeValidator.isTrainingProviderCaller()) {
+      response.setEmail(null);
+      response.setPhone(null);
+    }
+    return response;
+  }
+
+  @Override
+  public TraineeSelfProfile getOwnProfile() {
+    return selfProfile(ownTrainee(false));
+  }
+
+  @Override
+  @Transactional
+  public TraineeSelfProfile updateOwnProfile(TraineeSelfProfile.Update request) {
+    Trainee trainee = ownTrainee(true);
+    ActiveGeography.validate(jdbc, request.stateId(), request.districtId());
+    if (!Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM ref_gender WHERE gender_id=?)",
+        Boolean.class, request.genderId()))) {
+      throw new BadRequestException("Select a valid gender option.", "INVALID_GENDER");
+    }
+    if (request.educationLevelId() != null && !Boolean.TRUE.equals(jdbc.queryForObject(
+        "SELECT EXISTS(SELECT 1 FROM ref_education_level WHERE education_level_id=?)",
+        Boolean.class, request.educationLevelId()))) {
+      throw new BadRequestException("Select a valid education level.", "INVALID_EDUCATION_LEVEL");
+    }
+
+    Map<String, Object> before = candidateState(trainee);
+    Map<String, Object> privateBefore = privateFields(trainee);
+    trainee.setFirstName(request.firstName().strip());
+    trainee.setMiddleName(optionalText(request.middleName()));
+    trainee.setLastName(optionalText(request.lastName()));
+    trainee.setDateOfBirth(request.dateOfBirth());
+    trainee.setGenderId(request.genderId());
+    trainee.setEmail(optionalText(request.email()));
+    trainee.setPhone(optionalText(request.phone()));
+    trainee.setAddressLine1(optionalText(request.addressLine1()));
+    trainee.setAddressLine2(optionalText(request.addressLine2()));
+    trainee.setPincode(request.pincode());
+    if (!Objects.equals(trainee.getStateId(), request.stateId()) || !Objects.equals(trainee.getDistrictId(), request.districtId())) {
+      trainee.setBlockId(null);
+      trainee.setLocationId(null);
+    }
+    trainee.setStateId(request.stateId());
+    trainee.setDistrictId(request.districtId());
+    trainee.setEducationLevelId(request.educationLevelId());
+    return selfProfile(saveProfileChange(trainee, before, privateBefore));
+  }
+
+  private Trainee ownTrainee(boolean lock) {
+    Long userId = securityScopeValidator.resolveAuthenticatedUserId();
+    if (userId == null) {
+      throw new AccessDeniedException("Access denied");
+    }
+    var trainee = lock ? traineeRepository.findLockedByUserId(userId) : traineeRepository.findByUserId(userId);
+    return trainee.filter(profile -> profile.getDeletedAt() == null)
+        .orElseThrow(() -> new ResourceNotFoundException("No trainee profile is linked to this account"));
+  }
+
+  private TraineeSelfProfile selfProfile(Trainee trainee) {
+    var educationLevels = jdbc.query("""
+        SELECT education_level_id,education_name FROM ref_education_level ORDER BY sort_order,education_level_id
+        """, (rs, row) -> new TraineeSelfProfile.EducationOption(rs.getLong(1), rs.getString(2)));
+    TraineeResponse profile = traineeMapper.toResponse(trainee);
+    var report = LatestCareerUpdate.find(jdbc, trainee.getId());
+    var employment = CareerRecordStatus.current(jdbc, trainee.getId(), report);
+    profile.setCurrentEmploymentStatusId(employment.id());
+    return jdbc.queryForObject("""
+        SELECT p.status_name,b.block_name,l.location_name
+        FROM trainees t
+        JOIN ref_profile_status p ON p.profile_status_id=t.profile_status_id
+        LEFT JOIN blocks b ON b.block_id=t.block_id
+        LEFT JOIN locations l ON l.location_id=t.location_id
+        WHERE t.trainee_id=?
+        """, (rs, row) -> new TraineeSelfProfile(profile, rs.getString(1), employment.name(),
+            trainee.getBlockId() == null ? null : rs.getString(2),
+            trainee.getLocationId() == null ? null : rs.getString(3), educationLevels, report), trainee.getId());
+  }
+
+  private static String optionalText(String value) {
+    return value == null || value.isBlank() ? null : value.strip();
   }
 
   @Override
   public List<TraineeResponse> getAllTrainees() {
     return traineeRepository.findAll().stream()
-        .map(traineeMapper::toResponse)
+        .map(this::readForCaller)
         .toList();
   }
 
   @Override
   public Page<TraineeResponse> getAllTrainees(Pageable pageable) {
     return traineeRepository.findByDeletedAtIsNull(pageable)
-        .map(traineeMapper::toResponse);
+        .map(this::readForCaller);
   }
 
   @Override
@@ -254,6 +347,10 @@ public class TraineeServiceImpl implements TraineeService {
       trainee.setProfileStatusId(request.getProfileStatusId());
     }
 
+    return traineeMapper.toResponse(saveProfileChange(trainee, before, privateBefore));
+  }
+
+  private Trainee saveProfileChange(Trainee trainee, Map<String, Object> before, Map<String, Object> privateBefore) {
     trainee.setUpdatedAt(LocalDateTime.now());
     Trainee saved = traineeRepository.save(trainee);
     Map<String, Object> privateAfter = privateFields(saved);
@@ -262,8 +359,8 @@ public class TraineeServiceImpl implements TraineeService {
     Map<String, Object> after = candidateState(saved);
     boolean transitioned = !Objects.equals(before.get("profileStatusId"), after.get("profileStatusId"))
         || !Objects.equals(before.get("currentEmploymentStatusId"), after.get("currentEmploymentStatusId"));
-    auditTrainee(transitioned ? "STATUS_CHANGE" : "UPDATE", "Candidate profile updated", id, before, after, redacted);
-    return traineeMapper.toResponse(saved);
+    auditTrainee(transitioned ? "STATUS_CHANGE" : "UPDATE", "Candidate profile updated", saved.getId(), before, after, redacted);
+    return saved;
   }
 
   @Override

@@ -28,13 +28,17 @@ const ProviderOverviewPage = React.lazy(() => import('@/pages/provider/ProviderO
 const ProviderCentersPage = React.lazy(() => import('@/pages/provider/ProviderCentersPage').then((module) => ({ default: module.ProviderCentersPage })));
 const VenueBookingsPage = React.lazy(() => import('@/pages/provider/VenueBookingsPage').then((module) => ({ default: module.VenueBookingsPage })));
 const ProviderBatchesPage = React.lazy(() => import('@/pages/provider/ProviderBatchesPage').then((module) => ({ default: module.ProviderBatchesPage })));
+const ProviderBatchAttendancePage = React.lazy(() => import('@/pages/provider/ProviderBatchAttendancePage').then((module) => ({ default: module.ProviderBatchAttendancePage })));
 const ProviderEnrollmentPage = React.lazy(() => import('@/pages/provider/ProviderEnrollmentPage').then((module) => ({ default: module.ProviderEnrollmentPage })));
 const ProviderBulkImportPage = React.lazy(() => import('@/pages/provider/ProviderBulkImportPage').then((module) => ({ default: module.ProviderBulkImportPage })));
 const ProviderQuarantinePage = React.lazy(() => import('@/pages/provider/ProviderQuarantinePage').then((module) => ({ default: module.ProviderQuarantinePage })));
 const ProviderDataQualityPage = React.lazy(() => import('@/pages/provider/ProviderDataQualityPage').then((module) => ({ default: module.ProviderDataQualityPage })));
 const ProviderScorecardsPage = React.lazy(() => import('@/pages/provider/ProviderScorecardsPage').then((module) => ({ default: module.ProviderScorecardsPage })));
 const TraineeOverviewPage = React.lazy(() => import('@/pages/trainee/TraineeOverviewPage').then((module) => ({ default: module.TraineeOverviewPage })));
+const TraineeProfilePage = React.lazy(() => import('@/pages/trainee/TraineeProfilePage').then((module) => ({ default: module.TraineeProfilePage })));
 const TraineeTrainingPage = React.lazy(() => import('@/pages/trainee/TraineeTrainingPage').then((module) => ({ default: module.TraineeTrainingPage })));
+const TraineeFindTrainingPage = React.lazy(() => import('@/pages/trainee/TraineeFindTrainingPage').then((module) => ({ default: module.TraineeFindTrainingPage })));
+const TraineeTrainingBatchPage = React.lazy(() => import('@/pages/trainee/TraineeTrainingBatchPage').then((module) => ({ default: module.TraineeTrainingBatchPage })));
 const TraineeConsentPage = React.lazy(() => import('@/pages/trainee/TraineeConsentPage').then((module) => ({ default: module.TraineeConsentPage })));
 const TraineeAssessmentsPage = React.lazy(() => import('@/pages/trainee/TraineeAssessmentsPage').then((module) => ({ default: module.TraineeAssessmentsPage })));
 const TraineeJourneyPage = React.lazy(() => import('@/pages/trainee/TraineeJourneyPage').then((module) => ({ default: module.TraineeJourneyPage })));
@@ -248,6 +252,9 @@ export function AppRouter(): React.JSX.Element {
             } />
             <Route path="courses" element={<Navigate to="/provider/training-opportunities" replace />} />
             <Route path="batches" element={<ProviderBatchesPage />} />
+            <Route path="batches/:batchId/attendance" element={
+              <RoleGuard allowedAuthorities={['enrollment.manage']}><ProviderBatchAttendancePage /></RoleGuard>
+            } />
             <Route path="enrollment" element={<ProviderEnrollmentPage />} />
             <Route path="imports" element={<ProviderBulkImportPage />} />
             <Route path="quarantine" element={<ProviderQuarantinePage />} />
@@ -282,7 +289,10 @@ export function AppRouter(): React.JSX.Element {
           >
             <Route element={<TraineePortalLayout />}>
               <Route path="dashboard" element={<TraineeOverviewPage />} />
+              <Route path="profile" element={<TraineeProfilePage />} />
               <Route path="training" element={<TraineeTrainingPage />} />
+              <Route path="find-training" element={<TraineeFindTrainingPage />} />
+              <Route path="find-training/:batchId" element={<TraineeTrainingBatchPage />} />
               <Route path="consent" element={<TraineeConsentPage />} />
               <Route path="assessments" element={<TraineeAssessmentsPage />} />
               <Route path="journey" element={<TraineeJourneyPage />} />

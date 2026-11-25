@@ -16,6 +16,8 @@ public class AttendanceRecordResponse {
   private Integer sessionSequence;
   private LocalTime sessionStartTime;
   private LocalTime sessionEndTime;
+  private LocalDateTime scheduledStart;
+  private LocalDateTime scheduledEnd;
   private Long attendanceStatusId;
   private String attendanceStatusCode;
   private String attendanceStatusName;
@@ -72,6 +74,22 @@ public class AttendanceRecordResponse {
 
   public Long getId() {
     return id;
+  }
+
+  public LocalDateTime getScheduledStart() {
+    return scheduledStart;
+  }
+
+  public void setScheduledStart(LocalDateTime scheduledStart) {
+    this.scheduledStart = scheduledStart;
+  }
+
+  public LocalDateTime getScheduledEnd() {
+    return scheduledEnd;
+  }
+
+  public void setScheduledEnd(LocalDateTime scheduledEnd) {
+    this.scheduledEnd = scheduledEnd;
   }
 
   public void setId(Long id) {

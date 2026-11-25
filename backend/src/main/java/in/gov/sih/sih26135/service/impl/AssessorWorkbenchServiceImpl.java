@@ -401,18 +401,9 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       }
     }
 
-    if (search != null && !search.isBlank()) {
-      String pattern = "%" + search.trim() + "%";
-      sql.append(" AND (a.assessment_name LIKE ? OR a.assessment_code LIKE ? OR c.course_name LIKE ? OR tb.batch_code LIKE ?)");
-      params.add(pattern);
-      params.add(pattern);
-      params.add(pattern);
-      params.add(pattern);
-    }
-
     sql.append(" ORDER BY a.assessment_date ASC, a.assessment_id ASC");
 
-    return jdbcTemplate.query(sql.toString(), (rs, rowNum) -> {
+    var rows = jdbcTemplate.query(sql.toString(), (rs, rowNum) -> {
       Long id = rs.getLong("assessment_id");
       BigDecimal maxScore = rs.getBigDecimal("maximum_score");
       if (maxScore == null || maxScore.compareTo(BigDecimal.ZERO) <= 0) {
@@ -468,6 +459,8 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
           Boolean.valueOf("FINALIZED".equalsIgnoreCase(lifecycleStatusCode) || "COMPLETED".equalsIgnoreCase(lifecycleStatusCode))
       );
     }, params.toArray());
+    return new in.gov.sih.sih26135.service.KeywordSearch(search).rank(rows, row ->
+        String.join(" ", row.assessmentName(), row.assessmentCode(), row.courseName(), row.courseCode(), row.batchCode()));
   }
 
   @Override

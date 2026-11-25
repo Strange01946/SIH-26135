@@ -8,6 +8,7 @@ import in.gov.sih.sih26135.entity.RefConsentType;
 import in.gov.sih.sih26135.entity.Trainee;
 import in.gov.sih.sih26135.entity.TraineeConsent;
 import in.gov.sih.sih26135.exception.BadRequestException;
+import in.gov.sih.sih26135.exception.ConflictException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.mapper.TraineeConsentMapper;
 import in.gov.sih.sih26135.repository.RefConsentStatusRepository;
@@ -17,8 +18,11 @@ import in.gov.sih.sih26135.repository.TraineeRepository;
 import in.gov.sih.sih26135.security.WorkflowSecurityScopeValidator;
 import in.gov.sih.sih26135.service.TraineeConsentService;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -122,7 +126,7 @@ public class TraineeConsentServiceImpl implements TraineeConsentService {
   }
 
   @Override
-  @Transactional
+  @Transactional(isolation = Isolation.READ_COMMITTED)
   public TraineeConsentResponse createConsent(CreateTraineeConsentRequest request, Long actorUserId) {
     if (request == null) {
       throw new BadRequestException("Consent creation request cannot be null");
@@ -146,14 +150,38 @@ public class TraineeConsentServiceImpl implements TraineeConsentService {
       throw new BadRequestException("Policy version is required");
     }
 
-    Trainee trainee = traineeRepository.findById(request.getTraineeId())
-        .orElseThrow(() -> new ResourceNotFoundException("Trainee", "id"));
+    boolean selfService = securityScopeValidator != null && securityScopeValidator.isTraineeCaller();
+    Trainee trainee = selfService ? lockOwnTrainee(request.getTraineeId())
+        : traineeRepository.findById(request.getTraineeId())
+            .orElseThrow(() -> new ResourceNotFoundException("Trainee", "id"));
     RefConsentType consentType = refConsentTypeRepository.findById(request.getConsentTypeId())
         .orElseThrow(() -> new ResourceNotFoundException("ConsentType", "id"));
     RefConsentStatus consentStatus = refConsentStatusRepository.findById(request.getConsentStatusId())
         .orElseThrow(() -> new ResourceNotFoundException("ConsentStatus", "id"));
 
+    if (selfService) {
+      if (!"GRANTED".equals(consentStatus.getStatusCode())) {
+        throw new BadRequestException("Use the withdrawal action to withdraw consent.", "INVALID_CONSENT_STATUS");
+      }
+      TraineeConsent latest = latestConsent(trainee.getId(), consentType.getId());
+      if (isActive(latest, LocalDateTime.now())) {
+        return traineeConsentMapper.toResponse(latest);
+      }
+      request.setGrantedAt(null);
+      request.setExpiresAt(null);
+      request.setPurpose(consentType.getPurpose());
+      request.setPolicyVersion("v1.0");
+      request.setCapturedChannel("WEB_PORTAL");
+      actorUserId = trainee.getUser().getId();
+    }
     return persistConsent(request, trainee, consentType, consentStatus, actorUserId);
+  }
+
+  private Trainee lockOwnTrainee(Long traineeId) {
+    Long actor = securityScopeValidator.resolveAuthenticatedUserId();
+    return traineeRepository.findLockedById(traineeId)
+        .filter(trainee -> actor != null && trainee.getUser() != null && actor.equals(trainee.getUser().getId()))
+        .orElseThrow(() -> new AccessDeniedException("You can manage consent for your own profile only."));
   }
 
   @Override
@@ -180,11 +208,11 @@ public class TraineeConsentServiceImpl implements TraineeConsentService {
 
   private TraineeConsentResponse persistConsent(CreateTraineeConsentRequest request, Trainee trainee,
       RefConsentType consentType, RefConsentStatus consentStatus, Long actorUserId) {
-    LocalDateTime grantedAt = request.getGrantedAt() != null ? request.getGrantedAt() : LocalDateTime.now();
-    request.setGrantedAt(grantedAt);
+    // Consent timestamps use DATETIME without fractional seconds in MySQL.
+    LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
+    request.setGrantedAt(request.getGrantedAt() == null ? now : request.getGrantedAt().truncatedTo(ChronoUnit.SECONDS));
 
     TraineeConsent consent = traineeConsentMapper.toEntity(request, trainee, consentType, consentStatus, actorUserId);
-    LocalDateTime now = LocalDateTime.now();
     consent.setCreatedAt(now);
     consent.setUpdatedAt(now);
 
@@ -193,7 +221,7 @@ public class TraineeConsentServiceImpl implements TraineeConsentService {
   }
 
   @Override
-  @Transactional
+  @Transactional(isolation = Isolation.READ_COMMITTED)
   public TraineeConsentResponse updateConsentStatus(
       Long consentId,
       UpdateTraineeConsentStatusRequest request,
@@ -205,27 +233,48 @@ public class TraineeConsentServiceImpl implements TraineeConsentService {
       throw new BadRequestException("Consent status ID is required");
     }
 
+    boolean selfService = securityScopeValidator != null && securityScopeValidator.isTraineeCaller();
+    if (selfService) {
+      Long ownerId = traineeConsentRepository.findOwnerTraineeId(consentId)
+          .orElseThrow(() -> new ResourceNotFoundException("TraineeConsent", "id"));
+      lockOwnTrainee(ownerId);
+    }
     TraineeConsent consent = traineeConsentRepository.findById(consentId)
         .orElseThrow(() -> new ResourceNotFoundException("TraineeConsent", "id"));
-    if (securityScopeValidator != null && consent.getTrainee() != null) {
+    if (!selfService && securityScopeValidator != null && consent.getTrainee() != null) {
       securityScopeValidator.validateTraineeScope(consent.getTrainee().getId());
     }
     RefConsentStatus status = refConsentStatusRepository.findById(request.getConsentStatusId())
         .orElseThrow(() -> new ResourceNotFoundException("ConsentStatus", "id"));
 
+    LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
+    LocalDateTime revokedAt = request.getRevokedAt();
+    if (selfService) {
+      if (!"REVOKED".equals(status.getStatusCode())) {
+        throw new BadRequestException("Use the grant action to grant consent.", "INVALID_CONSENT_STATUS");
+      }
+      TraineeConsent latest = latestConsent(consent.getTrainee().getId(), consent.getConsentType().getId());
+      if (latest == null || !consentId.equals(latest.getId())) {
+        throw new ConflictException("This consent changed. Review the current choice and try again.", "CONSENT_CHANGED");
+      }
+      if ("REVOKED".equals(consent.getConsentStatus().getStatusCode())) {
+        return traineeConsentMapper.toResponse(consent);
+      }
+      revokedAt = consent.getGrantedAt() != null && consent.getGrantedAt().isAfter(now) ? consent.getGrantedAt() : now;
+    }
     consent.setConsentStatus(status);
 
-    if (request.getRevokedAt() != null) {
-      if (consent.getGrantedAt() != null && request.getRevokedAt().isBefore(consent.getGrantedAt())) {
+    if (revokedAt != null) {
+      if (consent.getGrantedAt() != null && revokedAt.isBefore(consent.getGrantedAt())) {
         throw new BadRequestException(
             "Revocation timestamp cannot precede grant timestamp",
             "INVALID_REVOCATION_DATE"
         );
       }
-      consent.setRevokedAt(request.getRevokedAt());
+      consent.setRevokedAt(revokedAt.truncatedTo(ChronoUnit.SECONDS));
     }
 
-    consent.setUpdatedAt(LocalDateTime.now());
+    consent.setUpdatedAt(now);
     TraineeConsent saved = traineeConsentRepository.save(consent);
     return traineeConsentMapper.toResponse(saved);
   }
@@ -242,32 +291,23 @@ public class TraineeConsentServiceImpl implements TraineeConsentService {
     if (consentType == null) {
       return false;
     }
-    List<TraineeConsent> consents = traineeConsentRepository.findByTraineeIdAndConsentTypeId(traineeId, consentType.getId());
-    if (consents == null || consents.isEmpty()) {
-      return false;
-    }
-    TraineeConsent authoritative = consents.stream()
+    return isActive(latestConsent(traineeId, consentType.getId()), LocalDateTime.now());
+  }
+
+  private TraineeConsent latestConsent(Long traineeId, Long consentTypeId) {
+    List<TraineeConsent> consents = traineeConsentRepository.findByTraineeIdAndConsentTypeId(traineeId, consentTypeId);
+    return consents.stream()
         .max(Comparator.comparing((TraineeConsent c) -> c.getUpdatedAt() != null ? c.getUpdatedAt() : (c.getCreatedAt() != null ? c.getCreatedAt() : LocalDateTime.MIN))
             .thenComparing(TraineeConsent::getId, Comparator.nullsLast(Comparator.naturalOrder())))
-        .orElse(consents.get(0));
+        .orElse(null);
+  }
 
-    RefConsentStatus status = authoritative.getConsentStatus();
-    String statusCode = status != null ? status.getStatusCode() : null;
-    if (!"GRANTED".equalsIgnoreCase(statusCode)) {
-      return false;
-    }
-
-    LocalDateTime now = LocalDateTime.now();
-    if (authoritative.getRevokedAt() != null && !authoritative.getRevokedAt().isAfter(now)) {
-      return false;
-    }
-    if (authoritative.getExpiresAt() != null && !authoritative.getExpiresAt().isAfter(now)) {
-      return false;
-    }
-    if (authoritative.getGrantedAt() != null && authoritative.getGrantedAt().isAfter(now)) {
-      return false;
-    }
-    return true;
+  private static boolean isActive(TraineeConsent consent, LocalDateTime now) {
+    return consent != null && consent.getConsentStatus() != null
+        && "GRANTED".equalsIgnoreCase(consent.getConsentStatus().getStatusCode())
+        && (consent.getRevokedAt() == null || consent.getRevokedAt().isAfter(now))
+        && (consent.getExpiresAt() == null || consent.getExpiresAt().isAfter(now))
+        && (consent.getGrantedAt() == null || !consent.getGrantedAt().isAfter(now));
   }
 
   @Override
@@ -305,18 +345,13 @@ public class TraineeConsentServiceImpl implements TraineeConsentService {
   }
 
   private void checkConsentValidityOrThrow(Long traineeId, Long consentTypeId, String consentCode) {
-    List<TraineeConsent> consents = traineeConsentRepository.findByTraineeIdAndConsentTypeId(traineeId, consentTypeId);
-    if (consents == null || consents.isEmpty()) {
+    TraineeConsent authoritative = latestConsent(traineeId, consentTypeId);
+    if (authoritative == null) {
       throw new BadRequestException(
           "Trainee has not granted consent for " + consentCode,
           "CONSENT_REQUIRED"
       );
     }
-
-    TraineeConsent authoritative = consents.stream()
-        .max(Comparator.comparing((TraineeConsent c) -> c.getUpdatedAt() != null ? c.getUpdatedAt() : (c.getCreatedAt() != null ? c.getCreatedAt() : LocalDateTime.MIN))
-            .thenComparing(TraineeConsent::getId, Comparator.nullsLast(Comparator.naturalOrder())))
-        .orElse(consents.get(0));
 
     RefConsentStatus status = authoritative.getConsentStatus();
     String statusCode = status != null ? status.getStatusCode() : null;

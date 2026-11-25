@@ -1,23 +1,25 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import {
   searchTraineeByRegNumber,
   getTrainingBatches,
-  getTrainingEnrollments,
+  getTrainingBatchById,
   createTrainingEnrollment,
-  recordAttendance,
 } from '@/api/providerPortalApi';
 import type { TraineeProfile } from '@/types/trainee';
-import type { CreateEnrollmentPayload, CreateAttendancePayload } from '@/types/provider';
+import type { CreateEnrollmentPayload } from '@/types/provider';
 import type { ApiError } from '@/api/types';
-import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
+import { batchAttendanceKey } from '@/api/batchSessionAttendanceApi';
 
 export function ProviderEnrollmentPage(): React.JSX.Element {
   const { user } = useAuth();
   const providerId = user?.trainingProviderId ?? undefined;
   const queryClient = useQueryClient();
+  const [params] = useSearchParams();
+  const requestedBatch = Number(params.get('batch'));
 
   // Search state
   const [searchRegNumber, setSearchRegNumber] = useState('');
@@ -26,16 +28,11 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
   const [searchError, setSearchError] = useState<string | null>(null);
 
   // Enrollment Form State
-  const [selectedBatchId, setSelectedBatchId] = useState<number | ''>('');
-  const [enrollmentDate, setEnrollmentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedBatchId, setSelectedBatchId] = useState<number | ''>(
+    Number.isSafeInteger(requestedBatch) && requestedBatch > 0 ? requestedBatch : '',
+  );
+  const [enrollmentDate, setEnrollmentDate] = useState(() => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Kolkata' }).format(new Date()));
   const [enrollmentError, setEnrollmentError] = useState<{ message: string; code?: string } | null>(null);
-
-  // Quick Attendance State
-  const [attendanceEnrollmentId, setAttendanceEnrollmentId] = useState<number | ''>('');
-  const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
-  const [attendanceSequence, setAttendanceSequence] = useState(1);
-  const [attendanceStatusId, setAttendanceStatusId] = useState<number>(1); // PRESENT
-  const [attendanceRemarks, setAttendanceRemarks] = useState('');
 
   // Batches Query
   const batchesQuery = useQuery({
@@ -43,13 +40,16 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
     queryFn: () => getTrainingBatches({ providerId, size: 50, sort: 'id', direction: 'DESC' }),
     enabled: !!providerId,
   });
-
-  // Recent Enrollments Query
-  const enrollmentsQuery = useQuery({
-    queryKey: ['provider', 'enrollments', providerId],
-    queryFn: () => getTrainingEnrollments({ providerId, size: 10, sort: 'id', direction: 'DESC' }),
-    enabled: !!providerId,
+  const listedBatches = batchesQuery.data?.content ?? [];
+  const linkedBatch = useQuery({
+    queryKey: ['provider', 'batches', providerId, 'linked', requestedBatch],
+    queryFn: () => getTrainingBatchById(requestedBatch),
+    enabled: Boolean(providerId && Number.isSafeInteger(requestedBatch) && requestedBatch > 0
+      && batchesQuery.isSuccess && !listedBatches.some(batch => batch.id === requestedBatch)),
+    retry: false,
   });
+  const batches = linkedBatch.data && !listedBatches.some(batch => batch.id === linkedBatch.data?.id)
+    ? [linkedBatch.data, ...listedBatches] : listedBatches;
 
   // Trainee Search Handler
   const handleSearchTrainee = async (e: React.FormEvent) => {
@@ -82,6 +82,8 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
     onSuccess: (data) => {
       toast.success(`Trainee successfully enrolled! Enrollment Number: ${data.enrollmentNumber}`);
       queryClient.invalidateQueries({ queryKey: ['provider', 'enrollments'] });
+      queryClient.invalidateQueries({ queryKey: ['provider', 'batch-roster', data.batchId] });
+      queryClient.invalidateQueries({ queryKey: batchAttendanceKey(data.batchId) });
       queryClient.invalidateQueries({ queryKey: ['provider', 'batches'] });
       setEnrollmentError(null);
       setSearchedTrainee(null);
@@ -93,19 +95,6 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
       if (err.status === 409) void queryClient.invalidateQueries({ queryKey: ['provider', 'batches'] });
       setEnrollmentError({ message, code });
       toast.error(message);
-    },
-  });
-
-  // Record Attendance Mutation
-  const attendanceMutation = useMutation({
-    mutationFn: (payload: CreateAttendancePayload) => recordAttendance(payload),
-    onSuccess: () => {
-      toast.success('Attendance recorded successfully!');
-      setAttendanceRemarks('');
-    },
-    onError: (err: any) => {
-      const msg = err.response?.data?.message || err.message || 'Failed to record attendance';
-      toast.error(msg);
     },
   });
 
@@ -123,7 +112,7 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
       return;
     }
 
-    const chosenBatch = batchesQuery.data?.content.find((b) => b.id === Number(selectedBatchId));
+    const chosenBatch = batches.find((b) => b.id === Number(selectedBatchId));
     if (!chosenBatch) {
       setEnrollmentError({ message: 'Selected batch could not be verified' });
       return;
@@ -150,23 +139,7 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
     });
   };
 
-  const handleAttendanceSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (attendanceMutation.isPending) return;
-    if (!attendanceEnrollmentId) {
-      toast.error('Please select an enrollment record');
-      return;
-    }
-    attendanceMutation.mutate({
-      enrollmentId: Number(attendanceEnrollmentId),
-      sessionDate: attendanceDate,
-      sessionSequence: attendanceSequence,
-      attendanceStatusId,
-      remarks: attendanceRemarks.trim() || undefined,
-    });
-  };
-
-  const selectedBatchObj = batchesQuery.data?.content.find((b) => b.id === Number(selectedBatchId));
+  const selectedBatchObj = batches.find((b) => b.id === Number(selectedBatchId));
   const batchAvailable = selectedBatchObj
     ? (selectedBatchObj.availableSeats ?? Math.max(0, selectedBatchObj.capacity - (selectedBatchObj.enrolledCount ?? 0)))
     : null;
@@ -177,11 +150,9 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
       <div className="card p-6 border-l-4 border-l-navy bg-white shadow-sm">
         <h1 className="text-2xl font-bold text-navy flex items-center gap-2">
           <span>Candidate Trainee Enrollment Workbench</span>
-          <span className="badge-info text-xs">Canonical Identity Integration</span>
         </h1>
         <p className="text-sm text-gray-600 mt-1">
-          Enrolls real candidates into affiliated training batches with strict DPDP statutory consent validation,
-          capacity enforcement, and conflict detection. Reuses existing canonical trainee identities.
+          Enroll a registered trainee in one of your training batches with their active data processing consent.
         </p>
       </div>
 
@@ -255,12 +226,6 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
                   <span className="text-gray-400">DOB:</span> {searchedTrainee.dateOfBirth || 'N/A'}
                 </div>
                 <div>
-                  <span className="text-gray-400">Email:</span> {searchedTrainee.email || 'N/A'}
-                </div>
-                <div>
-                  <span className="text-gray-400">Phone:</span> {searchedTrainee.phone || 'N/A'}
-                </div>
-                <div>
                   <span className="text-gray-400">State:</span> State #{searchedTrainee.stateId}
                 </div>
                 <div>
@@ -299,10 +264,11 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
 
           <form onSubmit={handleEnrollSubmit} className="space-y-4 text-xs">
             <div>
-              <label className="block font-semibold text-gray-700 mb-1">
+              <label htmlFor="manual-enrollment-batch" className="block font-semibold text-gray-700 mb-1">
                 Target Training Batch *
               </label>
               <select
+                id="manual-enrollment-batch"
                 required
                 className="input-field w-full text-sm"
                 value={selectedBatchId}
@@ -312,7 +278,7 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
                 }}
               >
                 <option value="">-- Select Active Batch --</option>
-                {batchesQuery.data?.content.map((batch) => {
+                {batches.map((batch) => {
                   const cap = batch.capacity || 0;
                   const enr = batch.enrolledCount ?? 0;
                   const avail = batch.availableSeats ?? Math.max(0, cap - enr);
@@ -346,10 +312,11 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
             )}
 
             <div>
-              <label className="block font-semibold text-gray-700 mb-1">
+              <label htmlFor="manual-enrollment-date" className="block font-semibold text-gray-700 mb-1">
                 Enrollment Date *
               </label>
               <input
+                id="manual-enrollment-date"
                 type="date"
                 required
                 className="input-field w-full text-sm"
@@ -362,7 +329,7 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
               type="submit"
               disabled={
                 !searchedTrainee ||
-                !selectedBatchId ||
+                !selectedBatchObj ||
                 batchAvailable === 0 ||
                 enrollMutation.isPending
               }
@@ -377,139 +344,6 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
         </div>
       </div>
 
-      {/* Step 3: Quick Attendance Recording & Recent Enrollments */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Attendance Form */}
-        <div className="card p-6 bg-white shadow-sm space-y-4">
-          <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
-            <span className="w-6 h-6 rounded-full bg-navy text-white text-xs flex items-center justify-center font-bold">
-              3
-            </span>
-            <h2 className="text-base font-bold text-navy">Record Session Attendance</h2>
-          </div>
-
-          <form onSubmit={handleAttendanceSubmit} className="space-y-3 text-xs">
-            <div>
-              <label className="block font-semibold text-gray-700 mb-1">Select Enrollment *</label>
-              <select
-                required
-                className="input-field w-full text-xs"
-                value={attendanceEnrollmentId}
-                onChange={(e) => setAttendanceEnrollmentId(e.target.value ? Number(e.target.value) : '')}
-              >
-                <option value="">-- Select Active Enrollment --</option>
-                {enrollmentsQuery.data?.content.map((enr) => (
-                  <option key={enr.id} value={enr.id}>
-                    {enr.enrollmentNumber} (Trainee #{enr.traineeId}, Batch #{enr.batchId})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block font-semibold text-gray-700 mb-1">Session Date *</label>
-              <input
-                type="date"
-                required
-                className="input-field w-full text-xs"
-                value={attendanceDate}
-                onChange={(e) => setAttendanceDate(e.target.value)}
-              />
-            </div>
-
-            <label className="form-label">Session number for this date
-              <input type="number" min={1} required value={attendanceSequence}
-                className="input-field w-full text-xs" onChange={e => setAttendanceSequence(Number(e.target.value))} />
-            </label>
-
-            <div>
-              <label className="block font-semibold text-gray-700 mb-1">Attendance Status *</label>
-              <select
-                required
-                className="input-field w-full text-xs"
-                value={attendanceStatusId}
-                onChange={(e) => setAttendanceStatusId(Number(e.target.value))}
-              >
-                <option value="1">PRESENT</option>
-                <option value="2">ABSENT</option>
-                <option value="3">LATE</option>
-                <option value="4">EXCUSED</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block font-semibold text-gray-700 mb-1">Remarks</label>
-              <input
-                type="text"
-                placeholder="Session comments (optional)"
-                className="input-field w-full text-xs"
-                value={attendanceRemarks}
-                onChange={(e) => setAttendanceRemarks(e.target.value)}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={!attendanceEnrollmentId || attendanceMutation.isPending}
-              className="btn-outline w-full py-2 text-xs font-semibold disabled:opacity-40"
-            >
-              {attendanceMutation.isPending ? 'Recording...' : 'Submit Attendance'}
-            </button>
-          </form>
-        </div>
-
-        {/* Recent Enrollments Table */}
-        <div className="lg:col-span-2 card p-6 bg-white shadow-sm space-y-4">
-          <div className="flex items-center justify-between pb-2 border-b border-gray-100">
-            <h2 className="text-base font-bold text-navy">Recent Enrollments Roster</h2>
-            <span className="text-xs text-gray-500 font-mono">
-              Total: {enrollmentsQuery.data?.totalElements ?? 0}
-            </span>
-          </div>
-
-          {enrollmentsQuery.isLoading ? (
-            <div className="py-12 flex flex-col items-center justify-center gap-2">
-              <LoadingSpinner size="md" label="Loading roster" />
-              <p className="text-sm text-gray-500">Loading roster...</p>
-            </div>
-          ) : enrollmentsQuery.data && enrollmentsQuery.data.content.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-gray-200 text-gray-600 bg-gray-50">
-                    <th className="py-2.5 px-3">Enrollment No</th>
-                    <th className="py-2.5 px-3">Trainee ID</th>
-                    <th className="py-2.5 px-3">Batch ID</th>
-                    <th className="py-2.5 px-3">Date</th>
-                    <th className="py-2.5 px-3">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {enrollmentsQuery.data.content.map((enr) => (
-                    <tr key={enr.id} className="hover:bg-gray-50">
-                      <td className="py-2.5 px-3 font-mono font-semibold text-navy">
-                        {enr.enrollmentNumber}
-                      </td>
-                      <td className="py-2.5 px-3 text-gray-700">#{enr.traineeId}</td>
-                      <td className="py-2.5 px-3 text-gray-700">#{enr.batchId}</td>
-                      <td className="py-2.5 px-3 text-gray-500">{enr.enrollmentDate}</td>
-                      <td className="py-2.5 px-3">
-                        <span className="inline-block px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-semibold">
-                          {enr.enrollmentStatusCode || 'ENROLLED'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="p-8 text-center text-gray-400 text-xs">
-              No trainees enrolled in your batches yet.
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }

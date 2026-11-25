@@ -4,13 +4,18 @@ import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TraineeJourneyPage } from '@/pages/trainee/TraineeJourneyPage';
 import * as traineeApi from '@/api/traineeApi';
-import type { TraineeOutcomeSummary, TraineeSkillGapProfile } from '@/types/trainee';
+import type { TraineeSkillGapProfile } from '@/types/trainee';
 import type { PagedResponse } from '@/api/types';
 import type { EmploymentPeriod } from '@/api/traineeApi';
 
 vi.mock('@/api/traineeApi');
+vi.mock('@/api/careerSkillsApi', () => ({ careerSkillsKey: ['career-skills'],
+  getOwnCareerSkills: async () => ({ revision: 0, skills: [], evidence: [], requirements: [] }),
+  getCareerTraining: async () => [],
+  saveOwnCareerSkills: vi.fn(),
+}));
 
-const emptySurveys = { followupConsentGranted: true, assignments: [], recentSubmissions: [] };
+const emptySurveys = { followupConsentGranted: true, careerUpdateAvailable: false, assignments: [], recentSubmissions: [] };
 const employmentHistory: PagedResponse<EmploymentPeriod> = {
   content: [{ id: 1, employer: 'Tata Power Solar Systems', startingPay: 35000, currency: 'INR', payFrequency: 'MONTHLY' }],
   page: 0, size: 10, totalElements: 1, totalPages: 1, first: true, last: true, hasNext: false, hasPrevious: false,
@@ -37,9 +42,9 @@ function renderJourneyWithContext(contextValue: any) {
 }
 
 describe('TraineeJourneyPage Component', () => {
-  const mockOutcome: TraineeOutcomeSummary = {
-    traineeId: 42,
-    snapshotEmploymentStatusCode: 'EMPLOYED',
+  const mockCareerStatus = {
+    status: { name: 'Wage employed', source: 'EMPLOYMENT_RECORD' },
+    unemploymentPeriods: [],
   };
 
   const mockSkillProfile: TraineeSkillGapProfile = {
@@ -63,7 +68,7 @@ describe('TraineeJourneyPage Component', () => {
   });
 
   it('renders career milestones with verified employer, salary, and status', async () => {
-    vi.spyOn(traineeApi, 'getTraineeOutcomeSummary').mockResolvedValue(mockOutcome);
+    vi.spyOn(traineeApi, 'getRecordedCareerStatus').mockResolvedValue(mockCareerStatus);
     vi.spyOn(traineeApi, 'getTraineeSkillGapProfile').mockResolvedValue(mockSkillProfile);
 
     renderJourneyWithContext({ traineeId: 42, isUnlinked: false, isLoading: false });
@@ -73,11 +78,11 @@ describe('TraineeJourneyPage Component', () => {
     });
 
     expect(screen.getByText(/35,000/)).toBeInTheDocument();
-    expect(await screen.findByText('employed')).toBeInTheDocument();
+    expect(await screen.findByText('Wage employed')).toBeInTheDocument();
   });
 
   it('renders skill gap recommendations and handles Accept action', async () => {
-    vi.spyOn(traineeApi, 'getTraineeOutcomeSummary').mockResolvedValue(mockOutcome);
+    vi.spyOn(traineeApi, 'getRecordedCareerStatus').mockResolvedValue(mockCareerStatus);
     vi.spyOn(traineeApi, 'getTraineeSkillGapProfile').mockResolvedValue(mockSkillProfile);
     const acceptSpy = vi.spyOn(traineeApi, 'acceptSkillGapRecommendation').mockResolvedValueOnce({
       id: 77,
@@ -90,7 +95,7 @@ describe('TraineeJourneyPage Component', () => {
       expect(screen.getByText('High Voltage Grid Safety Bridge Course')).toBeInTheDocument();
     });
 
-    const acceptButton = screen.getByRole('button', { name: /Accept Pathway/i });
+    const acceptButton = screen.getByRole('button', { name: /Interested in this pathway/i });
     fireEvent.click(acceptButton);
 
     await waitFor(() => {
@@ -102,7 +107,7 @@ describe('TraineeJourneyPage Component', () => {
   });
 
   it('handles Decline recommendation action with mandatory remarks input', async () => {
-    vi.spyOn(traineeApi, 'getTraineeOutcomeSummary').mockResolvedValue(mockOutcome);
+    vi.spyOn(traineeApi, 'getRecordedCareerStatus').mockResolvedValue(mockCareerStatus);
     vi.spyOn(traineeApi, 'getTraineeSkillGapProfile').mockResolvedValue(mockSkillProfile);
     const rejectSpy = vi.spyOn(traineeApi, 'rejectSkillGapRecommendation').mockResolvedValueOnce({
       id: 77,
@@ -138,15 +143,16 @@ describe('TraineeJourneyPage Component', () => {
   });
 
   it('shows when no campaign assigned an open survey', async () => {
-    vi.mocked(traineeApi.getTraineeOutcomeSummary).mockResolvedValue(mockOutcome);
+    vi.mocked(traineeApi.getRecordedCareerStatus).mockResolvedValue(mockCareerStatus);
     vi.mocked(traineeApi.getTraineeSkillGapProfile).mockResolvedValue({ traineeId: 42, hasAssessment: false });
     renderJourneyWithContext({ traineeId: 42, isUnlinked: false, isLoading: false });
     expect(await screen.findByText('You have no open survey assignments.')).toBeInTheDocument();
-    expect(screen.getByText('You have no previous survey submissions.')).toBeInTheDocument();
+    expect(screen.getByText('The employment update questionnaire is currently unavailable.')).toBeInTheDocument();
+    expect(screen.getByText('There are no previous survey submissions.')).toBeInTheDocument();
   });
 
   it('validates required answers and records a survey receipt in history', async () => {
-    vi.mocked(traineeApi.getTraineeOutcomeSummary).mockResolvedValue(mockOutcome);
+    vi.mocked(traineeApi.getRecordedCareerStatus).mockResolvedValue(mockCareerStatus);
     vi.mocked(traineeApi.getTraineeSkillGapProfile).mockResolvedValue({ traineeId: 42, hasAssessment: false });
     const assignment = { taskId: 7, name: 'Six-month follow-up' };
     vi.mocked(traineeApi.getFollowupSurveys)

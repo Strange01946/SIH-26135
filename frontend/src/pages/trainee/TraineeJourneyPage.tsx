@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { TraineeProfile } from '@/types/trainee';
 import {
-  getTraineeOutcomeSummary,
+  getRecordedCareerStatus,
   getTraineeSkillGapProfile,
   acceptSkillGapRecommendation,
   rejectSkillGapRecommendation,
@@ -12,7 +12,10 @@ import {
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { ErrorState } from '@/components/feedback/ErrorState';
-import { RetentionPanel, SkillGapInsights } from '@/components/career/CareerInsights';
+import { careerDate, RetentionPanel, SkillGapInsights } from '@/components/career/CareerInsights';
+import { ReportedCareer } from '@/components/career/ReportedCareer';
+import { OwnCareerSkills } from '@/components/career/CareerSkillsPanel';
+import { CareerTrainingSuggestions } from '@/components/career/CareerTrainingSuggestions';
 import { TraineeSurveys } from './TraineeSurveys';
 
 interface TraineeContextType {
@@ -32,11 +35,11 @@ export const TraineeJourneyPage: React.FC = () => {
   const [rejectionRemarks, setRejectionRemarks] = useState<string>('');
   const [remediationActionError, setRemediationActionError] = useState<string | null>(null);
 
-  // 1. Outcome Summary Query
-  const outcomesQuery = useQuery({
-    queryKey: ['trainee', 'outcomes', traineeId],
-    queryFn: () => getTraineeOutcomeSummary(traineeId!),
+  const career = useQuery({
+    queryKey: ['trainee', 'recorded-career-status', traineeId],
+    queryFn: ({ signal }) => getRecordedCareerStatus(signal),
     enabled: Boolean(traineeId),
+    refetchOnWindowFocus: 'always',
     retry: false,
   });
 
@@ -109,19 +112,20 @@ export const TraineeJourneyPage: React.FC = () => {
     );
   }
 
-  const outcome = outcomesQuery.data;
   const skillProfile = skillGapQuery.data;
   const recommendations = skillProfile?.recommendations ?? [];
 
   return (
     <div className="space-y-6">
+      {career.data?.reportedUpdate && <ReportedCareer update={career.data.reportedUpdate} />}
       <section className="card space-y-4" aria-labelledby="career-milestones-heading">
         <h2 id="career-milestones-heading" className="text-lg font-bold text-navy">Employment history</h2>
-        {outcomesQuery.isError && (
-          <ErrorState error={outcomesQuery.error} title="Unable to load current employment status" onRetry={() => void outcomesQuery.refetch()} />
+        {career.isError && (
+          <ErrorState error={career.error} title="Unable to load current employment status" onRetry={() => void career.refetch()} />
         )}
-        {outcome?.snapshotEmploymentStatusCode && (
-          <p className="text-sm">Current status <strong className="capitalize">{outcome.snapshotEmploymentStatusCode.toLowerCase().replace(/_/g, ' ')}</strong></p>
+        {career.data?.status.name && !career.data.reportedUpdate && (
+          <p className="text-sm">Recorded status <strong>{career.data.status.name}</strong>
+            {career.data.status.source === 'PROFILE' && <span className="text-slate-600"> · Profile record</span>}</p>
         )}
         {employment.isLoading ? <LoadingSpinner label="Loading employment history" /> : employment.isError ? (
           <ErrorState error={employment.error} title="Unable to load employment history" onRetry={() => void employment.refetch()} />
@@ -132,7 +136,7 @@ export const TraineeJourneyPage: React.FC = () => {
                 <li key={period.id} className="rounded border p-3 text-sm space-y-1">
                   <p className="font-semibold">{period.jobRole || period.employer || 'Employment record'}</p>
                   <p>{[period.jobRole && period.employer, period.engagementType?.replace(/_/g, ' '), period.status].filter(Boolean).join(' · ')}</p>
-                  <p>{[period.startDate, period.endDate].filter(Boolean).join(' to ')}</p>
+                  <p>{period.startDate && careerDate(period.startDate)}{period.endDate && ` to ${careerDate(period.endDate)}`}</p>
                   {period.verificationStatus && <p>Verification <strong>{period.verificationStatus.replace(/_/g, ' ')}</strong></p>}
                   {period.startingPay != null && (
                     <p>Starting pay {[period.currency, period.startingPay.toLocaleString('en-IN'), period.payFrequency?.toLowerCase()].filter(Boolean).join(' ')}</p>
@@ -153,7 +157,21 @@ export const TraineeJourneyPage: React.FC = () => {
             )}
           </>
         ) : <p className="text-sm text-gray-600">There are no employment records linked to your profile.</p>}
+        {Boolean(career.data?.unemploymentPeriods.length) && <>
+          <h3 className="border-t pt-3 font-semibold">Recorded unemployment periods</h3>
+          <ul className="space-y-2 text-sm">
+            {career.data?.unemploymentPeriods.map(period => <li key={period.id} className="rounded border p-3">
+              <p className="font-semibold">{period.reason}</p>
+              <p>{careerDate(period.startsOn)}{period.endsOn ? ` to ${careerDate(period.endsOn)}` : period.current ? ' · Current' : ''}</p>
+              <p className="text-slate-600">{period.verificationStatus}</p>
+            </li>)}
+          </ul>
+        </>}
       </section>
+
+      <TraineeSurveys traineeId={traineeId} />
+      <OwnCareerSkills traineeId={traineeId} />
+      <CareerTrainingSuggestions traineeId={traineeId} />
 
       {/* Skill Gap Remediation & Recommendations Section */}
       <section
@@ -169,7 +187,7 @@ export const TraineeJourneyPage: React.FC = () => {
               Skill Enhancement &amp; Remediation Pathways
             </h3>
             <p className="text-xs text-gov-neutral-500">
-              Personalized course recommendations generated from skill gap assessments.
+              Personalized recommendations based on your recorded skill gap assessments.
             </p>
           </div>
           {(acceptMutation.isPending || rejectMutation.isPending) && (
@@ -201,14 +219,14 @@ export const TraineeJourneyPage: React.FC = () => {
             <LoadingSpinner size="md" />
           </div>
         ) : skillGapQuery.isError ? (
-          <ErrorState error={skillGapQuery.error} title="Unable to load course recommendations" onRetry={() => void skillGapQuery.refetch()} />
+          <ErrorState error={skillGapQuery.error} title="Unable to load skill recommendations" onRetry={() => void skillGapQuery.refetch()} />
         ) : recommendations.length === 0 ? (
           <div className="bg-gov-neutral-50 p-6 rounded-lg border border-gov-neutral-200 text-center">
             <p className="text-sm font-semibold text-gov-neutral-800">
-              No Pending Upskilling Recommendations
+              No skill recommendations recorded
             </p>
             <p className="text-xs text-gov-neutral-500 mt-1 max-w-md mx-auto">
-              You are currently up to date on your skill pathways. When an assessment detects a competency gap, recommended bridge courses will appear here.
+              Recommendations appear when an assessment identifies a skill gap and a training option is available.
             </p>
           </div>
         ) : (
@@ -220,13 +238,13 @@ export const TraineeJourneyPage: React.FC = () => {
               >
                 <div>
                   <h4 className="text-sm font-bold text-gov-neutral-900">
-                    {rec.recommendedCourseName || `Remediation Course #${rec.id}`}
+                    {rec.recommendedCourseName || rec.recommendedSkillName || 'Skill development recommendation'}
                   </h4>
                   <p className="text-xs text-gov-neutral-600 mt-0.5">
                     {rec.remarks || 'Recommended to bridge identified competency gap.'}
                   </p>
                   <span className="text-[11px] font-mono text-gov-neutral-500 mt-1 block">
-                    Status: {rec.status || (rec.isAcceptedFlag === true ? 'Accepted' : 'Available')}
+                    {rec.status === 'DECLINED' ? 'Declined' : rec.isAcceptedFlag || rec.status === 'ACCEPTED' ? 'Interested' : 'Suggested'}
                   </span>
                 </div>
 
@@ -270,7 +288,7 @@ export const TraineeJourneyPage: React.FC = () => {
                         onClick={() => acceptMutation.mutate(rec.id)}
                         className="px-3.5 py-1.5 text-xs font-bold rounded bg-emerald-700 text-white hover:bg-emerald-800 disabled:opacity-50"
                       >
-                        Accept Pathway
+                        Interested in this pathway
                       </button>
                       <button
                         type="button"
@@ -290,7 +308,6 @@ export const TraineeJourneyPage: React.FC = () => {
         )}
       </section>
 
-      <TraineeSurveys traineeId={traineeId} />
     </div>
   );
 };

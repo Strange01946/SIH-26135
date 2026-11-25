@@ -482,15 +482,13 @@ class WorkflowAuthorizationAndConsentIntegrationTest {
     }
 
     @Test
-    @DisplayName("Trainee is strictly BLOCKED from administrative endpoints (enroll-remediation-course)")
+    @DisplayName("The remediation course assignment route has been retired")
     void trainee_blockedFromEnrollRemediationCourse() throws Exception {
       mockMvc.perform(post(SKILL_GAP_WORKFLOW_URL + "/enroll-remediation-course")
               .header("Authorization", traineeToken)
               .contentType(MediaType.APPLICATION_JSON)
               .content("{}"))
-          .andExpect(status().isForbidden())
-          .andExpect(jsonPath("$.success").value(false))
-          .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+          .andExpect(status().isNotFound());
     }
 
     @Test
