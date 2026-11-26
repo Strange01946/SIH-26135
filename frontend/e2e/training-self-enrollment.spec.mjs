@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { expect, test } from './support/browser.mjs';
 import { quote, sql } from './support/database.mjs';
 
@@ -30,8 +31,8 @@ const roster = (request, id, headers) => request.get(`${batchApi}/${id}/roster`,
 const advance = (request, id, headers, batchStatusId = 2) =>
   request.put(`${batchApi}/${id}/status`, { headers, data: { batchStatusId } }).then(response => result(response, 200));
 
-test('trainees find and register for approved batches, providers see their roster and record attendance', async ({ page, request, smoke }) => {
-  test.setTimeout(90_000);
+test('training registration, attendance, assessor evaluation and published PDFs work across all three portals', async ({ page, request, smoke }) => {
+  test.setTimeout(120_000);
   const { run } = smoke;
   const districtId = Number(sql(`SELECT district_id FROM districts WHERE state_id=${run.state}
     AND lgd_code IS NOT NULL AND lifecycle_status_id=1 AND deleted_at IS NULL ORDER BY district_id LIMIT 1;`));
@@ -40,11 +41,15 @@ test('trainees find and register for approved batches, providers see their roste
   const venueName = 'Solar practical workshop';
   const address = '14 Workshop Road, Training Block';
   const skills = run.id + ' Solar panel installation and electrical wiring';
+  const providerPrerequisites = 'Familiarity with hand tools is recommended.';
+  const governmentPrerequisites = 'Basic programming experience is recommended.';
+  const secondary = Number(sql("SELECT education_level_id FROM ref_education_level WHERE education_code='SECONDARY';"));
+  const higherSecondary = Number(sql("SELECT education_level_id FROM ref_education_level WHERE education_code='HIGHER_SECONDARY';"));
   const sessions = [slot(6, '10:15', '12:00'), slot(7, '13:30', '15:00')];
   const provider = await login(request, run, 'provider');
   const admin = await login(request, run, 'admin');
   const temporary = await result(await request.post(venueApi, { headers: provider, data: {
-    batchCode: code, seats: 2, skillsToTeach: skills, sessions,
+    batchCode: code, seats: 2, skillsToTeach: skills, sessions, recommendedPrerequisites: providerPrerequisites,
     temporaryVenue: { name: venueName, address, stateId: run.state, districtId, capacity: 8, permissionToUse: 'Fixture authorization' },
   } }), 201);
   const approved = await result(await request.post(venueApi + '/' + temporary.booking.id + '/review', {
@@ -58,6 +63,7 @@ test('trainees find and register for approved batches, providers see their roste
   const government = await result(await request.post(requirementApi + '/government', { headers: admin, data: {
     title: run.id + '-requirement-self Java Backend Development', skillsToTeach: skills, stateId: run.state, districtId, centerId: centre.id,
     seats: 1, earliestDate: day(10), latestDate: day(11), dailyStartTime: '09:00', dailyEndTime: '13:00',
+    minimumEducationLevelId: higherSecondary, recommendedPrerequisites: governmentPrerequisites,
   } }), 201);
   const offer = await result(await request.post(requirementApi + '/' + government.id + '/applications', { headers: provider,
     data: { startDate: day(10), endDate: day(11), dailyStartTime: '10:00', dailyEndTime: '12:00' },
@@ -66,10 +72,14 @@ test('trainees find and register for approved batches, providers see their roste
     headers: admin, data: { applicationId: offer.id },
   }), 200);
   const governmentBooking = await result(await request.get(venueApi + '/' + award.bookingId, { headers: admin }), 200);
+  expect(governmentBooking.booking.admission).toMatchObject({
+    minimumEducationLevelId: higherSecondary, recommendedPrerequisites: governmentPrerequisites,
+  });
   const governmentBatch = governmentBooking.booking.batchId;
 
-  sql(`UPDATE trainees SET user_id=(SELECT user_id FROM users WHERE username=${quote(run.users.trainee2)})
-    WHERE trainee_id=${run.prospect};`);
+  sql(`UPDATE trainees SET user_id=(SELECT user_id FROM users WHERE username=${quote(run.users.trainee2)}),
+      education_level_id=NULL WHERE trainee_id=${run.prospect};
+    UPDATE trainees SET education_level_id=NULL WHERE trainee_id=${run.trainee};`);
   const trainee = await login(request, run, 'trainee');
   const params = { search: run.id + ' sol wir', districtId };
   const listing = () => request.get(traineeApi, { headers: trainee, params }).then(response => result(response, 200));
@@ -86,16 +96,39 @@ test('trainees find and register for approved batches, providers see their roste
     expect(found.batches.map(item => item.id)).toEqual([governmentBatch]);
   }
 
+  const providerEnroll = async () => request.post('/api/v1/training-enrollments', {
+    headers: await login(request, run, 'provider'),
+    data: { traineeId: run.prospect, batchId: governmentBatch, enrollmentDate: day(0) },
+  });
+  const expectEducationDenial = async (response, code) => {
+    expect(response.status()).toBe(409);
+    expect((await response.json()).code).toBe(code);
+  };
+  await expectEducationDenial(await register(request, governmentBatch, trainee), 'TRAINING_EDUCATION_REQUIRED');
+  await expectEducationDenial(await providerEnroll(), 'TRAINING_EDUCATION_REQUIRED');
+  await smoke.signIn('trainee', `${find}/${governmentBatch}`);
+  const restrictedDetails = page.getByRole('region', { name: 'Batch details' });
+  await expect(restrictedDetails).toContainText('Higher secondary (12th)');
+  await expect(restrictedDetails).toContainText(governmentPrerequisites);
+  await expect(restrictedDetails.getByRole('link', { name: 'Update education in your profile' })).toBeVisible();
+  await expect(restrictedDetails.getByRole('button', { name: 'Register for training' })).toBeDisabled();
+  sql(`UPDATE trainees SET education_level_id=${secondary} WHERE trainee_id IN (${run.trainee},${run.prospect});`);
+  await expectEducationDenial(await register(request, governmentBatch, await login(request, run, 'trainee')), 'TRAINING_EDUCATION_BELOW_MINIMUM');
+  await expectEducationDenial(await providerEnroll(), 'TRAINING_EDUCATION_BELOW_MINIMUM');
+  expect(sql(`SELECT COUNT(*) FROM training_enrollments WHERE batch_id=${governmentBatch};`)).toBe('0');
+
   const currentCore = sql(`SELECT trainee_consent_id FROM trainee_consents WHERE trainee_id=${run.trainee}
     AND consent_type_id=1 ORDER BY trainee_consent_id DESC LIMIT 1;`);
-  const revoked = await request.put(consentApi + '/' + currentCore + '/status', { headers: trainee, data: { consentStatusId: 2 } });
+  const consentActor = await login(request, run, 'trainee');
+  const revoked = await request.put(consentApi + '/' + currentCore + '/status', { headers: consentActor, data: { consentStatusId: 2 } });
   expect(revoked.status()).toBe(200);
-  const noConsent = await register(request, batchId, trainee);
+  const noConsent = await register(request, batchId, consentActor);
   expect(noConsent.status()).toBe(400);
   expect((await noConsent.json()).code).toBe('CONSENT_REVOKED');
   expect(sql(`SELECT COUNT(*) FROM training_enrollments WHERE batch_id=${batchId};`)).toBe('0');
 
-  await smoke.signIn('trainee', find);
+  sql(`UPDATE trainees SET education_level_id=NULL WHERE trainee_id=${run.trainee};`);
+  await page.goto(find);
   const filter = page.getByRole('form', { name: 'Filter training' });
   await filter.getByRole('searchbox', { name: 'Search by title or skill' }).fill(run.id + ' sol wir');
   await filter.getByLabel('State or union territory', { exact: true }).selectOption(String(run.state));
@@ -113,6 +146,8 @@ test('trainees find and register for approved batches, providers see their roste
   await expect(details).toContainText(address);
   await expect(details).toContainText(venueName);
   await expect(details).toContainText(skills);
+  await expect(details).toContainText('Open to all');
+  await expect(details).toContainText(providerPrerequisites);
   await expect(timetable.getByRole('row')).toHaveCount(3);
   await expect(timetable).toContainText('10:15');
   await expect(timetable).toContainText('13:30');
@@ -136,6 +171,7 @@ test('trainees find and register for approved batches, providers see their roste
   await myTraining.getByRole('link', { name: 'View timetable' }).filter({ visible: true }).first().click();
   await expect(timetable.getByRole('row')).toHaveCount(3);
 
+  sql(`UPDATE trainees SET education_level_id=${higherSecondary} WHERE trainee_id IN (${run.trainee},${run.prospect});`);
   const traineeAgain = await login(request, run, 'trainee');
   const repeated = await register(request, batchId, traineeAgain);
   expect(repeated.status()).toBe(409);
@@ -204,7 +240,8 @@ test('trainees find and register for approved batches, providers see their roste
   const priorDay = day(-1);
   sql(`UPDATE venue_booking_sessions SET starts_at='${priorDay}T09:00:00',ends_at='${priorDay}T11:00:00' WHERE session_id=${morning};
     UPDATE venue_booking_sessions SET starts_at='${priorDay}T14:00:00',ends_at='${day(0)}T02:00:00' WHERE session_id=${afternoon};
-    UPDATE training_enrollments SET enrollment_date='${priorDay}' WHERE batch_id=${batchId};`);
+    UPDATE training_batches SET start_date='${priorDay}',end_date='${day(0)}' WHERE batch_id=${batchId};
+    UPDATE training_enrollments SET enrollment_date='${priorDay}',start_date='${priorDay}',expected_completion_date='${day(0)}' WHERE batch_id=${batchId};`);
   await page.goto('/provider/batches');
   await page.getByRole('row').filter({ hasText: code }).getByRole('link', { name: 'Session attendance' }).click();
   await expect(page.getByRole('button', { name: 'Start training', exact: true })).toBeEnabled();
@@ -281,5 +318,168 @@ test('trainees find and register for approved batches, providers see their roste
   await expect(traineeRows).toContainText('09:00');
   await expect(traineeRows).toContainText('ABSENT');
   await signOut(page);
-  sql(`UPDATE trainees SET user_id=NULL WHERE trainee_id=${run.prospect};`);
+
+  const assessmentPath = `${batchApi}/${batchId}/assessment`;
+  const opening = { brief: 'Demonstrate safe wiring and explain the isolation procedure.' };
+  const schedule = { startsAt: `${day(1)}T10:00`, venue: 'Assessment workshop' };
+  const appointments = '/api/v1/trainees/me/batch-assessments';
+  const completingProvider = await login(request, run, 'provider');
+  await result(await request.post(`${venueApi}/${approved.booking.id}/close`, { headers: completingProvider, data: { action: 'COMPLETE' } }), 200);
+  expect(await result(await request.get(assessmentPath, { headers: completingProvider }), 200))
+    .toMatchObject({ batchStatus: 'COMPLETED', canPublish: false, outstandingMarks: 1 });
+  await result(await request.post(assessmentPath, { headers: completingProvider, data: opening }), 409);
+  await result(await request.post(assessmentPath, { headers: await login(request, run, 'trainee2'), data: opening }), 403);
+  const providerUI = await smoke.signIn('provider', '/provider/batches');
+  const providerAccess = auth(providerUI.accessToken);
+  await page.goto(`/provider/enrollment?batch=${batchId}`);
+  const batchSelector = page.getByRole('combobox', { name: /Target Training Batch/ });
+  await expect(page.getByText('The linked batch is closed for enrollment.')).toBeVisible();
+  await expect(batchSelector).toHaveValue('');
+  await expect(batchSelector.getByRole('option', { name: new RegExp(code) })).toHaveCount(0);
+  await expect(batchSelector.getByRole('option', { name: /GOV-REQ-/ })).toHaveCount(1);
+  await page.getByPlaceholder('e.g. TRN-2026-0001').fill(run.candidateCode);
+  await page.getByRole('button', { name: 'Find Trainee' }).click();
+  await expect(page.getByText('VERIFIED PROFILE')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Confirm Candidate Enrollment' })).toBeDisabled();
+  await page.goto('/provider/batches');
+  await page.getByRole('row').filter({ hasText: code }).getByRole('link', { name: 'Batch assessment' }).click();
+  const openButton = page.getByRole('button', { name: 'Open for assessment' });
+  await expect(openButton).toBeDisabled();
+  await expect(page.getByText('Mark every eligible trainee Present or Absent for each training session.')).toBeVisible();
+  const lateStatus = Number(sql("SELECT attendance_status_id FROM ref_attendance_status WHERE status_code='LATE';"));
+  const legacyMark = await result(await request.post('/api/v1/attendance-records', { headers: providerAccess, data: {
+    enrollmentId: assisted.id, sessionDate: priorDay, sessionSequence: 2, attendanceStatusId: lateStatus,
+  } }), 201);
+  expect(await result(await request.get(assessmentPath, { headers: providerAccess }), 200))
+    .toMatchObject({ canPublish: false, outstandingMarks: 1 });
+  const currentAfternoon = (await result(await request.get(`${sessionsPath}/${afternoon}`, { headers: providerAccess }), 200)).rows;
+  await result(await saveAt(afternoon, currentAfternoon.map(row => ({
+    enrollmentId: row.enrollmentId, status: 'PRESENT', expectedVersion: row.version,
+  })), providerAccess), 200);
+  await page.reload();
+  await expect(page.locator('input[type="datetime-local"]')).toHaveCount(0);
+  await expect(page.getByLabel('Assessment venue')).toHaveCount(0);
+  await page.getByLabel('Assessment instructions').fill(opening.brief);
+  const [published] = await Promise.all([smoke.waitApi('POST', assessmentPath), openButton.click()]);
+  expect(published.request().postDataJSON()).toEqual(opening);
+  const assessment = await result(published, 200);
+  expect(assessment).toMatchObject({ status: 'OPEN', candidates: 2, checkedIn: false });
+  expect(assessment.startsAt ?? null).toBeNull();
+  expect(assessment.venue ?? null).toBeNull();
+  await expect(page.getByRole('heading', { name: 'Open to assessors' })).toBeVisible();
+  await expect(page.getByText('Assessment date and venue pending')).toBeVisible();
+  expect(sql(`SELECT a.assessment_date IS NULL, SUM(ta.assessment_date IS NULL), pub.starts_at IS NULL
+    FROM assessments a JOIN batch_assessment_publications pub USING (assessment_id)
+    JOIN trainee_assessments ta USING (assessment_id) WHERE a.assessment_id=${assessment.assessmentId}
+    GROUP BY a.assessment_date,pub.starts_at;`)).toBe('1\t2\t1');
+  await result(await saveAt(afternoon, [{ enrollmentId: assisted.id, status: 'PRESENT' }], providerAccess), 409);
+  await result(await request.put(`/api/v1/attendance-records/${legacyMark.id}`, {
+    headers: providerAccess, data: { attendanceStatusId: lateStatus },
+  }), 409);
+  const assessorPath = `/api/v1/assessor/assessments/${assessment.assessmentId}`;
+  const claimPath = `/api/v1/assessor/open-batch-assessments/${assessment.assessmentId}/claim`;
+  const participants = [{ traineeId: run.trainee, appeared: true }, { traineeId: run.prospect, appeared: true }];
+  const scores = [
+    { ...participants[0], enrollmentId: enrollment.id, theoryScore: 25, practicalScore: 42, vivaScore: 17 },
+    { ...participants[1], enrollmentId: assisted.id, theoryScore: 10, practicalScore: 15, vivaScore: 4 },
+  ];
+  const assessor2 = await login(request, run, 'assessor2');
+  await result(await request.post(claimPath, { headers: providerAccess, data: schedule }), 403);
+  await signOut(page);
+  const assessorUI = await smoke.signIn('assessor', '/assessor/dashboard');
+  let assessorAccess = auth(assessorUI.accessToken);
+  const card = page.getByRole('article').filter({ hasText: code });
+  await expect(card).toContainText(opening.brief);
+  const invalidSchedule = await request.post(claimPath, { headers: assessorAccess, data: { ...schedule, startsAt: `${priorDay}T09:00` } });
+  expect(invalidSchedule.status()).toBe(400);
+  expect((await invalidSchedule.json()).code).toBe('ASSESSMENT_TIME_IN_PAST');
+  await card.getByLabel('Assessment date and time (IST)').fill(schedule.startsAt);
+  await card.getByLabel('Assessment venue').fill(schedule.venue);
+  const [claimed] = await Promise.all([smoke.waitApi('POST', claimPath), card.getByRole('button', { name: 'Claim assessment' }).click()]);
+  const assignment = await result(claimed, 200);
+  expect(assignment.status).toBe('CLAIMED');
+  expect(assignment.startsAt.slice(0, 16)).toBe(schedule.startsAt);
+  expect(assignment.venue).toBe(schedule.venue);
+  await expect(page.getByRole('button', { name: 'Mark assessment completed' })).toBeDisabled();
+  await expect(page.getByText('Candidate skills and job goals')).toHaveCount(0);
+  await result(await request.put(`/api/v1/career-skills/assessments/${assessment.assessmentId}/trainees/${run.trainee}`, {
+    headers: assessorAccess, data: { skillId: 1, levelId: 1 },
+  }), 409);
+  const assignedRoster = await result(await request.get(assessorPath + '/roster', { headers: assessorAccess }), 200);
+  const attemptId = assignedRoster.candidates[0].traineeAssessmentId;
+  await result(await request.put(`/api/v1/trainee-assessments/${attemptId}`, {
+    headers: assessorAccess, data: { appearedFlag: true },
+  }), 403);
+  await result(await request.delete(`/api/v1/assessments/${assessment.assessmentId}`, { headers: assessorAccess }), 409);
+  await result(await request.post(claimPath, { headers: assessor2, data: schedule }), 409);
+  await result(await request.get(assessorPath + '/roster', { headers: assessor2 }), 403);
+  await result(await request.post(assessorPath + '/complete', { headers: assessorAccess }), 409);
+  await result(await request.post(assessorPath + '/draft', { headers: assessorAccess, data: { candidates: scores } }), 409);
+  const appointment = (await result(await request.get(appointments, { headers: await login(request, run, 'trainee2') }), 200))
+    .find(item => item.batchCode === code);
+  expect(appointment.startsAt.slice(0, 16)).toBe(schedule.startsAt);
+  expect(appointment.venue).toBe(schedule.venue);
+  expect(sql(`SELECT COUNT(*) FROM trainee_assessments ta JOIN assessments a USING (assessment_id)
+    WHERE a.assessment_id=${assessment.assessmentId} AND ta.assessment_date=a.assessment_date AND a.assessment_date='${day(1)}';`)).toBe('2');
+  sql(`UPDATE batch_assessment_publications pub JOIN assessments a USING (assessment_id)
+    JOIN trainee_assessments ta USING (assessment_id)
+    SET pub.starts_at='${priorDay}T19:30:00',a.assessment_date='${priorDay}',ta.assessment_date='${priorDay}'
+    WHERE pub.assessment_id=${assessment.assessmentId};`);
+  await signOut(page);
+  assessorAccess = auth((await smoke.signIn('assessor', `/assessor/assessments/${assessment.assessmentId}`)).accessToken);
+  await expect(page.getByRole('button', { name: /^(Present|Absent)$/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Publish batch results and certificates' })).toBeDisabled();
+  const earlyDraft = await request.post(assessorPath + '/draft', { headers: assessorAccess, data: { candidates: scores } });
+  expect(earlyDraft.status()).toBe(409);
+  expect((await earlyDraft.json()).code).toBe('ASSESSMENT_COMPLETION_REQUIRED');
+  await result(await request.post(assessorPath + '/complete', { headers: await login(request, run, 'provider') }), 403);
+  await result(await request.post(assessorPath + '/complete', { headers: await login(request, run, 'assessor2') }), 403);
+  const [completed] = await Promise.all([smoke.waitApi('POST', assessorPath + '/complete'),
+    page.getByRole('button', { name: 'Mark assessment completed' }).click()]);
+  const recorded = await result(completed, 200);
+  expect(recorded).toMatchObject({ canComplete: false, completedAt: expect.any(String) });
+  await expect(page.getByRole('button', { name: 'Save Draft' })).toBeEnabled();
+  await result(await request.post(assessorPath + '/draft', { headers: assessorAccess,
+    data: { candidates: [{ ...scores[0], appeared: false }] } }), 409);
+  await result(await request.post(assessorPath + '/finalize', { headers: assessorAccess, data: { candidates: scores.slice(0, 1) } }), 400);
+  await result(await request.post(assessorPath + '/draft', { headers: assessorAccess, data: { candidates: scores } }), 200);
+  expect(sql(`SELECT COUNT(*) FROM trainee_skill_evidence WHERE assessment_id=${assessment.assessmentId};`)).toBe('0');
+  const draft = (await result(await request.get(appointments, { headers: await login(request, run, 'trainee2') }), 200)).find(item => item.batchCode === code);
+  expect(draft).toBeDefined();
+  expect(draft.resultId ?? null).toBeNull();
+  await page.reload();
+  await page.getByRole('button', { name: 'Publish batch results and certificates' }).click();
+  const [finalized] = await Promise.all([smoke.waitApi('POST', assessorPath + '/finalize'),
+    page.getByRole('button', { name: 'Confirm & Finalize' }).click()]);
+  expect(await result(finalized, 200)).toMatchObject({ isFinalized: true, passedCount: 1, failedCount: 1, certificatesIssued: 1 });
+  expect(sql(`SELECT s.skill_name,l.level_code FROM trainee_skill_evidence e JOIN skills s USING (skill_id)
+    JOIN skill_levels l USING (skill_level_id) WHERE e.assessment_id=${assessment.assessmentId} AND e.trainee_id=${run.trainee};`))
+    .toBe(skills + '\tADVANCED');
+  expect(sql(`SELECT COUNT(*) FROM trainee_skill_evidence WHERE assessment_id=${assessment.assessmentId} AND trainee_id=${run.prospect};`)).toBe('0');
+  const providerReview = await result(await request.get(assessmentPath + '/roster', { headers: await login(request, run, 'provider') }), 200);
+  expect(providerReview.candidates).toEqual(expect.arrayContaining([
+    expect.objectContaining({ traineeId: run.trainee, outcome: 'PASS', total: 84, certificateId: expect.any(Number) }),
+    expect.objectContaining({ traineeId: run.prospect, outcome: 'FAIL', total: 29, certificateId: null }),
+  ]));
+  const checkPdf = async (role, label, title) => {
+    await signOut(page);
+    const account = await smoke.signIn(role, '/trainee/assessments');
+    const profile = await result(await request.get('/api/v1/career-skills/me', { headers: auth(account.accessToken) }), 200);
+    const awarded = profile.evidence.find(item => item.skill === skills);
+    if (title === 'PASS') expect(awarded).toMatchObject({ level: 'Advanced' });
+    else expect(awarded).toBeUndefined();
+    const own = page.getByRole('article').filter({ hasText: code });
+    await expect(own).toContainText(title === 'FAIL' ? 'Total 29' : 'Total 84');
+    const file = page.waitForEvent('download');
+    await own.getByRole('button', { name: label, exact: true }).click();
+    const bytes = (await readFile(await (await file).path())).toString('latin1');
+    expect(bytes).toContain('/MediaBox [0 0 842 595]');
+    expect(bytes).toContain(title === 'FAIL' ? '/Title (Assessment Result - FAIL)' : '/Title (Certificate of Competency');
+  };
+  await checkPdf('trainee2', 'Download result PDF', 'FAIL');
+  await checkPdf('trainee', 'Download certificate PDF', 'PASS');
+  const pass = providerReview.candidates.find(candidate => candidate.traineeId === run.trainee);
+  const denied = await request.get(`/api/v1/assessment-results/${pass.resultId}/document`, { headers: await login(request, run, 'trainee2') });
+  expect(denied.status()).toBe(403);
 });

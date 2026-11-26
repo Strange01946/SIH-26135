@@ -88,6 +88,8 @@ export interface AssessorCandidateRosterItem {
 export interface AssessorRosterResponse {
   assessment: AssessorAssessmentSummary;
   candidates: AssessorCandidateRosterItem[];
+  managedBatch?: boolean;
+  checkedIn?: boolean;
 }
 
 export interface CandidateScoreInput {

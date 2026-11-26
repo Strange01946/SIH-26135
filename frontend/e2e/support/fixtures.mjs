@@ -4,7 +4,7 @@ import { assertRunId, quote, sql } from './database.mjs';
 
 const roles = {
   admin: 'super_admin', govadmin: 'government_admin', stateadmin: 'state_admin', provider: 'training_provider', outsider: 'training_provider',
-  assessor: 'assessor', employer: 'employer', trainee: 'trainee', trainee2: 'trainee',
+  assessor: 'assessor', assessor2: 'assessor', employer: 'employer', trainee: 'trainee', trainee2: 'trainee',
   applicant: 'training_provider', district: 'district_officer',
 };
 const publicOrganizations = {
@@ -251,6 +251,10 @@ export function cleanFixtures(id) {
     DELETE FROM employment_records WHERE employment_id=@employment;
     DELETE c FROM certifications c JOIN trainees t USING (trainee_id) WHERE t.registration_number IN (${candidates});
     DELETE r FROM assessment_results r JOIN trainees t USING (trainee_id) WHERE t.registration_number IN (${candidates});
+    DELETE ta FROM trainee_assessments ta JOIN batch_assessment_publications pub USING (assessment_id)
+      JOIN training_batches b ON b.batch_id=pub.batch_id WHERE b.batch_code='${id}-venue-self';
+    DELETE a FROM assessments a JOIN batch_assessment_publications pub USING (assessment_id)
+      JOIN training_batches b ON b.batch_id=pub.batch_id WHERE b.batch_code='${id}-venue-self';
     DELETE FROM trainee_assessments WHERE assessment_id=@assess;
     DELETE FROM assessments WHERE assessment_id=@assess;
     DELETE a FROM attendance_records a JOIN trainees t USING (trainee_id) WHERE t.registration_number IN (${candidates});
@@ -280,7 +284,7 @@ export function cleanFixtures(id) {
     ${removePublicOrganizations}
     DELETE FROM organizations WHERE organization_code IN ('${id}-provider','${id}-outsider','${id}-employer',${publicOrganizationCodes});
     DELETE FROM job_roles WHERE job_role_code='${id}-role' OR job_role_name='${id} Torque Technician';
-    DELETE FROM skills WHERE skill_code='${id}-career-skill' OR skill_name='Torque diagnostics ${id}';
+    DELETE FROM skills WHERE skill_code='${id}-career-skill' OR skill_name IN ('Torque diagnostics ${id}','${id} Solar panel installation and electrical wiring');
     DELETE FROM skill_categories WHERE category_name='${id} Workshop Skills';
     DELETE c FROM courses c JOIN sectors s USING(sector_id)
       WHERE s.sector_code='SKILLS-UNCLASSIFIED' AND c.course_code LIKE 'SKL-%'
@@ -297,7 +301,7 @@ export function cleanFixtures(id) {
       (SELECT COUNT(*) FROM venue_bookings WHERE LEFT(batch_code,LENGTH('${id}-venue-'))='${id}-venue-') +
       (SELECT COUNT(*) FROM training_batches WHERE LEFT(batch_code,LENGTH('${id}-venue-'))='${id}-venue-') +
       (SELECT COUNT(*) FROM training_centers WHERE center_id IN (@venue_shared,@venue_race,@venue_temporary,@venue_shared_admin,@venue_enrollment,@venue_career)) +
-      (SELECT COUNT(*) FROM skills WHERE skill_code='${id}-career-skill' OR skill_name='Torque diagnostics ${id}') +
+      (SELECT COUNT(*) FROM skills WHERE skill_code='${id}-career-skill' OR skill_name IN ('Torque diagnostics ${id}','${id} Solar panel installation and electrical wiring')) +
       (SELECT COUNT(*) FROM skill_categories WHERE category_name='${id} Workshop Skills') +
       (SELECT COUNT(*) FROM job_roles WHERE job_role_name='${id} Torque Technician') +
       (SELECT COUNT(*) FROM training_centers WHERE LEFT(center_code,LENGTH('${id}-gov-lab-'))='${id}-gov-lab-') +

@@ -14,7 +14,6 @@ import { EmptyState } from '@/components/feedback/EmptyState';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { useAuth } from '@/context/AuthContext';
-import { simulationActive } from '@/lib/demoEnvironment';
 
 const todayInIndia = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Kolkata' }).format(new Date());
 
@@ -165,10 +164,10 @@ export function TraineeProfilePage() {
   const key = ['trainee', 'own-profile', user?.id] as const;
   const profile = useQuery<TraineeSelfProfile, ApiError>({
     queryKey: key, queryFn: ({ signal }) => getOwnTraineeProfile(signal),
-    enabled: Boolean(user?.id) && !simulationActive, retry: false, refetchOnWindowFocus: 'always',
+    enabled: Boolean(user?.id), retry: false, refetchOnWindowFocus: 'always',
   });
   const reference = useQuery({
-    queryKey: ['registration-reference-data'], queryFn: getRegistrationReferenceData, enabled: !simulationActive,
+    queryKey: ['registration-reference-data'], queryFn: getRegistrationReferenceData,
   });
   const update = useMutation<TraineeSelfProfile, ApiError, UpdateOwnTraineeProfile>({
     mutationFn: updateOwnTraineeProfile,
@@ -186,7 +185,6 @@ export function TraineeProfilePage() {
     },
   });
 
-  if (simulationActive) return <p className="card p-5" role="status">Switch to live mode to edit your profile.</p>;
   if (profile.isPending || reference.isPending) return <LoadingSpinner label="Loading your profile" />;
   if (profile.isError) {
     if (profile.error.status === 404) {

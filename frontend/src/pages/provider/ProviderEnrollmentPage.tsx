@@ -10,9 +10,19 @@ import {
   createTrainingEnrollment,
 } from '@/api/providerPortalApi';
 import type { TraineeProfile } from '@/types/trainee';
-import type { CreateEnrollmentPayload } from '@/types/provider';
+import type { CreateEnrollmentPayload, TrainingBatch } from '@/types/provider';
 import type { ApiError } from '@/api/types';
 import { batchAttendanceKey } from '@/api/batchSessionAttendanceApi';
+import { getBatchAdmission } from '@/api/trainingAdmissionApi';
+import { TrainingAdmissionRows } from '@/pages/training/TrainingAdmissionFields';
+
+const enrollmentStatusIds = [2, 3];
+
+function acceptsEnrollment(batch: TrainingBatch) {
+  return batch.batchStatusCode
+    ? ['OPEN', 'ONGOING'].includes(batch.batchStatusCode)
+    : enrollmentStatusIds.includes(batch.batchStatusId);
+}
 
 export function ProviderEnrollmentPage(): React.JSX.Element {
   const { user } = useAuth();
@@ -36,20 +46,35 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
 
   // Batches Query
   const batchesQuery = useQuery({
-    queryKey: ['provider', 'batches', providerId],
-    queryFn: () => getTrainingBatches({ providerId, size: 50, sort: 'id', direction: 'DESC' }),
+    queryKey: ['provider', 'batches', providerId, 'enrollment'],
+    queryFn: async () => {
+      const pages = await Promise.all(enrollmentStatusIds.map(statusId =>
+        getTrainingBatches({ statusId, size: 50, sort: 'id', direction: 'DESC' })));
+      return Array.from(new Map(pages.flatMap(page => page.content)
+        .filter(batch => batch.providerId === providerId && acceptsEnrollment(batch))
+        .map(batch => [batch.id, batch])).values()).sort((left, right) => right.id - left.id);
+    },
     enabled: !!providerId,
+    refetchInterval: 15_000,
   });
-  const listedBatches = batchesQuery.data?.content ?? [];
+  const listedBatches = batchesQuery.data ?? [];
   const linkedBatch = useQuery({
     queryKey: ['provider', 'batches', providerId, 'linked', requestedBatch],
     queryFn: () => getTrainingBatchById(requestedBatch),
     enabled: Boolean(providerId && Number.isSafeInteger(requestedBatch) && requestedBatch > 0
       && batchesQuery.isSuccess && !listedBatches.some(batch => batch.id === requestedBatch)),
     retry: false,
+    refetchInterval: 15_000,
   });
-  const batches = linkedBatch.data && !listedBatches.some(batch => batch.id === linkedBatch.data?.id)
+  const batches = linkedBatch.data?.providerId === providerId && linkedBatch.data && acceptsEnrollment(linkedBatch.data)
+    && !listedBatches.some(batch => batch.id === linkedBatch.data?.id)
     ? [linkedBatch.data, ...listedBatches] : listedBatches;
+  const selectedBatchObj = batches.find((b) => b.id === Number(selectedBatchId));
+  const admission = useQuery({
+    queryKey: ['provider', 'batches', providerId, 'admission', selectedBatchObj?.id],
+    queryFn: ({ signal }) => getBatchAdmission(Number(selectedBatchId), signal),
+    enabled: !!selectedBatchObj,
+  });
 
   // Trainee Search Handler
   const handleSearchTrainee = async (e: React.FormEvent) => {
@@ -139,7 +164,6 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
     });
   };
 
-  const selectedBatchObj = batches.find((b) => b.id === Number(selectedBatchId));
   const batchAvailable = selectedBatchObj
     ? (selectedBatchObj.availableSeats ?? Math.max(0, selectedBatchObj.capacity - (selectedBatchObj.enrolledCount ?? 0)))
     : null;
@@ -271,13 +295,13 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
                 id="manual-enrollment-batch"
                 required
                 className="input-field w-full text-sm"
-                value={selectedBatchId}
+                value={selectedBatchObj?.id ?? ''}
                 onChange={(e) => {
                   setSelectedBatchId(e.target.value ? Number(e.target.value) : '');
                   setEnrollmentError(null);
                 }}
               >
-                <option value="">-- Select Active Batch --</option>
+                <option value="">Select a batch accepting enrollment</option>
                 {batches.map((batch) => {
                   const cap = batch.capacity || 0;
                   const enr = batch.enrolledCount ?? 0;
@@ -290,6 +314,17 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
                   );
                 })}
               </select>
+              {linkedBatch.data && selectedBatchId === requestedBatch && !acceptsEnrollment(linkedBatch.data) && (
+                <p className="mt-1 text-amber-800" role="status">The linked batch is closed for enrollment.</p>
+              )}
+              {batchesQuery.isSuccess && !linkedBatch.isFetching && batches.length === 0 && (
+                <p className="mt-1 text-gray-600">No batches are accepting enrollment.</p>
+              )}
+              {batchesQuery.isError && (
+                <button type="button" className="mt-1 text-navy underline" onClick={() => void batchesQuery.refetch()}>
+                  Could not load eligible batches. Retry
+                </button>
+              )}
             </div>
 
             {selectedBatchObj && (
@@ -309,6 +344,14 @@ export function ProviderEnrollmentPage(): React.JSX.Element {
                   </span>
                 </div>
               </div>
+            )}
+            {selectedBatchObj && admission.data && (
+              <dl className="space-y-2"><TrainingAdmissionRows admission={admission.data} /></dl>
+            )}
+            {selectedBatchObj && admission.isError && (
+              <button type="button" className="text-navy underline" onClick={() => void admission.refetch()}>
+                Could not load admission requirements. Retry
+              </button>
             )}
 
             <div>

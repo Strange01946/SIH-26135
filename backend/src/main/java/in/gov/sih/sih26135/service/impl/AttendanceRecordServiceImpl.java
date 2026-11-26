@@ -173,6 +173,7 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
     TrainingEnrollment enrollment = trainingEnrollmentRepository.findById(request.getEnrollmentId())
         .orElseThrow(() -> new ResourceNotFoundException("TrainingEnrollment", "enrollmentId"));
     requireAttendanceOwnership(enrollment);
+    timetable.requireAttendanceEditable(enrollment.getTrainingBatch().getId());
     if (enrollment.getDeletedAt() != null) {
       throw new BadRequestException("Attendance requires a current enrollment record.", "ENROLLMENT_DELETED");
     }
@@ -242,6 +243,7 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
     AttendanceRecord record = attendanceRecordRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("AttendanceRecord", "id"));
     requireAttendanceOwnership(record.getTrainingEnrollment());
+    timetable.requireAttendanceEditable(record.getTrainingEnrollment().getTrainingBatch().getId());
 
     LocalTime effectiveStartTime = request.getSessionStartTime() != null
         ? request.getSessionStartTime()
@@ -300,6 +302,7 @@ public class AttendanceRecordServiceImpl implements AttendanceRecordService {
     AttendanceRecord record = attendanceRecordRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("AttendanceRecord", "id"));
     requireAttendanceOwnership(record.getTrainingEnrollment());
+    timetable.requireAttendanceEditable(record.getTrainingEnrollment().getTrainingBatch().getId());
 
     attendanceRecordRepository.delete(record);
   }

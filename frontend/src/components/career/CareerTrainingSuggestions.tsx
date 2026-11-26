@@ -4,7 +4,6 @@ import { Link, useLocation } from 'react-router-dom';
 import { careerSkillsKey, getCareerTraining, saveCareerTrainingChoice, type TrainingChoice } from '@/api/careerSkillsApi';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
-import { simulationActive } from '@/lib/demoEnvironment';
 import { careerDate } from './CareerInsights';
 
 export function CareerTrainingSuggestions({ traineeId }: { traineeId: number }) {
@@ -14,7 +13,7 @@ export function CareerTrainingSuggestions({ traineeId }: { traineeId: number }) 
   const section = useRef<HTMLElement>(null);
   const queryClient = useQueryClient();
   const training = useQuery({ queryKey: [...careerSkillsKey, 'training', traineeId, search],
-    queryFn: ({ signal }) => getCareerTraining(search, signal), enabled: !simulationActive,
+    queryFn: ({ signal }) => getCareerTraining(search, signal),
     retry: false, refetchOnMount: 'always', refetchOnWindowFocus: 'always' });
   const save = useMutation({ mutationFn: ({ batchId, choice }: { batchId: number; choice: TrainingChoice }) =>
     saveCareerTrainingChoice(batchId, choice),
@@ -24,7 +23,6 @@ export function CareerTrainingSuggestions({ traineeId }: { traineeId: number }) 
     if (hash === '#training-suggestions') section.current?.focus();
   }, [hash]);
 
-  if (simulationActive) return null;
   return (
     <section ref={section} id="training-suggestions" tabIndex={-1} className="card scroll-mt-24 space-y-4 p-5"
       aria-label="Upcoming training suggestions">

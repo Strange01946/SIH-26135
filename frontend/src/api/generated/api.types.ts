@@ -1470,6 +1470,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/training-batches/{id}/assessment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["batchAssessmentReadiness"];
+        put?: never;
+        post: operations["publishBatchAssessment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/trainees": {
         parameters: {
             query?: never;
@@ -2866,6 +2882,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/assessor/open-batch-assessments/{id}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["claimBatchAssessment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/assessor/assessments/{id}/issue-pending": {
         parameters: {
             query?: never;
@@ -2911,6 +2943,22 @@ export interface paths {
         put?: never;
         /** Save candidate scoring draft */
         post: operations["saveDraftScores"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assessor/assessments/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["completeBatchAssessment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3441,6 +3489,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/training-batches/{id}/assessment/roster": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["providerAssessmentReview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/training-batches/{batchId}/roster": {
         parameters: {
             query?: never;
@@ -3465,6 +3529,38 @@ export interface paths {
             cookie?: never;
         };
         get: operations["batchAttendanceTimetable"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-batches/{batchId}/admission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["trainingBatchAdmission"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-admission/education-levels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["trainingEducationLevels"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3577,6 +3673,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getCareerStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trainees/me/batch-assessments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["myBatchAssessmentAppointments"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4949,6 +5061,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/assessor/open-batch-assessments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listOpenBatchAssessments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/assessor/assessments": {
         parameters: {
             query?: never;
@@ -4992,6 +5120,38 @@ export interface paths {
         };
         /** Get candidate roster for an assessment */
         get: operations["getAssessmentRoster"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assessor/assessments/{id}/published-batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPublishedBatch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assessment-results/{id}/document": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["downloadAssessmentDocument"];
         put?: never;
         post?: never;
         delete?: never;
@@ -11275,6 +11435,9 @@ export interface components {
             requirementId?: number;
             skillsToTeach?: string;
             trainingNotes?: string;
+            /** Format: int64 */
+            minimumEducationLevelId?: number;
+            recommendedPrerequisites?: string;
         };
         SessionRequest: {
             /** Format: date-time */
@@ -11371,6 +11534,7 @@ export interface components {
             requirementId?: number;
             skillsToTeach?: string;
             trainingNotes?: string;
+            admission?: components["schemas"]["TrainingAdmission"];
         };
         Details: {
             booking?: components["schemas"]["Booking"];
@@ -11385,6 +11549,12 @@ export interface components {
             reservedAt?: string;
             /** Format: date-time */
             releasedAt?: string;
+        };
+        TrainingAdmission: {
+            /** Format: int64 */
+            minimumEducationLevelId?: number;
+            minimumEducationLevel?: string;
+            recommendedPrerequisites?: string;
         };
         Review: {
             approved: boolean;
@@ -11666,6 +11836,9 @@ export interface components {
             latestDate: string;
             dailyStartTime: string;
             dailyEndTime: string;
+            /** Format: int64 */
+            minimumEducationLevelId?: number;
+            recommendedPrerequisites?: string;
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseRequirement: {
@@ -11739,6 +11912,7 @@ export interface components {
             /** Format: int64 */
             bookingId?: number;
             bookingStatus?: string;
+            admission?: components["schemas"]["TrainingAdmission"];
         };
         SelectProvider: {
             /** Format: int64 */
@@ -11802,6 +11976,70 @@ export interface components {
             /** Format: int64 */
             dropoutReasonId?: number;
             dropoutRemarks?: string;
+        };
+        PublishBatchAssessmentRequest: {
+            brief: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponsePublication: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Publication"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        Publication: {
+            /** Format: int64 */
+            assessmentId?: number;
+            /** Format: int64 */
+            batchId?: number;
+            batchCode?: string;
+            title?: string;
+            skills?: string;
+            provider?: string;
+            trainingVenue?: string;
+            district?: string;
+            state?: string;
+            /** Format: date-time */
+            startsAt?: string;
+            venue?: string;
+            brief?: string;
+            assessor?: string;
+            status?: string;
+            /** Format: int32 */
+            candidates?: number;
+            checkedIn?: boolean;
+            canComplete?: boolean;
+            /** Format: date-time */
+            completedAt?: string;
         };
         /** @description Request payload for creating a new trainee profile */
         CreateTraineeRequest: {
@@ -13808,6 +14046,11 @@ export interface components {
             markedByUserId?: number;
             remarks?: string;
         };
+        ClaimBatchAssessmentRequest: {
+            /** Format: date-time */
+            startsAt: string;
+            venue: string;
+        };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseSaveAssessmentScoresResponse: {
             /**
@@ -14648,6 +14891,111 @@ export interface components {
             name?: string;
         };
         /** @description Standard generic envelope for REST API responses */
+        ApiResponseReadiness: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Readiness"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        Readiness: {
+            batchCode?: string;
+            batchStatus?: string;
+            /** Format: int32 */
+            candidates?: number;
+            /** Format: int32 */
+            sessions?: number;
+            /** Format: int64 */
+            outstandingMarks?: number;
+            canPublish?: boolean;
+            blocker?: string;
+            publication?: components["schemas"]["Publication"];
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseReview: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Review"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        Candidate: {
+            /** Format: int64 */
+            traineeId?: number;
+            name?: string;
+            registrationNumber?: string;
+            appeared?: boolean;
+            /** Format: int32 */
+            present?: number;
+            /** Format: int32 */
+            trainingSessions?: number;
+            /** Format: int64 */
+            resultId?: number;
+            outcome?: string;
+            theory?: number;
+            practical?: number;
+            viva?: number;
+            total?: number;
+            /** Format: int64 */
+            certificateId?: number;
+        };
+        /** @description Standard generic envelope for REST API responses */
         ApiResponseTrainingRosterPage: {
             /**
              * @description Whether the request completed successfully
@@ -14740,6 +15088,83 @@ export interface components {
             sessions?: components["schemas"]["AttendanceSession"][];
         };
         /** @description Standard generic envelope for REST API responses */
+        ApiResponseTrainingAdmission: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["TrainingAdmission"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseListLevel: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Level"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        Level: {
+            /** Format: int64 */
+            id?: number;
+            name?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
         ApiResponseRegistrationBatchPage: {
             /**
              * @description Whether the request completed successfully
@@ -14797,6 +15222,7 @@ export interface components {
             governmentLed?: boolean;
             /** Format: int64 */
             seatsAvailable?: number;
+            admission?: components["schemas"]["TrainingAdmission"];
         };
         RegistrationBatchPage: {
             batches?: components["schemas"]["RegistrationBatch"][];
@@ -14846,6 +15272,8 @@ export interface components {
             consentGranted?: boolean;
             enrollmentNumber?: string;
             enrollmentStatus?: string;
+            /** @enum {string} */
+            educationEligibility?: "ELIGIBLE" | "EDUCATION_REQUIRED" | "BELOW_MINIMUM";
         };
         TrainingTimetableSession: {
             /** Format: date-time */
@@ -15196,6 +15624,63 @@ export interface components {
             reason?: string;
             current?: boolean;
             verificationStatus?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseListAppointment: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Appointment"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        Appointment: {
+            batchCode?: string;
+            title?: string;
+            /** Format: date-time */
+            startsAt?: string;
+            venue?: string;
+            brief?: string;
+            assessor?: string;
+            status?: string;
+            /** Format: date-time */
+            completedAt?: string;
+            /** Format: int64 */
+            resultId?: number;
+            outcome?: string;
+            theory?: number;
+            practical?: number;
+            viva?: number;
+            total?: number;
+            /** Format: int64 */
+            certificateId?: number;
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseListTraineeUnemploymentEventResponse: {
@@ -20181,14 +20666,6 @@ export interface components {
              */
             correlationId?: string;
         };
-        Candidate: {
-            /** Format: int64 */
-            id?: number;
-            registrationNumber?: string;
-            name?: string;
-            statusCode?: string;
-            status?: string;
-        };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseCandidateHistory: {
             /**
@@ -20704,6 +21181,42 @@ export interface components {
             correlationId?: string;
         };
         /** @description Standard generic envelope for REST API responses */
+        ApiResponseListPublication: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Publication"][];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
         ApiResponseListAssessorAssessmentSummaryResponse: {
             /**
              * @description Whether the request completed successfully
@@ -20865,6 +21378,8 @@ export interface components {
         AssessorRosterResponse: {
             assessment?: components["schemas"]["AssessorAssessmentSummaryResponse"];
             candidates?: components["schemas"]["AssessorCandidateRosterItemResponse"][];
+            managedBatch?: boolean;
+            checkedIn?: boolean;
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseListAssessmentResponse: {
@@ -28250,6 +28765,54 @@ export interface operations {
             };
         };
     };
+    batchAssessmentReadiness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseReadiness"];
+                };
+            };
+        };
+    };
+    publishBatchAssessment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishBatchAssessmentRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePublication"];
+                };
+            };
+        };
+    };
     getTrainees: {
         parameters: {
             query?: {
@@ -31733,6 +32296,32 @@ export interface operations {
             };
         };
     };
+    claimBatchAssessment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimBatchAssessmentRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePublication"];
+                };
+            };
+        };
+    };
     issuePendingCertificates: {
         parameters: {
             query?: never;
@@ -31803,6 +32392,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseSaveAssessmentScoresResponse"];
+                };
+            };
+        };
+    };
+    completeBatchAssessment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePublication"];
                 };
             };
         };
@@ -32665,6 +33276,28 @@ export interface operations {
             };
         };
     };
+    providerAssessmentReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseReview"];
+                };
+            };
+        };
+    };
     viewTrainingBatchRoster: {
         parameters: {
             query?: {
@@ -32708,6 +33341,48 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseAttendanceTimetable"];
+                };
+            };
+        };
+    };
+    trainingBatchAdmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batchId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseTrainingAdmission"];
+                };
+            };
+        };
+    };
+    trainingEducationLevels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListLevel"];
                 };
             };
         };
@@ -32865,6 +33540,26 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseCareerStatus"];
+                };
+            };
+        };
+    };
+    myBatchAssessmentAppointments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListAppointment"];
                 };
             };
         };
@@ -34923,6 +35618,26 @@ export interface operations {
             };
         };
     };
+    listOpenBatchAssessments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListPublication"];
+                };
+            };
+        };
+    };
     getAssignedAssessments: {
         parameters: {
             query?: {
@@ -34988,6 +35703,50 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseAssessorRosterResponse"];
+                };
+            };
+        };
+    };
+    getPublishedBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseReview"];
+                };
+            };
+        };
+    };
+    downloadAssessmentDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
                 };
             };
         };

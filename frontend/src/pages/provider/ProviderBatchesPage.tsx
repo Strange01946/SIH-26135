@@ -217,6 +217,9 @@ export function ProviderBatchesPage(): React.JSX.Element {
                               Open enrollment
                             </button>
                           )}
+                          {batch.batchStatusCode === 'COMPLETED' && hasAuthority('enrollment.manage') && (
+                            <Link className="block text-sm text-navy underline" to={`/provider/batches/${batch.id}/assessment`}>Batch assessment</Link>
+                          )}
                           {hasAuthority('enrollment.manage') && (
                             <Link className="block text-sm font-semibold text-navy underline"
                               to={`/provider/batches/${batch.id}/attendance`}>Session attendance</Link>

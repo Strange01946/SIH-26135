@@ -28,7 +28,7 @@ public class BatchSessionAttendanceService {
   private static final ZoneId INDIA = ZoneId.of("Asia/Kolkata");
   private static final Set<String> MARKABLE_BATCH_STATUSES = Set.of("ONGOING", "COMPLETED");
   private static final Set<String> NEW_MARKS = Set.of("PRESENT", "ABSENT");
-  private static final String SCHEDULE = """
+  static final String SCHEDULE = """
       SELECT s.session_id,s.starts_at,s.ends_at,v.batch_id,
              ROW_NUMBER() OVER (PARTITION BY v.batch_id,DATE(s.starts_at) ORDER BY s.starts_at,s.session_id) sequence_number
       FROM venue_booking_sessions s JOIN venue_bookings v USING (booking_id)
@@ -72,10 +72,21 @@ public class BatchSessionAttendanceService {
 
   public record ScheduledTimes(LocalDateTime startsAt, LocalDateTime endsAt) {}
 
+  public void requireAttendanceEditable(long batchId) {
+    if (Boolean.TRUE.equals(jdbc.queryForObject("""
+        SELECT EXISTS(SELECT 1 FROM batch_assessment_publications WHERE batch_id=?)
+        """, Boolean.class, batchId))) {
+      throw attendanceLocked();
+    }
+  }
+
   @Transactional(isolation = Isolation.READ_COMMITTED)
   public AttendanceSessionRoster save(long batchId, long sessionId, SaveAttendanceRoster request) {
     // Venue approval, rescheduling and the legacy attendance writers take the same batch lock.
     var batch = ownBatch(batchId, true);
+    if (batch.attendanceLocked()) {
+      throw attendanceLocked();
+    }
     var slot = slot(batchId, sessionId);
     var now = LocalDateTime.now(INDIA);
     var session = slot.view(batch, now);
@@ -175,20 +186,26 @@ public class BatchSessionAttendanceService {
     var user = scope.resolveAuthenticatedUser().filter(account -> account.getTrainingProviderId() != null)
         .orElseThrow(() -> new AccessDeniedException("A training provider assignment is required."));
     return jdbc.query("""
-        SELECT b.batch_code,c.course_name,s.status_code FROM training_batches b
+        SELECT b.batch_code,c.course_name,s.status_code,
+          EXISTS(SELECT 1 FROM batch_assessment_publications pub WHERE pub.batch_id=b.batch_id) locked
+        FROM training_batches b
         JOIN courses c USING (course_id) JOIN ref_batch_status s USING (batch_status_id)
         WHERE b.batch_id=? AND b.provider_id=? AND b.deleted_at IS NULL
         """ + (lock ? " FOR UPDATE OF b" : ""), (rs, index) -> new Batch(batchId, user.getTrainingProviderId(), user.getId(),
-        rs.getString(1), rs.getString(2), rs.getString(3)), batchId, user.getTrainingProviderId())
+        rs.getString(1), rs.getString(2), rs.getString(3), rs.getBoolean(4)), batchId, user.getTrainingProviderId())
         .stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("This training batch is unavailable."));
   }
 
-  private record Batch(long id, long providerId, long actorId, String code, String title, String status) {}
+  private record Batch(long id, long providerId, long actorId, String code, String title, String status, boolean attendanceLocked) {}
+
+  private static ConflictException attendanceLocked() {
+    return new ConflictException("Training attendance is locked after the batch is opened for assessment.", "ASSESSMENT_ATTENDANCE_LOCKED");
+  }
 
   private record Slot(long id, LocalDateTime startsAt, LocalDateTime endsAt, int sequence) {
     AttendanceSession view(Batch batch, LocalDateTime now) {
       boolean started = !startsAt.isAfter(now);
-      return new AttendanceSession(id, startsAt, endsAt, started, started && MARKABLE_BATCH_STATUSES.contains(batch.status()));
+      return new AttendanceSession(id, startsAt, endsAt, started, !batch.attendanceLocked() && started && MARKABLE_BATCH_STATUSES.contains(batch.status()));
     }
   }
 }

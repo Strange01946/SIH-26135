@@ -145,6 +145,7 @@ public class TraineeAssessmentController {
    * @return 201 Created with created TraineeAssessmentResponse enveloped in ApiResponse
    */
   @PostMapping
+  @PreAuthorize("hasAuthority('assessment.manage') and !hasRole('assessor')")
   public ResponseEntity<ApiResponse<TraineeAssessmentResponse>> createTraineeAssessment(
       @Valid @RequestBody CreateTraineeAssessmentRequest request,
       HttpServletRequest httpRequest) {
@@ -161,6 +162,7 @@ public class TraineeAssessmentController {
    * @return 200 OK with updated TraineeAssessmentResponse enveloped in ApiResponse
    */
   @PutMapping("/{id}")
+  @PreAuthorize("hasAuthority('assessment.manage') and !hasRole('assessor')")
   public ResponseEntity<ApiResponse<TraineeAssessmentResponse>> updateTraineeAssessment(
       @PathVariable @Positive Long id,
       @Valid @RequestBody UpdateTraineeAssessmentRequest request) {
@@ -175,6 +177,7 @@ public class TraineeAssessmentController {
    * @return 200 OK with success confirmation message
    */
   @DeleteMapping("/{id}")
+  @PreAuthorize("hasAuthority('assessment.manage') and !hasRole('assessor')")
   public ResponseEntity<ApiResponse<Void>> deleteTraineeAssessment(@PathVariable @Positive Long id) {
     traineeAssessmentService.deleteTraineeAssessment(id);
     return ResponseEntity.ok(ApiResponse.success("Trainee assessment deleted successfully"));

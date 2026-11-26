@@ -78,7 +78,6 @@ const stateFile = join(workspace, 'run.json');
 const logPath = join(workspace, 'backend.log');
 const smokeEnv = {
   ...process.env,
-  VITE_LOCAL_DEMO: 'true',
   VITE_API_BASE_URL: '',
   SIH_VITE_PROXY_PORT: String(backendPort),
   SIH_E2E_RUN_FILE: stateFile,

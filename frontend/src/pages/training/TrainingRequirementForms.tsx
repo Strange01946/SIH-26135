@@ -1,3 +1,4 @@
+import { readTrainingAdmission, TrainingAdmissionFields } from './TrainingAdmissionFields';
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { RegistrationReferenceData } from '@/api/registrationApi';
@@ -89,6 +90,7 @@ export function PublishRequirementDialog({ reference, state, district, onClose, 
       title: field(form, 'title'), skillsToTeach: field(form, 'skills'), description: field(form, 'description') || undefined,
       stateId, districtId, centerId: Number(field(form, 'centerId')), seats: Number(field(form, 'seats')),
       earliestDate: startDate, latestDate: endDate, dailyStartTime, dailyEndTime,
+      ...readTrainingAdmission(form),
     });
   }
 
@@ -113,6 +115,7 @@ export function PublishRequirementDialog({ reference, state, district, onClose, 
           </div>
           <TrainingCentreField key={`${stateId}-${districtId}`} stateId={stateId} districtId={districtId} />
           <WindowFields />
+          <TrainingAdmissionFields />
           <label className="form-label">Delivery requirements
             <textarea className="form-input" name="description" rows={3} maxLength={1500} />
           </label>

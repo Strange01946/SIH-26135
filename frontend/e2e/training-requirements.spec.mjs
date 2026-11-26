@@ -63,6 +63,8 @@ test('government publishes a fixed center and the award reserves exactly the acc
   const otherCenter = await createCentre(request, nationalAdmin, run, 'state', run.state, sameStateDistrict);
   const outsideCenter = await createCentre(request, nationalAdmin, run, 'other', outsideState, outsideDistrict);
   const publication = publish(run, center, 'main');
+  const secondaryId = sql("SELECT education_level_id FROM ref_education_level WHERE education_code='SECONDARY';");
+  const prerequisites = 'Basic Java syntax is recommended.';
   const offer = { startDate: day(10), endDate: day(11), dailyStartTime: '10:00', dailyEndTime: '12:00' };
   const otherOffer = { ...offer, dailyStartTime: '12:00', dailyEndTime: '13:00' };
   const dialog = page.getByRole('dialog');
@@ -77,6 +79,10 @@ test('government publishes a fixed center and the award reserves exactly the acc
   await expect(dialog.getByLabel('Course *', { exact: true })).toHaveCount(0);
   await expect(dialog.getByLabel('Program *', { exact: true })).toHaveCount(0);
   await dialog.getByLabel('Skills to teach *').fill(publication.skillsToTeach);
+  await expect(dialog.getByLabel('Minimum education level')).toHaveValue('');
+  await expect(dialog.getByLabel('Minimum education level')).toBeEnabled();
+  await dialog.getByLabel('Minimum education level').selectOption(secondaryId);
+  await dialog.getByLabel('Recommended prerequisites (optional)').fill(prerequisites);
   await dialog.getByLabel('Seats *').fill('12');
   await dialog.getByLabel('Earliest training date *').fill(publication.earliestDate);
   await dialog.getByLabel('Latest training date *').fill(publication.latestDate);
@@ -93,6 +99,9 @@ test('government publishes a fixed center and the award reserves exactly the acc
   const created = await body(published, 201);
   const id = created.id;
   expect(created).toMatchObject({ centerId: center.id, centerName: center.name, status: 'OPEN', bookingId: null });
+  expect(created.admission).toMatchObject({
+    minimumEducationLevelId: Number(secondaryId), recommendedPrerequisites: prerequisites,
+  });
   expect(published.request().postDataJSON()).toMatchObject({ centerId: center.id, skillsToTeach: publication.skillsToTeach });
   await expect(page.getByRole('heading', { name: publication.title })).toBeVisible();
   await expectError(await request.post(api + '/government', { headers: district, data: { ...publication, centerId: otherCenter.id } }),

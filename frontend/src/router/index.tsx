@@ -8,9 +8,7 @@ import { ForbiddenPage } from '@/pages/auth/ForbiddenPage';
 import { NotFoundPage } from '@/pages/NotFound';
 import { PendingFeaturePage } from '@/pages/placeholder/PlaceholderPage';
 import { PageLoading } from '@/components/feedback/LoadingSpinner';
-import { localEvaluatorEnabled } from '@/lib/demoEnvironment';
 import { onboardingViewAuthorities } from '@/api/adminApi';
-const EvaluatorGuide = React.lazy(() => import('@/evaluator/EvaluatorGuide'));
 const ExecutiveMisPage = React.lazy(() => import('@/pages/analytics/ExecutiveMisPage'));
 const SpecializedAnalyticsPage = React.lazy(() => import('@/pages/analytics/SpecializedAnalyticsPage'));
 const CommunicationCenterPage = React.lazy(() => import('@/pages/communication/CommunicationCenterPage'));
@@ -29,6 +27,7 @@ const ProviderCentersPage = React.lazy(() => import('@/pages/provider/ProviderCe
 const VenueBookingsPage = React.lazy(() => import('@/pages/provider/VenueBookingsPage').then((module) => ({ default: module.VenueBookingsPage })));
 const ProviderBatchesPage = React.lazy(() => import('@/pages/provider/ProviderBatchesPage').then((module) => ({ default: module.ProviderBatchesPage })));
 const ProviderBatchAttendancePage = React.lazy(() => import('@/pages/provider/ProviderBatchAttendancePage').then((module) => ({ default: module.ProviderBatchAttendancePage })));
+const ProviderBatchAssessmentPage = React.lazy(() => import('@/pages/provider/ProviderBatchAssessmentPage').then((module) => ({ default: module.ProviderBatchAssessmentPage })));
 const ProviderEnrollmentPage = React.lazy(() => import('@/pages/provider/ProviderEnrollmentPage').then((module) => ({ default: module.ProviderEnrollmentPage })));
 const ProviderBulkImportPage = React.lazy(() => import('@/pages/provider/ProviderBulkImportPage').then((module) => ({ default: module.ProviderBulkImportPage })));
 const ProviderQuarantinePage = React.lazy(() => import('@/pages/provider/ProviderQuarantinePage').then((module) => ({ default: module.ProviderQuarantinePage })));
@@ -186,7 +185,6 @@ export function AppRouter(): React.JSX.Element {
         {/* Public Routes */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegistrationPage />} />
-        {localEvaluatorEnabled && <Route path="/evaluator" element={<EvaluatorGuide />} />}
         <Route path="/" element={<RootRedirect />} />
 
         {/* Protected App Shell */}
@@ -254,6 +252,9 @@ export function AppRouter(): React.JSX.Element {
             <Route path="batches" element={<ProviderBatchesPage />} />
             <Route path="batches/:batchId/attendance" element={
               <RoleGuard allowedAuthorities={['enrollment.manage']}><ProviderBatchAttendancePage /></RoleGuard>
+            } />
+            <Route path="batches/:batchId/assessment" element={
+              <RoleGuard allowedAuthorities={['enrollment.manage']}><ProviderBatchAssessmentPage /></RoleGuard>
             } />
             <Route path="enrollment" element={<ProviderEnrollmentPage />} />
             <Route path="imports" element={<ProviderBulkImportPage />} />
@@ -375,8 +376,8 @@ export function AppRouter(): React.JSX.Element {
             }
           />
           <Route path="/communication" element={
-            <RoleGuard allowedPersonas={['SUPER_ADMIN', 'GOVERNMENT_ADMIN', 'ASSESSOR']}>
-              <RoleGuard allowedAuthorities={['communication.manage', 'survey.manage', 'system.manage', 'assessment.manage']}>
+            <RoleGuard allowedPersonas={['SUPER_ADMIN', 'GOVERNMENT_ADMIN']}>
+              <RoleGuard allowedAuthorities={['communication.manage', 'survey.manage', 'system.manage']}>
                 <CommunicationCenterPage />
               </RoleGuard>
             </RoleGuard>

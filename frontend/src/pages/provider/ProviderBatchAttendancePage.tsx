@@ -10,7 +10,6 @@ import { updateTrainingBatchStatus } from '@/api/providerPortalApi';
 import { careerDate } from '@/components/career/CareerInsights';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
-import { simulationActive } from '@/lib/demoEnvironment';
 import { ProviderBatchRoster } from './ProviderBatchRoster';
 
 type SessionDraft = Record<number, SessionAttendanceMark>;
@@ -18,7 +17,7 @@ const markLabels: Record<string, string> = { PRESENT: 'Present', ABSENT: 'Absent
 
 export function ProviderBatchAttendancePage() {
   const id = Number(useParams().batchId);
-  if (simulationActive) return <p className="card p-5">Session attendance is available in live mode.</p>;
+
   if (!Number.isSafeInteger(id) || id < 1) return <p className="card p-5">Choose a batch from Training Batches.</p>;
   return <BatchAttendance key={id} batchId={id} />;
 }
@@ -118,6 +117,7 @@ function BatchAttendance({ batchId }: { batchId: number }) {
                 {session && !session.canMark && <p className="text-sm text-slate-600">
                   {!session.started ? 'Attendance opens at the scheduled start time after training begins.'
                     : timetable.data.batchStatus === 'CANCELLED' ? 'This cancelled batch is available for review.'
+                    : timetable.data.batchStatus === 'COMPLETED' ? 'Training attendance is read-only after the batch opens for assessment.'
                     : 'Start training to mark attendance for this session.'}
                 </p>}
                 {roster.isPending ? <LoadingSpinner label="Loading session roster" /> : roster.isError ? (

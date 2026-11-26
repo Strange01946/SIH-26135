@@ -12,7 +12,6 @@ import type { ImportBatchItem } from '@/types/provider';
 import type { ApiError } from '@/api/types';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { useAuth } from '@/context/AuthContext';
-import { simulationActive } from '@/lib/demoEnvironment';
 
 const STORAGE_KEY_LAST_IMPORT = 'sih26135_last_import_batch_id';
 const MAX_POLL_COUNT = 60; // Max 60 poll cycles before pausing to protect network/CPU
@@ -33,7 +32,7 @@ export function ProviderBulkImportPage(): React.JSX.Element {
 
   // Active Import Batch ID
   const urlBatchId = searchParams.get('batchId') ? Number(searchParams.get('batchId')) : null;
-  const batchStorage = simulationActive ? sessionStorage : localStorage;
+  const batchStorage = localStorage;
   const savedBatchId = batchStorage.getItem(storageKey)
     ? Number(batchStorage.getItem(storageKey))
     : null;

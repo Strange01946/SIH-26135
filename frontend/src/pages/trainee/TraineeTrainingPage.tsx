@@ -10,7 +10,6 @@ import { getTraineeEnrollments, getTraineeAttendance } from '@/api/traineeApi';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { ErrorState } from '@/components/feedback/ErrorState';
-import { simulationActive } from '@/lib/demoEnvironment';
 import { careerDate } from '@/components/career/CareerInsights';
 
 interface TraineeContextType {
@@ -66,7 +65,7 @@ export const TraineeTrainingPage: React.FC = () => {
     queryFn: () => getTraineeEnrollments(traineeId!, page, 20, true),
     enabled: Boolean(traineeId),
     refetchOnMount: 'always',
-    refetchInterval: simulationActive ? false : 15_000,
+    refetchInterval: 15_000,
     retry: false,
   });
 
@@ -76,7 +75,7 @@ export const TraineeTrainingPage: React.FC = () => {
     queryFn: () => getTraineeAttendance(traineeId!),
     enabled: Boolean(traineeId),
     refetchOnMount: 'always',
-    refetchInterval: simulationActive ? false : 15_000,
+    refetchInterval: 15_000,
     retry: false,
   });
 
@@ -116,7 +115,7 @@ export const TraineeTrainingPage: React.FC = () => {
     <div className="space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="page-title">My Training &amp; Attendance</h1>
-        {!simulationActive && <Link className="btn-primary" to="/trainee/find-training">Find training</Link>}
+        <Link className="btn-primary" to="/trainee/find-training">Find training</Link>
       </header>
       {/* Attendance Metrics Header */}
       <section
@@ -257,7 +256,7 @@ export const TraineeTrainingPage: React.FC = () => {
                   </div>
 
                   <div className="mt-3 flex flex-wrap justify-end gap-3">
-                    {!simulationActive && enr.batchId && <Link className="text-xs font-bold text-gov-navy underline"
+                    {enr.batchId && <Link className="text-xs font-bold text-gov-navy underline"
                       to={`/trainee/find-training/${enr.batchId}`}>View timetable</Link>}
                     <button
                       type="button"

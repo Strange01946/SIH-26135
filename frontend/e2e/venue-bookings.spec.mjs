@@ -103,12 +103,18 @@ test('district approval, rescheduling and cancellation reuse one shared center a
   await page.getByRole('button', { name: 'Request this center' }).click();
   const bookingDialog = page.getByRole('dialog', { name: 'Request shared center' });
   await fillBatch(bookingDialog, run, code);
+  const minimumId = Number(sql("SELECT education_level_id FROM ref_education_level WHERE education_code='SECONDARY';"));
+  const prerequisites = 'Read the workshop safety guide.';
+  await expect(bookingDialog.getByLabel('Minimum education level')).toBeEnabled();
+  await bookingDialog.getByLabel('Minimum education level').selectOption(String(minimumId));
+  await bookingDialog.getByLabel('Recommended prerequisites (optional)').fill(prerequisites);
   await fillSessions(bookingDialog, original);
   const requested = await action(page, smoke, 'POST', api, 'Submit request', 201);
   expect(requested.booking).toMatchObject({ providerId: run.provider, centerId: venue.id, status: 'PENDING', batchId: null });
   expect(requested.booking).toMatchObject({
     requirementId: null, courseId: null, programId: null,
     skillsToTeach: run.id + ' Fault identification and safe equipment handling',
+    admission: { minimumEducationLevelId: minimumId, recommendedPrerequisites: prerequisites },
   });
   expect(sql(`SELECT COUNT(*) FROM training_batches WHERE batch_code=${quote(code)};`)).toBe('0');
   const id = requested.booking.id;
@@ -135,6 +141,7 @@ test('district approval, rescheduling and cancellation reuse one shared center a
   await fillSessions(page.getByRole('dialog', { name: 'Postpone training' }), postponed);
   const proposal = await action(page, smoke, 'POST', api + '/' + id + '/reschedule', 'Submit request', 201);
   expect(proposal.booking).toMatchObject({ batchId, replacesBookingId: id, status: 'PENDING' });
+  expect(proposal.booking.admission).toEqual(requested.booking.admission);
   expect(sql(`SELECT COUNT(*) FROM venue_booking_sessions WHERE booking_id=${id} AND released_at IS NULL;`)).toBe('2');
   const reviewer = await userHeaders(request, smoke, 'stateadmin');
   const revision = await request.post(api + '/' + proposal.booking.id + '/review', { headers: reviewer, data: { approved: true } });
@@ -228,11 +235,20 @@ test('temporary venue proposal is reviewed in jurisdiction and completion releas
   await dialog.getByLabel(/Venue seating capacity/).fill('25');
   await dialog.getByLabel(/Premises permission reference/).fill('Fixture host consent reference');
   await fillBatch(dialog, run, code);
+  const secondaryId = sql("SELECT education_level_id FROM ref_education_level WHERE education_code='SECONDARY';");
+  const prerequisites = 'Familiarity with workshop safety is recommended.';
+  await expect(dialog.getByLabel('Minimum education level')).toHaveValue('');
+  await expect(dialog.getByLabel('Minimum education level')).toBeEnabled();
+  await dialog.getByLabel('Minimum education level').selectOption(secondaryId);
+  await dialog.getByLabel('Recommended prerequisites (optional)').fill(prerequisites);
   await fillSessions(dialog, [session(14), session(15)]);
   const requested = await action(page, smoke, 'POST', api, 'Submit request', 201);
   const id = requested.booking.id;
   expect(requested.booking).toMatchObject({ venueType: 'TEMPORARY', status: 'PENDING', centerId: null, batchId: null,
     premisesPermission: 'Fixture host consent reference' });
+  expect(requested.booking.admission).toMatchObject({
+    minimumEducationLevelId: Number(secondaryId), recommendedPrerequisites: prerequisites,
+  });
 
   const assignedOtherDistrict = await userHeaders(request, smoke, 'district');
   expect((await request.get(api + '/' + id, { headers: assignedOtherDistrict })).status()).toBe(403);
@@ -244,6 +260,7 @@ test('temporary venue proposal is reviewed in jurisdiction and completion releas
   expect(approved.status()).toBe(200);
   const { booking, sessions } = (await approved.json()).data;
   expect(booking).toMatchObject({ status: 'APPROVED', batchStatus: 'PLANNED' });
+  expect(booking.admission).toEqual(requested.booking.admission);
   expect(sql(`SELECT provider_id,venue_type,district_id FROM training_centers WHERE center_id=${booking.centerId};`))
     .toBe([run.provider, 'TEMPORARY', districtId].join('\t'));
   expect(sessions.every(slot => slot.reservedAt)).toBe(true);

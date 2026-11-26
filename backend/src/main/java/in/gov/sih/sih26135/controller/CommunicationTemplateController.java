@@ -32,8 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 @RestController
 @RequestMapping("/api/v1/communication/templates")
-@PreAuthorize("hasAnyAuthority('communication.manage', 'survey.manage', 'system.manage')"
-    + " or (hasAuthority('ROLE_assessor') and hasAuthority('assessment.manage'))")
+@PreAuthorize("hasAnyAuthority('communication.manage', 'survey.manage', 'system.manage')")
 public class CommunicationTemplateController {
 
   private final CommunicationTemplateService templateService;

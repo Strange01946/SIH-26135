@@ -276,6 +276,14 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     trackedAssessmentIds.add(assignedAssessmentId);
   }
 
+  private void recordAssessmentAbsence(long enrollmentId, long traineeId) {
+    jdbcTemplate.update("""
+        INSERT INTO trainee_assessments (assessment_id,enrollment_id,trainee_id,attempt_number,appeared_flag,assessment_date,evaluator_user_id)
+        SELECT assessment_id,?,?,1,0,assessment_date,evaluator_user_id FROM assessments WHERE assessment_id=?
+        ON DUPLICATE KEY UPDATE appeared_flag=0
+        """, enrollmentId, traineeId, assignedAssessmentId);
+  }
+
   @Test
   @DisplayName("1. Assessor retrieves assigned assessments; unassigned assessor sees none")
   void testAssessorAssessmentListingAndScoping() throws Exception {
@@ -762,6 +770,7 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     CandidateScoreInput absentCandidate = new CandidateScoreInput();
     absentCandidate.setTraineeId(trainee2Id);
     absentCandidate.setEnrollmentId(enrollment2Id);
+    recordAssessmentAbsence(enrollment2Id, trainee2Id);
     absentCandidate.setAppeared(false);
 
     SaveAssessmentScoresRequest finalizeReq = new SaveAssessmentScoresRequest();
@@ -940,6 +949,7 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     CandidateScoreInput c2 = new CandidateScoreInput();
     c2.setTraineeId(trainee2Id);
     c2.setEnrollmentId(enrollment2Id);
+    recordAssessmentAbsence(enrollment2Id, trainee2Id);
     c2.setAppeared(false);
 
     SaveAssessmentScoresRequest draftReq = new SaveAssessmentScoresRequest();
@@ -1025,6 +1035,7 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     CandidateScoreInput c2 = new CandidateScoreInput();
     c2.setTraineeId(trainee2Id);
     c2.setEnrollmentId(enrollment2Id);
+    recordAssessmentAbsence(enrollment2Id, trainee2Id);
     c2.setAppeared(false);
 
     SaveAssessmentScoresRequest initialReq = new SaveAssessmentScoresRequest();
@@ -1073,6 +1084,7 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     CandidateScoreInput c2 = new CandidateScoreInput();
     c2.setTraineeId(trainee2Id);
     c2.setEnrollmentId(enrollment2Id);
+    recordAssessmentAbsence(enrollment2Id, trainee2Id);
     c2.setAppeared(false);
 
     SaveAssessmentScoresRequest finReq = new SaveAssessmentScoresRequest();
@@ -1222,6 +1234,7 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     CandidateScoreInput c2 = new CandidateScoreInput();
     c2.setTraineeId(trainee2Id);
     c2.setEnrollmentId(enrollment2Id);
+    recordAssessmentAbsence(enrollment2Id, trainee2Id);
     c2.setAppeared(false);
 
     SaveAssessmentScoresRequest finReq = new SaveAssessmentScoresRequest();
@@ -1263,6 +1276,7 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     CandidateScoreInput c2 = new CandidateScoreInput();
     c2.setTraineeId(trainee2Id);
     c2.setEnrollmentId(enrollment2Id);
+    recordAssessmentAbsence(enrollment2Id, trainee2Id);
     c2.setAppeared(false);
 
     SaveAssessmentScoresRequest finReq = new SaveAssessmentScoresRequest();
@@ -1309,6 +1323,7 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     CandidateScoreInput c2 = new CandidateScoreInput();
     c2.setTraineeId(trainee2Id);
     c2.setEnrollmentId(enrollment2Id);
+    recordAssessmentAbsence(enrollment2Id, trainee2Id);
     c2.setAppeared(false);
 
     SaveAssessmentScoresRequest finReq = new SaveAssessmentScoresRequest();
@@ -1393,6 +1408,7 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     CandidateScoreInput c2 = new CandidateScoreInput();
     c2.setTraineeId(trainee2Id);
     c2.setEnrollmentId(enrollment2Id);
+    recordAssessmentAbsence(enrollment2Id, trainee2Id);
     c2.setAppeared(false);
 
     SaveAssessmentScoresRequest finReq = new SaveAssessmentScoresRequest();
@@ -1446,6 +1462,7 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     CandidateScoreInput c2 = new CandidateScoreInput();
     c2.setTraineeId(trainee2Id);
     c2.setEnrollmentId(enrollment2Id);
+    recordAssessmentAbsence(enrollment2Id, trainee2Id);
     c2.setAppeared(false);
 
     SaveAssessmentScoresRequest finReq = new SaveAssessmentScoresRequest();
@@ -1519,6 +1536,7 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     CandidateScoreInput c2 = new CandidateScoreInput();
     c2.setTraineeId(trainee2Id);
     c2.setEnrollmentId(enrollment2Id);
+    recordAssessmentAbsence(enrollment2Id, trainee2Id);
     c2.setAppeared(false);
 
     SaveAssessmentScoresRequest finReq = new SaveAssessmentScoresRequest();
@@ -1564,6 +1582,7 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     CandidateScoreInput c2 = new CandidateScoreInput();
     c2.setTraineeId(trainee2Id);
     c2.setEnrollmentId(enrollment2Id);
+    recordAssessmentAbsence(enrollment2Id, trainee2Id);
     c2.setAppeared(false);
 
     SaveAssessmentScoresRequest finReq = new SaveAssessmentScoresRequest();

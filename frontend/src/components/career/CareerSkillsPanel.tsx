@@ -7,7 +7,6 @@ import { careerSkillsKey, getCareerSkillsReference, getOwnCareerSkills, getStaff
 import type { ApiError } from '@/api/types';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
-import { simulationActive } from '@/lib/demoEnvironment';
 import { matchKeywords } from '@/lib/keywordSearch';
 
 function useCareerReference(enabled: boolean) {
@@ -20,8 +19,8 @@ export function OwnCareerSkills({ traineeId, edit = false }: { traineeId: number
   const queryClient = useQueryClient();
   const key = [...careerSkillsKey, 'me', traineeId] as const;
   const profile = useQuery({ queryKey: key, queryFn: ({ signal }) => getOwnCareerSkills(signal),
-    enabled: !simulationActive, refetchOnMount: 'always', refetchOnWindowFocus: 'always', retry: false });
-  const reference = useCareerReference(edit && !simulationActive);
+    refetchOnMount: 'always', refetchOnWindowFocus: 'always', retry: false });
+  const reference = useCareerReference(edit);
   const save = useMutation<CareerSkillsProfile, ApiError, SaveCareerSkills>({ mutationFn: saveOwnCareerSkills, onSuccess: async (saved) => {
     queryClient.setQueryData(key, saved);
     await queryClient.invalidateQueries({ queryKey: [...careerSkillsKey, 'training'] });
@@ -31,7 +30,6 @@ export function OwnCareerSkills({ traineeId, edit = false }: { traineeId: number
     if (edit && hash === '#career-skills') section.current?.focus();
   }, [edit, hash]);
 
-  if (simulationActive) return null;
   return (
     <section ref={section} id={edit ? 'career-skills' : undefined} tabIndex={edit ? -1 : undefined}
       className="card scroll-mt-24 space-y-4 p-5" aria-label="My skills and job goal">

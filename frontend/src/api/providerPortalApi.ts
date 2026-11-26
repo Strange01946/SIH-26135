@@ -9,7 +9,7 @@ import {
 import type { ApiError } from './types';
 import type { components } from './generated/api.types';
 import type { PagedResponse } from './types';
-import { apiBaseUrl } from '@/lib/demoEnvironment';
+import { apiBaseUrl } from '@/lib/apiEnvironment';
 import type {
   TrainingCenter,
   TrainingBatch,

@@ -37,6 +37,7 @@ public class TrainingRegistrationService {
              %s AS title,%s AS skills,p.provider_name,tc.center_name,d.district_id,d.district_name,st.state_name,
              CONCAT_WS(', ',NULLIF(tc.address_line1,''),NULLIF(tc.address_line2,''),NULLIF(tc.pincode,'')) AS address,
              (plan.requirement_id IS NOT NULL) AS government_led,%s AS first_session,
+             plan.minimum_education_level_id,edu.education_name AS minimum_education_level,plan.recommended_prerequisites,
              GREATEST(0,CAST(b.capacity AS SIGNED) - CAST((SELECT COUNT(*) FROM training_enrollments e
                        WHERE e.batch_id=b.batch_id AND e.deleted_at IS NULL) AS SIGNED)) AS seats_available,
              v.booking_status AS booking_status,
@@ -53,6 +54,7 @@ public class TrainingRegistrationService {
         SELECT MAX(vb.booking_id) FROM venue_bookings vb WHERE vb.batch_id=b.batch_id AND (
           vb.booking_status IN ('APPROVED','COMPLETED') OR (vb.booking_status='CANCELLED' AND vb.reviewed_at IS NOT NULL)))
       LEFT JOIN venue_booking_training_plans plan ON plan.booking_id=v.booking_id
+      LEFT JOIN ref_education_level edu ON edu.education_level_id=plan.minimum_education_level_id
       LEFT JOIN training_requirements r ON r.requirement_id=plan.requirement_id
       WHERE b.deleted_at IS NULL
       """.formatted(TITLE, SKILLS, FIRST_SESSION);
@@ -63,15 +65,18 @@ public class TrainingRegistrationService {
   private final TraineeRepository trainees;
   private final TraineeConsentService consent;
   private final CandidateLifecycleOrchestratorService lifecycle;
+  private final TrainingAdmissionService admissions;
 
   public TrainingRegistrationService(JdbcTemplate jdbc, WorkflowSecurityScopeValidator scope, TrainingBatchRepository batches,
-      TraineeRepository trainees, TraineeConsentService consent, CandidateLifecycleOrchestratorService lifecycle) {
+      TraineeRepository trainees, TraineeConsentService consent, CandidateLifecycleOrchestratorService lifecycle,
+      TrainingAdmissionService admissions) {
     this.jdbc = jdbc;
     this.scope = scope;
     this.batches = batches;
     this.trainees = trainees;
     this.consent = consent;
     this.lifecycle = lifecycle;
+    this.admissions = admissions;
   }
 
   public RegistrationBatchPage find(String search, Long stateId, Long districtId, LocalDate from, LocalDate through, int page, int size) {
@@ -124,7 +129,7 @@ public class TrainingRegistrationService {
         """, (rs, row) -> new TrainingTimetableSession(rs.getObject(1, LocalDateTime.class), rs.getObject(2, LocalDateTime.class)), batchId);
     return new TrainingBatchDetails(item.batch(), item.address(), timetable, upcoming && "OPEN".equals(item.batch().status()),
         consent.hasActiveConsent(traineeId, PROCESSING), enrollment == null ? null : enrollment.number(),
-        enrollment == null ? null : enrollment.status());
+        enrollment == null ? null : enrollment.status(), admissions.eligibility(traineeId, item.batch().admission()));
   }
 
   @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -187,7 +192,7 @@ public class TrainingRegistrationService {
         rs.getString("provider_name"), rs.getString("center_name"), rs.getLong("district_id"), rs.getString("district_name"),
         rs.getString("state_name"), rs.getObject("start_date", LocalDate.class), rs.getObject("end_date", LocalDate.class),
         rs.getObject("first_session", LocalDateTime.class), rs.getString("status_code"), rs.getBoolean("government_led"),
-        rs.getLong("seats_available"));
+        rs.getLong("seats_available"), TrainingAdmissionService.read(rs));
   }
 
   private static void filter(StringBuilder sql, List<Object> args, String condition, Object value) {

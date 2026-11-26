@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.dto.trainee;
 
+import in.gov.sih.sih26135.dto.venue.TrainingAdmission;
+import in.gov.sih.sih26135.dto.venue.TrainingAdmission.EducationEligibility;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -9,14 +11,15 @@ public final class TrainingRegistration {
 
   public record RegistrationBatch(long id, String code, String title, String skills, String provider, String venue,
                       long districtId, String district, String state, LocalDate startsOn, LocalDate endsOn,
-                      LocalDateTime firstSession, String status, boolean governmentLed, long seatsAvailable) {}
+                      LocalDateTime firstSession, String status, boolean governmentLed, long seatsAvailable, TrainingAdmission admission) {}
 
   public record RegistrationBatchPage(List<RegistrationBatch> batches, boolean hasNext) {}
 
   public record TrainingTimetableSession(LocalDateTime startsAt, LocalDateTime endsAt) {}
 
   public record TrainingBatchDetails(RegistrationBatch batch, String address, List<TrainingTimetableSession> sessions, boolean registrationOpen,
-                        boolean consentGranted, String enrollmentNumber, String enrollmentStatus) {}
+                        boolean consentGranted, String enrollmentNumber, String enrollmentStatus,
+                        EducationEligibility educationEligibility) {}
 
   public record TrainingRosterEntry(long enrollmentId, String enrollmentNumber, String name, String registrationNumber,
                             String status, String email, String phone) {}

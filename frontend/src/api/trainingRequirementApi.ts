@@ -1,17 +1,19 @@
 import { apiGet, apiPost } from './client';
+import type { TrainingAdmission, TrainingAdmissionInput } from './trainingAdmissionApi';
 
 export type TrainingWindow = { startDate: string; endDate: string; dailyStartTime: string; dailyEndTime: string };
-export type PublishRequirement = {
+export type PublishRequirement = TrainingAdmissionInput & {
   title: string; skillsToTeach: string; description?: string;
   stateId: number; districtId: number; centerId: number; seats: number;
   earliestDate: string; latestDate: string; dailyStartTime: string; dailyEndTime: string;
 };
-export type TrainingRequirement = Omit<PublishRequirement, 'centerId'> & {
+export type TrainingRequirement = Omit<PublishRequirement, 'centerId' | keyof TrainingAdmissionInput> & {
   id: number; stateName: string; districtName: string;
   centerId?: number | null; centerName?: string | null; centerAddress?: string | null;
   status: 'OPEN' | 'AWARDED'; acceptingApplications: boolean;
   selectedProviderId?: number | null; selectedProviderName?: string | null;
   publishedAt: string; selectedAt?: string | null; bookingId?: number | null; bookingStatus?: string | null;
+  admission?: TrainingAdmission;
 };
 export type ApplyForRequirement = TrainingWindow & { deliveryNotes?: string };
 export type TrainingApplication = ApplyForRequirement & {

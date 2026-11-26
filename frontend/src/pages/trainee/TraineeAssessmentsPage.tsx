@@ -10,6 +10,27 @@ import {
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { ErrorState } from '@/components/feedback/ErrorState';
+import { getOwnAssessmentAppointments } from '@/api/batchAssessmentApi';
+import { AssessmentDocumentButton, BatchAssessmentSummary } from '@/components/assessment/BatchAssessmentSummary';
+
+function TraineeBatchAssessments() {
+  const appointments = useQuery({ queryKey: ['trainee-batch-assessments'], queryFn: getOwnAssessmentAppointments, refetchInterval: 15_000 });
+  if (appointments.data?.length === 0) return null;
+  return <section className="card p-6 space-y-3" aria-labelledby="trainee-batch-assessments">
+    <h3 id="trainee-batch-assessments" className="font-bold">Batch assessments</h3>
+    {appointments.isLoading && <LoadingSpinner label="Loading batch assessments" />}
+    {appointments.isError && <ErrorState title="Could not load batch assessments" error={appointments.error} onRetry={() => void appointments.refetch()} />}
+    {appointments.data?.map((appointment) => <article className="rounded border p-4 space-y-2" key={appointment.batchCode}>
+      <BatchAssessmentSummary appointment={appointment} />
+      {appointment.resultId ? <>
+        <p className="text-sm font-semibold">Outcome: {appointment.outcome}</p>
+        {appointment.theory != null && <p className="text-sm">Theory {appointment.theory} · Practical {appointment.practical} · Viva {appointment.viva} · Total {appointment.total}</p>}
+        <AssessmentDocumentButton resultId={appointment.resultId} certificate={!!appointment.certificateId} />
+      </> : <p className="text-sm">{appointment.status === 'OPEN' ? 'Awaiting assessor assignment'
+        : appointment.completedAt ? 'Assessment completed. Results pending.' : 'Assessment scheduled'}</p>}
+    </article>)}
+  </section>;
+}
 
 export type AssessmentOutcomeVerdict =
   | 'PASS'
@@ -266,6 +287,7 @@ export const TraineeAssessmentsPage: React.FC = () => {
         </div>
       )}
 
+      <TraineeBatchAssessments />
       {/* Certifications Section */}
       <section
         aria-labelledby="certifications-heading"

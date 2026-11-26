@@ -184,20 +184,19 @@ describe('AssessorScoringPage Component', () => {
     });
   });
 
-  it('toggles attendance and marks candidate as Absent', async () => {
+  it('shows recorded absence without permitting attendance editing', async () => {
+    vi.mocked(assessorApi.getAssessmentRoster).mockResolvedValueOnce({
+      ...mockRoster,
+      candidates: [{ ...mockRoster.candidates[0], appeared: false }, mockRoster.candidates[1]],
+    });
     renderScoringPage();
 
     await waitFor(() => {
       expect(screen.getByText('Rahul Sharma')).toBeInTheDocument();
     });
 
-    const attendanceButtons = screen.getAllByRole('button', { name: /Present/i });
-    fireEvent.click(attendanceButtons[0]);
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Absent/i })).toBeInTheDocument();
-      expect(screen.getByText('ABSENT')).toBeInTheDocument();
-    });
+    expect(screen.queryByRole('button', { name: /^(Present|Absent)$/ })).not.toBeInTheDocument();
+    expect(screen.getByText('ABSENT')).toBeInTheDocument();
   });
 
   it('saves draft scores when Save Draft is clicked', async () => {

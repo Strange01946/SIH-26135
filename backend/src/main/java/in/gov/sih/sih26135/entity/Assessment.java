@@ -45,7 +45,7 @@ public class Assessment {
   @JoinColumn(name = "program_id", nullable = false)
   private Program program;
 
-  @Column(name = "assessment_date", nullable = false)
+  @Column(name = "assessment_date")
   private LocalDate assessmentDate;
 
   @Column(name = "maximum_score", precision = 8, scale = 2, nullable = false)

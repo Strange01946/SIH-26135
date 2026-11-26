@@ -1,5 +1,6 @@
 import { apiGet, apiPost } from './client';
 import type { TrainingEnrollment } from '@/types/trainee';
+import type { EducationEligibility, TrainingAdmission } from './trainingAdmissionApi';
 
 export type TrainingBatchListing = {
   id: number;
@@ -17,6 +18,7 @@ export type TrainingBatchListing = {
   status: string;
   governmentLed: boolean;
   seatsAvailable: number;
+  admission?: TrainingAdmission;
 };
 
 export type TrainingBatchDetails = {
@@ -27,6 +29,7 @@ export type TrainingBatchDetails = {
   consentGranted: boolean;
   enrollmentNumber?: string;
   enrollmentStatus?: string;
+  educationEligibility: EducationEligibility;
 };
 
 export type TrainingSearch = { search?: string; stateId?: number; districtId?: number; from?: string; through?: string; page: number };

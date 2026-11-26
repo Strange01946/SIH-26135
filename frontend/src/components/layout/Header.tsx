@@ -1,8 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { localDemoAccountsEnabled } from '@/lib/demoAccounts';
-import { simulationActive } from '@/lib/demoEnvironment';
 import { headerText, readHeaderLanguage, writeHeaderLanguage, type HeaderLanguage } from '@/lib/headerLanguage';
 import {
   type UserPersona,
@@ -125,9 +123,6 @@ export function Header({
             <option value="en" lang="en">English</option>
             <option value="hi" lang="hi">हिन्दी</option>
           </select>
-          {isAuthenticated && localDemoAccountsEnabled && !simulationActive && (
-            <Link className="hidden text-xs font-medium underline sm:inline" to="/login?demo=1">{strings.demo}</Link>
-          )}
           {showAuthInfo ? (
             <div className="flex items-center gap-3 text-sm flex-shrink-0">
               {/* Multi-role switcher dropdown or single role badge */}

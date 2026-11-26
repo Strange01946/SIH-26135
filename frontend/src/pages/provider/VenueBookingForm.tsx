@@ -1,3 +1,4 @@
+import { readTrainingAdmission, TrainingAdmissionFields } from '@/pages/training/TrainingAdmissionFields';
 import { useState, type FormEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import type { RegistrationReferenceData } from '@/api/registrationApi';
@@ -110,8 +111,8 @@ export function VenueBookingForm({ draft, geography, onClose, onSaved }: {
     capacity: 0, permissionToUse: '',
   });
   const [validation, setValidation] = useState('');
-  const save = useMutation<BookingDetails, ApiError>({
-    mutationFn: () => {
+  const save = useMutation<BookingDetails, ApiError, FormData>({
+    mutationFn: (form) => {
       const slots = sessions.map(({ startsAt, endsAt }) => ({ startsAt, endsAt }));
       if (draft.kind === 'reschedule') return rescheduleBooking(draft.id, slots);
       return requestVenue({
@@ -120,6 +121,7 @@ export function VenueBookingForm({ draft, geography, onClose, onSaved }: {
         batchCode: batchCode.trim(), seats: Number(seats), sessions: slots,
         skillsToTeach: skillsToTeach.trim(),
         trainingNotes: trainingNotes.trim() || undefined,
+        ...readTrainingAdmission(form),
       });
     },
     onSuccess: onSaved,
@@ -127,7 +129,7 @@ export function VenueBookingForm({ draft, geography, onClose, onSaved }: {
   const title = draft.kind === 'reschedule' ? 'Postpone training'
     : draft.kind === 'temporary' ? 'Propose temporary location' : 'Request shared center';
 
-  function submit(event: FormEvent) {
+  function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (save.isPending) return;
     if (draft.kind !== 'reschedule' && !batchCode.trim()) {
@@ -143,7 +145,7 @@ export function VenueBookingForm({ draft, geography, onClose, onSaved }: {
       return;
     }
     setValidation('');
-    save.mutate();
+    save.mutate(new FormData(event.currentTarget));
   }
 
   return (
@@ -187,6 +189,7 @@ export function VenueBookingForm({ draft, geography, onClose, onSaved }: {
               </label>
             </div>
           )}
+          {draft.kind !== 'reschedule' && <TrainingAdmissionFields />}
           <ScheduleFields sessions={sessions} onChange={setSessions} />
         </fieldset>
         {(validation || save.isError) && <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-800">{validation || bookingError(save.error)}</p>}

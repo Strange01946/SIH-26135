@@ -151,6 +151,10 @@ public class CareerSkillsService {
 
   @Transactional(isolation = Isolation.READ_COMMITTED)
   public Profile recordEvidence(long assessmentId, long traineeId, Observe input) {
+    if (Boolean.TRUE.equals(jdbc.queryForObject(
+        "SELECT EXISTS(SELECT 1 FROM batch_assessment_publications WHERE assessment_id=?)", Boolean.class, assessmentId))) {
+      throw new in.gov.sih.sih26135.exception.ConflictException("Batch skills are awarded when results are published.", "AUTOMATIC_BATCH_SKILLS");
+    }
     requireRosterCandidate(assessmentId, traineeId);
     trainees.findLockedById(traineeId).filter(t -> t.getDeletedAt() == null)
         .orElseThrow(() -> new ResourceNotFoundException("Trainee", "id"));

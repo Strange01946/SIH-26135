@@ -387,7 +387,7 @@ export function RegistrationPage(): React.JSX.Element {
         {/* Tab 1: Trainee Self-Registration */}
         {!applicationSuccess && activeTab === 'trainee' && (
           <div className="bg-white rounded-b-lg shadow p-6 sm:p-8">
-            <h2 data-evaluator-registration className="text-lg font-bold text-navy mb-4">Candidate / Trainee Self-Registration</h2>
+            <h2 className="text-lg font-bold text-navy mb-4">Candidate / Trainee Self-Registration</h2>
             <p className="text-xs text-gray-500 mb-6">
               Create your candidate profile to access training programs, digital attendance, Skill India credentials, and placement opportunities.
             </p>

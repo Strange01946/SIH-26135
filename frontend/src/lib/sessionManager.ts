@@ -2,9 +2,9 @@ import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { queryClient } from './queryClient';
 import type { ApiResponse, AuthResponse } from '@/api/types';
-import { apiBaseUrl, simulationActive, simulationRefreshKey } from './demoEnvironment';
+import { apiBaseUrl } from './apiEnvironment';
 
-const REFRESH_TOKEN_STORAGE_KEY = simulationActive ? simulationRefreshKey : 'sih_refresh_token';
+const REFRESH_TOKEN_STORAGE_KEY = 'sih_refresh_token';
 
 // In-memory access token storage (never exposed to window or localStorage)
 let memoryAccessToken: string | null = null;

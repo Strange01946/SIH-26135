@@ -28,6 +28,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class TraineeAssessmentServiceImpl implements TraineeAssessmentService {
 
+  @org.springframework.beans.factory.annotation.Autowired
+  private in.gov.sih.sih26135.service.BatchAssessmentService batchAssessments;
+
   private final TraineeAssessmentRepository traineeAssessmentRepository;
   private final AssessmentRepository assessmentRepository;
   private final TrainingEnrollmentRepository trainingEnrollmentRepository;
@@ -146,6 +149,7 @@ public class TraineeAssessmentServiceImpl implements TraineeAssessmentService {
     if (request.getAssessmentDate() == null) {
       throw new BadRequestException("Assessment date is required");
     }
+    if (batchAssessments != null) batchAssessments.requireLegacyAssessment(request.getAssessmentId());
 
     int attemptNumber = request.getAttemptNumber() != null ? request.getAttemptNumber() : 1;
     if (attemptNumber < 1) {
@@ -222,6 +226,7 @@ public class TraineeAssessmentServiceImpl implements TraineeAssessmentService {
     TraineeAssessment entity = traineeAssessmentRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("TraineeAssessment", "id"));
 
+    if (batchAssessments != null) batchAssessments.requireLegacyAssessment(entity.getAssessment().getId());
     if (request.getAppearedFlag() != null) {
       entity.setAppearedFlag(request.getAppearedFlag());
     }
@@ -257,6 +262,7 @@ public class TraineeAssessmentServiceImpl implements TraineeAssessmentService {
     TraineeAssessment entity = traineeAssessmentRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("TraineeAssessment", "id"));
 
+    if (batchAssessments != null) batchAssessments.requireLegacyAssessment(entity.getAssessment().getId());
     if (assessmentResultRepository.existsByTraineeAssessmentId(id)) {
       throw new ConflictException("Cannot delete trainee assessment because assessment results exist", "TRAINEE_ASSESSMENT_HAS_RESULTS");
     }

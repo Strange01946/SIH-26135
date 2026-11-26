@@ -11,7 +11,6 @@ import { EmptyState } from '@/components/feedback/EmptyState';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { useAuth } from '@/context/AuthContext';
-import { simulationActive } from '@/lib/demoEnvironment';
 import type { TrainingCenter } from '@/types/provider';
 import { TrainingCenterForm, centerActionError } from './TrainingCenterForm';
 
@@ -21,7 +20,7 @@ export function ProviderCentersPage({ admin = false }: { admin?: boolean }) {
   const { user, hasAuthority } = useAuth();
   const queryClient = useQueryClient();
   const providerId = admin ? undefined : user?.trainingProviderId ?? undefined;
-  const canManage = !simulationActive && hasAuthority('center.manage') && (admin || Boolean(providerId));
+  const canManage = hasAuthority('center.manage') && (admin || Boolean(providerId));
 
   const [page, setPage] = useState(0);
   const [searchCode, setSearchCode] = useState('');
@@ -35,7 +34,7 @@ export function ProviderCentersPage({ admin = false }: { admin?: boolean }) {
   const geography = useQuery({
     queryKey: ['registration-reference-data'],
     queryFn: getRegistrationReferenceData,
-    enabled: canManage || simulationActive,
+    enabled: canManage,
   });
   const statuses = useQuery({
     queryKey: ['training-centers', 'lifecycle-statuses'],
@@ -108,7 +107,6 @@ export function ProviderCentersPage({ admin = false }: { admin?: boolean }) {
           to="/provider/venue-bookings?view=shared">Book a training venue</Link>}
       </header>
 
-      {simulationActive && <p className="text-sm text-slate-700" role="status">Switch to live mode to manage training centers.</p>}
       {notice && <p className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900" role="status">{notice}</p>}
       {!admin && !providerId && <EmptyState title="Provider assignment required"
         description="Your account must be linked to a training provider before its centers can be managed." />}

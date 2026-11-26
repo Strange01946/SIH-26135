@@ -1,6 +1,7 @@
 package in.gov.sih.sih26135.service.impl;
 
 import in.gov.sih.sih26135.dto.venue.TrainingRequirementDto.Application;
+import in.gov.sih.sih26135.dto.venue.TrainingAdmission;
 import in.gov.sih.sih26135.dto.venue.TrainingRequirementDto.Requirement;
 import in.gov.sih.sih26135.dto.venue.VenueBookingDto.*;
 import in.gov.sih.sih26135.entity.User;
@@ -9,6 +10,7 @@ import in.gov.sih.sih26135.exception.ConflictException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.service.ActiveGeography;
 import in.gov.sih.sih26135.service.AuditLogService;
+import in.gov.sih.sih26135.service.TrainingAdmissionService;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -43,7 +45,8 @@ public class VenueBookingService {
 
   private static final String BOOKING_SELECT = """
       SELECT b.*, p.provider_name, c.course_name, pr.program_name, bs.status_code AS batch_status,
-        bp.requirement_id,bp.skills_to_teach,bp.training_notes
+        bp.requirement_id,bp.skills_to_teach,bp.training_notes,bp.minimum_education_level_id,
+        edu.education_name AS minimum_education_level,bp.recommended_prerequisites
       FROM venue_bookings b
       JOIN training_providers p ON p.provider_id=b.provider_id
       LEFT JOIN courses c ON c.course_id=b.course_id
@@ -51,6 +54,7 @@ public class VenueBookingService {
       LEFT JOIN training_batches tb ON tb.batch_id=b.batch_id
       LEFT JOIN ref_batch_status bs ON bs.batch_status_id=tb.batch_status_id
       LEFT JOIN venue_booking_training_plans bp ON bp.booking_id=b.booking_id
+      LEFT JOIN ref_education_level edu ON edu.education_level_id=bp.minimum_education_level_id
       """;
   private static final String VENUE_SELECT = """
       SELECT center_id,center_code,center_name,address_line1,state_id,district_id,operational_capacity,
@@ -65,7 +69,7 @@ public class VenueBookingService {
       rs.getInt("seats"), rs.getString("venue_name"), rs.getString("venue_address"), rs.getLong("state_id"),
       rs.getLong("district_id"), rs.getInt("venue_capacity"), rs.getString("premises_permission"),
       rs.getString("decision_note"), dateTime(rs, "created_at"), dateTime(rs, "reviewed_at"), rs.getString("batch_status"),
-      nullableLong(rs, "requirement_id"), rs.getString("skills_to_teach"), rs.getString("training_notes"));
+      nullableLong(rs, "requirement_id"), rs.getString("skills_to_teach"), rs.getString("training_notes"), TrainingAdmissionService.read(rs));
 
   private record Venue(SharedVenue details, String type, Long providerId, boolean active) {}
   private record BookableBatch(long id, String status, LocalDate startDate, boolean removed) {}
@@ -74,13 +78,15 @@ public class VenueBookingService {
   private final TrainingWorkflowAccess access;
   private final AuditLogService audits;
   private final SkillsTrainingReporting reporting;
+  private final TrainingAdmissionService admissions;
 
   public VenueBookingService(JdbcTemplate jdbc, TrainingWorkflowAccess access, AuditLogService audits,
-      SkillsTrainingReporting reporting) {
+      SkillsTrainingReporting reporting, TrainingAdmissionService admissions) {
     this.jdbc = jdbc;
     this.access = access;
     this.audits = audits;
     this.reporting = reporting;
+    this.admissions = admissions;
   }
 
   public List<SharedVenue> sharedVenues(Long state, Long district, int page, int size) {
@@ -248,8 +254,10 @@ public class VenueBookingService {
       checkAvailability(venue.id(), sessions, 0, now);
     }
     validateSeats(request.seats(), venue.capacity());
+    admissions.validateMinimum(request.minimumEducationLevelId());
     long id = createPending(providerId, venue, kind, code, request.seats(),
-        temporary != null ? temporary.permissionToUse().trim() : null, null, skills, text(request.trainingNotes()), sessions);
+        temporary != null ? temporary.permissionToUse().trim() : null, null, skills, text(request.trainingNotes()),
+        new TrainingAdmission(request.minimumEducationLevelId(), null, text(request.recommendedPrerequisites())), sessions);
     return detailsFor(booking(id, false));
   }
 
@@ -272,13 +280,13 @@ public class VenueBookingService {
         .map(day -> new SessionRequest(day.atTime(application.dailyStartTime()), day.atTime(application.dailyEndTime())))
         .toList(), now);
     long id = createPending(application.providerId(), centre, SHARED, GOVERNMENT_BATCH_PREFIX + requirement.id(),
-        requirement.seats(), null, requirement.id(), requirement.skillsToTeach(), application.deliveryNotes(), sessions);
+        requirement.seats(), null, requirement.id(), requirement.skillsToTeach(), application.deliveryNotes(), requirement.admission(), sessions);
     decide(booking(id, false), true, null, now, sessions);
     return id;
   }
 
   private long createPending(long providerId, SharedVenue venue, String kind, String code, int seats,
-      String permission, Long requirementId, String skills, String notes, List<SessionRequest> sessions) {
+      String permission, Long requirementId, String skills, String notes, TrainingAdmission admission, List<SessionRequest> sessions) {
     long id = insert("""
         INSERT INTO venue_bookings(provider_id,center_id,venue_type,batch_code,seats,
           venue_name,venue_address,state_id,district_id,venue_capacity,premises_permission,requested_by)
@@ -288,8 +296,9 @@ public class VenueBookingService {
         permission, actor().getId());
     insertSessions(id, sessions);
     jdbc.update("""
-        INSERT INTO venue_booking_training_plans(booking_id,requirement_id,skills_to_teach,training_notes) VALUES (?,?,?,?)
-        """, id, requirementId, skills, notes);
+        INSERT INTO venue_booking_training_plans(booking_id,requirement_id,skills_to_teach,training_notes,
+          minimum_education_level_id,recommended_prerequisites) VALUES (?,?,?,?,?,?)
+        """, id, requirementId, skills, notes, admission.minimumEducationLevelId(), admission.recommendedPrerequisites());
     auditBooking("CREATE", id, null, PENDING, null);
     return id;
   }
@@ -320,8 +329,10 @@ public class VenueBookingService {
         """, actor().getId(), id);
     insertSessions(replacement, sessions);
     jdbc.update("""
-        INSERT INTO venue_booking_training_plans(booking_id,requirement_id,skills_to_teach,training_notes)
-        SELECT ?,requirement_id,skills_to_teach,training_notes FROM venue_booking_training_plans WHERE booking_id=?
+        INSERT INTO venue_booking_training_plans(booking_id,requirement_id,skills_to_teach,training_notes,
+          minimum_education_level_id,recommended_prerequisites)
+        SELECT ?,requirement_id,skills_to_teach,training_notes,minimum_education_level_id,recommended_prerequisites
+        FROM venue_booking_training_plans WHERE booking_id=?
         """, replacement, id);
     auditBooking("CREATE", replacement, null, PENDING, null);
     return detailsFor(booking(replacement, false));

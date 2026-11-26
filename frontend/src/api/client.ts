@@ -23,7 +23,7 @@ import type {
   BackendErrorResponse,
 } from './types';
 
-import { apiBaseUrl } from '@/lib/demoEnvironment';
+import { apiBaseUrl } from '@/lib/apiEnvironment';
 
 /** Empty live base URL uses the Vite development proxy. */
 const BASE_URL = apiBaseUrl();

@@ -2,14 +2,17 @@ package in.gov.sih.sih26135.controller;
 
 import in.gov.sih.sih26135.dto.response.TrainingEnrollmentResponse;
 import in.gov.sih.sih26135.dto.trainee.TrainingRegistration.*;
+import in.gov.sih.sih26135.dto.venue.TrainingAdmission;
 import in.gov.sih.sih26135.response.ApiResponse;
 import in.gov.sih.sih26135.service.TrainingRegistrationService;
+import in.gov.sih.sih26135.service.TrainingAdmissionService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.List;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,9 +25,23 @@ import org.springframework.web.bind.annotation.*;
 @SecurityRequirement(name = "bearerAuth")
 public class TrainingRegistrationController {
   private final TrainingRegistrationService training;
+  private final TrainingAdmissionService admissions;
 
-  public TrainingRegistrationController(TrainingRegistrationService training) {
+  public TrainingRegistrationController(TrainingRegistrationService training, TrainingAdmissionService admissions) {
     this.training = training;
+    this.admissions = admissions;
+  }
+
+  @GetMapping("/training-admission/education-levels")
+  @PreAuthorize("isAuthenticated()")
+  public ApiResponse<List<TrainingAdmission.Level>> trainingEducationLevels() {
+    return ApiResponse.ok(admissions.levels());
+  }
+
+  @GetMapping("/training-batches/{batchId}/admission")
+  @PreAuthorize("hasRole('training_provider') and hasAuthority('enrollment.manage')")
+  public ApiResponse<TrainingAdmission> trainingBatchAdmission(@PathVariable @Positive long batchId) {
+    return ApiResponse.ok(admissions.forProvider(batchId));
   }
 
   @GetMapping("/trainees/me/training")

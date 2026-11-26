@@ -26,9 +26,16 @@ const operations = [
   ['get', '/api/v1/career-skills/catalog'], ['post', '/api/v1/career-skills/catalog/{kind}'],
   ['get', '/api/v1/trainees/me/training'], ['get', '/api/v1/trainees/me/training/{batchId}'],
   ['post', '/api/v1/trainees/me/training/{batchId}/enrollment'], ['get', '/api/v1/training-batches/{batchId}/roster'],
+  ['get', '/api/v1/training-admission/education-levels'], ['get', '/api/v1/training-batches/{batchId}/admission'],
   ['get', '/api/v1/training-batches/{batchId}/attendance/sessions'],
   ['get', '/api/v1/training-batches/{batchId}/attendance/sessions/{sessionId}'],
   ['put', '/api/v1/training-batches/{batchId}/attendance/sessions/{sessionId}'],
+  ['get', '/api/v1/training-batches/{id}/assessment'], ['post', '/api/v1/training-batches/{id}/assessment'],
+  ['get', '/api/v1/training-batches/{id}/assessment/roster'],
+  ['get', '/api/v1/assessor/open-batch-assessments'], ['post', '/api/v1/assessor/open-batch-assessments/{id}/claim'],
+  ['get', '/api/v1/assessor/assessments/{id}/published-batch'], ['get', '/api/v1/trainees/me/batch-assessments'],
+  ['post', '/api/v1/assessor/assessments/{id}/complete'],
+  ['get', '/api/v1/assessment-results/{id}/document'],
   ['get', '/api/v1/employer/job-postings'], ['get', '/api/v1/employer/skills'],
   ['get', '/api/v1/admin/onboarding/applications'], ['get', '/api/v1/admin/onboarding/applications/{id}'],
   ['post', '/api/v1/admin/onboarding/applications/{id}/approve'], ['post', '/api/v1/admin/onboarding/applications/{id}/reject'],
@@ -87,6 +94,15 @@ export async function checkContract({ liveUrl } = {}) {
       assert(fields.skillsToTeach && !fields.courseId && !fields.programId, name + ' must use skills as its training input');
     }
     assert(verified.components.schemas.Publish.required.includes('centerId'), 'Government training must require a fixed center');
+    for (const [path, fields] of [
+      ['/api/v1/training-batches/{id}/assessment', ['brief']],
+      ['/api/v1/assessor/open-batch-assessments/{id}/claim', ['startsAt', 'venue']],
+    ]) {
+      const ref = verified.paths[path].post.requestBody.content['application/json'].schema.$ref;
+      const request = verified.components.schemas[ref.split('/').at(-1)];
+      assert.deepEqual(Object.keys(request.properties).sort(), fields, path + ' request fields');
+      assert.deepEqual([...request.required].sort(), fields, path + ' required fields');
+    }
     const updateProfile = verified.components.schemas.Update;
     assert.deepEqual(Object.keys(updateProfile.properties).sort(), [
       'addressLine1', 'addressLine2', 'dateOfBirth', 'districtId', 'educationLevelId', 'email', 'firstName',

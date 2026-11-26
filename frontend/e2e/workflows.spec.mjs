@@ -9,6 +9,22 @@ const batches = '/api/v1/training-batches';
 const enrollments = '/api/v1/training-enrollments';
 const auth = (token) => ({ Authorization: 'Bearer ' + token });
 
+test('sign-in uses backend accounts with the retired demo controls removed', async ({ page, smoke }) => {
+  await page.addInitScript(() => sessionStorage.setItem('sih_evaluator_simulation', 'enabled'));
+  await page.goto('/login?demo=1&account=admin_user');
+  await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
+  await expect(page.getByLabel(/Username or Official Email/)).toHaveValue('');
+  await expect(page.getByText('Local demo accounts', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Evaluator tools' })).toHaveCount(0);
+  await page.goto('/evaluator');
+  await expect(page.getByRole('heading', { name: /not found/i })).toBeVisible();
+
+  await smoke.signIn('admin', '/admin/dashboard');
+  await expect(page.getByRole('button', { name: 'Sign Out', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Demo accounts' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Evaluator tools' })).toHaveCount(0);
+});
+
 test('admin signs in and the district KPI withholds a small cohort', async ({ page, smoke }) => {
   const { run } = smoke;
   const [response] = await Promise.all([smoke.waitApi('GET', kpis),
@@ -97,6 +113,22 @@ test('assessor validates marks, finalizes and downloads the issued certificate',
   expect(pdf.status()).toBe(200);
   expect(pdf.headers()['content-type']).toContain('application/pdf');
   expect((await readFile(await download.path())).subarray(0, 5).toString()).toBe('%PDF-');
+});
+
+test('communication center is restricted to authorized administrators', async ({ page, request, smoke }) => {
+  const templates = '/api/v1/communication/templates';
+  const assessor = await smoke.signIn('assessor', '/assessor/dashboard');
+  await expect(page.getByRole('heading', { name: 'Assessor Workbench' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Communication Center' })).toHaveCount(0);
+  expect((await request.get(templates, { headers: auth(assessor.accessToken) })).status()).toBe(403);
+  await page.goto('/communication');
+  await expect(page).toHaveURL(/\/forbidden$/);
+
+  await page.goto('/assessor/dashboard');
+  await page.getByRole('button', { name: 'Sign Out', exact: true }).click();
+  const admin = await smoke.signIn('admin', '/communication');
+  await expect(page.getByRole('heading', { name: 'Communication Center' })).toBeVisible();
+  expect((await request.get(templates, { headers: auth(admin.accessToken) })).status()).toBe(200);
 });
 
 test('employer attests a pending verification with multipart salary proof', async ({ page, smoke }) => {

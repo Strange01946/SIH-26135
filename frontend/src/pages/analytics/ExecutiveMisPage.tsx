@@ -59,7 +59,7 @@ export default function ExecutiveMisPage() {
   return (
     <div className="mx-auto max-w-screen-2xl space-y-5">
       <header className="flex flex-wrap items-center justify-between gap-4 rounded-xl bg-navy px-5 py-6 text-white sm:px-7">
-        <div data-evaluator-mis>
+        <div>
           <h1 className="text-2xl font-semibold sm:text-3xl">Government MIS &amp; executive analytics</h1>
           <p className="mt-1 max-w-2xl text-sm text-blue-100">Track training, placement, retention, and wages across programmes and geographies.</p>
         </div>

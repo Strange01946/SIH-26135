@@ -26,7 +26,9 @@ import type {
   CandidateScoreInput,
 } from '@/types/assessor';
 import { StaffCareerSkills } from '@/components/career/CareerSkillsPanel';
-import { simulationActive } from '@/lib/demoEnvironment';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { completeBatchAssessment, getPublishedBatch } from '@/api/batchAssessmentApi';
+import { AssessmentDocumentButton, BatchAssessmentSummary } from '@/components/assessment/BatchAssessmentSummary';
 
 interface CandidateRowState {
   appeared: boolean;
@@ -110,6 +112,20 @@ export function AssessorScoringPage(): React.JSX.Element {
     assessment?.lifecycleStatusCode === 'FINALIZED' ||
     assessment?.lifecycleStatusCode === 'COMPLETED' ||
     (roster?.candidates != null && roster.candidates.length > 0 && roster.candidates.every((c) => c.isFinalized));
+  const queryClient = useQueryClient();
+  const publishedBatchKey = ['assessor-published-batch', assessmentId];
+  const publishedBatch = useQuery({
+    queryKey: publishedBatchKey, queryFn: () => getPublishedBatch(assessmentId),
+    enabled: !!roster?.managedBatch,
+  });
+  const completion = useMutation({
+    mutationFn: () => completeBatchAssessment(assessmentId),
+    onSuccess: async (publication) => {
+      await loadRoster();
+      if (publishedBatch.data) queryClient.setQueryData(publishedBatchKey, { ...publishedBatch.data, publication });
+    },
+  });
+  const scoringLocked = isFinalized || (!!roster?.managedBatch && (!roster.checkedIn || !publishedBatch.data?.publication.completedAt));
 
   const maxScore = assessment?.maximumScore ?? 100;
   const passScore = assessment?.passScore ?? maxScore / 2;
@@ -123,7 +139,7 @@ export function AssessorScoringPage(): React.JSX.Element {
     field: 'theory' | 'practical' | 'viva' | 'remarks',
     val: string,
   ) => {
-    if (isFinalized) return;
+    if (scoringLocked) return;
     setRowStates((prev) => ({
       ...prev,
       [traineeId]: {
@@ -131,26 +147,6 @@ export function AssessorScoringPage(): React.JSX.Element {
         [field]: val,
       },
     }));
-    setIsDirty(true);
-    setSuccessMessage(null);
-  };
-
-  const handleAppearedToggle = (traineeId: number) => {
-    if (isFinalized) return;
-    setRowStates((prev) => {
-      const current = prev[traineeId];
-      const nextAppeared = !current.appeared;
-      return {
-        ...prev,
-        [traineeId]: {
-          ...current,
-          appeared: nextAppeared,
-          theory: nextAppeared ? current.theory : '',
-          practical: nextAppeared ? current.practical : '',
-          viva: nextAppeared ? current.viva : '',
-        },
-      };
-    });
     setIsDirty(true);
     setSuccessMessage(null);
   };
@@ -376,7 +372,7 @@ export function AssessorScoringPage(): React.JSX.Element {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-      {!simulationActive && roster && roster.candidates.length > 0 && (
+      {roster && !roster.managedBatch && roster.candidates.length > 0 && (
         <details className="card space-y-3 p-4">
           <summary className="cursor-pointer font-semibold text-navy">Candidate skills and job goals</summary>
           <label className="form-label max-w-sm">Candidate for skill observations
@@ -414,7 +410,7 @@ export function AssessorScoringPage(): React.JSX.Element {
           <div className="flex items-center gap-2.5">
             <button
               onClick={handleSaveDraft}
-              disabled={savingDraft || finalizing || stats.hasAnyErrors}
+              disabled={scoringLocked || savingDraft || finalizing || stats.hasAnyErrors}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition disabled:opacity-50"
             >
               <Save className={`h-3.5 w-3.5 ${savingDraft ? 'animate-spin' : ''}`} />
@@ -422,7 +418,7 @@ export function AssessorScoringPage(): React.JSX.Element {
             </button>
             <button
               onClick={() => setShowFinalizeModal(true)}
-              disabled={savingDraft || finalizing || stats.hasAnyErrors || stats.hasMissingForFinalize}
+              disabled={scoringLocked || savingDraft || finalizing || stats.hasAnyErrors || stats.hasMissingForFinalize}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-sm disabled:opacity-50"
               title={
                 stats.hasMissingForFinalize
@@ -431,7 +427,7 @@ export function AssessorScoringPage(): React.JSX.Element {
               }
             >
               <CheckCircle className={`h-3.5 w-3.5 ${finalizing ? 'animate-spin' : ''}`} />
-              Finalize &amp; Issue Certificates
+              {roster?.managedBatch ? 'Publish batch results and certificates' : 'Finalize & Issue Certificates'}
             </button>
           </div>
         ) : hasPendingCertificates ? (
@@ -449,6 +445,24 @@ export function AssessorScoringPage(): React.JSX.Element {
         ) : null}
       </div>
 
+      {publishedBatch.data && <section className="card p-4 space-y-2">
+        <h2 className="font-semibold">Batch assessment details</h2>
+        <BatchAssessmentSummary appointment={publishedBatch.data.publication} />
+        {publishedBatch.data.publication.skills && <p className="text-sm">Skills taught: {publishedBatch.data.publication.skills}</p>}
+      </section>}
+      {roster?.managedBatch && !isFinalized && publishedBatch.data && (
+        <section className="card p-4 space-y-2">
+          {publishedBatch.data.publication.completedAt ? <p role="status">Assessment completed. You can now enter marks.</p> : <>
+            <p>After the scheduled start, mark the assessment completed to open marks entry. The roster uses recorded training attendance.</p>
+            <button type="button" className="btn-primary" disabled={completion.isPending || !publishedBatch.data.publication.canComplete}
+              onClick={() => completion.mutate()}>Mark assessment completed</button>
+          </>}
+          {completion.isError && <p role="alert" className="text-red-800">{completion.error.message}</p>}
+        </section>
+      )}
+      {roster?.managedBatch && publishedBatch.isError && <p role="alert" className="text-red-800">
+        {publishedBatch.error.message} <button type="button" className="btn-outline" onClick={() => void publishedBatch.refetch()}>Retry assessment details</button>
+      </p>}
       {/* Finalized Banner Alert */}
       {isFinalized && (
         <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-4 flex items-start gap-3 shadow-sm">
@@ -498,7 +512,7 @@ export function AssessorScoringPage(): React.JSX.Element {
                   </span>
                 ) : (
                   <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-800 border border-amber-200">
-                    SCHEDULED
+                    {publishedBatch.data?.publication.completedAt ? 'EVALUATION COMPLETE' : 'SCHEDULED'}
                   </span>
                 )}
               </div>
@@ -540,12 +554,12 @@ export function AssessorScoringPage(): React.JSX.Element {
               <div className="text-lg font-bold text-gray-900">{stats.total}</div>
             </div>
             <div className="bg-blue-50/50 rounded-lg p-2.5 border border-blue-100">
-              <span className="text-[11px] text-blue-700">Appeared</span>
-              <div className="text-lg font-bold text-blue-900">{stats.appeared}</div>
+              <span className="text-[11px] text-blue-700">{roster?.managedBatch ? 'Eligible for scoring' : 'Appeared'}</span>
+              <div className="text-lg font-bold text-blue-900">{roster?.managedBatch && !roster.checkedIn ? '—' : stats.appeared}</div>
             </div>
             <div className="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
-              <span className="text-[11px] text-gray-500">Absent</span>
-              <div className="text-lg font-bold text-gray-600">{stats.absent}</div>
+              <span className="text-[11px] text-gray-500">{roster?.managedBatch ? 'Not evaluated' : 'Absent'}</span>
+              <div className="text-lg font-bold text-gray-600">{roster?.managedBatch && !roster.checkedIn ? '—' : stats.absent}</div>
             </div>
             <div className="bg-emerald-50/50 rounded-lg p-2.5 border border-emerald-100">
               <span className="text-[11px] text-emerald-700">Passing (Est.)</span>
@@ -624,20 +638,13 @@ export function AssessorScoringPage(): React.JSX.Element {
                       </div>
                     </td>
 
-                    {/* Attendance Toggle */}
                     <td className="px-4 py-3.5 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleAppearedToggle(c.traineeId)}
-                        disabled={isFinalized}
-                        className={`px-2.5 py-1 text-xs font-semibold rounded-full transition ${
-                          c.appeared
-                            ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                            : 'bg-rose-100 text-rose-800 hover:bg-rose-200'
-                        } disabled:cursor-not-allowed`}
-                      >
-                        {c.appeared ? 'Present' : 'Absent'}
-                      </button>
+                      <span className="text-xs font-semibold">
+                        {roster?.managedBatch ? (roster.checkedIn ? c.appeared ? 'Eligible for scoring' : 'Not evaluated' : 'Pending evaluation') : c.appeared ? 'Present' : 'Absent'}
+                        {publishedBatch.data?.candidates.filter((candidate) => candidate.traineeId === c.traineeId).map((candidate) => (
+                          <span key={candidate.traineeId} className="block font-normal text-gray-600">{candidate.present} / {candidate.trainingSessions} training sessions</span>
+                        ))}
+                      </span>
                     </td>
 
                     {/* Theory Marks */}
@@ -647,7 +654,7 @@ export function AssessorScoringPage(): React.JSX.Element {
                         step="0.01"
                         min="0"
                         max={theoryMax}
-                        disabled={!c.appeared || isFinalized}
+                        disabled={!c.appeared || scoringLocked}
                         data-row={idx}
                         data-col={0}
                         value={c.rowState.theory}
@@ -672,7 +679,7 @@ export function AssessorScoringPage(): React.JSX.Element {
                         step="0.01"
                         min="0"
                         max={practicalMax}
-                        disabled={!c.appeared || isFinalized}
+                        disabled={!c.appeared || scoringLocked}
                         data-row={idx}
                         data-col={1}
                         value={c.rowState.practical}
@@ -697,7 +704,7 @@ export function AssessorScoringPage(): React.JSX.Element {
                         step="0.01"
                         min="0"
                         max={vivaMax}
-                        disabled={!c.appeared || isFinalized}
+                        disabled={!c.appeared || scoringLocked}
                         data-row={idx}
                         data-col={2}
                         value={c.rowState.viva}
@@ -791,11 +798,12 @@ export function AssessorScoringPage(): React.JSX.Element {
                                   : 'Pending Issuance')
                               : 'No Certificate'}
                           </span>
+                          {roster?.managedBatch && c.assessmentResultId && <AssessmentDocumentButton resultId={c.assessmentResultId} />}
                         </div>
                       ) : (
                         <input
                           type="text"
-                          disabled={isFinalized}
+                          disabled={scoringLocked}
                           value={c.rowState.remarks}
                           onChange={(e) => handleScoreChange(c.traineeId, 'remarks', e.target.value)}
                           placeholder="Evaluator note..."

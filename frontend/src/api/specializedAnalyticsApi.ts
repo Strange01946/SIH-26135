@@ -1,7 +1,7 @@
 import { apiGet } from './client';
 import type { components } from './generated/api.types';
 import type { MisFilters } from './misApi';
-import { apiBaseUrl } from '@/lib/demoEnvironment';
+import { apiBaseUrl } from '@/lib/apiEnvironment';
 
 export type Schema = components['schemas'];
 const dashboards = '/api/v1/dashboards';

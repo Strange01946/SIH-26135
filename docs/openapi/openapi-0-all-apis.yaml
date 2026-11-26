@@ -4392,6 +4392,51 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseTrainingEnrollmentResponse"
+  /api/v1/training-batches/{id}/assessment:
+    get:
+      tags:
+      - batch-assessment-controller
+      operationId: batchAssessmentReadiness
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseReadiness"
+    post:
+      tags:
+      - batch-assessment-controller
+      operationId: publishBatchAssessment
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishBatchAssessmentRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponsePublication"
   /api/v1/trainees:
     get:
       tags:
@@ -8991,6 +9036,32 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseAttendanceRecordResponse"
+  /api/v1/assessor/open-batch-assessments/{id}/claim:
+    post:
+      tags:
+      - batch-assessment-controller
+      operationId: claimBatchAssessment
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClaimBatchAssessmentRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponsePublication"
   /api/v1/assessor/assessments/{id}/issue-pending:
     post:
       tags:
@@ -9066,6 +9137,26 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseSaveAssessmentScoresResponse"
+  /api/v1/assessor/assessments/{id}/complete:
+    post:
+      tags:
+      - batch-assessment-controller
+      operationId: completeBatchAssessment
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponsePublication"
   /api/v1/assessments:
     get:
       tags:
@@ -10050,6 +10141,26 @@ paths:
                 $ref: "#/components/schemas/ApiResponseTrainingBatchResponse"
       security:
       - bearerAuth: []
+  /api/v1/training-batches/{id}/assessment/roster:
+    get:
+      tags:
+      - batch-assessment-controller
+      operationId: providerAssessmentReview
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseReview"
   /api/v1/training-batches/{batchId}/roster:
     get:
       tags:
@@ -10109,6 +10220,42 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseAttendanceTimetable"
+      security:
+      - bearerAuth: []
+  /api/v1/training-batches/{batchId}/admission:
+    get:
+      tags:
+      - training-registration-controller
+      operationId: trainingBatchAdmission
+      parameters:
+      - name: batchId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseTrainingAdmission"
+      security:
+      - bearerAuth: []
+  /api/v1/training-admission/education-levels:
+    get:
+      tags:
+      - training-registration-controller
+      operationId: trainingEducationLevels
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListLevel"
       security:
       - bearerAuth: []
   /api/v1/trainees/me/training:
@@ -10302,6 +10449,18 @@ paths:
                 $ref: "#/components/schemas/ApiResponseCareerStatus"
       security:
       - bearerAuth: []
+  /api/v1/trainees/me/batch-assessments:
+    get:
+      tags:
+      - batch-assessment-controller
+      operationId: myBatchAssessmentAppointments
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListAppointment"
   /api/v1/system-event-logs/{id}:
     get:
       tags:
@@ -12949,6 +13108,18 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseAuditTrailTimelineResponse"
+  /api/v1/assessor/open-batch-assessments:
+    get:
+      tags:
+      - batch-assessment-controller
+      operationId: listOpenBatchAssessments
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListPublication"
   /api/v1/assessor/assessments:
     get:
       tags:
@@ -13027,6 +13198,47 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseAssessorRosterResponse"
+  /api/v1/assessor/assessments/{id}/published-batch:
+    get:
+      tags:
+      - batch-assessment-controller
+      operationId: getPublishedBatch
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseReview"
+  /api/v1/assessment-results/{id}/document:
+    get:
+      tags:
+      - batch-assessment-controller
+      operationId: downloadAssessmentDocument
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      responses:
+        "200":
+          description: OK
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: byte
   /api/v1/analytics/summaries/unemployment-reasons:
     get:
       tags:
@@ -22603,6 +22815,13 @@ components:
           type: string
           maxLength: 1500
           minLength: 0
+        minimumEducationLevelId:
+          type: integer
+          format: int64
+        recommendedPrerequisites:
+          type: string
+          maxLength: 1000
+          minLength: 0
       required:
       - batchCode
       - sessions
@@ -22749,6 +22968,8 @@ components:
           type: string
         trainingNotes:
           type: string
+        admission:
+          $ref: "#/components/schemas/TrainingAdmission"
     Details:
       type: object
       properties:
@@ -22773,6 +22994,16 @@ components:
         releasedAt:
           type: string
           format: date-time
+    TrainingAdmission:
+      type: object
+      properties:
+        minimumEducationLevelId:
+          type: integer
+          format: int64
+        minimumEducationLevel:
+          type: string
+        recommendedPrerequisites:
+          type: string
     Review:
       type: object
       properties:
@@ -23181,6 +23412,13 @@ components:
           type: string
         dailyEndTime:
           type: string
+        minimumEducationLevelId:
+          type: integer
+          format: int64
+        recommendedPrerequisites:
+          type: string
+          maxLength: 1000
+          minLength: 0
       required:
       - centerId
       - dailyEndTime
@@ -23283,6 +23521,8 @@ components:
           format: int64
         bookingStatus:
           type: string
+        admission:
+          $ref: "#/components/schemas/TrainingAdmission"
     SelectProvider:
       type: object
       properties:
@@ -23409,6 +23649,91 @@ components:
           type: string
           maxLength: 500
           minLength: 0
+    PublishBatchAssessmentRequest:
+      type: object
+      properties:
+        brief:
+          type: string
+          maxLength: 1200
+          minLength: 0
+      required:
+      - brief
+    ApiResponsePublication:
+      type: object
+      description: Standard generic envelope for REST API responses
+      properties:
+        success:
+          type: boolean
+          description: Whether the request completed successfully
+          example: true
+        code:
+          type: string
+          description: Machine-readable status or error code
+          example: SUCCESS
+        message:
+          type: string
+          description: Human-readable result or status message
+          example: Operation completed successfully
+        data:
+          $ref: "#/components/schemas/Publication"
+          description: Payload data of type T
+        timestamp:
+          type: string
+          format: date-time
+          description: UTC ISO-8601 timestamp of response generation
+          example: 2026-11-19T18:00:00Z
+        path:
+          type: string
+          description: Request URI path
+          example: /api/v1/trainees
+        correlationId:
+          type: string
+          description: Unique correlation identifier for request tracing across services
+          example: c8f9b2a1-0000-4000-a000-000000000001
+    Publication:
+      type: object
+      properties:
+        assessmentId:
+          type: integer
+          format: int64
+        batchId:
+          type: integer
+          format: int64
+        batchCode:
+          type: string
+        title:
+          type: string
+        skills:
+          type: string
+        provider:
+          type: string
+        trainingVenue:
+          type: string
+        district:
+          type: string
+        state:
+          type: string
+        startsAt:
+          type: string
+          format: date-time
+        venue:
+          type: string
+        brief:
+          type: string
+        assessor:
+          type: string
+        status:
+          type: string
+        candidates:
+          type: integer
+          format: int32
+        checkedIn:
+          type: boolean
+        canComplete:
+          type: boolean
+        completedAt:
+          type: string
+          format: date-time
     CreateTraineeRequest:
       type: object
       description: Request payload for creating a new trainee profile
@@ -26405,6 +26730,19 @@ components:
           type: string
           maxLength: 255
           minLength: 0
+    ClaimBatchAssessmentRequest:
+      type: object
+      properties:
+        startsAt:
+          type: string
+          format: date-time
+        venue:
+          type: string
+          maxLength: 200
+          minLength: 0
+      required:
+      - startsAt
+      - venue
     ApiResponseSaveAssessmentScoresResponse:
       type: object
       description: Standard generic envelope for REST API responses
@@ -27432,6 +27770,126 @@ components:
           type: string
         name:
           type: string
+    ApiResponseReadiness:
+      type: object
+      description: Standard generic envelope for REST API responses
+      properties:
+        success:
+          type: boolean
+          description: Whether the request completed successfully
+          example: true
+        code:
+          type: string
+          description: Machine-readable status or error code
+          example: SUCCESS
+        message:
+          type: string
+          description: Human-readable result or status message
+          example: Operation completed successfully
+        data:
+          $ref: "#/components/schemas/Readiness"
+          description: Payload data of type T
+        timestamp:
+          type: string
+          format: date-time
+          description: UTC ISO-8601 timestamp of response generation
+          example: 2026-11-19T18:00:00Z
+        path:
+          type: string
+          description: Request URI path
+          example: /api/v1/trainees
+        correlationId:
+          type: string
+          description: Unique correlation identifier for request tracing across services
+          example: c8f9b2a1-0000-4000-a000-000000000001
+    Readiness:
+      type: object
+      properties:
+        batchCode:
+          type: string
+        batchStatus:
+          type: string
+        candidates:
+          type: integer
+          format: int32
+        sessions:
+          type: integer
+          format: int32
+        outstandingMarks:
+          type: integer
+          format: int64
+        canPublish:
+          type: boolean
+        blocker:
+          type: string
+        publication:
+          $ref: "#/components/schemas/Publication"
+    ApiResponseReview:
+      type: object
+      description: Standard generic envelope for REST API responses
+      properties:
+        success:
+          type: boolean
+          description: Whether the request completed successfully
+          example: true
+        code:
+          type: string
+          description: Machine-readable status or error code
+          example: SUCCESS
+        message:
+          type: string
+          description: Human-readable result or status message
+          example: Operation completed successfully
+        data:
+          $ref: "#/components/schemas/Review"
+          description: Payload data of type T
+        timestamp:
+          type: string
+          format: date-time
+          description: UTC ISO-8601 timestamp of response generation
+          example: 2026-11-19T18:00:00Z
+        path:
+          type: string
+          description: Request URI path
+          example: /api/v1/trainees
+        correlationId:
+          type: string
+          description: Unique correlation identifier for request tracing across services
+          example: c8f9b2a1-0000-4000-a000-000000000001
+    Candidate:
+      type: object
+      properties:
+        traineeId:
+          type: integer
+          format: int64
+        name:
+          type: string
+        registrationNumber:
+          type: string
+        appeared:
+          type: boolean
+        present:
+          type: integer
+          format: int32
+        trainingSessions:
+          type: integer
+          format: int32
+        resultId:
+          type: integer
+          format: int64
+        outcome:
+          type: string
+        theory:
+          type: number
+        practical:
+          type: number
+        viva:
+          type: number
+        total:
+          type: number
+        certificateId:
+          type: integer
+          format: int64
     ApiResponseTrainingRosterPage:
       type: object
       description: Standard generic envelope for REST API responses
@@ -27536,6 +27994,80 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AttendanceSession"
+    ApiResponseTrainingAdmission:
+      type: object
+      description: Standard generic envelope for REST API responses
+      properties:
+        success:
+          type: boolean
+          description: Whether the request completed successfully
+          example: true
+        code:
+          type: string
+          description: Machine-readable status or error code
+          example: SUCCESS
+        message:
+          type: string
+          description: Human-readable result or status message
+          example: Operation completed successfully
+        data:
+          $ref: "#/components/schemas/TrainingAdmission"
+          description: Payload data of type T
+        timestamp:
+          type: string
+          format: date-time
+          description: UTC ISO-8601 timestamp of response generation
+          example: 2026-11-19T18:00:00Z
+        path:
+          type: string
+          description: Request URI path
+          example: /api/v1/trainees
+        correlationId:
+          type: string
+          description: Unique correlation identifier for request tracing across services
+          example: c8f9b2a1-0000-4000-a000-000000000001
+    ApiResponseListLevel:
+      type: object
+      description: Standard generic envelope for REST API responses
+      properties:
+        success:
+          type: boolean
+          description: Whether the request completed successfully
+          example: true
+        code:
+          type: string
+          description: Machine-readable status or error code
+          example: SUCCESS
+        message:
+          type: string
+          description: Human-readable result or status message
+          example: Operation completed successfully
+        data:
+          type: array
+          description: Payload data of type T
+          items:
+            $ref: "#/components/schemas/Level"
+        timestamp:
+          type: string
+          format: date-time
+          description: UTC ISO-8601 timestamp of response generation
+          example: 2026-11-19T18:00:00Z
+        path:
+          type: string
+          description: Request URI path
+          example: /api/v1/trainees
+        correlationId:
+          type: string
+          description: Unique correlation identifier for request tracing across services
+          example: c8f9b2a1-0000-4000-a000-000000000001
+    Level:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
     ApiResponseRegistrationBatchPage:
       type: object
       description: Standard generic envelope for REST API responses
@@ -27607,6 +28139,8 @@ components:
         seatsAvailable:
           type: integer
           format: int64
+        admission:
+          $ref: "#/components/schemas/TrainingAdmission"
     RegistrationBatchPage:
       type: object
       properties:
@@ -27667,6 +28201,12 @@ components:
           type: string
         enrollmentStatus:
           type: string
+        educationEligibility:
+          type: string
+          enum:
+          - ELIGIBLE
+          - EDUCATION_REQUIRED
+          - BELOW_MINIMUM
     TrainingTimetableSession:
       type: object
       properties:
@@ -28065,6 +28605,77 @@ components:
           type: boolean
         verificationStatus:
           type: string
+    ApiResponseListAppointment:
+      type: object
+      description: Standard generic envelope for REST API responses
+      properties:
+        success:
+          type: boolean
+          description: Whether the request completed successfully
+          example: true
+        code:
+          type: string
+          description: Machine-readable status or error code
+          example: SUCCESS
+        message:
+          type: string
+          description: Human-readable result or status message
+          example: Operation completed successfully
+        data:
+          type: array
+          description: Payload data of type T
+          items:
+            $ref: "#/components/schemas/Appointment"
+        timestamp:
+          type: string
+          format: date-time
+          description: UTC ISO-8601 timestamp of response generation
+          example: 2026-11-19T18:00:00Z
+        path:
+          type: string
+          description: Request URI path
+          example: /api/v1/trainees
+        correlationId:
+          type: string
+          description: Unique correlation identifier for request tracing across services
+          example: c8f9b2a1-0000-4000-a000-000000000001
+    Appointment:
+      type: object
+      properties:
+        batchCode:
+          type: string
+        title:
+          type: string
+        startsAt:
+          type: string
+          format: date-time
+        venue:
+          type: string
+        brief:
+          type: string
+        assessor:
+          type: string
+        status:
+          type: string
+        completedAt:
+          type: string
+          format: date-time
+        resultId:
+          type: integer
+          format: int64
+        outcome:
+          type: string
+        theory:
+          type: number
+        practical:
+          type: number
+        viva:
+          type: number
+        total:
+          type: number
+        certificateId:
+          type: integer
+          format: int64
     ApiResponseListTraineeUnemploymentEventResponse:
       type: object
       description: Standard generic envelope for REST API responses
@@ -33699,20 +34310,6 @@ components:
           type: string
           description: Unique correlation identifier for request tracing across services
           example: c8f9b2a1-0000-4000-a000-000000000001
-    Candidate:
-      type: object
-      properties:
-        id:
-          type: integer
-          format: int64
-        registrationNumber:
-          type: string
-        name:
-          type: string
-        statusCode:
-          type: string
-        status:
-          type: string
     ApiResponseCandidateHistory:
       type: object
       description: Standard generic envelope for REST API responses
@@ -34261,6 +34858,40 @@ components:
           type: string
           description: Unique correlation identifier for request tracing across services
           example: c8f9b2a1-0000-4000-a000-000000000001
+    ApiResponseListPublication:
+      type: object
+      description: Standard generic envelope for REST API responses
+      properties:
+        success:
+          type: boolean
+          description: Whether the request completed successfully
+          example: true
+        code:
+          type: string
+          description: Machine-readable status or error code
+          example: SUCCESS
+        message:
+          type: string
+          description: Human-readable result or status message
+          example: Operation completed successfully
+        data:
+          type: array
+          description: Payload data of type T
+          items:
+            $ref: "#/components/schemas/Publication"
+        timestamp:
+          type: string
+          format: date-time
+          description: UTC ISO-8601 timestamp of response generation
+          example: 2026-11-19T18:00:00Z
+        path:
+          type: string
+          description: Request URI path
+          example: /api/v1/trainees
+        correlationId:
+          type: string
+          description: Unique correlation identifier for request tracing across services
+          example: c8f9b2a1-0000-4000-a000-000000000001
     ApiResponseListAssessorAssessmentSummaryResponse:
       type: object
       description: Standard generic envelope for REST API responses
@@ -34455,6 +35086,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AssessorCandidateRosterItemResponse"
+        managedBatch:
+          type: boolean
+        checkedIn:
+          type: boolean
     ApiResponseListAssessmentResponse:
       type: object
       description: Standard generic envelope for REST API responses

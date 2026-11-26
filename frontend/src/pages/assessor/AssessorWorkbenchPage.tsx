@@ -17,6 +17,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { getAssessorAssessments } from '@/api/assessorApi';
 import type { AssessorAssessmentSummary } from '@/types/assessor';
+import { OpenBatchAssessments } from './OpenBatchAssessments';
 
 export function AssessorWorkbenchPage(): React.JSX.Element {
   const { user } = useAuth();
@@ -264,6 +265,7 @@ export function AssessorWorkbenchPage(): React.JSX.Element {
         </div>
       )}
 
+      <OpenBatchAssessments />
       {/* Main Content Area */}
       {loading ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center text-gray-500">

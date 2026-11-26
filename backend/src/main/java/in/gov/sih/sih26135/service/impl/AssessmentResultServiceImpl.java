@@ -28,6 +28,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class AssessmentResultServiceImpl implements AssessmentResultService {
 
+  @org.springframework.beans.factory.annotation.Autowired
+  private in.gov.sih.sih26135.service.BatchAssessmentService batchAssessments;
+
   private final AssessmentResultRepository assessmentResultRepository;
   private final TraineeAssessmentRepository traineeAssessmentRepository;
   private final RefAssessmentOutcomeRepository refAssessmentOutcomeRepository;
@@ -54,7 +57,7 @@ public class AssessmentResultServiceImpl implements AssessmentResultService {
     }
     AssessmentResult result = assessmentResultRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("AssessmentResult", "id"));
-    return assessmentResultMapper.toResponse(result);
+    return visibleResponse(result);
   }
 
   @Override
@@ -64,12 +67,14 @@ public class AssessmentResultServiceImpl implements AssessmentResultService {
     }
     AssessmentResult result = assessmentResultRepository.findByTraineeAssessmentId(traineeAssessmentId)
         .orElseThrow(() -> new ResourceNotFoundException("AssessmentResult", "traineeAssessmentId"));
-    return assessmentResultMapper.toResponse(result);
+    return visibleResponse(result);
   }
 
   @Override
   public List<AssessmentResultResponse> getAllAssessmentResults() {
+    var hidden = hiddenResults();
     return assessmentResultRepository.findAll().stream()
+        .filter(result -> !hidden.contains(result.getId()))
         .map(assessmentResultMapper::toResponse)
         .toList();
   }
@@ -79,7 +84,9 @@ public class AssessmentResultServiceImpl implements AssessmentResultService {
     if (traineeId == null) {
       throw new BadRequestException("Trainee ID is required");
     }
+    var hidden = hiddenResults();
     return assessmentResultRepository.findByTraineeId(traineeId).stream()
+        .filter(result -> !hidden.contains(result.getId()))
         .map(assessmentResultMapper::toResponse)
         .toList();
   }
@@ -89,7 +96,9 @@ public class AssessmentResultServiceImpl implements AssessmentResultService {
     if (outcomeId == null) {
       throw new BadRequestException("Assessment outcome ID is required");
     }
+    var hidden = hiddenResults();
     return assessmentResultRepository.findByAssessmentOutcomeId(outcomeId).stream()
+        .filter(result -> !hidden.contains(result.getId()))
         .map(assessmentResultMapper::toResponse)
         .toList();
   }
@@ -119,6 +128,7 @@ public class AssessmentResultServiceImpl implements AssessmentResultService {
 
     TraineeAssessment traineeAssessment = traineeAssessmentRepository.findById(request.getTraineeAssessmentId())
         .orElseThrow(() -> new ResourceNotFoundException("TraineeAssessment", "traineeAssessmentId"));
+    if (batchAssessments != null) batchAssessments.requireLegacyAssessment(traineeAssessment.getAssessment().getId());
 
     Trainee trainee = traineeAssessment.getTrainee();
     if (request.getTraineeId() != null && trainee != null && !request.getTraineeId().equals(trainee.getId())) {
@@ -175,6 +185,7 @@ public class AssessmentResultServiceImpl implements AssessmentResultService {
     AssessmentResult result = assessmentResultRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("AssessmentResult", "id"));
 
+    if (batchAssessments != null) batchAssessments.requireLegacyAssessment(result.getTraineeAssessment().getAssessment().getId());
     BigDecimal effectiveMax = request.getMaximumScore() != null ? request.getMaximumScore() : result.getMaximumScore();
     BigDecimal effectiveObtained = request.getObtainedScore() != null ? request.getObtainedScore() : result.getObtainedScore();
 
@@ -239,11 +250,21 @@ public class AssessmentResultServiceImpl implements AssessmentResultService {
     AssessmentResult result = assessmentResultRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("AssessmentResult", "id"));
 
+    if (batchAssessments != null) batchAssessments.requireLegacyAssessment(result.getTraineeAssessment().getAssessment().getId());
     List<Certification> certifications = certificationRepository.findByAssessmentResultId(id);
     if (!certifications.isEmpty()) {
       throw new ConflictException("Cannot delete assessment result because certifications exist", "ASSESSMENT_RESULT_HAS_CERTIFICATIONS");
     }
 
     assessmentResultRepository.delete(result);
+  }
+
+  private java.util.Set<Long> hiddenResults() {
+    return batchAssessments == null ? java.util.Set.of() : batchAssessments.hiddenResults();
+  }
+
+  private AssessmentResultResponse visibleResponse(AssessmentResult result) {
+    if (hiddenResults().contains(result.getId())) throw new ResourceNotFoundException("Assessment result is unavailable.");
+    return assessmentResultMapper.toResponse(result);
   }
 }

@@ -1,4 +1,5 @@
 import { apiDelete, apiGet, apiPost } from './client';
+import type { TrainingAdmission, TrainingAdmissionInput } from './trainingAdmissionApi';
 
 const route = '/api/v1/venue-bookings';
 
@@ -15,7 +16,7 @@ export type TemporaryVenue = {
 };
 export type SharedVenue = Omit<TemporaryVenue, 'permissionToUse'> & { id: number; code: string };
 export type NewSharedVenue = Omit<SharedVenue, 'id'> & { pincode: string };
-export type NewBooking = {
+export type NewBooking = TrainingAdmissionInput & {
   centerId?: number;
   temporaryVenue?: TemporaryVenue;
   batchCode: string;
@@ -53,6 +54,7 @@ export type Booking = {
   requirementId?: number | null;
   skillsToTeach?: string | null;
   trainingNotes?: string | null;
+  admission?: TrainingAdmission;
 };
 export type BookingDetails = { booking: Booking; sessions: Session[] };
 

@@ -8,7 +8,6 @@ import type { AuthenticatedUserResponse, UserPersona } from '@/api/types';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { useAuth } from '@/context/AuthContext';
-import { simulationActive } from '@/lib/demoEnvironment';
 import { ExecutiveKpiCards } from '@/pages/analytics/ExecutiveKpiCards';
 import { Value } from '@/pages/analytics/MisUi';
 
@@ -56,7 +55,7 @@ export function AdminDashboard() {
   const { user, activePersona, primaryPersona } = useAuth();
   const persona = activePersona ?? primaryPersona;
   const access = consoleAccess(user);
-  const showOperations = !simulationActive && (access.onboarding || access.operations || access.outcomes);
+  const showOperations = (access.onboarding || access.operations || access.outcomes);
   const scope = access.national ? 'Nationwide'
     : user?.districtId ? `District ${user.districtId}` : user?.stateId ? `State ${user.stateId}` : undefined;
   const workspaces = [
@@ -71,7 +70,7 @@ export function AdminDashboard() {
     { show: access.audit, title: 'Audit trail', to: '/audit?view=audit', detail: 'Trace recorded changes and inspect entity state differences.' },
     { show: access.incidents, title: 'System incidents', to: '/audit?view=events', detail: 'Trace errors and warnings by correlation ID.' },
     { show: access.health, title: 'Service health', to: '/audit?view=health', detail: 'Inspect application health and authorized operational metrics.' },
-  ].filter(({ show, to }) => show && (!simulationActive || to.startsWith('/communication')));
+  ].filter(({ show }) => show);
 
   return (
     <div className="mx-auto max-w-screen-2xl space-y-5" key={user?.id}>
@@ -83,7 +82,6 @@ export function AdminDashboard() {
         {scope && <span className="rounded-md border border-white/30 px-2.5 py-1 text-sm font-medium text-white">{scope}</span>}
       </header>
 
-      {simulationActive && <p className="text-sm text-slate-700">Use live mode to review administrative queues and operational metrics.</p>}
       {access.outcomes && <SkillingOutcomes userId={user?.id} />}
       {showOperations && (
         <section aria-labelledby="admin-operations" className="space-y-3">

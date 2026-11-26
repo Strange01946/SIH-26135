@@ -6,8 +6,6 @@ import { z } from 'zod';
 import { useAuth } from '@/context/AuthContext';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { type ApiError, getDefaultLandingRoute, isRouteAuthorizedForAuthorities } from '@/api/types';
-import { demoAccounts, localDemoAccountsEnabled } from '@/lib/demoAccounts';
-import { simulationActive } from '@/lib/demoEnvironment';
 import { headerText } from '@/lib/headerLanguage';
 
 const loginSchema = z.object({
@@ -34,14 +32,8 @@ export function LoginPage(): React.JSX.Element {
   const [isLocked, setIsLocked] = useState(false);
 
   const sessionExpired = searchParams.get('sessionExpired') === 'true';
-  const isDemoSwitch = localDemoAccountsEnabled && searchParams.get('demo') === '1';
-  const demoUsername = isDemoSwitch
-    ? demoAccounts.find((account) => account.username === searchParams.get('account'))?.username
-    : undefined;
-
   const {
     register,
-    setValue,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<LoginFormData>({
@@ -52,13 +44,9 @@ export function LoginPage(): React.JSX.Element {
     },
   });
 
-  React.useEffect(() => {
-    if (demoUsername) setValue('usernameOrEmail', demoUsername);
-  }, [demoUsername, setValue]);
-
   // Redirect if already authenticated
   React.useEffect(() => {
-    if (isAuthenticated && user && !isDemoSwitch) {
+    if (isAuthenticated && user) {
       const from = (location.state as { from?: { pathname?: string; search?: string } })?.from;
       const destination =
         from?.pathname && isRouteAuthorizedForAuthorities(from.pathname, user.authorities)
@@ -66,7 +54,7 @@ export function LoginPage(): React.JSX.Element {
           : getDefaultLandingRoute(user.authorities);
       navigate(destination, { replace: true });
     }
-  }, [isAuthenticated, user, isDemoSwitch, location.state, navigate]);
+  }, [isAuthenticated, user, location.state, navigate]);
 
   const onSubmit = async (data: LoginFormData) => {
     setErrorMessage(null);
@@ -129,27 +117,8 @@ export function LoginPage(): React.JSX.Element {
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0">
         <div className="bg-white py-8 px-6 shadow-sm border border-gray-200 rounded-lg sm:px-10">
           <h2 className="text-lg font-semibold text-gray-900 border-b border-gray-100 pb-3 mb-6">
-            {isDemoSwitch && isAuthenticated ? 'Switch demo account' : 'Sign in'}
+            Sign in
           </h2>
-
-          {simulationActive && <p className="mb-4 text-sm text-navy">Choose a sample persona from the evaluator drawer.</p>}
-          {localDemoAccountsEnabled && !simulationActive && (
-            <fieldset className="mb-5 rounded border p-3">
-              <legend className="px-1 text-sm font-semibold">Local demo accounts</legend>
-              <p className="mb-2 text-xs text-gray-600">Choose an account and enter its assigned password.</p>
-              <div className="flex flex-wrap gap-2">
-                {demoAccounts.map(({ username, label }) => (
-                  <button key={username} type="button" className="btn-outline text-xs" disabled={isSubmitting}
-                    onClick={() => {
-                      setValue('usernameOrEmail', username, { shouldValidate: true });
-                      setValue('password', '');
-                      setErrorMessage(null);
-                      document.getElementById('password')?.focus();
-                    }}>{label}</button>
-                ))}
-              </div>
-            </fieldset>
-          )}
 
           {/* Session Expired Banner */}
           {sessionExpired && (

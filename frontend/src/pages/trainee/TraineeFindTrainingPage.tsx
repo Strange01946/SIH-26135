@@ -7,14 +7,13 @@ import { StateDistrictFields } from '@/components/common/StateDistrictFields';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { careerDate } from '@/components/career/CareerInsights';
-import { simulationActive } from '@/lib/demoEnvironment';
 
 const emptyFilters = { search: '', stateId: 0, districtId: 0, from: '', through: '' };
 
 export function TraineeFindTrainingPage() {
   const { traineeId, isLoading } = useOutletContext<{ traineeId?: number; isLoading: boolean }>();
   if (isLoading) return <LoadingSpinner label="Loading trainee profile" />;
-  if (simulationActive) return <p className="card p-5">Training registration is available in live mode.</p>;
+
   if (!traineeId) return <p className="card p-5">A linked trainee profile is required to register for training.</p>;
 
   return <TrainingSearchResults traineeId={traineeId} />;
@@ -82,6 +81,7 @@ function TrainingSearchResults({ traineeId }: { traineeId: number }) {
                 <h2 className="section-title"><Link className="hover:underline" to={`/trainee/find-training/${batch.id}`}>{batch.title}</Link></h2>
               </div>
               <p className="text-sm">{batch.skills}</p>
+              <p className="text-sm text-slate-600">Minimum education · {batch.admission?.minimumEducationLevel || 'Open to all'}</p>
               <p className="text-sm text-slate-600">{batch.provider} · {batch.venue} · {batch.district}, {batch.state}</p>
               <p className="text-sm">{careerDate(batch.startsOn)}{batch.endsOn && batch.startsOn !== batch.endsOn && ` to ${careerDate(batch.endsOn)}`}</p>
               <p className="text-sm font-medium">{availableSeatLabel(batch.seatsAvailable)}</p>

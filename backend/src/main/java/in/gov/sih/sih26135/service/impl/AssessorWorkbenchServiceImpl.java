@@ -1,5 +1,8 @@
 package in.gov.sih.sih26135.service.impl;
 
+import in.gov.sih.sih26135.service.AssessmentDocuments;
+import in.gov.sih.sih26135.service.BatchAssessmentService;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import in.gov.sih.sih26135.dto.assessor.AssessorAssessmentSummaryResponse;
@@ -113,6 +116,8 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
   private final OrganizationRepository organizationRepository;
   private final JdbcTemplate jdbcTemplate;
   private final ObjectMapper objectMapper;
+  private final BatchAssessmentService batchAssessments;
+  private final AssessmentDocuments documents;
 
   public AssessorWorkbenchServiceImpl(
       AssessmentRepository assessmentRepository,
@@ -131,7 +136,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       RefEnrollmentStatusRepository refEnrollmentStatusRepository,
       OrganizationRepository organizationRepository,
       JdbcTemplate jdbcTemplate,
-      ObjectMapper objectMapper) {
+      ObjectMapper objectMapper, BatchAssessmentService batchAssessments, AssessmentDocuments documents) {
     this.assessmentRepository = assessmentRepository;
     this.traineeAssessmentRepository = traineeAssessmentRepository;
     this.assessmentResultRepository = assessmentResultRepository;
@@ -149,6 +154,8 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
     this.organizationRepository = organizationRepository;
     this.jdbcTemplate = jdbcTemplate;
     this.objectMapper = objectMapper;
+    this.batchAssessments = batchAssessments;
+    this.documents = documents;
   }
 
   @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
@@ -506,7 +513,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       return new AssessorRosterResponse(summary, Collections.emptyList());
     }
 
-    // 1. Fetch all candidate enrollments in this batch
+    boolean managed = batchAssessments.managed(assessmentId);
     String rosterSql = """
         SELECT te.enrollment_id, te.enrollment_number, res.status_code as enrollment_status_code,
                t.trainee_id, t.registration_number,
@@ -516,12 +523,18 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
         JOIN trainees t ON te.trainee_id = t.trainee_id
         LEFT JOIN ref_gender rg ON t.gender_id = rg.gender_id
         LEFT JOIN ref_enrollment_status res ON te.enrollment_status_id = res.enrollment_status_id
-        WHERE te.batch_id = ? AND te.deleted_at IS NULL AND t.deleted_at IS NULL
+        WHERE te.batch_id = ?
+        """ + (managed ? """
+          AND EXISTS(SELECT 1 FROM trainee_assessments ta WHERE ta.assessment_id=? AND ta.enrollment_id=te.enrollment_id)
+          """ : """
+          AND te.deleted_at IS NULL AND t.deleted_at IS NULL
           AND (te.enrollment_status_id IS NULL OR te.enrollment_status_id NOT IN (4, 7))
+          """) + """
         ORDER BY t.first_name, t.last_name, t.trainee_id
         """;
 
-    List<Map<String, Object>> candidateRows = jdbcTemplate.queryForList(rosterSql, batchId);
+    List<Map<String, Object>> candidateRows = managed ? jdbcTemplate.queryForList(rosterSql, batchId, assessmentId)
+        : jdbcTemplate.queryForList(rosterSql, batchId);
     List<AssessorCandidateRosterItemResponse> candidates = new ArrayList<>();
 
     for (Map<String, Object> row : candidateRows) {
@@ -530,8 +543,8 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       String regNumber = (String) row.get("registration_number");
       String fullName = ((String) row.get("full_name")).trim();
       String gender = (String) row.get("gender_name");
-      String email = (String) row.get("email");
-      String phone = (String) row.get("phone");
+      String email = managed ? null : (String) row.get("email");
+      String phone = managed ? null : (String) row.get("phone");
       String enrollmentNumber = (String) row.get("enrollment_number");
       String enrollmentStatusCode = (String) row.get("enrollment_status_code");
 
@@ -636,7 +649,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
           certNumber = c.getCertificateNumber();
           certStatus = c.getCertificateStatus() != null ? c.getCertificateStatus().getStatusCode() : "ISSUED";
         } else if (Boolean.TRUE.equals(isPass)) {
-          boolean attendanceMet = isAttendanceRequirementSatisfied(assessment.getCourse(), enrollmentId);
+          boolean attendanceMet = attendanceRequirementSatisfied(assessment.getCourse(), batchId, enrollmentId, managed);
           if (!attendanceMet) {
             certStatus = "PENDING_ELIGIBILITY";
           } else {
@@ -683,7 +696,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       ));
     }
 
-    return new AssessorRosterResponse(summary, candidates);
+    return new AssessorRosterResponse(summary, candidates, managed, !managed || batchAssessments.checkedIn(assessmentId));
   }
 
   @Override
@@ -707,14 +720,16 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
 
     Long batchId = assessment.getTrainingBatch() != null ? assessment.getTrainingBatch().getId() : null;
 
-    // Load authoritative eligible batch roster from database
-    List<TrainingEnrollment> batchEnrollments = batchId != null
-        ? trainingEnrollmentRepository.findByTrainingBatchIdAndDeletedAtIsNull(batchId)
-        : Collections.emptyList();
+    // Published batches use the provider's immutable candidate list and check-in.
+    boolean managed = batchAssessments.managed(assessmentId);
+    Map<Long, Boolean> checkIn = managed ? batchAssessments.scoringRoster(assessmentId) : Map.of();
+    List<TrainingEnrollment> batchEnrollments = managed
+        ? traineeAssessmentRepository.findByAssessmentId(assessmentId).stream().map(TraineeAssessment::getTrainingEnrollment).toList()
+        : batchId != null ? trainingEnrollmentRepository.findByTrainingBatchIdAndDeletedAtIsNull(batchId) : Collections.emptyList();
 
     Map<Long, TrainingEnrollment> eligibleEnrollmentsByTraineeId = batchEnrollments.stream()
-        .filter(e -> e.getDeletedAt() == null && e.getTrainee() != null && e.getTrainee().getDeletedAt() == null)
-        .filter(e -> e.getEnrollmentStatus() == null || (e.getEnrollmentStatus().getId() != 4L && e.getEnrollmentStatus().getId() != 7L)) // exclude DROPPED (4) & CANCELLED (7)
+        .filter(e -> managed || (e.getDeletedAt() == null && e.getTrainee() != null && e.getTrainee().getDeletedAt() == null))
+        .filter(e -> managed || e.getEnrollmentStatus() == null || (e.getEnrollmentStatus().getId() != 4L && e.getEnrollmentStatus().getId() != 7L))
         .collect(Collectors.toMap(e -> e.getTrainee().getId(), e -> e, (a, b) -> a));
 
     // Reject finalization if eligible roster is empty
@@ -737,6 +752,10 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       }
       if (!eligibleEnrollmentsByTraineeId.containsKey(input.getTraineeId())) {
         throw new BadRequestException("Candidate #" + input.getTraineeId() + " is not an eligible candidate for assessment batch #" + batchId, "INVALID_CANDIDATE");
+      }
+      if (managed && !Objects.equals(checkIn.get(input.getTraineeId()), input.getAppeared())) {
+        throw new in.gov.sih.sih26135.exception.ConflictException("The assessment roster is derived from attendance. Reload it before entering marks.",
+            "ASSESSMENT_CHECK_IN_CHANGED");
       }
       TrainingEnrollment expectedEnrollment = eligibleEnrollmentsByTraineeId.get(input.getTraineeId());
       if (input.getEnrollmentId() != null && !input.getEnrollmentId().equals(expectedEnrollment.getId())) {
@@ -916,8 +935,10 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
             return traineeAssessmentRepository.save(newTa);
           });
 
-      boolean appeared = input.getAppeared() != null ? input.getAppeared() : true;
-      ta.setAppearedFlag(appeared);
+      boolean appeared = Boolean.TRUE.equals(ta.getAppearedFlag());
+      if (input.getAppeared() != null && appeared != input.getAppeared()) {
+        throw new BadRequestException("Assessment attendance is read-only in the scoring grid.", "ASSESSMENT_ATTENDANCE_READ_ONLY");
+      }
       ta.setUpdatedAt(now);
       traineeAssessmentRepository.save(ta);
 
@@ -1039,7 +1060,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       Course course = assessment.getCourse();
       Program program = assessment.getProgram();
 
-      boolean attendanceMet = isAttendanceRequirementSatisfied(course, enrollment.getId());
+      boolean attendanceMet = attendanceRequirementSatisfied(course, batchId, enrollment.getId(), managed);
       boolean batchActive = true;
       if (assessment.getTrainingBatch() != null && assessment.getTrainingBatch().getBatchStatus() != null) {
         Long batchStatusId = assessment.getTrainingBatch().getBatchStatus().getId();
@@ -1136,6 +1157,10 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       assessment.setLifecycleStatusId(LIFECYCLE_FINALIZED_ID);
       assessment.setUpdatedAt(now);
       assessmentRepository.save(assessment);
+      if (managed) {
+        assessmentRepository.flush();
+        batchAssessments.awardTrainingSkills(assessmentId);
+      }
       log.info("Assessment {} marked FINALIZED by assessor {}. Total candidates: {}, Passed: {}, Failed: {}, Absent: {}, Certs: {}",
           assessmentId, caller.getId(), totalProcessed, passedCount, failedCount, absentCount, certsIssued);
     }
@@ -1198,6 +1223,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
     if (assessment == null) return 0;
     Long batchId = assessment.getTrainingBatch() != null ? assessment.getTrainingBatch().getId() : null;
     if (batchId == null) return 0;
+    boolean managed = batchAssessments.managed(assessment.getId());
 
     List<TrainingEnrollment> batchEnrollments = trainingEnrollmentRepository.findByTrainingBatchIdAndDeletedAtIsNull(batchId);
     LocalDateTime now = LocalDateTime.now();
@@ -1234,7 +1260,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       if (existingCert.isPresent()) continue;
 
       // Check attendance & batch
-      boolean attendanceMet = isAttendanceRequirementSatisfied(course, enrollment.getId());
+      boolean attendanceMet = attendanceRequirementSatisfied(course, batchId, enrollment.getId(), managed);
       boolean batchActive = true;
       if (assessment.getTrainingBatch() != null && assessment.getTrainingBatch().getBatchStatus() != null) {
         Long bStatus = assessment.getTrainingBatch().getBatchStatus().getId();
@@ -1289,6 +1315,11 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
     return newlyIssued;
   }
 
+  private boolean attendanceRequirementSatisfied(Course course, Long batchId, Long enrollmentId, boolean managed) {
+    return managed ? batchAssessments.attendanceMeetsThreshold(batchId, enrollmentId)
+        : isAttendanceRequirementSatisfied(course, enrollmentId);
+  }
+
   @Override
   @Transactional(readOnly = true)
   public byte[] generateCertificatePdf(Long certificationId) {
@@ -1335,6 +1366,10 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
     Trainee trainee = cert.getTrainee();
     Course course = cert.getCourse();
     AssessmentResult result = cert.getAssessmentResult();
+    if (result != null && result.getTraineeAssessment() != null && result.getTraineeAssessment().getAssessment() != null
+        && batchAssessments.managed(result.getTraineeAssessment().getAssessment().getId())) {
+      return documents.result(result.getId()).bytes();
+    }
 
     String traineeName = trainee != null ? (trainee.getFirstName() + " " + Objects.toString(trainee.getLastName(), "")).trim() : "Candidate";
     String regNumber = trainee != null ? trainee.getRegistrationNumber() : "N/A";

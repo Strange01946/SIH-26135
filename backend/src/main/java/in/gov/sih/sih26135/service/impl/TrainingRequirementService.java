@@ -6,6 +6,7 @@ import in.gov.sih.sih26135.exception.ConflictException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
 import in.gov.sih.sih26135.service.ActiveGeography;
 import in.gov.sih.sih26135.service.AuditLogService;
+import in.gov.sih.sih26135.service.TrainingAdmissionService;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -32,11 +33,12 @@ public class TrainingRequirementService {
   private static final ZoneId INDIA = ZoneId.of("Asia/Kolkata");
   private static final String REQUIREMENT_SELECT = """
       SELECT r.*, s.state_name, d.district_name, p.provider_name, c.center_name, c.address_line1,
-        b.booking_id, b.booking_status
+        b.booking_id, b.booking_status, edu.education_name AS minimum_education_level
       FROM training_requirements r
       JOIN states s ON s.state_id=r.state_id JOIN districts d ON d.district_id=r.district_id
       LEFT JOIN training_centers c ON c.center_id=r.center_id
       LEFT JOIN training_providers p ON p.provider_id=r.selected_provider_id
+      LEFT JOIN ref_education_level edu ON edu.education_level_id=r.minimum_education_level_id
       LEFT JOIN venue_bookings b ON b.booking_id=(
         SELECT MAX(bp.booking_id) FROM venue_booking_training_plans bp
         WHERE bp.requirement_id=r.requirement_id AND r.root_booking_id IS NOT NULL
@@ -56,7 +58,7 @@ public class TrainingRequirementService {
       rs.getObject("daily_start_time", LocalTime.class), rs.getObject("daily_end_time", LocalTime.class),
       rs.getString("requirement_status"), accepting(rs), nullableLong(rs, "selected_provider_id"), rs.getString("provider_name"),
       rs.getObject("published_at", LocalDateTime.class), rs.getObject("selected_at", LocalDateTime.class),
-      nullableLong(rs, "booking_id"), rs.getString("booking_status"));
+      nullableLong(rs, "booking_id"), rs.getString("booking_status"), TrainingAdmissionService.read(rs));
   private static final RowMapper<Application> APPLICATION_ROW = (rs, row) -> new Application(
       rs.getLong("application_id"), rs.getLong("requirement_id"), rs.getString("title"),
       rs.getLong("provider_id"), rs.getString("provider_name"), rs.getString("application_status"),
@@ -70,13 +72,15 @@ public class TrainingRequirementService {
   private final TrainingWorkflowAccess access;
   private final AuditLogService audits;
   private final VenueBookingService venues;
+  private final TrainingAdmissionService admissions;
 
   public TrainingRequirementService(JdbcTemplate jdbc, TrainingWorkflowAccess access, AuditLogService audits,
-      VenueBookingService venues) {
+      VenueBookingService venues, TrainingAdmissionService admissions) {
     this.jdbc = jdbc;
     this.access = access;
     this.audits = audits;
     this.venues = venues;
+    this.admissions = admissions;
   }
 
   public List<Requirement> governmentList(int page, int size) {
@@ -111,14 +115,17 @@ public class TrainingRequirementService {
     requireLocation(scope, request.stateId(), request.districtId());
     ActiveGeography.validate(jdbc, request.stateId(), request.districtId());
     validateDates(request.earliestDate(), request.latestDate(), request.dailyStartTime(), request.dailyEndTime());
+    admissions.validateMinimum(request.minimumEducationLevelId());
     venues.lockGovernmentCentre(request.centerId(), request.stateId(), request.districtId(), request.seats());
     long id = insert("""
         INSERT INTO training_requirements(title,skills_to_teach,description,state_id,district_id,center_id,
-          seats,earliest_date,latest_date,daily_start_time,daily_end_time,published_by)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+          seats,earliest_date,latest_date,daily_start_time,daily_end_time,published_by,
+          minimum_education_level_id,recommended_prerequisites)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, request.title().trim(), request.skillsToTeach().trim(), text(request.description()),
         request.stateId(), request.districtId(), request.centerId(), request.seats(), request.earliestDate(),
-        request.latestDate(), request.dailyStartTime(), request.dailyEndTime(), access.actor().getId());
+        request.latestDate(), request.dailyStartTime(), request.dailyEndTime(), access.actor().getId(),
+        request.minimumEducationLevelId(), text(request.recommendedPrerequisites()));
     audits.recordStateChange("CREATE", "TrainingRequirement", id, "Training requirement published", null,
         Map.of("status", "OPEN", "centerId", request.centerId()), List.of());
     return find(id);

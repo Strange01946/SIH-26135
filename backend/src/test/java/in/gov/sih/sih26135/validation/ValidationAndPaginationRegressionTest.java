@@ -285,7 +285,7 @@ public class ValidationAndPaginationRegressionTest {
 
     private Publish publication(String title, String skills, int seats) {
       LocalDate day = LocalDate.of(2099, 6, 1);
-      return new Publish(title, skills, null, 1, 1, 1L, seats, day, day, LocalTime.of(9, 0), LocalTime.of(12, 0));
+      return new Publish(title, skills, null, 1, 1, 1L, seats, day, day, LocalTime.of(9, 0), LocalTime.of(12, 0), null, null);
     }
 
     @Test

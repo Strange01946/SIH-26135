@@ -1,3 +1,4 @@
+import { TrainingAdmissionRows } from '@/pages/training/TrainingAdmissionFields';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -12,7 +13,6 @@ import { Modal } from '@/components/common/Modal';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { useAuth } from '@/context/AuthContext';
-import { simulationActive } from '@/lib/demoEnvironment';
 import { bookingError, formatVenueTime, VenueBookingForm, type BookingDraft } from './VenueBookingForm';
 import { SharedVenueDirectory } from './SharedVenueDirectory';
 
@@ -110,6 +110,7 @@ function BookingRecord({ id, admin, onDraft, onDecision }: {
       {booking.requirementId && <p className="text-sm">Government training requirement #{booking.requirementId}</p>}
       {!booking.requirementId && booking.skillsToTeach && <p className="text-sm">Provider-initiated training</p>}
       {booking.skillsToTeach && <p className="whitespace-pre-wrap text-sm"><strong>Skills to teach</strong> · {booking.skillsToTeach}</p>}
+      {booking.admission && <dl className="grid gap-3 text-sm sm:grid-cols-2"><TrainingAdmissionRows admission={booking.admission} /></dl>}
       {!booking.skillsToTeach && booking.courseName && <p className="text-sm"><strong>Training topic</strong> · {booking.courseName}</p>}
       {booking.trainingNotes && <p className="whitespace-pre-wrap text-sm"><strong>Training notes</strong> · {booking.trainingNotes}</p>}
       {!admin && approved && batchId && <TrainingInterestCount batchId={batchId} />}
@@ -153,9 +154,9 @@ const bookedForEnrollment = (status?: string | null) => status === 'OPEN' || sta
 
 function TrainingInterestCount({ batchId }: { batchId: number }) {
   const interest = useQuery({ queryKey: [...careerSkillsKey, 'provider-interest', batchId],
-    queryFn: ({ signal }) => getProviderTrainingInterest(batchId, signal), enabled: !simulationActive,
+    queryFn: ({ signal }) => getProviderTrainingInterest(batchId, signal),
     retry: false, refetchOnMount: 'always', refetchOnWindowFocus: 'always' });
-  if (simulationActive) return null;
+
   return <div className="rounded bg-navy-50 p-3 text-sm">
     <strong>Trainees interested</strong>{' '}
     {interest.data ? <span>{interest.data.interested}</span> : interest.isError ? (
@@ -176,9 +177,9 @@ export function VenueBookingsPage({ admin = false }: { admin?: boolean }) {
   const [draft, setDraft] = useState<BookingDraft | null>(null);
   const [decision, setDecision] = useState<{ details: BookingDetails; action: Decision } | null>(null);
   const [notice, setNotice] = useState('');
-  const geography = useQuery({ queryKey: ['registration-reference-data'], queryFn: getRegistrationReferenceData, enabled: !simulationActive });
+  const geography = useQuery({ queryKey: ['registration-reference-data'], queryFn: getRegistrationReferenceData });
   const list = useQuery({ queryKey: ['venue-bookings', 'requests', user?.id, status, page],
-    queryFn: ({ signal }) => getBookings(status || undefined, page, pageSize, signal), enabled: !directory && !simulationActive });
+    queryFn: ({ signal }) => getBookings(status || undefined, page, pageSize, signal), enabled: !directory });
 
   function saved(details: BookingDetails, message: string) {
     setDraft(null);
@@ -211,59 +212,57 @@ export function VenueBookingsPage({ admin = false }: { admin?: boolean }) {
         <div><h1 className="text-2xl font-bold text-navy">Venue Bookings</h1>
           <p className="mt-1 text-sm text-slate-600">{admin ? 'Review requests and manage shared training availability.'
             : 'Reserve sessions at a shared center or request approval for a temporary location.'}</p></div>
-        {!admin && !simulationActive && <button type="button" className="btn-primary" disabled={!geography.data}
+        {!admin && <button type="button" className="btn-primary" disabled={!geography.data}
           onClick={() => setDraft({ kind: 'temporary' })}>Propose temporary location</button>}
       </header>
-      {simulationActive ? <p role="status" className="card p-5">Switch to live mode to manage venue bookings.</p> : <>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" className={directory ? 'btn-outline' : 'btn-primary'} aria-pressed={!directory}
-            onClick={() => setDirectory(false)}>{admin ? 'Review queue' : 'My bookings'}</button>
-          <button type="button" className={directory ? 'btn-primary' : 'btn-outline'} aria-pressed={directory}
-            onClick={() => setDirectory(true)}>Shared centers</button>
-        </div>
-        {notice && <p role="status" className="rounded border border-green-200 bg-green-50 p-3 text-sm text-green-800">{notice}</p>}
-        {geography.isError && <ErrorState title="Could not load location options" error={geography.error} onRetry={() => void geography.refetch()} />}
-        {directory ? (scopedGeography ? <SharedVenueDirectory
-          geography={scopedGeography} manager={admin && hasAuthority('venue.shared.manage')}
-          onRequest={admin ? undefined : requestShared} />
-          : <LoadingSpinner label="Loading locations" />) : <>
-          <section className="card space-y-4 p-5" aria-label={admin ? 'Venue review queue' : 'Provider venue bookings'}>
-            <label className="form-label max-w-xs">Booking status
-              <select className="form-input" value={status} onChange={event => { setStatus(event.target.value as BookingStatus | ''); setPage(0); setSelected(null); }}>
-                <option value="">All statuses</option>
-                {Object.entries(statuses).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-              </select>
-            </label>
-            {list.isPending ? <LoadingSpinner label="Loading bookings" /> : list.isError ? <ErrorState title="Could not load bookings"
-              error={list.error} onRetry={() => void list.refetch()} /> : list.data.length === 0 ? <p className="text-sm text-slate-600">No bookings match this status.</p>
-              : <div className="overflow-x-auto"><table className="w-full text-left text-sm">
-                <thead className="border-b bg-slate-50"><tr>
-                  <th scope="col" className="p-3">Batch</th><th scope="col" className="p-3">Venue</th>
-                  {admin && <th scope="col" className="p-3">Provider</th>}
-                  <th scope="col" className="p-3">Status</th><th scope="col" className="p-3">Actions</th>
-                </tr></thead>
-                <tbody className="divide-y">{list.data.map(booking => <tr key={booking.id}>
-                  <th scope="row" className="p-3">{booking.batchCode}{booking.replacesBookingId && <span className="block font-normal">Postponement</span>}</th>
-                  <td className="p-3">{booking.venueName}<span className="block text-slate-600">{booking.venueType === 'SHARED' ? 'Shared center' : 'Temporary location'}</span></td>
-                  {admin && <td className="p-3">{booking.providerName}</td>}
-                  <td className="p-3">{statuses[booking.status]}</td>
-                  <td className="p-3"><button type="button" className="btn-outline" onClick={() => setSelected(booking.id)}>View booking</button></td>
-                </tr>)}</tbody>
-              </table></div>}
-            {(page > 0 || list.data?.length === pageSize) && <nav aria-label="Booking pages" className="flex gap-2">
-              <button type="button" className="btn-outline" disabled={!page} onClick={() => setPage(page - 1)}>Previous bookings</button>
-              <button type="button" className="btn-outline" disabled={list.data?.length !== pageSize} onClick={() => setPage(page + 1)}>Next bookings</button>
-            </nav>}
-          </section>
-          {selected && <BookingRecord key={selected} id={selected} admin={admin} onDraft={setDraft}
-            onDecision={(details, action) => setDecision({ details, action })} />}
-        </>}
-        {draft && scopedGeography && <VenueBookingForm draft={draft} geography={scopedGeography}
-          onClose={() => setDraft(null)}
-          onSaved={details => saved(details, 'Request submitted for review.')} />}
-        {decision && <BookingDecision details={decision.details} action={decision.action} onClose={() => setDecision(null)}
-          onSaved={details => saved(details, 'Booking updated.')} />}
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className={directory ? 'btn-outline' : 'btn-primary'} aria-pressed={!directory}
+          onClick={() => setDirectory(false)}>{admin ? 'Review queue' : 'My bookings'}</button>
+        <button type="button" className={directory ? 'btn-primary' : 'btn-outline'} aria-pressed={directory}
+          onClick={() => setDirectory(true)}>Shared centers</button>
+      </div>
+      {notice && <p role="status" className="rounded border border-green-200 bg-green-50 p-3 text-sm text-green-800">{notice}</p>}
+      {geography.isError && <ErrorState title="Could not load location options" error={geography.error} onRetry={() => void geography.refetch()} />}
+      {directory ? (scopedGeography ? <SharedVenueDirectory
+        geography={scopedGeography} manager={admin && hasAuthority('venue.shared.manage')}
+        onRequest={admin ? undefined : requestShared} />
+        : <LoadingSpinner label="Loading locations" />) : <>
+        <section className="card space-y-4 p-5" aria-label={admin ? 'Venue review queue' : 'Provider venue bookings'}>
+          <label className="form-label max-w-xs">Booking status
+            <select className="form-input" value={status} onChange={event => { setStatus(event.target.value as BookingStatus | ''); setPage(0); setSelected(null); }}>
+              <option value="">All statuses</option>
+              {Object.entries(statuses).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </select>
+          </label>
+          {list.isPending ? <LoadingSpinner label="Loading bookings" /> : list.isError ? <ErrorState title="Could not load bookings"
+            error={list.error} onRetry={() => void list.refetch()} /> : list.data.length === 0 ? <p className="text-sm text-slate-600">No bookings match this status.</p>
+            : <div className="overflow-x-auto"><table className="w-full text-left text-sm">
+              <thead className="border-b bg-slate-50"><tr>
+                <th scope="col" className="p-3">Batch</th><th scope="col" className="p-3">Venue</th>
+                {admin && <th scope="col" className="p-3">Provider</th>}
+                <th scope="col" className="p-3">Status</th><th scope="col" className="p-3">Actions</th>
+              </tr></thead>
+              <tbody className="divide-y">{list.data.map(booking => <tr key={booking.id}>
+                <th scope="row" className="p-3">{booking.batchCode}{booking.replacesBookingId && <span className="block font-normal">Postponement</span>}</th>
+                <td className="p-3">{booking.venueName}<span className="block text-slate-600">{booking.venueType === 'SHARED' ? 'Shared center' : 'Temporary location'}</span></td>
+                {admin && <td className="p-3">{booking.providerName}</td>}
+                <td className="p-3">{statuses[booking.status]}</td>
+                <td className="p-3"><button type="button" className="btn-outline" onClick={() => setSelected(booking.id)}>View booking</button></td>
+              </tr>)}</tbody>
+            </table></div>}
+          {(page > 0 || list.data?.length === pageSize) && <nav aria-label="Booking pages" className="flex gap-2">
+            <button type="button" className="btn-outline" disabled={!page} onClick={() => setPage(page - 1)}>Previous bookings</button>
+            <button type="button" className="btn-outline" disabled={list.data?.length !== pageSize} onClick={() => setPage(page + 1)}>Next bookings</button>
+          </nav>}
+        </section>
+        {selected && <BookingRecord key={selected} id={selected} admin={admin} onDraft={setDraft}
+          onDecision={(details, action) => setDecision({ details, action })} />}
       </>}
+      {draft && scopedGeography && <VenueBookingForm draft={draft} geography={scopedGeography}
+        onClose={() => setDraft(null)}
+        onSaved={details => saved(details, 'Request submitted for review.')} />}
+      {decision && <BookingDecision details={decision.details} action={decision.action} onClose={() => setDecision(null)}
+        onSaved={details => saved(details, 'Booking updated.')} />}
     </div>
   );
 }

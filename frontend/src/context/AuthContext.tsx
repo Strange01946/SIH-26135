@@ -25,9 +25,8 @@ import {
   getDefaultLandingRouteForPersona,
 } from '@/api/types';
 import { queryClient } from '@/lib/queryClient';
-import { simulationActive } from '@/lib/demoEnvironment';
 
-const personaStorageKey = simulationActive ? 'sih_evaluator_active_persona' : 'sih_active_persona';
+const personaStorageKey = 'sih_active_persona';
 
 export interface AuthContextType {
   user: AuthenticatedUserResponse | null;

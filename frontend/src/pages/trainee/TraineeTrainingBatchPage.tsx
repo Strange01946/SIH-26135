@@ -1,3 +1,4 @@
+import { TrainingAdmissionRows } from '@/pages/training/TrainingAdmissionFields';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useOutletContext, useParams } from 'react-router-dom';
 import { careerSkillsKey } from '@/api/careerSkillsApi';
@@ -5,7 +6,6 @@ import { availableSeatLabel, registerForTraining, trainingRegistrationKey, viewT
 import { careerDate } from '@/components/career/CareerInsights';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
-import { simulationActive } from '@/lib/demoEnvironment';
 
 export function TraineeTrainingBatchPage() {
   const { batchId } = useParams();
@@ -13,7 +13,7 @@ export function TraineeTrainingBatchPage() {
   const { traineeId, isLoading } = useOutletContext<{ traineeId?: number; isLoading: boolean }>();
 
   if (isLoading) return <LoadingSpinner label="Loading trainee profile" />;
-  if (simulationActive) return <p className="card p-5">Training registration is available in live mode.</p>;
+
   if (!traineeId || !Number.isSafeInteger(id) || id < 1) return <p className="card p-5">This training batch is unavailable.</p>;
   return <TrainingBatch key={id} id={id} traineeId={traineeId} />;
 }
@@ -52,8 +52,9 @@ function TrainingBatch({ id, traineeId }: { id: number; traineeId: number }) {
     </div>
   );
 
-  const { batch, address, sessions, enrollmentNumber, enrollmentStatus, registrationOpen, consentGranted } = details.data;
-  const mayRegister = registrationOpen && consentGranted && !enrollmentNumber && batch.seatsAvailable > 0;
+  const { batch, address, sessions, enrollmentNumber, enrollmentStatus, registrationOpen, consentGranted, educationEligibility } = details.data;
+  const meetsEducation = !batch.admission?.minimumEducationLevelId || educationEligibility === 'ELIGIBLE';
+  const mayRegister = registrationOpen && consentGranted && meetsEducation && !enrollmentNumber && batch.seatsAvailable > 0;
   return (
     <div className="space-y-5">
       <nav className="flex flex-wrap gap-4 text-sm" aria-label="Training navigation">
@@ -68,6 +69,7 @@ function TrainingBatch({ id, traineeId }: { id: number; traineeId: number }) {
         <dl className="grid gap-4 sm:grid-cols-2">
           <div><dt className="font-semibold">Skills taught</dt><dd className="text-sm">{batch.skills}</dd></div>
           <div><dt className="font-semibold">Training provider</dt><dd className="text-sm">{batch.provider}</dd></div>
+          <TrainingAdmissionRows admission={batch.admission} />
           <div>
             <dt className="font-semibold">Training venue</dt>
             <dd className="text-sm">
@@ -88,6 +90,12 @@ function TrainingBatch({ id, traineeId }: { id: number; traineeId: number }) {
             </p>
           ) : !registrationOpen ? (
             <p className="text-sm text-slate-600">{batch.status === 'PLANNED' ? 'Registration has not opened yet.' : 'Registration is closed.'}</p>
+          ) : !meetsEducation ? (
+            <p className="text-sm text-amber-900">{educationEligibility === 'BELOW_MINIMUM'
+              ? `This training requires at least ${batch.admission?.minimumEducationLevel}.`
+              : 'Add your education level to check whether you qualify.'}{' '}
+              <Link className="text-navy underline" to="/trainee/profile">Update education in your profile</Link>
+            </p>
           ) : !consentGranted ? (
             <p className="text-sm">To register, grant data processing consent in{' '}
               <Link className="text-navy underline" to="/trainee/consent">DPDP Privacy &amp; Consent</Link>.

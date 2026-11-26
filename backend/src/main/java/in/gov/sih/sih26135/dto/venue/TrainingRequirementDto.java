@@ -18,7 +18,8 @@ public final class TrainingRequirementDto {
       @Size(max = 1500) String description,
       @Positive long stateId, @Positive long districtId, @NotNull @Positive Long centerId, @Positive int seats,
       @NotNull LocalDate earliestDate, @NotNull LocalDate latestDate,
-      @NotNull LocalTime dailyStartTime, @NotNull LocalTime dailyEndTime) {}
+      @NotNull LocalTime dailyStartTime, @NotNull LocalTime dailyEndTime,
+      @Positive Long minimumEducationLevelId, @Size(max = 1000) String recommendedPrerequisites) {}
 
   public record Apply(
       @NotNull LocalDate startDate, @NotNull LocalDate endDate,
@@ -35,7 +36,7 @@ public final class TrainingRequirementDto {
       Long centerId, String centerName, String centerAddress,
       LocalDate earliestDate, LocalDate latestDate, LocalTime dailyStartTime, LocalTime dailyEndTime,
       String status, boolean acceptingApplications, Long selectedProviderId, String selectedProviderName,
-      LocalDateTime publishedAt, LocalDateTime selectedAt, Long bookingId, String bookingStatus) {}
+      LocalDateTime publishedAt, LocalDateTime selectedAt, Long bookingId, String bookingStatus, TrainingAdmission admission) {}
 
   public record Application(
       long id, long requirementId, String requirementTitle,

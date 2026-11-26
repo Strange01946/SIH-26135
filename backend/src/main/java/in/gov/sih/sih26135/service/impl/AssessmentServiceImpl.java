@@ -30,6 +30,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class AssessmentServiceImpl implements AssessmentService {
 
+  @org.springframework.beans.factory.annotation.Autowired
+  private in.gov.sih.sih26135.service.BatchAssessmentService batchAssessments;
+
   private final AssessmentRepository assessmentRepository;
   private final RefAssessmentTypeRepository refAssessmentTypeRepository;
   private final CourseRepository courseRepository;
@@ -243,6 +246,7 @@ public class AssessmentServiceImpl implements AssessmentService {
     if (request == null) {
       throw new BadRequestException("Assessment update request cannot be null");
     }
+    if (batchAssessments != null) batchAssessments.requireLegacyAssessment(id);
 
     Assessment assessment = assessmentRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("Assessment", "id"));
@@ -314,6 +318,7 @@ public class AssessmentServiceImpl implements AssessmentService {
     if (id == null) {
       throw new BadRequestException("Assessment ID is required");
     }
+    if (batchAssessments != null) batchAssessments.requireLegacyAssessment(id);
     Assessment assessment = assessmentRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("Assessment", "id"));
 

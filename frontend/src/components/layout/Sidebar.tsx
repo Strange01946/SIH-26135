@@ -93,7 +93,8 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Communication Center',
     to: '/communication',
     icon: '✉️',
-    personas: ['SUPER_ADMIN', 'GOVERNMENT_ADMIN', 'ASSESSOR'],
+    personas: ['SUPER_ADMIN', 'GOVERNMENT_ADMIN'],
+    authorities: ['communication.manage', 'survey.manage', 'system.manage'],
   },
   {
     label: 'Governance and diagnostics',

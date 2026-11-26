@@ -7,5 +7,11 @@ import java.util.List;
  */
 public record AssessorRosterResponse(
     AssessorAssessmentSummaryResponse assessment,
-    List<AssessorCandidateRosterItemResponse> candidates
-) {}
+    List<AssessorCandidateRosterItemResponse> candidates,
+    boolean managedBatch,
+    boolean checkedIn
+) {
+  public AssessorRosterResponse(AssessorAssessmentSummaryResponse assessment, List<AssessorCandidateRosterItemResponse> candidates) {
+    this(assessment, candidates, false, true);
+  }
+}

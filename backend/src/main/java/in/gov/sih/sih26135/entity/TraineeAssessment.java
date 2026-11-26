@@ -43,7 +43,7 @@ public class TraineeAssessment {
   @Column(name = "appeared_flag", nullable = false)
   private Boolean appearedFlag = true;
 
-  @Column(name = "assessment_date", nullable = false)
+  @Column(name = "assessment_date")
   private LocalDate assessmentDate;
 
   @Column(name = "evaluator_user_id")

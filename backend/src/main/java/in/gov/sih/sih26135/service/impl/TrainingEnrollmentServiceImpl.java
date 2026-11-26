@@ -23,6 +23,7 @@ import in.gov.sih.sih26135.repository.TrainingBatchRepository;
 import in.gov.sih.sih26135.repository.TrainingEnrollmentRepository;
 import in.gov.sih.sih26135.service.TraineeConsentService;
 import in.gov.sih.sih26135.service.TrainingEnrollmentService;
+import in.gov.sih.sih26135.service.TrainingAdmissionService;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -43,6 +44,7 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
   private final RefTrainingDropoutReasonRepository refTrainingDropoutReasonRepository;
   private final TrainingEnrollmentMapper trainingEnrollmentMapper;
   private final TraineeConsentService traineeConsentService;
+  private final TrainingAdmissionService admissions;
 
   @Autowired
   public TrainingEnrollmentServiceImpl(
@@ -52,7 +54,7 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
       RefEnrollmentStatusRepository refEnrollmentStatusRepository,
       RefTrainingDropoutReasonRepository refTrainingDropoutReasonRepository,
       TrainingEnrollmentMapper trainingEnrollmentMapper,
-      TraineeConsentService traineeConsentService) {
+      TraineeConsentService traineeConsentService, TrainingAdmissionService admissions) {
     this.trainingEnrollmentRepository = trainingEnrollmentRepository;
     this.traineeRepository = traineeRepository;
     this.trainingBatchRepository = trainingBatchRepository;
@@ -60,6 +62,19 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
     this.refTrainingDropoutReasonRepository = refTrainingDropoutReasonRepository;
     this.trainingEnrollmentMapper = trainingEnrollmentMapper;
     this.traineeConsentService = traineeConsentService;
+    this.admissions = admissions;
+  }
+
+  public TrainingEnrollmentServiceImpl(
+      TrainingEnrollmentRepository trainingEnrollmentRepository,
+      TraineeRepository traineeRepository,
+      TrainingBatchRepository trainingBatchRepository,
+      RefEnrollmentStatusRepository refEnrollmentStatusRepository,
+      RefTrainingDropoutReasonRepository refTrainingDropoutReasonRepository,
+      TrainingEnrollmentMapper trainingEnrollmentMapper,
+      TraineeConsentService traineeConsentService) {
+    this(trainingEnrollmentRepository, traineeRepository, trainingBatchRepository, refEnrollmentStatusRepository,
+        refTrainingDropoutReasonRepository, trainingEnrollmentMapper, traineeConsentService, null);
   }
 
   public TrainingEnrollmentServiceImpl(
@@ -283,6 +298,7 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
       throw new IllegalStateException("TraineeConsentService is required for enrollment consent validation");
     }
     traineeConsentService.validateConsent(request.getTraineeId(), "DATA_PROCESSING");
+    if (admissions != null) admissions.requireEligible(batch.getId(), trainee.getId());
 
     Program program = batch.getProgram();
     if (request.getProgramId() != null && !request.getProgramId().equals(program.getId())) {
