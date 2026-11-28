@@ -51,7 +51,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 
@@ -929,7 +928,6 @@ public class DurableDispatchQueueServiceImpl implements DurableDispatchQueueServ
   /**
    * Periodic scheduler that finds due PENDING jobs and stale locked jobs.
    */
-  @Scheduled(fixedDelay = 5000)
   public void processPendingQueueScheduler() {
     if (!isQueueTableAvailable()) {
       return;

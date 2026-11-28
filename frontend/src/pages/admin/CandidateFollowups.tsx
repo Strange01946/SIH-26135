@@ -33,6 +33,7 @@ export function CandidateFollowups({ traineeId }: { traineeId: number }) {
   return (
     <section className="card space-y-4 p-4 sm:p-5" aria-labelledby="candidate-followups-heading">
       <h2 className="section-title" id="candidate-followups-heading">Candidate follow-up surveys</h2>
+      <p className="text-sm text-slate-600">The portal checks for six-month follow-ups using the last attended session and the last completed follow-up. You can also assign a survey manually.</p>
       {followups.isPending ? <LoadingSpinner label="Loading candidate follow-ups" /> : followups.isError ? (
         <ErrorState title="Could not load candidate follow-ups" error={followups.error} onRetry={() => void followups.refetch()} />
       ) : <>

@@ -240,7 +240,10 @@ export function cleanFixtures(id) {
       WHERE s.survey_code='SIH-CAREER-UPDATE' AND t.registration_number IN (${candidates});
     DELETE FROM survey_responses WHERE survey_id=@survey;
     DELETE f FROM followup_tasks f JOIN trainees t USING (trainee_id) JOIN followup_campaigns c USING (followup_campaign_id)
-      WHERE c.campaign_code='SIH-CAREER-FOLLOWUP' AND t.registration_number IN (${candidates});
+    WHERE c.campaign_code LIKE 'SIH-CAREER-%' AND t.registration_number IN (${candidates});
+    DELETE c FROM followup_campaigns c JOIN users u ON u.user_id=c.created_by_user_id
+      LEFT JOIN followup_tasks t USING (followup_campaign_id)
+      WHERE c.campaign_code LIKE 'SIH-CAREER-MANUAL-%' AND u.username IN (${users}) AND t.followup_task_id IS NULL;
     DELETE FROM followup_tasks WHERE followup_campaign_id=@campaign;
     DELETE FROM followup_campaigns WHERE followup_campaign_id=@campaign;
     DELETE FROM surveys WHERE survey_id=@survey;

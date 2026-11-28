@@ -107,6 +107,7 @@ try {
       '--spring.datasource.url=' + jdbcUrl + '&connectionAttributes=sihSmokeRun:' + id,
       '--spring.datasource.hikari.connection-init-sql=' + catalogGuard,
       '--spring.jpa.hibernate.ddl-auto=validate', '--communication.mode=MOCK', '--communication.queue.worker-enabled=false',
+      '--career.followup.automatic-enabled=false',
       '--communication.allow-test-webhook-signatures=false', '--security.jwt.access-token-expiration-ms=' + ttlMs,
       '--server.tomcat.basedir=' + join(workspace, 'tomcat'),
       '--import-pipeline.staging-directory=' + join(workspace, 'imports'),

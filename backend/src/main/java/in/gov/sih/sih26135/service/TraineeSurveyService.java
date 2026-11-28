@@ -35,7 +35,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class TraineeSurveyService {
   private static final String OPEN_ASSIGNMENTS = """
-      SELECT t.followup_task_id, s.survey_id, s.survey_name, s.survey_template_version_id,
+      SELECT t.followup_task_id, s.survey_id, s.survey_template_version_id,
+             CASE WHEN c.campaign_code LIKE 'SIH-CAREER-AUTO-%' THEN c.campaign_name ELSE s.survey_name END AS survey_name,
              LEAST(COALESCE(s.scheduled_end_date, c.scheduled_end_date),
                    COALESCE(c.scheduled_end_date, s.scheduled_end_date)) AS closes_on
       FROM followup_tasks t
@@ -70,16 +71,30 @@ public class TraineeSurveyService {
            AND (s.course_id IS NULL OR s.course_id=en.course_id)
            AND (s.batch_id IS NULL OR s.batch_id=en.batch_id)
          ORDER BY en.actual_completion_date DESC,en.enrollment_id DESC LIMIT 1) AS enrollment_id,
-        COALESCE(c.program_id,c.course_id,s.program_id,s.course_id,s.batch_id) IS NOT NULL AS needs_enrollment
+        COALESCE(c.program_id,c.course_id,s.program_id,s.course_id,s.batch_id) IS NOT NULL AS needs_enrollment,
+        c.campaign_code
       FROM followup_campaigns c JOIN surveys s ON s.survey_id=c.survey_id
       JOIN ref_lifecycle_status cs ON cs.lifecycle_status_id=c.lifecycle_status_id
       JOIN ref_survey_instance_status ss ON ss.survey_instance_status_id=s.survey_instance_status_id
       WHERE c.deleted_at IS NULL AND cs.status_code='ACTIVE' AND s.deleted_at IS NULL AND ss.status_code='OPEN'
+        AND c.campaign_code NOT LIKE 'SIH-CAREER-AUTO-%' AND c.campaign_code NOT LIKE 'SIH-CAREER-MANUAL-%'
         AND c.scheduled_start_date<=CURRENT_DATE AND s.scheduled_start_date<=CURRENT_DATE
         AND (c.scheduled_end_date IS NULL OR c.scheduled_end_date>=CURRENT_DATE)
         AND (s.scheduled_end_date IS NULL OR s.scheduled_end_date>=CURRENT_DATE)
         AND EXISTS (SELECT 1 FROM survey_questions q WHERE q.survey_template_version_id=s.survey_template_version_id)
-        AND NOT EXISTS (SELECT 1 FROM followup_tasks t WHERE t.followup_campaign_id=c.followup_campaign_id AND t.trainee_id=?)
+        AND NOT EXISTS (
+          SELECT 1 FROM followup_tasks t
+          JOIN followup_campaigns tc ON tc.followup_campaign_id=t.followup_campaign_id
+          JOIN ref_followup_status ts ON ts.followup_status_id=t.followup_status_id
+          JOIN ref_lifecycle_status tcs ON tcs.lifecycle_status_id=tc.lifecycle_status_id
+          WHERE t.trainee_id=? AND (
+            (c.campaign_code<>'SIH-CAREER-FOLLOWUP' AND t.followup_campaign_id=c.followup_campaign_id)
+            OR (c.campaign_code='SIH-CAREER-FOLLOWUP' AND tc.campaign_code LIKE 'SIH-CAREER-%'
+              AND COALESCE(t.survey_id,tc.survey_id)=s.survey_id
+              AND t.completed_at IS NULL AND ts.is_open_flag=1 AND tc.deleted_at IS NULL AND tcs.status_code='ACTIVE'
+              AND (tc.scheduled_end_date IS NULL OR tc.scheduled_end_date>=CURRENT_DATE))
+          )
+        )
       """;
 
   private final JdbcTemplate jdbc;
@@ -90,11 +105,12 @@ public class TraineeSurveyService {
   private final SurveyResponseAnswerService answers;
   private final FollowupTaskService tasks;
   private final AnalyticsCacheEvictionService analytics;
+  private final CareerFollowupService careerFollowups;
 
   public TraineeSurveyService(JdbcTemplate jdbc, WorkflowSecurityScopeValidator scope,
       TraineeConsentService consent, FollowupEngagementWorkflowService followups,
       SurveyResponseService responses, SurveyResponseAnswerService answers,
-      FollowupTaskService tasks, AnalyticsCacheEvictionService analytics) {
+      FollowupTaskService tasks, AnalyticsCacheEvictionService analytics, CareerFollowupService careerFollowups) {
     this.jdbc = jdbc;
     this.scope = scope;
     this.consent = consent;
@@ -103,6 +119,7 @@ public class TraineeSurveyService {
     this.answers = answers;
     this.tasks = tasks;
     this.analytics = analytics;
+    this.careerFollowups = careerFollowups;
   }
 
   public TraineeSurvey.Overview getOverview() {
@@ -173,7 +190,9 @@ public class TraineeSurveyService {
     scope.validateTraineeScope(traineeId);
     boolean granted = consent.hasActiveConsent(traineeId, CONSENT_CODE);
     var assignments = jdbc.query("""
-        SELECT t.followup_task_id,COALESCE(s.survey_name,c.campaign_name),t.scheduled_date,st.status_name
+        SELECT t.followup_task_id,
+          CASE WHEN c.campaign_code LIKE 'SIH-CAREER-AUTO-%' THEN c.campaign_name ELSE COALESCE(s.survey_name,c.campaign_name) END,
+          t.scheduled_date,st.status_name
         FROM followup_tasks t JOIN followup_campaigns c ON c.followup_campaign_id=t.followup_campaign_id
         LEFT JOIN surveys s ON s.survey_id=COALESCE(t.survey_id,c.survey_id)
         JOIN ref_followup_status st ON st.followup_status_id=t.followup_status_id
@@ -198,16 +217,20 @@ public class TraineeSurveyService {
     consent.validateConsent(traineeId, CONSENT_CODE);
     AssignableCampaign campaign = campaigns(traineeId, request.campaignId()).stream().findFirst()
         .orElseThrow(() -> new ConflictException("This campaign is unavailable or already assigned.", "SURVEY_CAMPAIGN_UNAVAILABLE"));
-    LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
+    LocalDate today = CareerFollowupService.today();
     LocalDate closesOn = campaign.summary().closesOn();
     if (request.scheduledOn().isBefore(today) || (closesOn != null && request.scheduledOn().isAfter(closesOn))) {
       throw new BadRequestException("Choose a date within the open campaign window.", "SURVEY_SCHEDULE_OUTSIDE_WINDOW");
     }
     Long pending = jdbc.queryForObject("SELECT followup_status_id FROM ref_followup_status WHERE status_code='PENDING'", Long.class);
-    var input = new CreateFollowupTaskRequest(campaign.summary().id(), traineeId, request.scheduledOn(), pending);
+    Long staffUserId = scope.resolveAuthenticatedUserId();
+    long campaignId = CareerFollowupService.MANUAL_CAMPAIGN.equals(campaign.code())
+        ? careerFollowups.manualOccurrence(campaign.surveyId(), request.scheduledOn(), closesOn, staffUserId)
+        : campaign.summary().id();
+    var input = new CreateFollowupTaskRequest(campaignId, traineeId, request.scheduledOn(), pending);
     input.setSurveyId(campaign.surveyId());
     input.setEnrollmentId(campaign.enrollmentId());
-    input.setAssignedUserId(scope.resolveAuthenticatedUserId());
+    input.setAssignedUserId(staffUserId);
     var task = tasks.createFollowupTask(input);
     analytics.evictOnFollowupOrSurveySubmitted(this);
     return new TraineeSurvey.Assignment(task.getId(), campaign.summary().survey(), closesOn);
@@ -218,11 +241,12 @@ public class TraineeSurveyService {
         ) available WHERE (enrollment_id IS NOT NULL OR NOT needs_enrollment)
           AND (? IS NULL OR followup_campaign_id=?) ORDER BY campaign_name,followup_campaign_id LIMIT 100
         """, (rs, row) -> new AssignableCampaign(new TraineeSurvey.Campaign(rs.getLong(1), rs.getString(2),
-            rs.getString(4), rs.getObject(5, LocalDate.class)), rs.getLong(3), rs.getObject(6, Long.class)),
+            rs.getString(4), rs.getObject(5, LocalDate.class)), rs.getLong(3), rs.getObject(6, Long.class),
+            rs.getString("campaign_code")),
         traineeId, traineeId, campaignId, campaignId);
   }
 
-  private record AssignableCampaign(TraineeSurvey.Campaign summary, long surveyId, Long enrollmentId) {}
+  private record AssignableCampaign(TraineeSurvey.Campaign summary, long surveyId, Long enrollmentId, String code) {}
 
   private TraineeSurvey.SubmissionDetail submission(long traineeId, long id) {
     var submission = jdbc.query("""
