@@ -3,8 +3,10 @@ package in.gov.sih.sih26135.security;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -525,16 +527,7 @@ public class DashboardTenancyAndRoleAuthorizationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-        "/api/v1/dashboards/overview",
         "/api/v1/dashboards/national",
-        "/api/v1/dashboards/kpis",
-        "/api/v1/dashboards/pipeline-funnel",
-        "/api/v1/dashboards/scheme-matrix",
-        "/api/v1/dashboards/geography",
-        "/api/v1/dashboards/providers",
-        "/api/v1/dashboards/courses",
-        "/api/v1/dashboards/employers",
-        "/api/v1/dashboards/economic-outcomes",
         "/api/v1/dashboards/retention",
         "/api/v1/dashboards/attrition",
         "/api/v1/dashboards/skill-gaps",
@@ -542,7 +535,7 @@ public class DashboardTenancyAndRoleAuthorizationTest {
         "/api/v1/dashboards/followups",
         "/api/v1/dashboards/surveys"
     })
-    @DisplayName("State A admin strictly FORBIDDEN from all 16 nationwide endpoints -> 403")
+    @DisplayName("State A admin is forbidden from nationwide-only reports")
     void testStateAAdmin_forbiddenFromNationwideEndpoints(String path) throws Exception {
       mockMvc.perform(get(path)
               .header(HttpHeaders.AUTHORIZATION, tokenStateAAdmin)
@@ -552,6 +545,15 @@ public class DashboardTenancyAndRoleAuthorizationTest {
           .andExpect(jsonPath("$.code").value("FORBIDDEN"))
           .andExpect(jsonPath("$.message").value("Access denied"))
           .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    void testStateAdminUsesAssignedStateOnGovernmentMis() throws Exception {
+      mockMvc.perform(get("/api/v1/dashboards/geography")
+              .header(HttpHeaders.AUTHORIZATION, tokenStateAAdmin))
+          .andExpect(status().isOk());
+      verify(mockGeographicService).getNationalGeographicOverview(argThat(criteria ->
+          FIXTURE_STATE_A_ID.equals(criteria.getStateId()) && criteria.getDistrictId() == null));
     }
   }
 

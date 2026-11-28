@@ -1,11 +1,15 @@
+import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { claimBatchAssessment, getOpenBatchAssessments } from '@/api/batchAssessmentApi';
+import { claimBatchAssessment, getOpenBatchAssessments, getPublishedBatch } from '@/api/batchAssessmentApi';
 import { BatchAssessmentSummary } from '@/components/assessment/BatchAssessmentSummary';
+import { TrainingAttendance } from '@/components/assessment/TrainingAttendance';
+import { Modal } from '@/components/common/Modal';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 
 export function OpenBatchAssessments() {
+  const [attendanceId, setAttendanceId] = useState<number>();
   const navigate = useNavigate();
   const queue = useQuery({ queryKey: ['open-batch-assessments'], queryFn: getOpenBatchAssessments, refetchInterval: 15_000 });
   const claim = useMutation({
@@ -24,6 +28,7 @@ export function OpenBatchAssessments() {
       <p className="text-sm">{item.provider} · {item.candidates} registered candidates</p>
       <p className="text-sm">Training venue: {[item.trainingVenue, item.district, item.state].filter(Boolean).join(', ')}</p>
       {item.skills && <p className="text-sm">Skills taught: {item.skills}</p>}
+      <button type="button" className="btn-outline" onClick={() => setAttendanceId(item.assessmentId)}>Review training attendance</button>
       <form className="space-y-2" onSubmit={(event) => {
         event.preventDefault();
         const form = new FormData(event.currentTarget);
@@ -38,5 +43,25 @@ export function OpenBatchAssessments() {
         <button className="btn-primary" type="submit" disabled={claim.isPending}>Claim assessment</button>
       </form>
     </article>)}</div>
+    {attendanceId != null && queue.data?.some(item => item.assessmentId === attendanceId) &&
+      <AttendanceReview key={attendanceId} id={attendanceId} onClose={() => setAttendanceId(undefined)} />}
   </section>;
+}
+
+function AttendanceReview({ id, onClose }: { id: number; onClose: () => void }) {
+  const review = useQuery({ queryKey: ['open-batch-assessment-attendance', id], queryFn: () => getPublishedBatch(id), retry: false });
+  return <Modal open onClose={onClose} title="Locked training attendance">
+    <div className="space-y-3 p-5">
+      {review.isPending ? <LoadingSpinner label="Loading saved attendance" /> : review.isError ? (
+        <ErrorState error={review.error} title="Could not load saved attendance" onRetry={() => void review.refetch()} />
+      ) : (
+        <ul className="divide-y divide-slate-200">
+          {review.data.candidates.map(candidate => <li key={candidate.traineeId} className="space-y-1 py-3 text-sm">
+            <p><strong>{candidate.name}</strong> · {candidate.registrationNumber}</p>
+            <TrainingAttendance candidate={candidate} />
+          </li>)}
+        </ul>
+      )}
+    </div>
+  </Modal>;
 }

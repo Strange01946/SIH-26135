@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { getMisSnapshot, type PipelineStage } from '@/api/misApi';
+import { getMisComparisons, getMisOverview, type PipelineStage } from '@/api/misApi';
 import { apiGet } from '@/api/client';
 import { TrainingFunnel } from '@/pages/analytics/MisOverview';
 import { MisTable, type TableColumn } from '@/pages/analytics/MisUi';
@@ -8,17 +8,17 @@ import { MisTable, type TableColumn } from '@/pages/analytics/MisUi';
 vi.mock('@/api/client', () => ({ apiGet: vi.fn() }));
 
 describe('Government MIS', () => {
-  it('requests Q01–Q11 with the same cohort and abort signal', async () => {
+  it.each([
+    [getMisOverview, ['kpis', 'pipeline-funnel', 'geography']],
+    [getMisComparisons, ['scheme-matrix', 'providers', 'courses', 'employers', 'economic-outcomes', 'mis/provider-quality']],
+  ] as const)('requests only its own reports with the same cohort and abort signal', async (getReports, endpoints) => {
     const filters = { fiscalYear: 'FY2026-27', schemeId: 1, sectorId: 2, stateId: 3, districtId: 4, gender: 'FEMALE' };
     const { signal } = new AbortController();
-    vi.mocked(apiGet).mockResolvedValue({ items: [] });
+    vi.mocked(apiGet).mockReset().mockResolvedValue({ items: [] });
 
-    await getMisSnapshot(filters, signal);
+    await getReports(filters, signal);
 
-    expect(vi.mocked(apiGet).mock.calls.map(([path]) => path.split('/dashboards/')[1])).toEqual([
-      'kpis', 'pipeline-funnel', 'scheme-matrix', 'providers', 'courses',
-      'geography', 'employers', 'economic-outcomes', 'mis/provider-quality',
-    ]);
+    expect(vi.mocked(apiGet).mock.calls.map(([path]) => path.split('/dashboards/')[1])).toEqual(endpoints);
     for (const [path, config] of vi.mocked(apiGet).mock.calls) {
       const executive = path.endsWith('/kpis') || path.endsWith('/pipeline-funnel');
       expect(config?.params).toEqual(executive ? { ...filters, executive: true } : filters);
@@ -41,7 +41,7 @@ describe('Government MIS', () => {
     expect(assessed).toHaveTextContent('0');
     expect(container.querySelectorAll('[style*="width"]')).toHaveLength(1);
     fireEvent.click(within(assessed).getByRole('button'));
-    expect(screen.getByText('Candidates who appeared for an assessment linked to a qualifying enrollment.')).toBeInTheDocument();
+    expect(screen.getByText('Candidates who appeared for a held assessment or have an issued certificate linked to a qualifying enrollment.')).toBeInTheDocument();
   });
 
   it('ranks released values and assigns no position from hidden values', () => {

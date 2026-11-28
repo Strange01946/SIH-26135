@@ -87,7 +87,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Government MIS',
     to: '/analytics',
     icon: '📊',
-    personas: ['SUPER_ADMIN', 'GOVERNMENT_ADMIN', 'ANALYST'],
+    personas: ['SUPER_ADMIN', 'GOVERNMENT_ADMIN', 'ANALYST', 'STATE_ADMIN', 'DISTRICT_OFFICER'],
   },
   {
     label: 'Communication Center',

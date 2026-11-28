@@ -688,7 +688,7 @@ public class GlobalExceptionHandler {
       "This training batch is already closed.",
       "This action requires the current approved booking.",
       "At least one requested session overlaps an existing reservation or center closure.",
-      "Enter a future start time and a later end time for each session.",
+      "Enter a start time in the current minute or later and a future end time after it.",
       "Sessions in the same request cannot overlap.",
       "The training provider is unavailable for venue booking.",
       "Select an active course and its linked program.",
@@ -746,6 +746,13 @@ public class GlobalExceptionHandler {
       case "UNAUTHORIZED" -> "Full authentication is required to access this resource";
       case "ACCESS_DENIED" -> "Access is denied";
       case "CONSENT_REQUIRED" -> "Trainee consent is required to perform this action";
+      case "INVALID_EMPLOYMENT_ENROLLMENT" -> "Choose training enrollments you completed by the joining date.";
+      case "PRIMARY_EMPLOYMENT_TRAINING_REQUIRED" -> "Choose a primary training from your selections.";
+      case "DUPLICATE_EMPLOYMENT_TRAINING" -> "Select each training enrollment once.";
+      case "EMPLOYMENT_WAGE_DATES_CONFLICT" -> "The employment dates must include the existing wage observations.";
+      case "STARTING_PAY_ALREADY_RECORDED" -> "Starting pay was recorded by another source.";
+      case "ENROLLMENT_NUMBER_REQUIRED" -> "Enter the candidate's training enrollment number to identify this hire.";
+      case "JOIN_BEFORE_JOB_POSTING" -> "Joining date must be on or after the posting date.";
       case "CONSENT_WITHDRAWN" -> "Trainee communication consent has been withdrawn or revoked";
       case "CONSENT_NOT_GRANTED" -> "Trainee has not granted communication consent for this channel";
       case "RESOURCE_NOT_FOUND" -> "The requested resource was not found";

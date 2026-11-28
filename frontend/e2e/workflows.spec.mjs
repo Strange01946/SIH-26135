@@ -25,19 +25,75 @@ test('sign-in uses backend accounts with the retired demo controls removed', asy
   await expect(page.getByRole('button', { name: 'Evaluator tools' })).toHaveCount(0);
 });
 
-test('admin signs in and the district KPI withholds a small cohort', async ({ page, smoke }) => {
+test('admin sees the exact enrollment count for a small district cohort', async ({ page, smoke }) => {
   const { run } = smoke;
+  const exact = Number(sql(`SELECT COUNT(*) FROM vw_enrollment_outcome_fact WHERE trainee_district_id=${run.district};`));
+  expect(exact).toBeGreaterThan(0);
+  const reports = new Set();
+  page.on('request', request => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith('/api/v1/dashboards/')) reports.add(path);
+  });
   const [response] = await Promise.all([smoke.waitApi('GET', kpis),
     smoke.signIn('admin', `/analytics?stateId=${run.state}&districtId=${run.district}`)]);
   const data = await expectJson(response, 'GET', kpis, 200, ['executiveKpis']);
   expect(new URL(response.url()).searchParams.get('districtId')).toBe(String(run.district));
   await expect(page.getByRole('heading', { name: 'Government MIS & executive analytics' })).toBeVisible();
   const enrolled = data.executiveKpis.kpis.find(({ key }) => key === 'enrolled');
-  expect(enrolled.current.availability).toBe('SUPPRESSED');
-  expect(enrolled.current.value ?? null).toBeNull();
+  expect(enrolled.current).toEqual({ availability: 'RELEASED', value: exact });
   const card = page.getByRole('listitem').filter({ has: page.getByRole('heading', { name: 'Total enrolled', exact: true }) });
-  await expect(card.getByText('Suppressed', { exact: true })).toBeVisible();
+  await expect(card.getByText(String(exact), { exact: true })).toBeVisible();
+  await expect(page.getByText('Suppressed', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'State and district outcomes' })).toBeVisible();
+  expect([...reports].sort()).toEqual(['geography', 'kpis', 'mis/filters', 'pipeline-funnel']
+    .map(path => '/api/v1/dashboards/' + path));
+
+  const fiscalYear = sql(`SELECT CONCAT('FY',YEAR(DATE_SUB(enrollment_date,INTERVAL 3 MONTH)),'-',
+    RIGHT(YEAR(DATE_SUB(enrollment_date,INTERVAL 3 MONTH))+1,2)) FROM training_enrollments
+    WHERE enrollment_number='${run.id}-assess-enroll';`);
+  const [kpiResponse, funnelResponse, mapResponse] = await Promise.all([
+    smoke.waitApi('GET', kpis),
+    smoke.waitApi('GET', '/api/v1/dashboards/pipeline-funnel'),
+    smoke.waitApi('GET', '/api/v1/dashboards/geography'),
+    page.getByLabel('Financial year').selectOption(fiscalYear),
+  ]);
+  for (const report of [kpiResponse, funnelResponse, mapResponse]) {
+    expect(report.status()).toBe(200);
+    const filters = new URL(report.url()).searchParams;
+    expect(filters.get('fiscalYear')).toBe(fiscalYear);
+    expect(filters.get('stateId')).toBe(String(run.state));
+    expect(filters.get('districtId')).toBe(String(run.district));
+  }
+  await expect(card.getByText('Comparison unavailable')).toBeVisible();
+});
+
+test('executive retention excludes pre-training employment and shows the rate for one eligible trainee', async ({ page, smoke }) => {
+  const { run } = smoke;
+  const [id, enrollmentDate, startDate, completionDate, status] = sql(`
+    SELECT enrollment_id,enrollment_date,start_date,actual_completion_date,enrollment_status_id
+    FROM training_enrollments WHERE enrollment_number='${run.id}-assess-enroll';
+  `).split('\t');
+  const retentionCard = page.getByRole('listitem').filter({ has: page.getByRole('heading', { name: '6-month retention rate' }) });
+  const destination = `/analytics?view=overview&stateId=${run.state}&districtId=${run.district}`;
+
+  try {
+    sql(`UPDATE training_enrollments SET actual_completion_date=CURDATE()-INTERVAL 1 DAY,
+      enrollment_status_id=3 WHERE enrollment_id=${id} AND trainee_id=${run.trainee};`);
+    await smoke.signIn('admin', destination);
+    await expect(retentionCard.getByText('No data', { exact: true })).toBeVisible();
+    sql(`UPDATE training_enrollments SET enrollment_date=CURDATE()-INTERVAL 10 MONTH,
+      start_date=CURDATE()-INTERVAL 10 MONTH,actual_completion_date=CURDATE()-INTERVAL 9 MONTH,
+      enrollment_status_id=3 WHERE enrollment_id=${id} AND trainee_id=${run.trainee};`);
+    const [response] = await Promise.all([smoke.waitApi('GET', kpis), page.reload()]);
+    const result = await expectJson(response, 'GET', kpis, 200, ['executiveKpis']);
+    const retention = result.executiveKpis.kpis.find(({ key }) => key === 'retention6m');
+    expect(retention.current).toEqual({ availability: 'RELEASED', value: 100 });
+    await expect(retentionCard.getByText('100%', { exact: true })).toBeVisible();
+  } finally {
+    sql(`UPDATE training_enrollments SET enrollment_date='${enrollmentDate}',start_date='${startDate}',
+      actual_completion_date=${completionDate === 'NULL' ? 'NULL' : `'${completionDate}'`},
+      enrollment_status_id=${status} WHERE enrollment_id=${id} AND trainee_id=${run.trainee};`);
+  }
 });
 
 test('provider enrolls a trainee in a batch created through an approved venue', async ({ page, request, smoke }) => {
@@ -85,7 +141,7 @@ test('provider enrolls a trainee in a batch created through an approved venue', 
     .toBe([details.courseId, details.programId].join('\t'));
 });
 
-test('assessor validates marks, finalizes and downloads the issued certificate', async ({ page, smoke }) => {
+test('assessor issues a certificate and the executive reports reflect it immediately', async ({ page, request, smoke }) => {
   const { run } = smoke;
   const base = `/api/v1/assessor/assessments/${run.assessment}`;
   const [roster] = await Promise.all([smoke.waitApi('GET', base + '/roster'),
@@ -99,6 +155,23 @@ test('assessor validates marks, finalizes and downloads the issued certificate',
   await score(2).fill('15');
   await expect(finalize).toBeDisabled();
   await score(0).fill('25');
+  const analyst = await request.post('/api/v1/auth/login', {
+    data: { usernameOrEmail: run.users.admin, password: run.password },
+  });
+  expect(analyst.status()).toBe(200);
+  const headers = auth((await analyst.json()).data.accessToken);
+  const params = { stateId: run.state, districtId: run.district };
+  const dashboard = async (path, filters = params) => {
+    const report = await request.get(path, { headers, params: filters });
+    expect(report.status(), path).toBe(200);
+    return (await report.json()).data;
+  };
+  const mapPath = '/api/v1/dashboards/geography';
+  const statePath = `/api/v1/dashboards/states/${run.state}`;
+  const alreadyCertified = Number(sql(`SELECT COUNT(*) FROM certifications
+    WHERE trainee_id=${run.trainee} AND certificate_status_id=1 AND deleted_at IS NULL;`)) > 0;
+  const before = (await dashboard(mapPath)).stateSummaries[0];
+  await dashboard(statePath);
   await finalize.click();
   const [response] = await Promise.all([smoke.waitApi('POST', base + '/finalize'),
     page.getByRole('button', { name: 'Confirm & Finalize' }).click()]);
@@ -107,12 +180,37 @@ test('assessor validates marks, finalizes and downloads the issued certificate',
   const result = data.results.find(({ traineeId }) => traineeId === run.trainee);
   expect(result.totalScore).toBe(85);
   expect(result.certificateId).toBeGreaterThan(0);
+  expect(sql(`SELECT issuing_body FROM certifications WHERE certification_id=${result.certificateId};`))
+    .toBe(run.users.assessor);
+  const [headline, geography, state] = await Promise.all([
+    dashboard(kpis, { ...params, executive: true }), dashboard(mapPath), dashboard(statePath),
+  ]);
+  const certified = before.certifiedCount + (alreadyCertified ? 0 : 1);
+  expect(headline.executiveKpis.kpis.find(row => row.key === 'certified').current.value).toBe(certified);
+  const pct = Number((certified / before.traineeCount * 100).toFixed(2));
+  expect(geography.stateSummaries[0]).toMatchObject({ certifiedCount: certified, certificationRatePct: pct });
+  expect(state.districts[0]).toMatchObject({ districtId: run.district, certifiedCount: certified, certificationRatePct: pct });
   const [download, pdf] = await Promise.all([page.waitForEvent('download'),
     smoke.waitApi('GET', `/api/v1/certifications/${result.certificateId}/download`),
     page.getByTitle('Download PDF Certificate').click()]);
   expect(pdf.status()).toBe(200);
   expect(pdf.headers()['content-type']).toContain('application/pdf');
-  expect((await readFile(await download.path())).subarray(0, 5).toString()).toBe('%PDF-');
+  const certificatePdf = (await readFile(await download.path())).toString('latin1');
+  expect(certificatePdf).toMatch(/^%PDF-/);
+  expect(certificatePdf).toContain('Credential Status: ISSUED');
+  expect(certificatePdf).not.toContain('PENDING VERIFICATION');
+
+  // Recreate a finalized assessment whose certificate was deferred by the old workflow.
+  sql(`DELETE FROM certifications WHERE certification_id=${result.certificateId} AND enrollment_id=${result.enrollmentId};`);
+  await page.reload();
+  const issue = page.getByRole('button', { name: 'Issue Pending Certificates' });
+  await expect(page.getByText('Pending Issuance', { exact: true })).toBeVisible();
+  const [retry] = await Promise.all([smoke.waitApi('POST', base + '/issue-pending'), issue.click()]);
+  expect((await retry.json()).data).toMatchObject({ isFinalized: true, certificatesIssued: 1 });
+  expect(retry.status()).toBe(200);
+  await expect(page.getByTitle('Download PDF Certificate')).toBeVisible();
+  await expect(issue).toHaveCount(0);
+  expect(sql(`SELECT COUNT(*) FROM certifications WHERE enrollment_id=${result.enrollmentId};`)).toBe('1');
 });
 
 test('communication center is restricted to authorized administrators', async ({ page, request, smoke }) => {

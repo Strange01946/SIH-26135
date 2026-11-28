@@ -2,7 +2,6 @@ package in.gov.sih.sih26135.service;
 
 import in.gov.sih.sih26135.dto.request.AnalyticsFilterCriteria;
 import in.gov.sih.sih26135.repository.analytics.util.AnalyticsQueryFilterBuilder;
-import in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService;
 import in.gov.sih.sih26135.util.AnalyticsCalculationUtils;
 import in.gov.sih.sih26135.util.OperationalMetricsMath;
 import java.math.BigDecimal;
@@ -32,28 +31,28 @@ public class ExecutiveMisService {
   public record ProviderQuality(long providerId, Measure scorePct) {}
   public record KpiComparison(List<Kpi> kpis, String previousFinancialYear) {}
 
-  private record Cohort(long trainees, long enrollments, long certPeople, long certificates,
-                        long placedPeople, long joinedPlacements, long centers, long assessed,
-                        long certifiedAfterAssessment, long joinedAfterCertification, long retainedAfterPlacement,
+  private record Cohort(long trainees, long enrollments, long certifiedTrainees, long placedEnrollments, long centers, long assessed,
+                        long placedTrainees, long retainedAfterPlacement,
                         long eligibleForRetention, long retained) {}
 
   private final JdbcTemplate jdbc;
-  private final AnalyticsPrivacySuppressionService privacy;
 
-  public ExecutiveMisService(JdbcTemplate jdbc, AnalyticsPrivacySuppressionService privacy) {
+  public ExecutiveMisService(JdbcTemplate jdbc) {
     this.jdbc = jdbc;
-    this.privacy = privacy;
   }
 
-  public FilterOptions filterOptions() {
+  public FilterOptions filterOptions(AnalyticsFilterCriteria criteria) {
+    Long stateId = criteria.getStateId();
+    Long districtId = criteria.getDistrictId();
     var years = new java.util.TreeSet<Integer>(java.util.Comparator.reverseOrder());
     years.add(fiscalStart(LocalDate.now()));
     years.add(fiscalStart(LocalDate.now()) - 1);
     years.addAll(jdbc.queryForList("""
         SELECT DISTINCT YEAR(DATE_SUB(enrollment_date, INTERVAL 3 MONTH))
-        FROM training_enrollments WHERE deleted_at IS NULL AND enrollment_date >= '2000-04-01'
+        FROM vw_enrollment_outcome_fact WHERE enrollment_date >= '2000-04-01'
+          AND (? IS NULL OR trainee_state_id = ?) AND (? IS NULL OR trainee_district_id = ?)
           AND enrollment_date < '2100-04-01'
-        """, Integer.class));
+        """, Integer.class, stateId, stateId, districtId, districtId));
     return new FilterOptions(years.stream().map(ExecutiveMisService::yearName).toList(), jdbc.query("""
         SELECT s.scheme_id, s.scheme_name, CASE ot.type_code
                  WHEN 'CENTRAL_MINISTRY' THEN 'CENTRAL'
@@ -66,15 +65,15 @@ public class ExecutiveMisService {
         """, (rs, row) -> new SchemeOption(rs.getLong(1), rs.getString(2), rs.getString(3))),
         jdbc.query("SELECT sector_id, sector_name FROM sectors ORDER BY sector_name",
             (rs, row) -> new Identifier(rs.getLong(1), rs.getString(2))),
-        jdbc.query("SELECT s.state_id, s.state_code, s.state_name " + ActiveGeography.STATES + " ORDER BY s.state_name",
-            (rs, row) -> new StateOption(rs.getLong(1), rs.getString(2), rs.getString(3))),
-        jdbc.query("SELECT d.district_id, d.state_id, d.district_name " + ActiveGeography.DISTRICTS + " ORDER BY d.district_name",
-            (rs, row) -> new DistrictOption(rs.getLong(1), rs.getLong(2), rs.getString(3))),
+        jdbc.query("SELECT s.state_id, s.state_code, s.state_name " + ActiveGeography.STATES + " AND (? IS NULL OR s.state_id = ?) ORDER BY s.state_name",
+            (rs, row) -> new StateOption(rs.getLong(1), rs.getString(2), rs.getString(3)), stateId, stateId),
+        jdbc.query("SELECT d.district_id, d.state_id, d.district_name " + ActiveGeography.DISTRICTS + " AND (? IS NULL OR d.state_id = ?) AND (? IS NULL OR d.district_id = ?) ORDER BY d.district_name",
+            (rs, row) -> new DistrictOption(rs.getLong(1), rs.getLong(2), rs.getString(3)), stateId, stateId, districtId, districtId),
         jdbc.query("""
             SELECT gender_code, gender_name FROM ref_gender
             WHERE gender_code IN ('MALE', 'FEMALE', 'TRANSGENDER', 'OTHER', 'PREFER_NOT_TO_SAY') ORDER BY sort_order
             """, (rs, row) -> new GenderOption(rs.getString(1), rs.getString(2))),
-        false, AnalyticsPrivacySuppressionService.MIN_ANONYMITY_THRESHOLD);
+        false, 0);
   }
 
   public KpiComparison compareKpis(AnalyticsFilterCriteria criteria) {
@@ -123,26 +122,30 @@ public class ExecutiveMisService {
     return jdbc.queryForObject("""
         WITH cohort AS (
           SELECT v.enrollment_id, v.trainee_id, v.center_id, v.has_issued_certificate_flag AS certified,
-                 v.has_joined_placement_flag AS placed, v.joined_placement_count,
-                 EXISTS (SELECT 1 FROM trainee_assessments ta WHERE ta.enrollment_id = v.enrollment_id
-                         AND ta.trainee_id = v.trainee_id AND ta.appeared_flag = 1) AS assessed
-          FROM vw_enrollment_outcome_fact v WHERE 1 = 1
+                 v.has_joined_placement_flag AS placed,
+                 COALESCE(v.actual_completion_date, IF(v.is_completed_flag = 1, b.end_date, NULL)) AS completed_on,
+                 EXISTS (SELECT 1 FROM trainee_assessments ta JOIN assessments a USING (assessment_id)
+                         LEFT JOIN batch_assessment_publications pub USING (assessment_id)
+                         WHERE ta.enrollment_id = v.enrollment_id AND ta.trainee_id = v.trainee_id
+                           AND ta.appeared_flag = 1 AND a.deleted_at IS NULL
+                           AND (pub.completed_at IS NOT NULL OR (pub.assessment_id IS NULL
+                             AND COALESCE(ta.assessment_date, a.assessment_date) <= CURDATE()))) AS assessed
+          FROM vw_enrollment_outcome_fact v LEFT JOIN training_batches b ON b.batch_id = v.batch_id WHERE 1 = 1
         """ + filter.getSqlFragment() + """
         ), retention AS (
           SELECT e.enrollment_id, MAX(r.retained_6m_flag) AS retained
-          FROM cohort v JOIN vw_employment_fact e ON e.enrollment_id = v.enrollment_id
+          FROM cohort v JOIN vw_employment_fact e ON e.enrollment_id = v.enrollment_id AND e.trainee_id = v.trainee_id
           JOIN vw_employment_retention_fact r ON r.employment_id = e.employment_id
-          WHERE e.is_wage_employment = 1 AND r.retained_6m_flag IS NOT NULL
+          WHERE e.is_wage_employment = 1 AND e.start_date >= v.completed_on AND r.retained_6m_flag IS NOT NULL
           GROUP BY e.enrollment_id
         )
         SELECT COUNT(DISTINCT v.trainee_id), COUNT(*),
-          COUNT(DISTINCT IF(v.certified, v.trainee_id, NULL)), COALESCE(SUM(v.certified), 0),
-          COUNT(DISTINCT IF(v.placed, v.trainee_id, NULL)), COALESCE(SUM(v.joined_placement_count), 0),
+          COUNT(DISTINCT IF(v.certified, v.trainee_id, NULL)),
+          COALESCE(SUM(v.placed), 0),
           COUNT(DISTINCT IF(st.status_code = 'ACTIVE' AND c.deleted_at IS NULL, c.center_id, NULL)),
-          COUNT(DISTINCT IF(v.assessed, v.trainee_id, NULL)),
-          COUNT(DISTINCT IF(v.assessed AND v.certified, v.trainee_id, NULL)),
-          COUNT(DISTINCT IF(v.assessed AND v.certified AND v.placed, v.trainee_id, NULL)),
-          COUNT(DISTINCT IF(v.assessed AND v.certified AND v.placed AND r.retained = 1, v.trainee_id, NULL)),
+          COUNT(DISTINCT IF(v.assessed OR v.certified, v.trainee_id, NULL)),
+          COUNT(DISTINCT IF(v.placed, v.trainee_id, NULL)),
+          COUNT(DISTINCT IF(v.placed AND r.retained = 1, v.trainee_id, NULL)),
           COUNT(DISTINCT IF(r.retained IS NOT NULL, v.trainee_id, NULL)),
           COUNT(DISTINCT IF(r.retained = 1, v.trainee_id, NULL))
         FROM cohort v
@@ -150,38 +153,24 @@ public class ExecutiveMisService {
         LEFT JOIN ref_lifecycle_status st ON st.lifecycle_status_id = c.lifecycle_status_id
         LEFT JOIN retention r ON r.enrollment_id = v.enrollment_id
         """, (rs, row) -> new Cohort(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4),
-            rs.getLong(5), rs.getLong(6), rs.getLong(7), rs.getLong(8), rs.getLong(9), rs.getLong(10),
-            rs.getLong(11), rs.getLong(12), rs.getLong(13)), filter.getParameters().toArray());
+            rs.getLong(5), rs.getLong(6), rs.getLong(7), rs.getLong(8), rs.getLong(9), rs.getLong(10)),
+        filter.getParameters().toArray());
   }
 
   private List<Measure> measures(Cohort c) {
-    Measure retention = c.eligibleForRetention() == 0 ? unavailable(Availability.NO_DATA)
-        : privacy.isSparse(c.eligibleForRetention()) || privacy.isSparse(c.retained())
-            || privacy.isSparse(c.eligibleForRetention() - c.retained())
-            ? unavailable(Availability.SUPPRESSED)
-            : released(AnalyticsCalculationUtils.calculatePercentage(c.retained(), c.eligibleForRetention()));
-    return List.of(count(c.enrollments(), c.trainees()), count(c.certificates(), c.certPeople()),
-        count(c.joinedPlacements(), c.placedPeople()), retention, count(c.centers(), c.trainees()));
+    Measure retention = released(AnalyticsCalculationUtils.calculatePercentage(c.retained(), c.eligibleForRetention()));
+    return List.of(count(c.enrollments()), count(c.certifiedTrainees()), count(c.placedEnrollments()), retention, count(c.centers()));
   }
 
   private List<Stage> pipeline(AnalyticsFilterCriteria criteria, Cohort c) {
     Long registrations = criteria.hasOrganizationalFilter() ? null : registrationCohort(criteria);
     List<String> keys = List.of("registered", "enrolled", "assessed", "certified", "placed", "retained");
-    Long[] values = {registrations, c.trainees(), c.assessed(), c.certifiedAfterAssessment(),
-        c.joinedAfterCertification(), c.retainedAfterPlacement()};
-    // Adjacent disclosed counts would reveal an exact drop-off. Withhold the funnel if any
-    // stage or adjacent drop-off fails the same threshold.
-    boolean suppress = false;
-    for (int i = 0; i < values.length; i++) {
-      suppress |= privacy.isSparse(values[i]);
-      if (i > 0 && values[i - 1] != null) {
-        suppress |= privacy.isSparse(values[i - 1] - values[i]);
-      }
-    }
+    Long[] values = {registrations, c.trainees(), c.assessed(), c.certifiedTrainees(),
+        c.placedTrainees(), c.retainedAfterPlacement()};
     List<Stage> stages = new ArrayList<>();
     for (int i = 0; i < keys.size(); i++) {
       Measure value = values[i] == null ? unavailable(Availability.NOT_APPLICABLE)
-          : suppress ? unavailable(Availability.SUPPRESSED) : released(BigDecimal.valueOf(values[i]));
+          : count(values[i]);
       stages.add(new Stage(keys.get(i), value));
     }
     return stages;
@@ -224,7 +213,7 @@ public class ExecutiveMisService {
     var filter = AnalyticsQueryFilterBuilder.buildEnrollmentFactPredicates(criteria, "v");
     return jdbc.query("""
         WITH evaluated AS (
-          SELECT v.provider_id, v.trainee_id, EXISTS (
+          SELECT v.provider_id, EXISTS (
             SELECT 1 FROM data_quality_issues i
             JOIN ref_data_quality_issue_status s USING (data_quality_issue_status_id)
             WHERE UPPER(i.entity_type) IN ('BATCHENROLLMENT', 'BATCH_ENROLLMENT', 'TRAININGENROLLMENT', 'TRAINING_ENROLLMENT')
@@ -233,19 +222,15 @@ public class ExecutiveMisService {
           FROM vw_enrollment_outcome_fact v WHERE 1 = 1
         """ + filter.getSqlFragment() + """
         )
-        SELECT provider_id, COUNT(*), SUM(affected), COUNT(DISTINCT trainee_id),
-               COUNT(DISTINCT IF(affected, trainee_id, NULL)),
-               COUNT(DISTINCT IF(NOT affected, trainee_id, NULL))
+        SELECT provider_id, COUNT(*), SUM(affected)
         FROM evaluated GROUP BY provider_id ORDER BY provider_id
         """, (rs, row) -> new ProviderQuality(rs.getLong(1),
-        privacy.isSparse(rs.getLong(4)) || privacy.isSparse(rs.getLong(5)) || privacy.isSparse(rs.getLong(6))
-            ? unavailable(Availability.SUPPRESSED)
-            : released(OperationalMetricsMath.dataCleanlinessIndex(rs.getLong(2), rs.getLong(3)))),
+        released(OperationalMetricsMath.dataCleanlinessIndex(rs.getLong(2), rs.getLong(3)))),
         filter.getParameters().toArray());
   }
 
-  private Measure count(long value, long contributors) {
-    return privacy.isSparse(contributors) ? unavailable(Availability.SUPPRESSED) : released(BigDecimal.valueOf(value));
+  private static Measure count(long value) {
+    return released(BigDecimal.valueOf(value));
   }
 
   private static Measure released(BigDecimal value) {

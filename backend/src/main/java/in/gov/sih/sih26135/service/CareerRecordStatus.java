@@ -6,8 +6,15 @@ import org.springframework.jdbc.core.JdbcTemplate;
 /** Resolves the recorded current outcome while retaining the trainee's original profile declaration. */
 public record CareerRecordStatus(long id, String code, String name, String source) {
   public static CareerRecordStatus current(JdbcTemplate jdbc, long traineeId, TraineeSurvey.CareerUpdate report) {
-    return report == null ? resolve(jdbc, traineeId)
-        : new CareerRecordStatus(report.statusId(), report.statusCode(), report.status(), "SELF_REPORTED");
+    if (report == null || Boolean.TRUE.equals(jdbc.queryForObject("""
+        SELECT EXISTS(SELECT 1 FROM employment_records e
+          JOIN ref_employment_info_source src USING(employment_info_source_id)
+          JOIN ref_record_verification_status v USING(record_verification_status_id)
+          WHERE e.trainee_id=? AND e.deleted_at IS NULL AND e.updated_at>=?
+            AND (src.source_code='EMPLOYER_CONFIRMATION'
+              OR (src.source_code='TRAINEE_DECLARATION' AND v.status_code='SELF_REPORTED')))
+        """, Boolean.class, traineeId, report.submittedAt()))) return resolve(jdbc, traineeId);
+    return new CareerRecordStatus(report.statusId(), report.statusCode(), report.status(), "SELF_REPORTED");
   }
 
   public static CareerRecordStatus resolve(JdbcTemplate jdbc, long traineeId) {
@@ -23,7 +30,9 @@ public record CareerRecordStatus(long id, String code, String name, String sourc
           JOIN ref_employment_info_source src ON src.employment_info_source_id=e.employment_info_source_id
           JOIN ref_record_verification_status v ON v.record_verification_status_id=e.record_verification_status_id
           WHERE e.trainee_id=? AND e.deleted_at IS NULL AND e.is_current=1 AND es.is_active_flag=1
-            AND (src.is_self_reported_flag=0 OR v.is_verified_flag=1) AND v.status_code<>'REJECTED'
+            AND (src.is_self_reported_flag=0 OR v.is_verified_flag=1
+              OR (src.source_code='TRAINEE_DECLARATION' AND v.status_code='SELF_REPORTED'))
+            AND v.status_code<>'REJECTED'
             AND e.start_date<=CURRENT_DATE AND (e.end_date IS NULL OR e.end_date>=CURRENT_DATE)
           UNION ALL
           SELECT s.status_code,'UNEMPLOYMENT_RECORD',2,u.start_date,u.unemployment_event_id

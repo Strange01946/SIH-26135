@@ -34,7 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 @RestController
 @RequestMapping("/api/v1/dashboards")
-@PreAuthorize("hasAuthority('analytics.read')")
+@PreAuthorize(WorkflowSecurityScopeValidator.GOVERNMENT_MIS_READ)
 public class GeographicDashboardController {
 
   private final GeographicDashboardService geographicDashboardService;
@@ -68,8 +68,7 @@ public class GeographicDashboardController {
   public ResponseEntity<ApiResponse<GeographicOverviewResponse>> getNationalGeography(
       @Valid AnalyticsFilterCriteria criteria,
       HttpServletRequest httpRequest) {
-    scopeValidator.validateNationwideScope();
-    scopeValidator.validateAnalyticsFilterScope(criteria);
+    scopeValidator.applyGovernmentMisScope(criteria);
     GeographicOverviewResponse response = (criteria == null || criteria.isEmpty())
         ? geographicDashboardService.getNationalGeographicOverview()
         : geographicDashboardService.getNationalGeographicOverview(criteria);
@@ -105,8 +104,10 @@ public class GeographicDashboardController {
       @PathVariable @Positive Long stateId,
       @Valid AnalyticsFilterCriteria criteria,
       HttpServletRequest httpRequest) {
-    scopeValidator.validateStateScope(stateId);
-    scopeValidator.validateAnalyticsFilterScope(criteria);
+    scopeValidator.applyGovernmentMisScope(criteria);
+    if (criteria.getStateId() != null && !stateId.equals(criteria.getStateId())) {
+      throw new org.springframework.security.access.AccessDeniedException("Access denied");
+    }
     boolean hasFiltering = criteria != null && (
         criteria.hasTemporalFilter()
         || criteria.hasOrganizationalFilter()
@@ -150,8 +151,11 @@ public class GeographicDashboardController {
       @PathVariable @Positive Long districtId,
       @Valid AnalyticsFilterCriteria criteria,
       HttpServletRequest httpRequest) {
-    scopeValidator.validateDistrictScope(districtId);
-    scopeValidator.validateAnalyticsFilterScope(criteria);
+    if (criteria.getDistrictId() != null && !districtId.equals(criteria.getDistrictId())) {
+      throw new org.springframework.security.access.AccessDeniedException("Access denied");
+    }
+    criteria.setDistrictId(districtId);
+    scopeValidator.applyGovernmentMisScope(criteria);
     boolean hasFiltering = criteria != null && (
         criteria.hasTemporalFilter()
         || criteria.hasOrganizationalFilter()

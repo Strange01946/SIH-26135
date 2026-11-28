@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/dashboards/mis")
-@PreAuthorize("hasAuthority('analytics.read')")
+@PreAuthorize(WorkflowSecurityScopeValidator.GOVERNMENT_MIS_READ)
 @SecurityRequirement(name = "bearerAuth")
 public class ExecutiveMisController {
   private final ExecutiveMisService mis;
@@ -29,14 +29,14 @@ public class ExecutiveMisController {
 
   @GetMapping("/filters")
   public ApiResponse<FilterOptions> getMisFilterOptions() {
-    scope.validateNationwideScope();
-    return ApiResponse.ok(mis.filterOptions());
+    var criteria = new AnalyticsFilterCriteria();
+    scope.applyGovernmentMisScope(criteria);
+    return ApiResponse.ok(mis.filterOptions(criteria));
   }
 
   @GetMapping("/provider-quality")
   public ApiResponse<List<ProviderQuality>> getMisProviderQuality(@ParameterObject AnalyticsFilterCriteria criteria) {
-    scope.validateNationwideScope();
-    scope.validateAnalyticsFilterScope(criteria);
+    scope.applyGovernmentMisScope(criteria);
     return ApiResponse.ok(mis.providerQuality(criteria));
   }
 }

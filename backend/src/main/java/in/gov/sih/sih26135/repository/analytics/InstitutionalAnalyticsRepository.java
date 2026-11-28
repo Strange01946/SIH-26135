@@ -76,9 +76,7 @@ public class InstitutionalAnalyticsRepository {
       LEFT JOIN (
         SELECT
           sp.course_id,
-          CASE WHEN COUNT(DISTINCT sp.trainee_id) >= 5
-               THEN ROUND(AVG(sp.first_recorded_salary), 2)
-               ELSE NULL END AS avg_starting_wage
+          ROUND(AVG(sp.first_recorded_salary), 2) AS avg_starting_wage
         FROM vw_salary_progression_fact sp
         JOIN salary_history sh ON sh.employment_id = sp.employment_id AND sh.effective_from = sp.first_salary_effective_from
         JOIN ref_salary_frequency sf ON sf.salary_frequency_id = sh.salary_frequency_id
@@ -239,9 +237,7 @@ public class InstitutionalAnalyticsRepository {
         LEFT JOIN (
           SELECT
             v_sal.course_id,
-            CASE WHEN COUNT(DISTINCT sp.trainee_id) >= 5
-                 THEN ROUND(AVG(sp.first_recorded_salary), 2)
-                 ELSE NULL END AS avg_starting_wage
+            ROUND(AVG(sp.first_recorded_salary), 2) AS avg_starting_wage
           FROM vw_salary_progression_fact sp
           JOIN vw_enrollment_outcome_fact v_sal ON v_sal.enrollment_id = sp.enrollment_id
           JOIN salary_history sh ON sh.employment_id = sp.employment_id AND sh.effective_from = sp.first_salary_effective_from

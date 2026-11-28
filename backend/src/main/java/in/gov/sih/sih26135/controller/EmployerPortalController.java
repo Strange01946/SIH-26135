@@ -74,6 +74,14 @@ public class EmployerPortalController {
     return ApiResponse.ok(employer.publish(request));
   }
 
+  @PostMapping("/job-postings/{postingId}/hires")
+  @PreAuthorize("hasAuthority('ROLE_employer') and hasAuthority('placement.manage') and hasAuthority('employment.manage')")
+  @ResponseStatus(HttpStatus.CREATED)
+  public ApiResponse<PlacementToEmploymentTransitionResponse> recordEmployerPostedJobHire(
+      @PathVariable @Positive long postingId, @Valid @RequestBody EmployerPortal.PostedJobHire request) {
+    return ApiResponse.ok(employer.recordPostedJobHire(postingId, request));
+  }
+
   @GetMapping("/placements")
   @PreAuthorize("hasAuthority('ROLE_employer') and hasAuthority('placement.manage')")
   public ApiResponse<PagedResponse<EmployerPortal.Placement>> employerPlacements(

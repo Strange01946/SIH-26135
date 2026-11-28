@@ -51,7 +51,7 @@ public class EmploymentRecordMapper {
     }
 
     Long employerId = null;
-    String employerName = null;
+    String employerName = entity.getReportedEmployerName();
     if (entity.getEmployer() != null) {
       employerId = entity.getEmployer().getId();
       employerName = entity.getEmployer().getEmployerName();
@@ -65,10 +65,10 @@ public class EmploymentRecordMapper {
     }
 
     Long jobRoleId = null;
-    String jobRoleName = null;
+    String jobRoleName = entity.getReportedJobTitle();
     if (entity.getJobRole() != null) {
       jobRoleId = entity.getJobRole().getId();
-      jobRoleName = entity.getJobRole().getJobRoleName();
+      if (jobRoleName == null) jobRoleName = entity.getJobRole().getJobRoleName();
     }
 
     Long engagementTypeId = null;

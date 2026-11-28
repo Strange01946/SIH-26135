@@ -330,7 +330,7 @@ test('training registration, attendance, assessor evaluation and published PDFs 
   await result(await request.post(assessmentPath, { headers: completingProvider, data: opening }), 409);
   await result(await request.post(assessmentPath, { headers: await login(request, run, 'trainee2'), data: opening }), 403);
   const providerUI = await smoke.signIn('provider', '/provider/batches');
-  const providerAccess = auth(providerUI.accessToken);
+  let providerAccess = auth(providerUI.accessToken);
   await page.goto(`/provider/enrollment?batch=${batchId}`);
   const batchSelector = page.getByRole('combobox', { name: /Target Training Batch/ });
   await expect(page.getByText('The linked batch is closed for enrollment.')).toBeVisible();
@@ -360,6 +360,16 @@ test('training registration, attendance, assessor evaluation and published PDFs 
   await expect(page.locator('input[type="datetime-local"]')).toHaveCount(0);
   await expect(page.getByLabel('Assessment venue')).toHaveCount(0);
   await page.getByLabel('Assessment instructions').fill(opening.brief);
+  const attendanceTab = await page.context().newPage();
+  await attendanceTab.goto(`/provider/batches/${batchId}/attendance`);
+  await attendanceTab.locator('#usernameOrEmail').fill(run.users.provider);
+  await attendanceTab.locator('#password').fill(run.password);
+  await attendanceTab.getByRole('button', { name: 'Sign In', exact: true }).click();
+  const tabRemark = attendanceTab.getByRole('textbox', { name: /Remark for Asha Smoke/ });
+  await expect(tabRemark).toHaveValue('Completed the morning practical.');
+  await tabRemark.fill('Unsaved correction in another tab.');
+  await expect(attendanceTab.getByRole('button', { name: 'Save attendance' })).toBeEnabled();
+  await page.bringToFront();
   const [published] = await Promise.all([smoke.waitApi('POST', assessmentPath), openButton.click()]);
   expect(published.request().postDataJSON()).toEqual(opening);
   const assessment = await result(published, 200);
@@ -368,14 +378,41 @@ test('training registration, attendance, assessor evaluation and published PDFs 
   expect(assessment.venue ?? null).toBeNull();
   await expect(page.getByRole('heading', { name: 'Open to assessors' })).toBeVisible();
   await expect(page.getByText('Assessment date and venue pending')).toBeVisible();
+  await attendanceTab.bringToFront();
+  await expect(tabRemark).toBeDisabled({ timeout: 18_000 });
+  await expect(tabRemark).toHaveValue('Completed the morning practical.');
+  await attendanceTab.close();
+  providerAccess = await login(request, run, 'provider');
+  const openedTimetable = await result(await request.get(sessionsPath, { headers: providerAccess }), 200);
+  expect(openedTimetable.attendanceLocked).toBe(true);
+  expect(openedTimetable.sessions.map(session => session.canMark)).toEqual([false, false]);
+  await page.getByRole('link', { name: 'View locked training attendance' }).click();
+  await expect(page.getByText('Attendance is read-only because this batch is open for assessment.')).toBeVisible();
+  await expect(traineeMark).toBeDisabled();
+  await expect(remarks).toBeDisabled();
+  await expect(traineeMark).toHaveValue('PRESENT');
+  await expect(remarks).toHaveValue('Completed the morning practical.');
+  await expect(saveButton).toHaveCount(0);
   expect(sql(`SELECT a.assessment_date IS NULL, SUM(ta.assessment_date IS NULL), pub.starts_at IS NULL
     FROM assessments a JOIN batch_assessment_publications pub USING (assessment_id)
     JOIN trainee_assessments ta USING (assessment_id) WHERE a.assessment_id=${assessment.assessmentId}
     GROUP BY a.assessment_date,pub.starts_at;`)).toBe('1\t2\t1');
-  await result(await saveAt(afternoon, [{ enrollmentId: assisted.id, status: 'PRESENT' }], providerAccess), 409);
+  const lockedSession = await saveAt(afternoon, [{ enrollmentId: assisted.id, status: 'ABSENT' }], providerAccess);
+  expect(lockedSession.status()).toBe(409);
+  expect((await lockedSession.json()).code).toBe('ASSESSMENT_ATTENDANCE_LOCKED');
   await result(await request.put(`/api/v1/attendance-records/${legacyMark.id}`, {
     headers: providerAccess, data: { attendanceStatusId: lateStatus },
   }), 409);
+  for (const response of [
+    await request.delete(`/api/v1/attendance-records/${legacyMark.id}`, { headers: providerAccess }),
+    await request.put(`/api/v1/training-enrollments/${enrollment.id}`, {
+      headers: providerAccess, data: { actualCompletionDate: priorDay },
+    }),
+    await request.delete(`/api/v1/training-enrollments/${enrollment.id}`, { headers: providerAccess }),
+  ]) {
+    expect(response.status()).toBe(409);
+    expect((await response.json()).code).toBe('ASSESSMENT_ATTENDANCE_LOCKED');
+  }
   const assessorPath = `/api/v1/assessor/assessments/${assessment.assessmentId}`;
   const claimPath = `/api/v1/assessor/open-batch-assessments/${assessment.assessmentId}/claim`;
   const participants = [{ traineeId: run.trainee, appeared: true }, { traineeId: run.prospect, appeared: true }];
@@ -390,6 +427,23 @@ test('training registration, attendance, assessor evaluation and published PDFs 
   let assessorAccess = auth(assessorUI.accessToken);
   const card = page.getByRole('article').filter({ hasText: code });
   await expect(card).toContainText(opening.brief);
+  const [reviewed] = await Promise.all([smoke.waitApi('GET', assessorPath + '/published-batch'),
+    card.getByRole('button', { name: 'Review training attendance' }).click()]);
+  const lockedReview = await result(reviewed, 200);
+  expect(lockedReview.candidates).toEqual(expect.arrayContaining([
+    expect.objectContaining({ traineeId: run.trainee, trainingSessions: 2, present: 2,
+      sessionMarks: [expect.objectContaining({ status: 'PRESENT', remarks: 'Completed the morning practical.' }),
+        expect.objectContaining({ status: 'PRESENT' })] }),
+    expect.objectContaining({ traineeId: run.prospect, trainingSessions: 2, present: 1,
+      sessionMarks: [expect.objectContaining({ status: 'ABSENT' }), expect.objectContaining({ status: 'PRESENT' })] }),
+  ]));
+  const attendancePreview = page.getByRole('dialog', { name: 'Locked training attendance' });
+  const traineeAttendance = attendancePreview.getByRole('listitem').filter({ hasText: 'Asha Smoke' });
+  await traineeAttendance.getByText('2 / 2 sessions present', { exact: true }).click();
+  await expect(traineeAttendance.getByText('Completed the morning practical.', { exact: false })).toBeVisible();
+  await attendancePreview.getByText('1 / 2 sessions present', { exact: true }).click();
+  await expect(attendancePreview.getByText('Absent', { exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
   const invalidSchedule = await request.post(claimPath, { headers: assessorAccess, data: { ...schedule, startsAt: `${priorDay}T09:00` } });
   expect(invalidSchedule.status()).toBe(400);
   expect((await invalidSchedule.json()).code).toBe('ASSESSMENT_TIME_IN_PAST');
@@ -400,6 +454,9 @@ test('training registration, attendance, assessor evaluation and published PDFs 
   expect(assignment.status).toBe('CLAIMED');
   expect(assignment.startsAt.slice(0, 16)).toBe(schedule.startsAt);
   expect(assignment.venue).toBe(schedule.venue);
+  const scoringAttendance = page.getByRole('row').filter({ hasText: 'Neel Smoke' });
+  await scoringAttendance.getByText('1 / 2 sessions present', { exact: true }).click();
+  await expect(scoringAttendance.getByText('Absent', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Mark assessment completed' })).toBeDisabled();
   await expect(page.getByText('Candidate skills and job goals')).toHaveCount(0);
   await result(await request.put(`/api/v1/career-skills/assessments/${assessment.assessmentId}/trainees/${run.trainee}`, {
@@ -413,6 +470,7 @@ test('training registration, attendance, assessor evaluation and published PDFs 
   await result(await request.delete(`/api/v1/assessments/${assessment.assessmentId}`, { headers: assessorAccess }), 409);
   await result(await request.post(claimPath, { headers: assessor2, data: schedule }), 409);
   await result(await request.get(assessorPath + '/roster', { headers: assessor2 }), 403);
+  await result(await request.get(assessorPath + '/published-batch', { headers: assessor2 }), 403);
   await result(await request.post(assessorPath + '/complete', { headers: assessorAccess }), 409);
   await result(await request.post(assessorPath + '/draft', { headers: assessorAccess, data: { candidates: scores } }), 409);
   const appointment = (await result(await request.get(appointments, { headers: await login(request, run, 'trainee2') }), 200))
@@ -462,6 +520,44 @@ test('training registration, attendance, assessor evaluation and published PDFs 
     expect.objectContaining({ traineeId: run.trainee, outcome: 'PASS', total: 84, certificateId: expect.any(Number) }),
     expect.objectContaining({ traineeId: run.prospect, outcome: 'FAIL', total: 29, certificateId: null }),
   ]));
+  const pass = providerReview.candidates.find(candidate => candidate.traineeId === run.trainee);
+  expect(sql(`SELECT issuing_body FROM certifications WHERE certification_id=${pass.certificateId};`))
+    .toBe(run.users.assessor);
+  // Model a passing result that was finalized before its certificate could be issued.
+  sql(`DELETE FROM certifications WHERE certification_id=${pass.certificateId} AND enrollment_id=${enrollment.id};`);
+  await page.reload();
+  const pending = page.getByRole('row').filter({ hasText: 'Asha Smoke' });
+  await expect(pending.getByText('Pending Issuance', { exact: true })).toBeVisible();
+  await expect(pending.getByTitle('Download PDF Certificate')).toHaveCount(0);
+  const resultFile = page.waitForEvent('download');
+  await pending.getByRole('button', { name: 'Download result PDF', exact: true }).click();
+  expect((await resultFile).suggestedFilename()).toBe(`Assessment_Result_${pass.resultId}.pdf`);
+  await signOut(page);
+  await smoke.signIn('trainee', '/trainee/assessments');
+  const pendingTrainee = page.getByRole('article').filter({ hasText: code });
+  await expect(pendingTrainee.getByText(/Certificate pending issuance/)).toBeVisible();
+  await expect(pendingTrainee.getByRole('button', { name: 'Download certificate PDF', exact: true })).toHaveCount(0);
+  const pendingFile = page.waitForEvent('download');
+  await pendingTrainee.getByRole('button', { name: 'Download result PDF', exact: true }).click();
+  expect((await pendingFile).suggestedFilename()).toBe(`Assessment_Result_${pass.resultId}.pdf`);
+  await signOut(page);
+  await smoke.signIn('assessor', `/assessor/assessments/${assessment.assessmentId}`);
+  const [issued] = await Promise.all([smoke.waitApi('POST', assessorPath + '/issue-pending'),
+    page.getByRole('button', { name: 'Issue Pending Certificates' }).click()]);
+  const issuance = await result(issued, 200);
+  expect(issuance).toMatchObject({ isFinalized: true, certificatesIssued: 1 });
+  await expect(page.getByText('1 certificate issued.', { exact: true })).toBeVisible();
+  await expect(pending.getByText('Pending Issuance', { exact: true })).toHaveCount(0);
+  await expect(pending.getByTitle('Download PDF Certificate')).toBeVisible();
+  const certificateId = issuance.results.find(candidate => candidate.traineeId === run.trainee).certificateId;
+  expect(certificateId).toBeGreaterThan(0);
+  expect(sql(`SELECT expiry_date IS NULL,v.status_code FROM certifications JOIN ref_certificate_verification_status v
+    USING (certificate_verification_status_id) WHERE certification_id=${certificateId};`)).toBe('1\tUNVERIFIED');
+  const assessorFile = page.waitForEvent('download');
+  await pending.getByTitle('Download PDF Certificate').click();
+  const assessorPdf = await assessorFile;
+  expect(assessorPdf.suggestedFilename()).toBe(`Certificate_${certificateId}.pdf`);
+  expect((await readFile(await assessorPdf.path())).toString('latin1')).toContain('/Title (Certificate of Competency');
   const checkPdf = async (role, label, title) => {
     await signOut(page);
     const account = await smoke.signIn(role, '/trainee/assessments');
@@ -473,13 +569,21 @@ test('training registration, attendance, assessor evaluation and published PDFs 
     await expect(own).toContainText(title === 'FAIL' ? 'Total 29' : 'Total 84');
     const file = page.waitForEvent('download');
     await own.getByRole('button', { name: label, exact: true }).click();
-    const bytes = (await readFile(await (await file).path())).toString('latin1');
+    const document = await file;
+    if (title === 'PASS') expect(document.suggestedFilename()).toBe(`Certificate_${pass.resultId}.pdf`);
+    const bytes = (await readFile(await document.path())).toString('latin1');
     expect(bytes).toContain('/MediaBox [0 0 842 595]');
     expect(bytes).toContain(title === 'FAIL' ? '/Title (Assessment Result - FAIL)' : '/Title (Certificate of Competency');
   };
   await checkPdf('trainee2', 'Download result PDF', 'FAIL');
   await checkPdf('trainee', 'Download certificate PDF', 'PASS');
-  const pass = providerReview.candidates.find(candidate => candidate.traineeId === run.trainee);
+  sql(`UPDATE certifications SET issuing_body=NULL WHERE certification_id=${certificateId} AND trainee_id=${run.trainee};`);
+  const historical = await request.get(`/api/v1/assessment-results/${pass.resultId}/document`, {
+    headers: await login(request, run, 'trainee'),
+  });
+  expect(historical.status()).toBe(200);
+  expect(historical.headers()['content-disposition']).toContain(`Certificate_${pass.resultId}.pdf`);
+  expect((await historical.body()).toString('latin1')).toContain('/Title (Certificate of Competency');
   const denied = await request.get(`/api/v1/assessment-results/${pass.resultId}/document`, { headers: await login(request, run, 'trainee2') });
   expect(denied.status()).toBe(403);
 });

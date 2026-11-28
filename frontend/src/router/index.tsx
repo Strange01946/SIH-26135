@@ -383,12 +383,16 @@ export function AppRouter(): React.JSX.Element {
             </RoleGuard>
           } />
           <Route path="/analytics" element={
-            <RoleGuard allowedPersonas={['SUPER_ADMIN', 'GOVERNMENT_ADMIN', 'ANALYST']}>
-              <RoleGuard allowedAuthorities={['analytics.read']} />
+            <RoleGuard allowedPersonas={['SUPER_ADMIN', 'GOVERNMENT_ADMIN', 'ANALYST', 'STATE_ADMIN', 'DISTRICT_OFFICER']}>
+              <RoleGuard allowedAuthorities={['analytics.read', 'ROLE_super_admin', 'ROLE_state_admin', 'ROLE_district_officer']} />
             </RoleGuard>
           }>
             <Route index element={<ExecutiveMisPage />} />
-            <Route path="specialized" element={<SpecializedAnalyticsPage />} />
+            <Route path="specialized" element={
+              <RoleGuard allowedPersonas={['SUPER_ADMIN', 'GOVERNMENT_ADMIN', 'ANALYST']}>
+                <SpecializedAnalyticsPage />
+              </RoleGuard>
+            } />
           </Route>
           <Route
             path="/audit"

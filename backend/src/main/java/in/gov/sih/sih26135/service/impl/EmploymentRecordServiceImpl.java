@@ -225,6 +225,16 @@ public class EmploymentRecordServiceImpl implements EmploymentRecordService {
   @Override
   @Transactional
   public EmploymentRecordResponse createEmploymentRecord(CreateEmploymentRecordRequest request) {
+    return createEmploymentRecord(request, false);
+  }
+
+  @Override
+  @Transactional
+  public EmploymentRecordResponse createSelfReportedEmployment(CreateEmploymentRecordRequest request) {
+    return createEmploymentRecord(request, true);
+  }
+
+  private EmploymentRecordResponse createEmploymentRecord(CreateEmploymentRecordRequest request, boolean employerOptional) {
     if (request == null) {
       throw new BadRequestException("Employment record creation request cannot be null");
     }
@@ -309,7 +319,7 @@ public class EmploymentRecordServiceImpl implements EmploymentRecordService {
         ? request.getEmployerId()
         : (placement != null && placement.getEmployer() != null ? placement.getEmployer().getId() : null);
 
-    if (Boolean.TRUE.equals(engagementType.getRequiresEmployer()) && effectiveEmployerId == null) {
+    if (Boolean.TRUE.equals(engagementType.getRequiresEmployer()) && effectiveEmployerId == null && !employerOptional) {
       throw new BadRequestException("Employer is required for this engagement type", "EMPLOYER_REQUIRED_FOR_ENGAGEMENT");
     }
 
@@ -399,7 +409,6 @@ public class EmploymentRecordServiceImpl implements EmploymentRecordService {
 
     RefEmploymentInfoSource infoSource = refEmploymentInfoSourceRepository.findById(request.getEmploymentInfoSourceId())
         .orElseThrow(() -> new ResourceNotFoundException("RefEmploymentInfoSource", "employmentInfoSourceId"));
-
     RefRecordVerificationStatus verificationStatus = refRecordVerificationStatusRepository
         .findById(request.getRecordVerificationStatusId())
         .orElseThrow(() -> new ResourceNotFoundException("RefRecordVerificationStatus", "recordVerificationStatusId"));

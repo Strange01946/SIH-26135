@@ -33,7 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 @RestController
 @RequestMapping("/api/v1/dashboards")
-@PreAuthorize("hasAuthority('analytics.read')")
+@PreAuthorize(WorkflowSecurityScopeValidator.GOVERNMENT_MIS_READ)
 public class ExecutiveDashboardController {
 
   private final ExecutiveDashboardService executiveDashboardService;
@@ -68,8 +68,7 @@ public class ExecutiveDashboardController {
   public ResponseEntity<ApiResponse<ExecutiveDashboardResponse>> getExecutiveOverview(
       @Valid AnalyticsFilterCriteria criteria,
       HttpServletRequest httpRequest) {
-    scopeValidator.validateNationwideScope();
-    scopeValidator.validateAnalyticsFilterScope(criteria);
+    scopeValidator.applyGovernmentMisScope(criteria);
     ExecutiveDashboardResponse response = (criteria == null || criteria.isEmpty())
         ? executiveDashboardService.getExecutiveDashboard()
         : executiveDashboardService.getExecutiveDashboard(criteria);
@@ -118,8 +117,7 @@ public class ExecutiveDashboardController {
       @Valid AnalyticsFilterCriteria criteria,
       @RequestParam(defaultValue = "false") boolean executive,
       HttpServletRequest httpRequest) {
-    scopeValidator.validateNationwideScope();
-    scopeValidator.validateAnalyticsFilterScope(criteria);
+    scopeValidator.applyGovernmentMisScope(criteria);
     DashboardKpiStripResponse response = executive ? DashboardKpiStripResponse.executive(mis.compareKpis(criteria))
         : criteria == null || criteria.isEmpty() ? executiveDashboardService.getDashboardKpiStrip()
             : executiveDashboardService.getDashboardKpiStrip(criteria);
@@ -142,8 +140,7 @@ public class ExecutiveDashboardController {
       @Valid AnalyticsFilterCriteria criteria,
       @RequestParam(defaultValue = "false") boolean executive,
       HttpServletRequest httpRequest) {
-    scopeValidator.validateNationwideScope();
-    scopeValidator.validateAnalyticsFilterScope(criteria);
+    scopeValidator.applyGovernmentMisScope(criteria);
     PipelineFunnelResponse response = executive ? PipelineFunnelResponse.executive(mis.pipeline(criteria))
         : criteria == null || criteria.isEmpty() ? executiveDashboardService.getTrainingPipelineFunnel()
             : executiveDashboardService.getTrainingPipelineFunnel(criteria);
@@ -165,8 +162,7 @@ public class ExecutiveDashboardController {
   public ResponseEntity<ApiResponse<LeaderboardResponse<SchemeProgramPerformanceResponse>>> getSchemeMatrix(
       @Valid AnalyticsFilterCriteria criteria,
       HttpServletRequest httpRequest) {
-    scopeValidator.validateNationwideScope();
-    scopeValidator.validateAnalyticsFilterScope(criteria);
+    scopeValidator.applyGovernmentMisScope(criteria);
     LeaderboardResponse<SchemeProgramPerformanceResponse> response = (criteria == null || criteria.isEmpty())
         ? executiveDashboardService.getSchemeProgramPerformanceMatrix()
         : executiveDashboardService.getSchemeProgramPerformanceMatrix(criteria);

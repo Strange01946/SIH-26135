@@ -17,9 +17,11 @@ public final class BatchAssessment {
                             int candidates, boolean checkedIn, boolean canComplete, LocalDateTime completedAt) {}
   public record Readiness(String batchCode, String batchStatus, int candidates, int sessions,
                           long outstandingMarks, boolean canPublish, String blocker, Publication publication) {}
+  public record TrainingSessionMark(LocalDateTime startsAt, LocalDateTime endsAt, String status, String remarks) {}
   public record Candidate(long traineeId, String name, String registrationNumber, Boolean appeared, int present,
                           int trainingSessions, Long resultId, String outcome, BigDecimal theory,
-                          BigDecimal practical, BigDecimal viva, BigDecimal total, Long certificateId) {}
+                          BigDecimal practical, BigDecimal viva, BigDecimal total, Long certificateId,
+                          List<TrainingSessionMark> sessionMarks) {}
   public record Review(Publication publication, List<Candidate> candidates) {}
   public record Appointment(String batchCode, String title, LocalDateTime startsAt, String venue, String brief,
                             String assessor, String status, LocalDateTime completedAt, Long resultId, String outcome,

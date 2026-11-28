@@ -109,6 +109,8 @@ public class AnalyticsCacheEvictionService {
         "EMPLOYMENT_LIFECYCLE_TRANSITION",
         Set.of(
             AnalyticsCacheConfig.CACHE_NATIONAL_OVERVIEW,
+            AnalyticsCacheConfig.CACHE_STATE_AGGREGATES,
+            AnalyticsCacheConfig.CACHE_DISTRICT_AGGREGATES,
             AnalyticsCacheConfig.CACHE_ECONOMIC,
             AnalyticsCacheConfig.CACHE_RETENTION,
             AnalyticsCacheConfig.CACHE_SUMMARIES

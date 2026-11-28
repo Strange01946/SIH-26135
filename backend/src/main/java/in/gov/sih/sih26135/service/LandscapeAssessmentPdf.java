@@ -23,7 +23,7 @@ final class LandscapeAssessmentPdf {
   private LandscapeAssessmentPdf() {}
 
   static byte[] render(String title, String outcome, String name, String registration, List<Field> fields, List<String> marks,
-                       String authority, String footer, String verification) {
+                       String authority, String footer, String warning) {
     // Render through the local font system to preserve names in Indian scripts.
     var image = new BufferedImage(WIDTH * 2, HEIGHT * 2, BufferedImage.TYPE_INT_RGB);
     var graphics = image.createGraphics();
@@ -64,7 +64,7 @@ final class LandscapeAssessmentPdf {
       }
       text(graphics, authority, 48, 493, 746, 13, true, NAVY);
       text(graphics, footer, 48, 519, 746, 11, false, SLATE);
-      text(graphics, verification, 48, 540, 746, 11, false, SLATE);
+      text(graphics, warning, 48, 540, 746, 11, true, new Color(152, 48, 48));
     } finally {
       graphics.dispose();
     }

@@ -49,16 +49,9 @@ public class EconomicOutcomeDashboardRepository {
           e.employer_name,
           COUNT(*) AS placement_count,
           COUNT(DISTINCT pf.trainee_id) AS trainee_count,
-          CASE WHEN COUNT(DISTINCT IF(pf.joined_flag = 1, pf.trainee_id, NULL)) NOT BETWEEN 1 AND 4
-                 AND COUNT(DISTINCT IF(pf.joined_flag = 0, pf.trainee_id, NULL)) NOT BETWEEN 1 AND 4
-               THEN SUM(pf.joined_flag) END AS joined_count,
-          CASE WHEN COUNT(DISTINCT IF(pf.joined_flag = 1, pf.trainee_id, NULL)) NOT BETWEEN 1 AND 4
-                 AND COUNT(DISTINCT IF(pf.joined_flag = 0, pf.trainee_id, NULL)) NOT BETWEEN 1 AND 4
-               THEN SUM(pf.joined_flag) / COUNT(*) * 100 END AS join_rate_pct,
-          CASE WHEN COUNT(DISTINCT IF(pf.joining_salary IS NOT NULL AND pf.currency_code = 'INR'
-                AND sf.frequency_code = 'MONTHLY', pf.trainee_id, NULL)) >= 5
-               THEN AVG(IF(pf.currency_code = 'INR' AND sf.frequency_code = 'MONTHLY', pf.joining_salary, NULL))
-               END AS avg_joining_salary
+          SUM(pf.joined_flag) AS joined_count,
+          SUM(pf.joined_flag) / COUNT(*) * 100 AS join_rate_pct,
+          AVG(IF(pf.currency_code = 'INR' AND sf.frequency_code = 'MONTHLY', pf.joining_salary, NULL)) AS avg_joining_salary
         FROM vw_placement_fact pf
         JOIN employers e ON e.employer_id = pf.employer_id
         LEFT JOIN ref_salary_frequency sf ON sf.salary_frequency_id = pf.salary_frequency_id
@@ -103,12 +96,11 @@ public class EconomicOutcomeDashboardRepository {
           %s AS current_wage_count,
           %s AS current_self_employment_count,
           AVG(duration_days) AS avg_duration_days,
-          CASE WHEN COUNT(DISTINCT IF(is_current = 1, trainee_id, NULL)) >= 5
-               THEN AVG(CASE WHEN is_current = 1 THEN duration_days END) END AS avg_current_spell_duration_days
+          AVG(CASE WHEN is_current = 1 THEN duration_days END) AS avg_current_spell_duration_days
         FROM vw_employment_fact ef WHERE 1 = 1
-        """.formatted(safeCount("is_current = 1"), safeCount("is_wage_employment = 1"),
-            safeCount("is_self_employment = 1"), safeCount("is_apprenticeship = 1"), safeCount("is_internship = 1"),
-            safeCount("is_current = 1 AND is_wage_employment = 1"), safeCount("is_current = 1 AND is_self_employment = 1"))
+        """.formatted(countWhere("is_current = 1"), countWhere("is_wage_employment = 1"),
+            countWhere("is_self_employment = 1"), countWhere("is_apprenticeship = 1"), countWhere("is_internship = 1"),
+            countWhere("is_current = 1 AND is_wage_employment = 1"), countWhere("is_current = 1 AND is_self_employment = 1"))
         + filter.getSqlFragment();
 
     return jdbcTemplate.queryForObject(sql, (rs, rowNum) -> new EmploymentMixProjection(
@@ -152,7 +144,7 @@ public class EconomicOutcomeDashboardRepository {
         FROM vw_employment_fact ef
         LEFT JOIN ref_engagement_type ret ON ret.type_code = ef.engagement_type_code
         WHERE 1 = 1
-        """.formatted(safeCount("ef.is_current = 1")) + filter.getSqlFragment() + """
+        """.formatted(countWhere("ef.is_current = 1")) + filter.getSqlFragment() + """
         GROUP BY
           ef.engagement_type_code,
           ret.type_name,
@@ -190,15 +182,13 @@ public class EconomicOutcomeDashboardRepository {
     var filter = cohort(criteria, "sp");
     String sql = """
         SELECT
-          CASE WHEN COUNT(DISTINCT sp.trainee_id) NOT BETWEEN 1 AND 4 THEN COUNT(*) END AS employment_spell_count,
+          COUNT(*) AS employment_spell_count,
           COUNT(DISTINCT IF(%1$s, sp.trainee_id, NULL)) AS first_salary_count,
           COUNT(DISTINCT IF(%2$s, sp.trainee_id, NULL)) AS latest_salary_count,
           AVG(IF(%1$s, sp.first_recorded_salary, NULL)) AS avg_first_recorded_salary,
           AVG(IF(%2$s, sp.latest_recorded_salary, NULL)) AS avg_latest_recorded_salary,
-          CASE WHEN COUNT(DISTINCT IF(%1$s AND %2$s, sp.trainee_id, NULL)) >= 5
-               THEN AVG(IF(%1$s AND %2$s, sp.salary_change_amount, NULL)) END AS avg_salary_change_amount,
-          CASE WHEN COUNT(DISTINCT IF(%1$s AND %2$s AND sp.salary_change_pct IS NOT NULL, sp.trainee_id, NULL)) >= 5
-               THEN AVG(IF(%1$s AND %2$s, sp.salary_change_pct, NULL)) END AS avg_salary_change_pct
+          AVG(IF(%1$s AND %2$s, sp.salary_change_amount, NULL)) AS avg_salary_change_amount,
+          AVG(IF(%1$s AND %2$s, sp.salary_change_pct, NULL)) AS avg_salary_change_pct
         """.formatted(FIRST_MONTHLY, LATEST_MONTHLY) + SALARY_SOURCE + filter.getSqlFragment();
 
     return jdbcTemplate.queryForObject(sql, (rs, rowNum) -> new WageProgressionProjection(
@@ -263,13 +253,10 @@ public class EconomicOutcomeDashboardRepository {
     String sql = """
         SELECT
           sp.course_id, c.course_code, c.course_name,
-          CASE WHEN COUNT(DISTINCT sp.trainee_id) NOT BETWEEN 1 AND 4 THEN COUNT(*) END AS spell_count,
-          CASE WHEN COUNT(DISTINCT IF(%1$s, sp.trainee_id, NULL)) >= 5
-               THEN AVG(IF(%1$s, sp.first_recorded_salary, NULL)) END AS avg_first_recorded_salary,
-          CASE WHEN COUNT(DISTINCT IF(%2$s, sp.trainee_id, NULL)) >= 5
-               THEN AVG(IF(%2$s, sp.latest_recorded_salary, NULL)) END AS avg_latest_recorded_salary,
-          CASE WHEN COUNT(DISTINCT IF(%1$s AND %2$s AND sp.salary_change_pct IS NOT NULL, sp.trainee_id, NULL)) >= 5
-               THEN AVG(IF(%1$s AND %2$s, sp.salary_change_pct, NULL)) END AS avg_salary_change_pct
+          COUNT(*) AS spell_count,
+          AVG(IF(%1$s, sp.first_recorded_salary, NULL)) AS avg_first_recorded_salary,
+          AVG(IF(%2$s, sp.latest_recorded_salary, NULL)) AS avg_latest_recorded_salary,
+          AVG(IF(%1$s AND %2$s, sp.salary_change_pct, NULL)) AS avg_salary_change_pct
         """.formatted(FIRST_MONTHLY, LATEST_MONTHLY)
         + SALARY_SOURCE.replace("WHERE tr.deleted_at IS NULL", "JOIN courses c ON c.course_id = sp.course_id WHERE tr.deleted_at IS NULL AND c.deleted_at IS NULL")
         + filter.getSqlFragment() + """
@@ -311,10 +298,8 @@ public class EconomicOutcomeDashboardRepository {
             + alias + ".enrollment_id " + filter.getSqlFragment() + ")", filter.getParameters());
   }
 
-  private static String safeCount(String condition) {
-    return "CASE WHEN COUNT(DISTINCT IF(" + condition + ", trainee_id, NULL)) NOT BETWEEN 1 AND 4"
-        + " AND COUNT(DISTINCT IF(NOT (" + condition + "), trainee_id, NULL)) NOT BETWEEN 1 AND 4"
-        + " THEN COALESCE(SUM(IF(" + condition + ", 1, 0)), 0) END";
+  private static String countWhere(String condition) {
+    return "COALESCE(SUM(IF(" + condition + ", 1, 0)), 0)";
   }
 
   private static Long getNullableLong(ResultSet rs, String column) throws SQLException {

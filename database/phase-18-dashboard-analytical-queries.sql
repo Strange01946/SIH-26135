@@ -19,7 +19,7 @@ SELECT
   (SELECT SUM(is_completed_flag) FROM vw_enrollment_outcome_fact) AS completed_enrollment_count,
   (SELECT SUM(has_issued_certificate_flag) FROM vw_enrollment_outcome_fact) AS certified_enrollment_count,
   (SELECT COUNT(*) FROM vw_placement_fact) AS placement_count,
-  (SELECT SUM(joined_flag) FROM vw_placement_fact) AS joined_placement_count,
+  (SELECT SUM(has_joined_placement_flag) FROM vw_enrollment_outcome_fact) AS joined_placement_count,
   (SELECT COUNT(*) FROM vw_employment_fact) AS employment_spell_count,
   (SELECT COUNT(DISTINCT trainee_id) FROM vw_employment_fact) AS employed_trainee_count,
   (SELECT SUM(CASE WHEN is_current = 1 THEN 1 ELSE 0 END) FROM vw_employment_fact) AS current_employment_spell_count,

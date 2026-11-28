@@ -33,7 +33,18 @@ SELECT
   CASE WHEN COALESCE(cert.issued_certificate_count, 0) > 0 THEN 1 ELSE 0 END AS has_issued_certificate_flag,
   COALESCE(pl.placement_count, 0) AS placement_count,
   COALESCE(pl.joined_placement_count, 0) AS joined_placement_count,
-  CASE WHEN COALESCE(pl.joined_placement_count, 0) > 0 THEN 1 ELSE 0 END AS has_joined_placement_flag,
+  -- Placement outcome for MIS, counted once per enrollment across both sources.
+  CASE WHEN COALESCE(pl.joined_placement_count, 0) > 0 OR EXISTS (
+    SELECT 1 FROM employment_records reported
+    JOIN ref_employment_info_source src USING (employment_info_source_id)
+    JOIN ref_engagement_type engagement USING (engagement_type_id)
+    JOIN ref_record_verification_status verification USING (record_verification_status_id)
+    WHERE reported.enrollment_id = e.enrollment_id AND reported.trainee_id = e.trainee_id
+      AND reported.deleted_at IS NULL AND src.source_code = 'TRAINEE_DECLARATION'
+      AND verification.status_code <> 'REJECTED' AND engagement.is_wage_employment = 1
+      AND st.is_completed_flag = 1 AND reported.start_date <= CURDATE()
+      AND reported.start_date >= COALESCE(e.actual_completion_date, b.end_date)
+  ) THEN 1 ELSE 0 END AS has_joined_placement_flag,
   COALESCE(emp.employment_count, 0) AS employment_count,
   COALESCE(emp.current_employment_count, 0) AS current_employment_count,
   COALESCE(emp.wage_employment_count, 0) AS wage_employment_count,
@@ -47,6 +58,8 @@ JOIN trainees t
   ON t.trainee_id = e.trainee_id
 JOIN programs p
   ON p.program_id = e.program_id
+LEFT JOIN training_batches b
+  ON b.batch_id = e.batch_id
 LEFT JOIN (
   SELECT
     c.enrollment_id,

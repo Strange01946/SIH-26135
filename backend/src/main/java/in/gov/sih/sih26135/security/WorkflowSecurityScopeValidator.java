@@ -44,6 +44,8 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class WorkflowSecurityScopeValidator {
+  public static final String GOVERNMENT_MIS_READ = "hasAuthority('analytics.read') "
+      + "or hasAnyAuthority('ROLE_super_admin', 'ROLE_state_admin', 'ROLE_district_officer')";
 
   private static final Logger log = LoggerFactory.getLogger(WorkflowSecurityScopeValidator.class);
 
@@ -386,6 +388,44 @@ public class WorkflowSecurityScopeValidator {
       log.warn("Nationwide scope violation: caller lacks nationwide administrative authority");
       throw new AccessDeniedException("Access denied");
     }
+  }
+
+  /** Applies the account's reporting boundary before querying or caching Government MIS data. */
+  public void applyGovernmentMisScope(AnalyticsFilterCriteria criteria) {
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    if (authentication == null || !authentication.isAuthenticated()) {
+      throw new AccessDeniedException("Access denied");
+    }
+    Set<String> authorities = authentication.getAuthorities().stream()
+        .map(GrantedAuthority::getAuthority).collect(Collectors.toSet());
+    boolean districtOfficer = authorities.contains("ROLE_district_officer");
+    boolean stateAdmin = authorities.contains("ROLE_state_admin")
+        || (authorities.contains("ROLE_government_admin") && resolveAuthenticatedUser()
+            .map(user -> user.getStateId() != null).orElse(false));
+    if (!districtOfficer && !stateAdmin) {
+      validateNationwideScope();
+      validateAnalyticsFilterScope(criteria);
+      if (criteria.getDistrictId() != null && criteria.getStateId() == null) {
+        criteria.setStateId(findDistrictStateId(criteria.getDistrictId()));
+      }
+      return;
+    }
+
+    criteria.validate();
+    User user = resolveAuthenticatedUser().orElseThrow(() -> new AccessDeniedException("Access denied"));
+    Long state = user.getStateId();
+    Long district = user.getDistrictId();
+    if (state == null || user.getTrainingProviderId() != null || user.getEmployerId() != null
+        || authorities.contains("ROLE_training_provider") || authorities.contains("ROLE_employer")
+        || authorities.contains("ROLE_trainee") || traineeRepository.findByUserId(user.getId()).isPresent()
+        || (districtOfficer && district == null) || (district != null && !state.equals(findDistrictStateId(district)))
+        || (criteria.getStateId() != null && !state.equals(criteria.getStateId()))
+        || (criteria.getDistrictId() != null && !state.equals(findDistrictStateId(criteria.getDistrictId())))
+        || (district != null && criteria.getDistrictId() != null && !district.equals(criteria.getDistrictId()))) {
+      throw new AccessDeniedException("Access denied");
+    }
+    criteria.setStateId(state);
+    if (district != null) criteria.setDistrictId(district);
   }
 
   /**

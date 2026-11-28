@@ -50,24 +50,16 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
 
   private final GeographicDashboardRepository geographicDashboardRepository;
   private final WorkflowSecurityScopeValidator scopeValidator;
-  private final in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService privacyService;
   private in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate;
 
   @org.springframework.beans.factory.annotation.Autowired
   public GeographicDashboardServiceImpl(
       GeographicDashboardRepository geographicDashboardRepository,
-      WorkflowSecurityScopeValidator scopeValidator,
-      in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService privacyService) {
+      WorkflowSecurityScopeValidator scopeValidator) {
     this.geographicDashboardRepository = java.util.Objects.requireNonNull(geographicDashboardRepository, "GeographicDashboardRepository is required");
     this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
-    this.privacyService = privacyService != null ? privacyService : new in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService();
   }
 
-  public GeographicDashboardServiceImpl(
-      GeographicDashboardRepository geographicDashboardRepository,
-      WorkflowSecurityScopeValidator scopeValidator) {
-    this(geographicDashboardRepository, scopeValidator, new in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService());
-  }
 
   @org.springframework.beans.factory.annotation.Autowired(required = false)
   public void setCacheDelegate(in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate) {
@@ -106,7 +98,8 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     long totalEmployed = stateSummaries.stream().mapToLong(StatePerformanceResponse::employedCount).sum();
 
     BigDecimal overallCompletionRatePct = AnalyticsCalculationUtils.calculatePercentage(totalCompleted, totalEnrollments);
-    BigDecimal overallCertificationRatePct = AnalyticsCalculationUtils.calculatePercentage(totalCertified, totalEnrollments);
+    BigDecimal overallCertificationRatePct = AnalyticsCalculationUtils.calculatePercentage(totalCertified,
+        stateSummaries.stream().mapToLong(StatePerformanceResponse::traineeCount).sum());
     BigDecimal overallPlacementRatePct = AnalyticsCalculationUtils.calculatePercentage(totalJoinedPlacement, totalEnrollments);
     BigDecimal overallEmploymentRatePct = AnalyticsCalculationUtils.calculatePercentage(totalEmployed, totalEnrollments);
 
@@ -119,7 +112,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
         geographicDashboardRepository.countDistrictsWithoutTrainingCenters()
     );
 
-    return privacyService.applyPrivacyGuardrail(new GeographicOverviewResponse(
+    return new GeographicOverviewResponse(
         totalStates,
         totalDistricts,
         totalEnrollments,
@@ -134,7 +127,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
         stateSummaries,
         districtRankings,
         regionalDisparity
-    ));
+    );
   }
 
   @Override
@@ -189,7 +182,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     LeaderboardResponse<DistrictPerformanceResponse> districtRankings =
         LeaderboardResponse.of(RANKING_METRIC_STATE_DISTRICTS, stateDistricts);
 
-    return privacyService.applyPrivacyGuardrail(new StateGeographicResponse(
+    return new StateGeographicResponse(
         stateId,
         stateSummary != null ? stateSummary.stateCode() : null,
         stateSummary != null ? stateSummary.stateName() : null,
@@ -198,7 +191,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
         districtRankings,
         totalTrainingCenters,
         stateDisparity
-    ));
+    );
   }
 
   @Override
@@ -269,7 +262,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     regionalIndicators.put("hasEnrollment", performance != null && performance.enrollmentCount() > 0L);
     regionalIndicators.put("dataAvailabilityNotes", DATA_AVAILABILITY_NOTES);
 
-    return privacyService.applyPrivacyGuardrail(new DistrictGeographicResponse(
+    return new DistrictGeographicResponse(
         districtId,
         districtProj != null ? districtProj.districtCode() : null,
         districtProj != null ? districtProj.districtName() : null,
@@ -282,7 +275,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
         nationalRank,
         stateRank,
         regionalIndicators
-    ));
+    );
   }
 
   @Override
@@ -292,7 +285,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     for (int i = 0; i < q06Projections.size(); i++) {
       districtResponses.add(toDistrictResponse(q06Projections.get(i), i + 1));
     }
-    return LeaderboardResponse.of(RANKING_METRIC_Q06, privacyService.applyPrivacyGuardrailsToDistricts(districtResponses));
+    return LeaderboardResponse.of(RANKING_METRIC_Q06, districtResponses);
   }
 
   @Override
@@ -300,8 +293,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     if (criteria == null || criteria.isEmpty()) {
       return getNationalGeographicOverview();
     }
-    scopeValidator.validateNationwideScope();
-    scopeValidator.validateAnalyticsFilterScope(criteria);
+    scopeValidator.applyGovernmentMisScope(criteria);
     if (cacheDelegate != null) {
       return cacheDelegate.getNationalGeographicOverview(criteria, () -> computeFilteredNationalOverview(criteria));
     }
@@ -331,7 +323,8 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     long totalEmployed = stateSummaries.stream().mapToLong(StatePerformanceResponse::employedCount).sum();
 
     BigDecimal overallCompletionRatePct = AnalyticsCalculationUtils.calculatePercentage(totalCompleted, totalEnrollments);
-    BigDecimal overallCertificationRatePct = AnalyticsCalculationUtils.calculatePercentage(totalCertified, totalEnrollments);
+    BigDecimal overallCertificationRatePct = AnalyticsCalculationUtils.calculatePercentage(totalCertified,
+        stateSummaries.stream().mapToLong(StatePerformanceResponse::traineeCount).sum());
     BigDecimal overallPlacementRatePct = AnalyticsCalculationUtils.calculatePercentage(totalJoinedPlacement, totalEnrollments);
     BigDecimal overallEmploymentRatePct = AnalyticsCalculationUtils.calculatePercentage(totalEmployed, totalEnrollments);
 
@@ -340,11 +333,11 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
 
     RegionalDisparityResponse regionalDisparity = buildRegionalDisparity(
         districtResponses,
-        geographicDashboardRepository.countDistrictsWithZeroEnrollments(),
-        geographicDashboardRepository.countDistrictsWithoutTrainingCenters()
+        Math.max(0, totalDistricts - districtResponses.size()),
+        geographicDashboardRepository.countDistrictsWithoutTrainingCenters(criteria)
     );
 
-    return privacyService.applyPrivacyGuardrail(new GeographicOverviewResponse(
+    return new GeographicOverviewResponse(
         totalStates,
         totalDistricts,
         totalEnrollments,
@@ -359,7 +352,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
         stateSummaries,
         districtRankings,
         regionalDisparity
-    ));
+    );
   }
 
   @Override
@@ -367,8 +360,10 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     if (criteria == null || criteria.isEmpty()) {
       return getStateGeographicAnalytics(stateId);
     }
-    scopeValidator.validateStateScope(stateId);
-    scopeValidator.validateAnalyticsFilterScope(criteria);
+    scopeValidator.applyGovernmentMisScope(criteria);
+    if (criteria.getStateId() != null && !stateId.equals(criteria.getStateId())) {
+      throw new org.springframework.security.access.AccessDeniedException("Access denied");
+    }
     if (!geographicDashboardRepository.existsStateById(stateId)) {
       throw new ResourceNotFoundException("State not found with ID: " + stateId);
     }
@@ -416,7 +411,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     LeaderboardResponse<DistrictPerformanceResponse> districtRankings =
         LeaderboardResponse.of(RANKING_METRIC_STATE_DISTRICTS, stateDistricts);
 
-    return privacyService.applyPrivacyGuardrail(new StateGeographicResponse(
+    return new StateGeographicResponse(
         stateId,
         stateSummary != null ? stateSummary.stateCode() : null,
         stateSummary != null ? stateSummary.stateName() : null,
@@ -425,7 +420,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
         districtRankings,
         totalTrainingCenters,
         stateDisparity
-    ));
+    );
   }
 
   @Override
@@ -433,8 +428,11 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     if (criteria == null || criteria.isEmpty()) {
       return getDistrictGeographicAnalytics(districtId);
     }
-    scopeValidator.validateDistrictScope(districtId);
-    scopeValidator.validateAnalyticsFilterScope(criteria);
+    if (criteria.getDistrictId() != null && !districtId.equals(criteria.getDistrictId())) {
+      throw new org.springframework.security.access.AccessDeniedException("Access denied");
+    }
+    criteria.setDistrictId(districtId);
+    scopeValidator.applyGovernmentMisScope(criteria);
     if (!geographicDashboardRepository.existsDistrictById(districtId)) {
       throw new ResourceNotFoundException("District not found with ID: " + districtId);
     }
@@ -498,7 +496,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     regionalIndicators.put("hasEnrollment", performance != null && performance.enrollmentCount() > 0L);
     regionalIndicators.put("dataAvailabilityNotes", DATA_AVAILABILITY_NOTES);
 
-    return privacyService.applyPrivacyGuardrail(new DistrictGeographicResponse(
+    return new DistrictGeographicResponse(
         districtId,
         districtProj != null ? districtProj.districtCode() : null,
         districtProj != null ? districtProj.districtName() : null,
@@ -511,7 +509,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
         nationalRank,
         stateRank,
         regionalIndicators
-    ));
+    );
   }
 
   @Override
@@ -519,14 +517,13 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
     if (criteria == null || criteria.isEmpty()) {
       return getDistrictRankings();
     }
-    scopeValidator.validateNationwideScope();
-    scopeValidator.validateAnalyticsFilterScope(criteria);
+    scopeValidator.applyGovernmentMisScope(criteria);
     List<DistrictPerformanceProjection> projections = geographicDashboardRepository.getFormalQ06DistrictOutcomes(criteria);
     List<DistrictPerformanceResponse> items = new ArrayList<>();
     for (int i = 0; i < projections.size(); i++) {
       items.add(toDistrictResponse(projections.get(i), i + 1));
     }
-    return LeaderboardResponse.of(RANKING_METRIC_Q06, privacyService.applyPrivacyGuardrailsToDistricts(items));
+    return LeaderboardResponse.of(RANKING_METRIC_Q06, items);
   }
 
   private RegionalDisparityResponse buildRegionalDisparity(
@@ -595,7 +592,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
 
     BigDecimal certificationRatePct = p.certificationRatePct() != null
         ? AnalyticsCalculationUtils.round(p.certificationRatePct())
-        : AnalyticsCalculationUtils.calculatePercentage(certifiedCount, enrollmentCount);
+        : AnalyticsCalculationUtils.calculatePercentage(certifiedCount, toLong(p.traineeCount()));
 
     BigDecimal placementRatePct = p.placementRatePct() != null
         ? AnalyticsCalculationUtils.round(p.placementRatePct())
@@ -639,7 +636,7 @@ public class GeographicDashboardServiceImpl implements GeographicDashboardServic
 
     BigDecimal certificationRatePct = p.certificationRatePct() != null
         ? AnalyticsCalculationUtils.round(p.certificationRatePct())
-        : AnalyticsCalculationUtils.calculatePercentage(certifiedCount, enrollmentCount);
+        : AnalyticsCalculationUtils.calculatePercentage(certifiedCount, toLong(p.traineeCount()));
 
     BigDecimal placementRatePct = p.placementRatePct() != null
         ? AnalyticsCalculationUtils.round(p.placementRatePct())

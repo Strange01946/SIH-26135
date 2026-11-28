@@ -26,11 +26,12 @@ function BatchAttendance({ batchId }: { batchId: number }) {
   const client = useQueryClient();
   const [chosenSession, setChosenSession] = useState<number>();
   const [drafts, setDrafts] = useState<Record<number, SessionDraft>>({});
+  const [lockConfirmed, setLockConfirmed] = useState(false);
   const key = batchAttendanceKey(batchId);
   const timetable = useQuery({
     queryKey: [...key, 'timetable'],
     queryFn: ({ signal }) => getAttendanceTimetable(batchId, signal),
-    retry: false, refetchInterval: 15_000,
+    retry: false, refetchInterval: 15_000, refetchOnWindowFocus: 'always',
   });
   const sessions = timetable.data?.sessions ?? [];
   const session = sessions.find(item => item.id === chosenSession) ?? sessions.find(item => item.canMark) ?? sessions[0];
@@ -38,7 +39,7 @@ function BatchAttendance({ batchId }: { batchId: number }) {
   const roster = useQuery({
     queryKey: [...key, 'roster', sessionId],
     queryFn: ({ signal }) => getSessionRoster(batchId, sessionId!, signal),
-    enabled: Boolean(sessionId), retry: false, refetchInterval: 15_000,
+    enabled: Boolean(sessionId), retry: false, refetchInterval: 15_000, refetchOnWindowFocus: 'always',
   });
   const start = useMutation({
     mutationFn: () => updateTrainingBatchStatus(batchId, { batchStatusId: 3 }),
@@ -55,12 +56,21 @@ function BatchAttendance({ batchId }: { batchId: number }) {
       setDrafts(previous => ({ ...previous, [input.sessionId]: {} }));
       await client.invalidateQueries({ queryKey: ['trainee', 'attendance'] });
     },
+    onError: async (error) => {
+      if (error.code === 'ASSESSMENT_ATTENDANCE_LOCKED') {
+        setLockConfirmed(true);
+        setDrafts({});
+        await client.invalidateQueries({ queryKey: key });
+      }
+    },
   });
-  const draft = session ? drafts[session.id] ?? {} : {};
+  const attendanceLocked = timetable.data?.attendanceLocked || lockConfirmed;
+  const canMark = !attendanceLocked && session?.canMark && roster.data?.session.canMark;
+  const draft = canMark && session ? drafts[session.id] ?? {} : {};
   const changes = Object.values(draft);
 
   function edit(row: AttendanceRosterRow, status: string, remarks: string) {
-    if (!session) return;
+    if (!session || !canMark) return;
     const sessionId = session.id;
     setDrafts(previous => {
       const next = { ...previous[sessionId] };
@@ -78,7 +88,7 @@ function BatchAttendance({ batchId }: { batchId: number }) {
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (session?.canMark && changes.length && !save.isPending) save.mutate({ sessionId: session.id, marks: changes });
+    if (session && canMark && changes.length && !save.isPending) save.mutate({ sessionId: session.id, marks: changes });
   }
 
   return (
@@ -101,6 +111,9 @@ function BatchAttendance({ batchId }: { batchId: number }) {
           </header>
           <section className="card space-y-4 p-5" aria-labelledby="session-attendance">
             <h2 id="session-attendance" className="section-title">Session attendance</h2>
+            {attendanceLocked && <p role="status" className="text-sm text-slate-700">
+              Attendance is read-only because this batch is open for assessment.
+            </p>}
             {sessions.length === 0 ? <p className="text-sm text-slate-600">This batch has no approved sessions on its timetable.</p> : (
               <>
                 <div className="max-w-lg">
@@ -114,10 +127,9 @@ function BatchAttendance({ batchId }: { batchId: number }) {
                     })}
                   </select>
                 </div>
-                {session && !session.canMark && <p className="text-sm text-slate-600">
+                {!attendanceLocked && session && !session.canMark && <p className="text-sm text-slate-600">
                   {!session.started ? 'Attendance opens at the scheduled start time after training begins.'
                     : timetable.data.batchStatus === 'CANCELLED' ? 'This cancelled batch is available for review.'
-                    : timetable.data.batchStatus === 'COMPLETED' ? 'Training attendance is read-only after the batch opens for assessment.'
                     : 'Start training to mark attendance for this session.'}
                 </p>}
                 {roster.isPending ? <LoadingSpinner label="Loading session roster" /> : roster.isError ? (
@@ -134,7 +146,7 @@ function BatchAttendance({ batchId }: { batchId: number }) {
                           {roster.data.rows.map(row => {
                             const status = draft[row.enrollmentId]?.status ?? row.status ?? '';
                             const remarks = draft[row.enrollmentId]?.remarks ?? row.remarks ?? '';
-                            const disabled = !session?.canMark || !row.eligible || save.isPending;
+                            const disabled = !canMark || !row.eligible || save.isPending;
                             return <tr key={row.enrollmentId}>
                               <th scope="row" className="p-2 font-semibold">{row.name}
                                 <span className="block font-normal text-slate-600">{row.registrationNumber}</span>
@@ -158,7 +170,7 @@ function BatchAttendance({ batchId }: { batchId: number }) {
                         </tbody>
                       </table>
                     </div>
-                    {session?.canMark && <div className="flex flex-wrap items-center gap-3">
+                    {canMark && <div className="flex flex-wrap items-center gap-3">
                       <button className="btn-primary" type="submit" disabled={!changes.length || save.isPending}>
                         {save.isPending ? 'Saving…' : 'Save attendance'}
                       </button>

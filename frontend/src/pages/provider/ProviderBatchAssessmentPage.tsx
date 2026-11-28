@@ -5,6 +5,7 @@ import {
   getBatchAssessmentReadiness, getProviderAssessmentReview, publishBatchAssessment,
   type BatchAssessmentReview,
 } from '@/api/batchAssessmentApi';
+import { batchAttendanceKey } from '@/api/batchSessionAttendanceApi';
 import { AssessmentDocumentButton, BatchAssessmentSummary } from '@/components/assessment/BatchAssessmentSummary';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
@@ -26,7 +27,10 @@ export function ProviderBatchAssessmentPage() {
     mutationFn: (form: FormData) => publishBatchAssessment(id, {
       brief: String(form.get('brief')),
     }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: readinessKey }),
+    onSuccess: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: readinessKey }),
+      queryClient.invalidateQueries({ queryKey: batchAttendanceKey(id) }),
+    ]),
   });
 
   return <main className="space-y-5">
@@ -37,10 +41,11 @@ export function ProviderBatchAssessmentPage() {
       {readiness.isLoading && <LoadingSpinner label="Loading assessment readiness" />}
       {readiness.isError && <ErrorState error={readiness.error} title="Could not load assessment readiness" onRetry={() => void readiness.refetch()} />}
       {readiness.data && <p className="text-sm text-gray-700">{readiness.data.batchCode} · {readiness.data.candidates} registered candidates · {readiness.data.sessions} training sessions</p>}
+      {readiness.data?.publication && <Link to={`/provider/batches/${id}/attendance`} className="text-sm text-navy underline">View locked training attendance</Link>}
       {readiness.data && !readiness.data.publication && <>
         {readiness.data.blocker && <p className="text-amber-900" role="status">{readiness.data.blocker}</p>}
         <Link to={`/provider/batches/${id}/attendance`} className="text-sm text-navy underline">Review training attendance</Link>
-        <p className="text-sm text-gray-700">The assessor sets the date and venue when they claim the batch.</p>
+        <p className="text-sm text-gray-700">Opening the batch locks training attendance. The assessor sets the date and venue when they claim the batch.</p>
         <form className="space-y-3" onSubmit={(event: FormEvent<HTMLFormElement>) => {
           event.preventDefault();
           publish.mutate(new FormData(event.currentTarget));

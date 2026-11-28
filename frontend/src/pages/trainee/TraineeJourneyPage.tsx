@@ -8,6 +8,7 @@ import {
   acceptSkillGapRecommendation,
   rejectSkillGapRecommendation,
   getEmploymentHistory,
+  type EmploymentPeriod,
 } from '@/api/traineeApi';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
 import { EmptyState } from '@/components/feedback/EmptyState';
@@ -17,6 +18,7 @@ import { ReportedCareer } from '@/components/career/ReportedCareer';
 import { OwnCareerSkills } from '@/components/career/CareerSkillsPanel';
 import { CareerTrainingSuggestions } from '@/components/career/CareerTrainingSuggestions';
 import { TraineeSurveys } from './TraineeSurveys';
+import { TraineeJobForm } from './TraineeJobForm';
 
 interface TraineeContextType {
   trainee: TraineeProfile | null;
@@ -53,6 +55,8 @@ export const TraineeJourneyPage: React.FC = () => {
 
   const [employmentPage, setEmploymentPage] = useState(0);
   const [retentionEmploymentId, setRetentionEmploymentId] = useState<number>();
+  const [editingJob, setEditingJob] = useState<EmploymentPeriod | 'new'>();
+  const [employmentMessage, setEmploymentMessage] = useState('');
   const employment = useQuery({
     queryKey: ['trainee', 'employment-history', traineeId, employmentPage],
     queryFn: ({ signal }) => getEmploymentHistory(employmentPage, signal),
@@ -119,11 +123,15 @@ export const TraineeJourneyPage: React.FC = () => {
     <div className="space-y-6">
       {career.data?.reportedUpdate && <ReportedCareer update={career.data.reportedUpdate} />}
       <section className="card space-y-4" aria-labelledby="career-milestones-heading">
-        <h2 id="career-milestones-heading" className="text-lg font-bold text-navy">Employment history</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 id="career-milestones-heading" className="text-lg font-bold text-navy">Employment history</h2>
+          <button type="button" className="btn-primary" onClick={() => setEditingJob('new')}>Add employment</button>
+        </div>
+        {employmentMessage && <p role="status" className="text-sm text-green-800">{employmentMessage}</p>}
         {career.isError && (
           <ErrorState error={career.error} title="Unable to load current employment status" onRetry={() => void career.refetch()} />
         )}
-        {career.data?.status.name && !career.data.reportedUpdate && (
+        {career.data?.status.name && (
           <p className="text-sm">Recorded status <strong>{career.data.status.name}</strong>
             {career.data.status.source === 'PROFILE' && <span className="text-slate-600"> · Profile record</span>}</p>
         )}
@@ -137,10 +145,23 @@ export const TraineeJourneyPage: React.FC = () => {
                   <p className="font-semibold">{period.jobRole || period.employer || 'Employment record'}</p>
                   <p>{[period.jobRole && period.employer, period.engagementType?.replace(/_/g, ' '), period.status].filter(Boolean).join(' · ')}</p>
                   <p>{period.startDate && careerDate(period.startDate)}{period.endDate && ` to ${careerDate(period.endDate)}`}</p>
-                  {period.verificationStatus && <p>Verification <strong>{period.verificationStatus.replace(/_/g, ' ')}</strong></p>}
+                  {period.employmentSource === 'TRAINEE_DECLARATION' && <p>Self-reported</p>}
+                  {period.employmentSource === 'EMPLOYER_CONFIRMATION' && <p>Employer-confirmed</p>}
+                  {!!period.relatedTraining?.length && (
+                    <div>
+                      <p className="font-medium">Related training</p>
+                      <ul className="list-disc pl-5">
+                        {period.relatedTraining.map(training => <li key={training.id}>
+                          {[training.name, training.batchCode].filter(Boolean).join(' · ')}
+                          {training.primary && <span className="ml-2 font-medium text-navy">Primary</span>}
+                        </li>)}
+                      </ul>
+                    </div>
+                  )}
                   {period.startingPay != null && (
                     <p>Starting pay {[period.currency, period.startingPay.toLocaleString('en-IN'), period.payFrequency?.toLowerCase()].filter(Boolean).join(' ')}</p>
                   )}
+                  {period.editable && <button type="button" className="btn-outline mr-2" onClick={() => setEditingJob(period)}>Edit employment</button>}
                   <button type="button" className="btn-secondary mt-2" aria-expanded={retentionEmploymentId === period.id}
                     onClick={() => setRetentionEmploymentId(retentionEmploymentId === period.id ? undefined : period.id)}>
                     {retentionEmploymentId === period.id ? 'Hide retention and wages' : 'View retention and wages'}
@@ -168,6 +189,14 @@ export const TraineeJourneyPage: React.FC = () => {
           </ul>
         </>}
       </section>
+      {editingJob && <TraineeJobForm traineeId={traineeId} period={editingJob === 'new' ? undefined : editingJob}
+        onClose={() => setEditingJob(undefined)} onSaved={async () => {
+          setEditingJob(undefined);
+          setEmploymentPage(0);
+          setRetentionEmploymentId(undefined);
+          setEmploymentMessage('Employment details saved.');
+          await queryClient.invalidateQueries({ queryKey: ['trainee'] });
+        }} />}
 
       <TraineeSurveys traineeId={traineeId} />
       <OwnCareerSkills traineeId={traineeId} />

@@ -42,8 +42,11 @@ describe('TraineeAssessmentsPage Component', () => {
       programName: 'Pradhan Mantri Kaushal Vikas Yojana',
       issuingBody: 'NCVET & Skill Council for Green Jobs',
       issueDate: '2026-10-20',
-      certificateVerificationStatusName: 'Verified',
-      certificateStatusName: 'Active',
+      expiryDate: '2031-10-20',
+      certificateVerificationStatusCode: 'PENDING',
+      certificateVerificationStatusName: 'Pending verification',
+      certificateStatusCode: 'ISSUED',
+      certificateStatusName: 'Issued',
     },
   ];
 
@@ -92,7 +95,8 @@ describe('TraineeAssessmentsPage Component', () => {
 
     expect(screen.getByText('Solar PV Installer Technician')).toBeInTheDocument();
     expect(screen.getByText('NCVET & Skill Council for Green Jobs')).toBeInTheDocument();
-    expect(screen.getByText('Verified')).toBeInTheDocument();
+    expect(screen.getByText('Issued', { exact: true })).toBeInTheDocument();
+    expect(screen.queryByText(/pending verification|validity|expir/i)).not.toBeInTheDocument();
 
     // Assessments table
     expect(screen.getByText('National Trade Test — Practical Wiring')).toBeInTheDocument();

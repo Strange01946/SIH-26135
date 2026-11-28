@@ -27,7 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 @RestController
 @RequestMapping("/api/v1/dashboards")
-@PreAuthorize("hasAuthority('analytics.read')")
+@PreAuthorize(WorkflowSecurityScopeValidator.GOVERNMENT_MIS_READ)
 public class InstitutionalAnalyticsController {
 
   private final InstitutionalAnalyticsService institutionalAnalyticsService;
@@ -52,8 +52,7 @@ public class InstitutionalAnalyticsController {
   public ResponseEntity<ApiResponse<LeaderboardResponse<ProviderPerformanceResponse>>> getProviderLeaderboard(
       @Valid AnalyticsFilterCriteria criteria,
       HttpServletRequest httpRequest) {
-    scopeValidator.validateNationwideScope();
-    scopeValidator.validateAnalyticsFilterScope(criteria);
+    scopeValidator.applyGovernmentMisScope(criteria);
     LeaderboardResponse<ProviderPerformanceResponse> response = (criteria == null || criteria.isEmpty())
         ? institutionalAnalyticsService.getProviderLeaderboard()
         : institutionalAnalyticsService.getProviderLeaderboard(criteria);
@@ -77,8 +76,7 @@ public class InstitutionalAnalyticsController {
   public ResponseEntity<ApiResponse<LeaderboardResponse<CourseEmployabilityResponse>>> getCourseLeaderboard(
       @Valid AnalyticsFilterCriteria criteria,
       HttpServletRequest httpRequest) {
-    scopeValidator.validateNationwideScope();
-    scopeValidator.validateAnalyticsFilterScope(criteria);
+    scopeValidator.applyGovernmentMisScope(criteria);
     LeaderboardResponse<CourseEmployabilityResponse> response = (criteria == null || criteria.isEmpty())
         ? institutionalAnalyticsService.getCourseLeaderboard()
         : institutionalAnalyticsService.getCourseLeaderboard(criteria);

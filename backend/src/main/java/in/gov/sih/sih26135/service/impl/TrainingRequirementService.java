@@ -286,7 +286,8 @@ public class TrainingRequirementService {
   }
 
   private static void validateProposal(LocalDate from, LocalDate to, LocalTime start) {
-    if (!from.atTime(start).isAfter(LocalDateTime.now(INDIA))) {
+    LocalDateTime currentMinute = LocalDateTime.now(INDIA).truncatedTo(ChronoUnit.MINUTES);
+    if (from.atTime(start).isBefore(currentMinute)) {
       throw new ConflictException("The proposed training window has passed.", "TRAINING_WINDOW_EXPIRED");
     }
     if (ChronoUnit.DAYS.between(from, to) >= 366) {

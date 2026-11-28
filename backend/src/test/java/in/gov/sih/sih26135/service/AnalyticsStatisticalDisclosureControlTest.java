@@ -728,12 +728,12 @@ public class AnalyticsStatisticalDisclosureControlTest {
   // =========================================================================
 
   @Nested
-  @DisplayName("6. Cold and Warm Cache Privacy Preservation")
+  @DisplayName("6. Government MIS cache consistency")
   class CachePrivacyTests {
 
     @Test
-    @DisplayName("Cold miss computes and applies privacy guardrails; warm hit returns privacy-safe cached DTO")
-    void testCachePreservesSuppression() {
+    @DisplayName("Government MIS geography returns the same exact counts from a warm cache")
+    void testCachePreservesExactGeography() {
       // 1. Cold execution
       var firstCall = geographicDashboardService.getNationalGeographicOverview();
       assertThat(firstCall).isNotNull();
@@ -742,13 +742,8 @@ public class AnalyticsStatisticalDisclosureControlTest {
       var secondCall = geographicDashboardService.getNationalGeographicOverview();
       assertThat(secondCall).isNotNull();
 
-      // State summaries must remain privacy-guarded on warm cache hits
-      for (StatePerformanceResponse state : secondCall.stateSummaries()) {
-        if (state.traineeCount() != null && state.traineeCount() > 0 && state.traineeCount() < 5) {
-          assertThat(state.completionRatePct()).isNull();
-          assertThat(state.enrollmentCount()).isNull();
-        }
-      }
+      assertThat(secondCall).isEqualTo(firstCall);
+      assertThat(secondCall.stateSummaries()).allMatch(state -> state.enrollmentCount() != null);
     }
   }
 }

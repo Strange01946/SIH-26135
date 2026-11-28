@@ -48,7 +48,7 @@ public class BatchSessionAttendanceService {
   public AttendanceTimetable timetable(long batchId) {
     var batch = ownBatch(batchId, false);
     var now = LocalDateTime.now(INDIA);
-    return new AttendanceTimetable(batch.code(), batch.title(), batch.status(),
+    return new AttendanceTimetable(batch.code(), batch.title(), batch.status(), batch.attendanceLocked(),
         sessions(batchId).stream().map(slot -> slot.view(batch, now)).toList());
   }
 
@@ -84,9 +84,7 @@ public class BatchSessionAttendanceService {
   public AttendanceSessionRoster save(long batchId, long sessionId, SaveAttendanceRoster request) {
     // Venue approval, rescheduling and the legacy attendance writers take the same batch lock.
     var batch = ownBatch(batchId, true);
-    if (batch.attendanceLocked()) {
-      throw attendanceLocked();
-    }
+    requireAttendanceEditable(batch.id());
     var slot = slot(batchId, sessionId);
     var now = LocalDateTime.now(INDIA);
     var session = slot.view(batch, now);

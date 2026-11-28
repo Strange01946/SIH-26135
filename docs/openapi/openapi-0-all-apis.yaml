@@ -603,6 +603,34 @@ paths:
                 $ref: "#/components/schemas/ApiResponseTraineeSelfProfile"
       security:
       - bearerAuth: []
+  /api/v1/trainees/me/employment-history/{id}:
+    put:
+      tags:
+      - trainee-career-controller
+      operationId: updateTraineeEmployment
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobInput"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseLong"
+      security:
+      - bearerAuth: []
   /api/v1/trainee-unemployment-events/{id}:
     get:
       tags:
@@ -4615,6 +4643,57 @@ paths:
                 $ref: "#/components/schemas/ApiResponseSubmission"
       security:
       - bearerAuth: []
+  /api/v1/trainees/me/employment-history:
+    get:
+      tags:
+      - trainee-career-controller
+      operationId: getEmploymentHistory
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+          minimum: 0
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 10
+          maximum: 100
+          minimum: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponsePagedResponseEmploymentPeriod"
+      security:
+      - bearerAuth: []
+    post:
+      tags:
+      - trainee-career-controller
+      operationId: addTraineeEmployment
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobInput"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseLong"
+      security:
+      - bearerAuth: []
   /api/v1/trainee-unemployment-events:
     get:
       tags:
@@ -7567,6 +7646,34 @@ paths:
                 $ref: "#/components/schemas/ApiResponseVacancy"
       security:
       - bearerAuth: []
+  /api/v1/employer/job-postings/{postingId}/hires:
+    post:
+      tags:
+      - employer-portal-controller
+      operationId: recordEmployerPostedJobHire
+      parameters:
+      - name: postingId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PostedJobHire"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponsePlacementToEmploymentTransitionResponse"
+      security:
+      - bearerAuth: []
   /api/v1/data-quality-rules/scan:
     post:
       tags:
@@ -10403,36 +10510,18 @@ paths:
                 $ref: "#/components/schemas/ApiResponseSubmissionDetail"
       security:
       - bearerAuth: []
-  /api/v1/trainees/me/employment-history:
+  /api/v1/trainees/me/employment-options:
     get:
       tags:
       - trainee-career-controller
-      operationId: getEmploymentHistory
-      parameters:
-      - name: page
-        in: query
-        required: false
-        schema:
-          type: integer
-          format: int32
-          default: 0
-          minimum: 0
-      - name: size
-        in: query
-        required: false
-        schema:
-          type: integer
-          format: int32
-          default: 10
-          maximum: 100
-          minimum: 1
+      operationId: traineeEmploymentOptions
       responses:
         "200":
           description: OK
           content:
             '*/*':
               schema:
-                $ref: "#/components/schemas/ApiResponsePagedResponseEmploymentPeriod"
+                $ref: "#/components/schemas/ApiResponseOptions"
       security:
       - bearerAuth: []
   /api/v1/trainees/me/career-status:
@@ -16833,6 +16922,73 @@ components:
             $ref: "#/components/schemas/EducationOption"
         reportedUpdate:
           $ref: "#/components/schemas/CareerUpdate"
+    JobInput:
+      type: object
+      properties:
+        jobTitle:
+          type: string
+          maxLength: 160
+          minLength: 0
+        employerName:
+          type: string
+          maxLength: 160
+          minLength: 0
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        pay:
+          type: number
+        payFrequencyId:
+          type: integer
+          format: int64
+        enrollmentId:
+          type: integer
+          format: int64
+        trainingEnrollmentIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+      required:
+      - jobTitle
+      - payFrequencyId
+      - startDate
+    ApiResponseLong:
+      type: object
+      description: Standard generic envelope for REST API responses
+      properties:
+        success:
+          type: boolean
+          description: Whether the request completed successfully
+          example: true
+        code:
+          type: string
+          description: Machine-readable status or error code
+          example: SUCCESS
+        message:
+          type: string
+          description: Human-readable result or status message
+          example: Operation completed successfully
+        data:
+          type: integer
+          format: int64
+          description: Payload data of type T
+        timestamp:
+          type: string
+          format: date-time
+          description: UTC ISO-8601 timestamp of response generation
+          example: 2026-11-19T18:00:00Z
+        path:
+          type: string
+          description: Request URI path
+          example: /api/v1/trainees
+        correlationId:
+          type: string
+          description: Unique correlation identifier for request tracing across services
+          example: c8f9b2a1-0000-4000-a000-000000000001
     UpdateTraineeUnemploymentEventRequest:
       type: object
       properties:
@@ -25442,6 +25598,30 @@ components:
           type: string
         level:
           type: string
+    PostedJobHire:
+      type: object
+      properties:
+        registrationNumber:
+          type: string
+          maxLength: 80
+          minLength: 0
+        enrollmentNumber:
+          type: string
+          maxLength: 80
+          minLength: 0
+        joiningDate:
+          type: string
+          format: date
+        pay:
+          type: number
+        payFrequencyId:
+          type: integer
+          format: int64
+      required:
+      - joiningDate
+      - pay
+      - payFrequencyId
+      - registrationNumber
     DataQualityScanRequest:
       type: object
       properties:
@@ -27890,6 +28070,23 @@ components:
         certificateId:
           type: integer
           format: int64
+        sessionMarks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrainingSessionMark"
+    TrainingSessionMark:
+      type: object
+      properties:
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+        remarks:
+          type: string
     ApiResponseTrainingRosterPage:
       type: object
       description: Standard generic envelope for REST API responses
@@ -27990,6 +28187,8 @@ components:
           type: string
         batchStatus:
           type: string
+        attendanceLocked:
+          type: boolean
         sessions:
           type: array
           items:
@@ -28427,6 +28626,70 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Answer"
+    ApiResponseOptions:
+      type: object
+      description: Standard generic envelope for REST API responses
+      properties:
+        success:
+          type: boolean
+          description: Whether the request completed successfully
+          example: true
+        code:
+          type: string
+          description: Machine-readable status or error code
+          example: SUCCESS
+        message:
+          type: string
+          description: Human-readable result or status message
+          example: Operation completed successfully
+        data:
+          $ref: "#/components/schemas/Options"
+          description: Payload data of type T
+        timestamp:
+          type: string
+          format: date-time
+          description: UTC ISO-8601 timestamp of response generation
+          example: 2026-11-19T18:00:00Z
+        path:
+          type: string
+          description: Request URI path
+          example: /api/v1/trainees
+        correlationId:
+          type: string
+          description: Unique correlation identifier for request tracing across services
+          example: c8f9b2a1-0000-4000-a000-000000000001
+    CompletedTraining:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        batchCode:
+          type: string
+        completedOn:
+          type: string
+          format: date
+    Options:
+      type: object
+      properties:
+        payFrequencies:
+          type: array
+          items:
+            $ref: "#/components/schemas/PayFrequency"
+        completedTraining:
+          type: array
+          items:
+            $ref: "#/components/schemas/CompletedTraining"
+    PayFrequency:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        label:
+          type: string
     ApiResponsePagedResponseEmploymentPeriod:
       type: object
       description: Standard generic envelope for REST API responses
@@ -28487,6 +28750,35 @@ components:
           type: string
         payFrequency:
           type: string
+        payFrequencyId:
+          type: integer
+          format: int64
+        enrollmentId:
+          type: integer
+          format: int64
+        employmentSource:
+          type: string
+        editable:
+          type: boolean
+        relatedTraining:
+          type: array
+          items:
+            $ref: "#/components/schemas/LinkedTraining"
+    LinkedTraining:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        batchCode:
+          type: string
+        completedOn:
+          type: string
+          format: date
+        primary:
+          type: boolean
     PagedResponseEmploymentPeriod:
       type: object
       description: Standard pagination wrapper enveloped inside ApiResponse

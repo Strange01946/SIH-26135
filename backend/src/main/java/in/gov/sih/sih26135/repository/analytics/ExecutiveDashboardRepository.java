@@ -27,7 +27,7 @@ public class ExecutiveDashboardRepository {
         (SELECT SUM(is_completed_flag) FROM vw_enrollment_outcome_fact) AS completedEnrollmentCount,
         (SELECT SUM(has_issued_certificate_flag) FROM vw_enrollment_outcome_fact) AS certifiedEnrollmentCount,
         (SELECT COUNT(*) FROM vw_placement_fact) AS placementCount,
-        (SELECT SUM(joined_flag) FROM vw_placement_fact) AS joinedPlacementCount,
+        (SELECT SUM(has_joined_placement_flag) FROM vw_enrollment_outcome_fact) AS joinedPlacementCount,
         (SELECT COUNT(*) FROM vw_employment_fact) AS employmentSpellCount,
         (SELECT COUNT(DISTINCT trainee_id) FROM vw_employment_fact) AS employedTraineeCount,
         (SELECT SUM(CASE WHEN is_current = 1 THEN 1 ELSE 0 END) FROM vw_employment_fact) AS currentEmploymentSpellCount,
@@ -48,32 +48,6 @@ public class ExecutiveDashboardRepository {
         ROUND(SUM(has_joined_placement_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS placementRatePct,
         ROUND(SUM(has_employment_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS employmentRatePct
       FROM vw_enrollment_outcome_fact
-      """;
-
-  private static final String Q03_SQL = """
-      SELECT
-        p.program_id AS programId,
-        p.program_code AS programCode,
-        p.program_name AS programName,
-        s.scheme_id AS schemeId,
-        s.scheme_code AS schemeCode,
-        s.scheme_name AS schemeName,
-        v.enrollment_count AS enrollmentCount,
-        v.trainee_count AS traineeCount,
-        v.completed_count AS completedCount,
-        v.certified_count AS certifiedCount,
-        v.joined_placement_count AS joinedPlacementCount,
-        v.employed_count AS employedCount,
-        v.self_employment_spell_count AS selfEmploymentSpellCount,
-        v.apprenticeship_spell_count AS apprenticeshipSpellCount,
-        v.completion_rate_pct AS completionRatePct,
-        v.certification_rate_pct AS certificationRatePct,
-        v.placement_rate_pct AS placementRatePct,
-        v.employment_rate_pct AS employmentRatePct
-      FROM vw_program_outcome_summary v
-      JOIN programs p ON p.program_id = v.program_id
-      JOIN schemes s ON s.scheme_id = v.scheme_id
-      ORDER BY v.employment_rate_pct IS NULL, v.employment_rate_pct DESC, v.enrollment_count DESC
       """;
 
   private final JdbcTemplate jdbcTemplate;
@@ -102,7 +76,7 @@ public class ExecutiveDashboardRepository {
    * Q03: Scheme & Program comparative performance matrix with display codes and employment efficacy.
    */
   public List<SchemeProgramPerformanceProjection> getSchemeProgramPerformanceMatrix() {
-    return jdbcTemplate.query(Q03_SQL, MATRIX_ROW_MAPPER);
+    return getSchemeProgramPerformanceMatrix(null);
   }
 
   /**
@@ -122,7 +96,7 @@ public class ExecutiveDashboardRepository {
           SUM(v.is_completed_flag) AS completedEnrollmentCount,
           SUM(v.has_issued_certificate_flag) AS certifiedEnrollmentCount,
           SUM(v.placement_count) AS placementCount,
-          SUM(v.joined_placement_count) AS joinedPlacementCount,
+          SUM(v.has_joined_placement_flag) AS joinedPlacementCount,
           SUM(v.employment_count) AS employmentSpellCount,
           COUNT(DISTINCT CASE WHEN v.has_employment_flag = 1 THEN v.trainee_id ELSE NULL END) AS employedTraineeCount,
           SUM(v.current_employment_count) AS currentEmploymentSpellCount,
@@ -169,9 +143,6 @@ public class ExecutiveDashboardRepository {
    * Q03: Scheme & Program comparative performance matrix with display codes and employment efficacy with optional filters.
    */
   public List<SchemeProgramPerformanceProjection> getSchemeProgramPerformanceMatrix(AnalyticsFilterCriteria criteria) {
-    if (criteria == null || criteria.isEmpty()) {
-      return getSchemeProgramPerformanceMatrix();
-    }
     AnalyticsQueryFilterBuilder.FilterPredicateResult filter =
         AnalyticsQueryFilterBuilder.buildEnrollmentFactPredicates(criteria, "v");
     String sql = """
@@ -185,13 +156,14 @@ public class ExecutiveDashboardRepository {
           COUNT(*) AS enrollmentCount,
           COUNT(DISTINCT v.trainee_id) AS traineeCount,
           SUM(v.is_completed_flag) AS completedCount,
-          SUM(v.has_issued_certificate_flag) AS certifiedCount,
+          COUNT(DISTINCT IF(v.has_issued_certificate_flag = 1, v.trainee_id, NULL)) AS certifiedCount,
           SUM(v.has_joined_placement_flag) AS joinedPlacementCount,
           SUM(v.has_employment_flag) AS employedCount,
           SUM(v.self_employment_count) AS selfEmploymentSpellCount,
           SUM(v.apprenticeship_count) AS apprenticeshipSpellCount,
           ROUND(SUM(v.is_completed_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS completionRatePct,
-          ROUND(SUM(v.has_issued_certificate_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS certificationRatePct,
+          ROUND(COUNT(DISTINCT IF(v.has_issued_certificate_flag = 1, v.trainee_id, NULL))
+            / NULLIF(COUNT(DISTINCT v.trainee_id), 0) * 100, 2) AS certificationRatePct,
           ROUND(SUM(v.has_joined_placement_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS placementRatePct,
           ROUND(SUM(v.has_employment_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS employmentRatePct
         FROM vw_enrollment_outcome_fact v

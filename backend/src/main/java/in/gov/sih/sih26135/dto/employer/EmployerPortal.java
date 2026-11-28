@@ -59,6 +59,12 @@ public final class EmployerPortal {
       @NotNull @PositiveOrZero @Digits(integer = 10, fraction = 2) BigDecimal offeredPay,
       @NotNull @Positive Long payFrequencyId) {}
 
+  public record PostedJobHire(@NotBlank @Size(max = 80) String registrationNumber,
+                             @Size(max = 80) String enrollmentNumber,
+                             @NotNull @PastOrPresent LocalDate joiningDate,
+                             @NotNull @PositiveOrZero @Digits(integer = 10, fraction = 2) BigDecimal pay,
+                             @NotNull @Positive Long payFrequencyId) {}
+
   public enum Decision { ATTEST, DISPUTE, REPORT_EXIT }
 
   public record VerdictRequest(@NotNull Decision decision, @Size(max = 500) String notes,

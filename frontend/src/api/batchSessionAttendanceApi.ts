@@ -12,6 +12,7 @@ export interface AttendanceTimetable {
   batchCode: string;
   title: string;
   batchStatus: string;
+  attendanceLocked: boolean;
   sessions: AttendanceSession[];
 }
 

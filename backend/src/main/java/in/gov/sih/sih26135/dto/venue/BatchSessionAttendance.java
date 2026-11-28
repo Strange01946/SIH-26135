@@ -15,7 +15,8 @@ public final class BatchSessionAttendance {
   public record AttendanceSession(long id, LocalDateTime startsAt, LocalDateTime endsAt,
                                   boolean started, boolean canMark) {}
 
-  public record AttendanceTimetable(String batchCode, String title, String batchStatus, List<AttendanceSession> sessions) {}
+  public record AttendanceTimetable(String batchCode, String title, String batchStatus, boolean attendanceLocked,
+                                    List<AttendanceSession> sessions) {}
 
   public record AttendanceRosterRow(long enrollmentId, String name, String registrationNumber, boolean eligible,
                                     String status, String remarks, String version) {}

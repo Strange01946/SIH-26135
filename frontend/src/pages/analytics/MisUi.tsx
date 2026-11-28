@@ -57,8 +57,9 @@ export type TableColumn<T> = {
   noData?: (row: T) => boolean; render?: (row: T) => ReactNode;
 };
 
-export function MisTable<T>({ title, rows, columns, rowKey, initialSort }: {
+export function MisTable<T>({ title, rows, columns, rowKey, initialSort, missingAsNoData = false }: {
   title: string; rows: T[]; columns: TableColumn<T>[]; rowKey: (row: T) => string | number | undefined; initialSort?: string;
+  missingAsNoData?: boolean;
 }) {
   const [sort, setSort] = useState({ key: initialSort ?? '', ascending: false });
   const [page, setPage] = useState(0);
@@ -102,7 +103,7 @@ export function MisTable<T>({ title, rows, columns, rowKey, initialSort }: {
                   const raw = column.value(row);
                   const content = column.render ? column.render(row) : column.format
                     ? <Value value={typeof raw === 'number' ? raw : null} format={column.format}
-                        noData={column.noData?.(row)} ambiguous={column.ambiguous} />
+                        noData={missingAsNoData || column.noData?.(row)} ambiguous={column.ambiguous} />
                     : raw ?? '—';
                   return colIndex === 0
                     ? <th key={column.key} scope="row" className="px-3 py-3 font-semibold text-navy">{content}</th>

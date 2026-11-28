@@ -99,7 +99,11 @@ test('admin console gives district officers scoped operations and an onboarding 
   else await expect(queue.locator('dd')).toHaveText(display(pending.length));
   expect(seen).not.toContain(kpis);
   const headers = { Authorization: `Bearer ${auth.accessToken}` };
-  expect((await request.get(kpis, { headers })).status()).toBe(403);
+  const districtKpis = await request.get(kpis, { headers });
+  expect(districtKpis.status()).toBe(200);
+  const districtEnrollments = Number(sql(`SELECT COUNT(*) FROM vw_enrollment_outcome_fact
+    WHERE trainee_district_id=${smoke.run.district};`));
+  expect((await districtKpis.json()).data.enrollmentCount).toBe(districtEnrollments);
   expect((await request.get(onboarding + '/' + smoke.run.application, { headers })).status()).toBe(200);
 });
 

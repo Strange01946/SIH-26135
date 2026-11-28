@@ -247,8 +247,9 @@ export function cleanFixtures(id) {
     DELETE q FROM survey_questions q JOIN survey_template_versions v USING (survey_template_version_id) WHERE v.survey_template_id=@template;
     DELETE FROM survey_template_versions WHERE survey_template_id=@template;
     DELETE FROM survey_templates WHERE survey_template_id=@template;
-    DELETE FROM salary_history WHERE employment_id=@employment;
-    DELETE FROM employment_records WHERE employment_id=@employment;
+    DELETE s FROM salary_history s JOIN trainees t USING (trainee_id) WHERE t.registration_number IN (${candidates});
+    DELETE e FROM employment_records e JOIN trainees t USING (trainee_id) WHERE t.registration_number IN (${candidates});
+    DELETE p FROM placement_records p JOIN trainees t USING (trainee_id) WHERE t.registration_number IN (${candidates});
     DELETE c FROM certifications c JOIN trainees t USING (trainee_id) WHERE t.registration_number IN (${candidates});
     DELETE r FROM assessment_results r JOIN trainees t USING (trainee_id) WHERE t.registration_number IN (${candidates});
     DELETE ta FROM trainee_assessments ta JOIN batch_assessment_publications pub USING (assessment_id)
@@ -279,7 +280,8 @@ export function cleanFixtures(id) {
     DELETE c FROM training_centers c JOIN training_providers p USING (provider_id)
       WHERE c.center_code='${id}-center-admin' AND p.provider_code='${id}-outsider';
     DELETE FROM training_providers WHERE provider_code IN ('${id}-provider','${id}-outsider');
-    DELETE FROM job_postings WHERE employer_id=@employer AND posting_title='${id} career skills vacancy';
+    DELETE FROM job_postings WHERE employer_id=@employer AND posting_title IN
+      ('${id} career skills vacancy','${id} hiring vacancy');
     DELETE FROM employers WHERE employer_id=@employer AND employer_code='${id}-employer';
     ${removePublicOrganizations}
     DELETE FROM organizations WHERE organization_code IN ('${id}-provider','${id}-outsider','${id}-employer',${publicOrganizationCodes});
@@ -289,7 +291,7 @@ export function cleanFixtures(id) {
     DELETE c FROM courses c JOIN sectors s USING(sector_id)
       WHERE s.sector_code='SKILLS-UNCLASSIFIED' AND c.course_code LIKE 'SKL-%'
         AND LEFT(LOWER(c.description),LENGTH('${id} '))='${id} ';
-    DELETE FROM courses WHERE course_code='${id}-fixture-course';
+    DELETE FROM courses WHERE course_code IN ('${id}-fixture-course','${id}-sql-course');
     DELETE FROM districts WHERE district_code='${id}';
     COMMIT;
     SET @remaining_government_bookings=(SELECT COUNT(*) FROM venue_bookings JOIN fixture_government_bookings USING(batch_code));
@@ -308,7 +310,7 @@ export function cleanFixtures(id) {
       @remaining_government_bookings + @remaining_government_batches +
       (SELECT COUNT(*) FROM training_requirements WHERE LEFT(title,LENGTH('${id}-requirement-'))='${id}-requirement-') +
       (SELECT COUNT(*) FROM districts WHERE district_code='${id}') +
-      (SELECT COUNT(*) FROM courses WHERE course_code='${id}-fixture-course') +
+      (SELECT COUNT(*) FROM courses WHERE course_code IN ('${id}-fixture-course','${id}-sql-course')) +
       (SELECT COUNT(*) FROM courses c JOIN sectors s USING(sector_id)
         WHERE s.sector_code='SKILLS-UNCLASSIFIED' AND c.course_code LIKE 'SKL-%'
           AND LEFT(LOWER(c.description),LENGTH('${id} '))='${id} ') +

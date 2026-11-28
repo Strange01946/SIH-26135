@@ -10,6 +10,7 @@ import in.gov.sih.sih26135.dto.request.CreateEmploymentRecordRequest;
 import in.gov.sih.sih26135.dto.request.CreateEmploymentVerificationEvidenceRequest;
 import in.gov.sih.sih26135.dto.request.CreateEmploymentVerificationRequest;
 import in.gov.sih.sih26135.dto.request.CreateJobPostingRequest;
+import in.gov.sih.sih26135.dto.request.CreatePlacementRecordRequest;
 import in.gov.sih.sih26135.dto.request.CreateSalaryHistoryRequest;
 import in.gov.sih.sih26135.dto.request.EmploymentExitAndUnemploymentRequest;
 import in.gov.sih.sih26135.dto.request.PlacementToEmploymentTransitionRequest;
@@ -26,6 +27,7 @@ import in.gov.sih.sih26135.service.CandidateLifecycleOrchestratorService;
 import in.gov.sih.sih26135.service.EmploymentRecordService;
 import in.gov.sih.sih26135.service.JobPostingService;
 import in.gov.sih.sih26135.service.PlacementRecordService;
+import in.gov.sih.sih26135.service.TraineeConsentService;
 import jakarta.persistence.EntityManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -95,10 +97,12 @@ public class EmployerPortalService {
   private final CandidateLifecycleOrchestratorService lifecycle;
   private final VerificationEvidenceFiles files;
   private final EntityManager entityManager;
+  private final TraineeConsentService consent;
 
   public EmployerPortalService(JdbcTemplate jdbc, WorkflowSecurityScopeValidator scope, JobPostingService jobs,
       PlacementRecordService placements, EmploymentRecordService employment,
-      CandidateLifecycleOrchestratorService lifecycle, VerificationEvidenceFiles files, EntityManager entityManager) {
+      CandidateLifecycleOrchestratorService lifecycle, VerificationEvidenceFiles files, EntityManager entityManager,
+      TraineeConsentService consent) {
     this.jdbc = jdbc;
     this.scope = scope;
     this.jobs = jobs;
@@ -107,6 +111,7 @@ public class EmployerPortalService {
     this.lifecycle = lifecycle;
     this.files = files;
     this.entityManager = entityManager;
+    this.consent = consent;
   }
 
   public EmployerPortal.References references() {
@@ -248,6 +253,57 @@ public class EmployerPortalService {
   }
 
   @Transactional(isolation = Isolation.READ_COMMITTED)
+  public PlacementToEmploymentTransitionResponse recordPostedJobHire(long postingId, EmployerPortal.PostedJobHire input) {
+    var employer = employer();
+    if (jdbc.queryForList("""
+        SELECT job_posting_id FROM job_postings WHERE job_posting_id=? AND employer_id=? AND deleted_at IS NULL FOR UPDATE
+        """, Long.class, postingId, employer.id()).isEmpty()) {
+      throw new ResourceNotFoundException("Job posting for this employer was not found");
+    }
+    var posting = jobs.getJobPostingById(postingId);
+    if (!"OPEN".equals(posting.jobPostingStatusCode())) {
+      throw new ConflictException("This vacancy is closed.", "JOB_POSTING_CLOSED");
+    }
+    if (input.joiningDate().isBefore(posting.postedDate())) {
+      throw new BadRequestException("Joining date must be on or after the posting date.", "JOIN_BEFORE_JOB_POSTING");
+    }
+    String enrollmentNumber = input.enrollmentNumber() == null || input.enrollmentNumber().isBlank()
+        ? null : input.enrollmentNumber().strip();
+    var matches = jdbc.query("""
+        SELECT e.enrollment_id,e.trainee_id FROM training_enrollments e
+        JOIN trainees t USING(trainee_id) JOIN ref_enrollment_status es USING(enrollment_status_id)
+        LEFT JOIN training_batches b USING(batch_id)
+        WHERE t.registration_number=? AND t.deleted_at IS NULL AND e.deleted_at IS NULL AND es.is_completed_flag=1
+          AND COALESCE(e.actual_completion_date,b.end_date)<=?
+          AND (? IS NULL OR e.enrollment_number=?) ORDER BY e.enrollment_id LIMIT 2
+        """, (rs, row) -> new HireEnrollment(rs.getLong(1), rs.getLong(2)), input.registrationNumber().strip(),
+        input.joiningDate(), enrollmentNumber, enrollmentNumber);
+    if (matches.isEmpty() || !consent.hasActiveConsent(matches.get(0).traineeId(), "EMPLOYER_SHARING")) {
+      throw new ResourceNotFoundException("No matching completed enrollment is available for employer sharing.");
+    }
+    if (matches.size() > 1) {
+      throw new BadRequestException("Enter the candidate's training enrollment number to identify this hire.", "ENROLLMENT_NUMBER_REQUIRED");
+    }
+    var request = new CreatePlacementRecordRequest(number("PLC"), matches.get(0).enrollmentId(),
+        posting.engagementTypeId(),
+        lookup("SELECT placement_source_id FROM ref_placement_source WHERE source_code='JOB_PORTAL'"),
+        lookup("SELECT placement_status_id FROM ref_placement_status WHERE status_code='OFFERED'"),
+        lookup("SELECT joining_status_id FROM ref_joining_status WHERE status_code='JOINED'"),
+        lookup("SELECT record_verification_status_id FROM ref_record_verification_status WHERE status_code='VERIFIED'"));
+    request.setEmployerId(employer.id());
+    request.setJobPostingId(postingId);
+    request.setWorkStateId(posting.stateId());
+    request.setWorkDistrictId(posting.districtId());
+    request.setCurrencyCode(posting.currencyCode());
+    request.setActualJoiningDate(input.joiningDate());
+    var placement = placements.createPlacementRecord(request);
+    return confirm(placement.id(), new EmployerPortal.ConfirmPlacementRequest(posting.jobRoleId(), input.joiningDate(),
+        input.pay(), input.payFrequencyId()));
+  }
+
+  private record HireEnrollment(long enrollmentId, long traineeId) {}
+
+  @Transactional(isolation = Isolation.READ_COMMITTED)
   public PlacementToEmploymentTransitionResponse confirm(long placementId, EmployerPortal.ConfirmPlacementRequest input) {
     Employer employer = employer();
     if (jdbc.queryForList("""
@@ -267,17 +323,25 @@ public class EmployerPortalService {
     update.setOfferedSalary(input.offeredPay());
     update.setJoiningSalary(input.offeredPay());
     update.setSalaryFrequencyId(input.payFrequencyId());
+    long confirmed = lookup("SELECT record_verification_status_id FROM ref_record_verification_status WHERE status_code='VERIFIED'");
+    var confirmedAt = LocalDateTime.now();
+    update.setRecordVerificationStatusId(confirmed);
+    update.setVerifiedAt(confirmedAt);
+    update.setVerifiedByUserId(employer.userId());
     placements.updatePlacementRecord(placementId, update);
 
-    long pending = lookup("SELECT record_verification_status_id FROM ref_record_verification_status WHERE status_code = 'PENDING'");
-    long source = lookup("SELECT employment_info_source_id FROM ref_employment_info_source WHERE source_code = 'PLACEMENT_CONVERSION'");
+    long source = lookup("SELECT employment_info_source_id FROM ref_employment_info_source WHERE source_code = 'EMPLOYER_CONFIRMATION'");
     long active = lookup("SELECT employment_spell_status_id FROM ref_employment_spell_status WHERE status_code = 'ACTIVE'");
     var spell = new CreateEmploymentRecordRequest(number("EMP"), placement.traineeId(), placement.engagementTypeId(),
-        active, input.joiningDate(), source, pending);
+        active, input.joiningDate(), source, confirmed);
     spell.setIsCurrent(true);
+    spell.setVerifiedAt(confirmedAt);
+    spell.setVerifiedByUserId(employer.userId());
     var baseline = new CreateSalaryHistoryRequest();
     baseline.setEmploymentInfoSourceId(source);
-    baseline.setRecordVerificationStatusId(pending);
+    baseline.setRecordVerificationStatusId(confirmed);
+    baseline.setVerifiedAt(confirmedAt);
+    baseline.setVerifiedByUserId(employer.userId());
     baseline.setObservationMonthOffset(0);
     return lifecycle.orchestratePlacementToEmployment(new PlacementToEmploymentTransitionRequest(
         placementId, spell, baseline,

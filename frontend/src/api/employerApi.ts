@@ -3,6 +3,12 @@ import type { components } from './generated/api.types';
 
 const employer = '/api/v1/employer';
 
+export function recordPostedJobHire(postingId: number, input: {
+  registrationNumber: string; enrollmentNumber?: string; joiningDate: string; pay: number; payFrequencyId: number;
+}) {
+  return apiPost<typeof input, unknown>(`${employer}/job-postings/${postingId}/hires`, input);
+}
+
 type EmployerSchemas = components['schemas'];
 export type EmployerReference = Required<EmployerSchemas['Reference']>;
 

@@ -1,16 +1,17 @@
 import type { MisFilters, MisOptions } from '@/api/misApi';
-import { Suppressed } from './MisUi';
 
-export function loadFilters(params: URLSearchParams, options: MisOptions): MisFilters {
+type LocationScope = Pick<MisFilters, 'stateId' | 'districtId'>;
+
+export function loadFilters(params: URLSearchParams, options: MisOptions, scope?: LocationScope): MisFilters {
   const pickId = (key: string, choices: { id: number }[]) => {
     const selected = Number(params.get(key));
     return choices.some((item) => item.id === selected) ? selected : undefined;
   };
   const fy = params.get('fiscalYear');
   const gender = params.get('gender');
-  const stateId = pickId('stateId', options.states);
+  const stateId = scope?.stateId ?? pickId('stateId', options.states);
   const districts = options.districts.filter((district) => !stateId || district.stateId === stateId);
-  const districtId = pickId('districtId', districts);
+  const districtId = scope?.districtId ?? pickId('districtId', districts);
   return {
     fiscalYear: fy && options.financialYears.includes(fy) ? fy : undefined,
     schemeId: pickId('schemeId', options.schemes),
@@ -21,8 +22,9 @@ export function loadFilters(params: URLSearchParams, options: MisOptions): MisFi
   };
 }
 
-export function FilterStrip({ options, filters, setFilter, reset }: {
+export function FilterStrip({ options, filters, setFilter, reset, scope }: {
   options: MisOptions; filters: MisFilters; setFilter: (key: keyof MisFilters, value: string) => void; reset: () => void;
+  scope?: LocationScope;
 }) {
   const stateNames = new Map(options.states.map(({ id, name }) => [id, name]));
   const districtOptions = filters.stateId ? options.districts.filter(({ stateId }) => stateId === filters.stateId)
@@ -30,8 +32,11 @@ export function FilterStrip({ options, filters, setFilter, reset }: {
   const select = (key: keyof MisFilters, label: string, placeholder: string, items: { id: string | number; name: string }[]) => (
     <div className="min-w-0" key={key}>
       <label className="form-label" htmlFor={`mis-filter-${key}`}>{label}</label>
-      <select id={`mis-filter-${key}`} className="form-input" value={filters[key] ?? ''} onChange={(event) => setFilter(key, event.target.value)}>
-        <option value="">{placeholder}</option>
+      <select id={`mis-filter-${key}`} className="form-input" value={filters[key] ?? ''}
+        disabled={(key === 'stateId' && scope?.stateId != null) || (key === 'districtId' && scope?.districtId != null)}
+        onChange={(event) => setFilter(key, event.target.value)}>
+        {(key !== 'stateId' || scope?.stateId == null) && (key !== 'districtId' || scope?.districtId == null)
+          && <option value="">{placeholder}</option>}
         {items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
       </select>
     </div>
@@ -41,9 +46,8 @@ export function FilterStrip({ options, filters, setFilter, reset }: {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-semibold text-navy">Reporting filters</h2>
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-xs text-slate-600">Disclosure threshold k = {options.suppressionThreshold}</span>
-          <Suppressed />
-          <button className="btn-secondary" type="button" onClick={reset} disabled={!Object.values(filters).some(Boolean)}>Reset filters</button>
+          <button className="btn-secondary" type="button" onClick={reset} disabled={!Object.entries(filters).some(([key, value]) =>
+            value && (key !== 'stateId' || !scope?.stateId) && (key !== 'districtId' || !scope?.districtId))}>Reset filters</button>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-3 xl:grid-cols-7">

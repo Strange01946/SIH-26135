@@ -60,31 +60,36 @@ export function getStateOutcomes(stateId: number, filters: MisFilters, signal?: 
   });
 }
 
-export async function getMisSnapshot(filters: MisFilters, signal: AbortSignal) {
-  const get = <T,>(path: string, params = filters) => apiGet<T>(`${dashboards}/${path}`, { params, signal });
-  const executive = { ...filters, executive: true };
-  const [headline, pipeline, programs, providers, courses, geography, employers, economic, quality] = await Promise.all([
+export async function getMisOverview(filters: MisFilters, signal: AbortSignal) {
+  const [headline, pipeline, geography] = await Promise.all([
     getExecutiveHeadline(filters, signal),
-    get<{ candidateStages: PipelineStage[] }>('pipeline-funnel', executive),
+    apiGet<{ candidateStages: PipelineStage[] }>(`${dashboards}/pipeline-funnel`, {
+      params: { ...filters, executive: true }, signal,
+    }),
+    apiGet<Geography>(`${dashboards}/geography`, { params: filters, signal }),
+  ]);
+  return { headline, pipeline: pipeline.candidateStages, geography };
+}
+
+export async function getMisComparisons(filters: MisFilters, signal: AbortSignal) {
+  const get = <T,>(path: string) => apiGet<T>(`${dashboards}/${path}`, { params: filters, signal });
+  const [programs, providers, courses, employers, economic, quality] = await Promise.all([
     get<{ items: SchemeProgram[] }>('scheme-matrix'),
     get<{ items: Provider[] }>('providers'),
     get<{ items: Course[] }>('courses'),
-    get<Geography>('geography'),
     get<{ items: Employer[] }>('employers'),
     get<Economic>('economic-outcomes'),
     get<ProviderQuality[]>('mis/provider-quality'),
   ]);
   return {
-    headline,
-    pipeline: pipeline.candidateStages,
     programs: programs.items,
     providers: providers.items,
     courses: courses.items,
-    geography,
     employers: employers.items,
     economic,
     quality,
   };
 }
 
-export type MisSnapshot = Awaited<ReturnType<typeof getMisSnapshot>>;
+export type MisOverview = Awaited<ReturnType<typeof getMisOverview>>;
+export type MisComparisons = Awaited<ReturnType<typeof getMisComparisons>>;

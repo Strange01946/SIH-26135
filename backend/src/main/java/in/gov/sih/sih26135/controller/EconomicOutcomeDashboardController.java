@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 @RestController
 @RequestMapping("/api/v1/dashboards")
-@PreAuthorize("hasAuthority('analytics.read')")
+@PreAuthorize(WorkflowSecurityScopeValidator.GOVERNMENT_MIS_READ)
 public class EconomicOutcomeDashboardController {
 
   private final EconomicOutcomeDashboardService economicOutcomeDashboardService;
@@ -53,8 +53,7 @@ public class EconomicOutcomeDashboardController {
   @GetMapping("/employers")
   public ResponseEntity<ApiResponse<LeaderboardResponse<EmployerHiringPerformanceResponse>>> getEmployerLeaderboard(
       @ParameterObject AnalyticsFilterCriteria criteria, HttpServletRequest httpRequest) {
-    scopeValidator.validateNationwideScope();
-    scopeValidator.validateAnalyticsFilterScope(criteria);
+    scopeValidator.applyGovernmentMisScope(criteria);
     LeaderboardResponse<EmployerHiringPerformanceResponse> response =
         criteria.isEmpty() ? economicOutcomeDashboardService.getEmployerLeaderboard()
             : economicOutcomeDashboardService.getEmployerLeaderboard(criteria);
@@ -76,8 +75,7 @@ public class EconomicOutcomeDashboardController {
   @GetMapping("/economic-outcomes")
   public ResponseEntity<ApiResponse<EconomicOutcomeSummaryResponse>> getEconomicOutcomeSummary(
       @ParameterObject AnalyticsFilterCriteria criteria, HttpServletRequest httpRequest) {
-    scopeValidator.validateNationwideScope();
-    scopeValidator.validateAnalyticsFilterScope(criteria);
+    scopeValidator.applyGovernmentMisScope(criteria);
     EconomicOutcomeSummaryResponse response =
         criteria.isEmpty() ? economicOutcomeDashboardService.getEconomicOutcomeSummary()
             : economicOutcomeDashboardService.getEconomicOutcomeSummary(criteria);

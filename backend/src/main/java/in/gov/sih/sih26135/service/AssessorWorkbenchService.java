@@ -4,11 +4,9 @@ import in.gov.sih.sih26135.dto.assessor.AssessorAssessmentSummaryResponse;
 import in.gov.sih.sih26135.dto.assessor.AssessorRosterResponse;
 import in.gov.sih.sih26135.dto.assessor.SaveAssessmentScoresRequest;
 import in.gov.sih.sih26135.dto.assessor.SaveAssessmentScoresResponse;
-import in.gov.sih.sih26135.entity.Assessment;
 import in.gov.sih.sih26135.entity.Course;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Service interface for Phase 30.6 Assessor Workbench:
@@ -49,11 +47,6 @@ public interface AssessorWorkbenchService {
    * Generates authentic PDF binary data for an issued certificate.
    */
   byte[] generateCertificatePdf(Long certificationId);
-
-  /**
-   * Resolves the genuinely authorized awarding body or issuing organization without inventing placeholders.
-   */
-  Optional<String> resolveAuthoritativeIssuingBody(Assessment assessment);
 
   /**
    * Verifies whether mandatory attendance requirements are met based on course delivery mode and recorded sessions.

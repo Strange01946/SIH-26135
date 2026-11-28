@@ -51,24 +51,16 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
 
   private final EconomicOutcomeDashboardRepository repository;
   private final WorkflowSecurityScopeValidator scopeValidator;
-  private final in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService privacyService;
   private in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate;
 
   @org.springframework.beans.factory.annotation.Autowired
   public EconomicOutcomeDashboardServiceImpl(
       EconomicOutcomeDashboardRepository repository,
-      WorkflowSecurityScopeValidator scopeValidator,
-      in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService privacyService) {
+      WorkflowSecurityScopeValidator scopeValidator) {
     this.repository = java.util.Objects.requireNonNull(repository, "EconomicOutcomeDashboardRepository is required");
     this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
-    this.privacyService = privacyService != null ? privacyService : new in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService();
   }
 
-  public EconomicOutcomeDashboardServiceImpl(
-      EconomicOutcomeDashboardRepository repository,
-      WorkflowSecurityScopeValidator scopeValidator) {
-    this(repository, scopeValidator, new in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService());
-  }
 
   @org.springframework.beans.factory.annotation.Autowired(required = false)
   public void setCacheDelegate(in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate) {
@@ -90,8 +82,7 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
 
   @Override
   public LeaderboardResponse<EmployerHiringPerformanceResponse> getEmployerLeaderboard(AnalyticsFilterCriteria criteria) {
-    scopeValidator.validateNationwideScope();
-    scopeValidator.validateAnalyticsFilterScope(criteria);
+    scopeValidator.applyGovernmentMisScope(criteria);
     return mapEmployerLeaderboard(repository.getFormalQ07EmployerLeaderboard(criteria));
   }
 
@@ -116,7 +107,7 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
       ));
     }
 
-    return LeaderboardResponse.of(EMPLOYER_RANKING_METRIC, privacyService.applyPrivacyGuardrailsToEmployers(items));
+    return LeaderboardResponse.of(EMPLOYER_RANKING_METRIC, items);
   }
 
   @Override
@@ -136,8 +127,7 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
 
   @Override
   public EconomicOutcomeSummaryResponse getEconomicOutcomeSummary(AnalyticsFilterCriteria criteria) {
-    scopeValidator.validateNationwideScope();
-    scopeValidator.validateAnalyticsFilterScope(criteria);
+    scopeValidator.applyGovernmentMisScope(criteria);
     return mapEconomicOutcome(repository.getFormalQ10WageProgression(criteria), repository.getSalaryDistributionCounts(criteria),
         repository.getFormalQ08EmploymentMix(criteria), repository.getFormalQ09CategoryBreakdown(criteria),
         repository.getFormalQ11CourseWageProgression(criteria));
@@ -148,19 +138,9 @@ public class EconomicOutcomeDashboardServiceImpl implements EconomicOutcomeDashb
       List<EmploymentCategoryBreakdownProjection> categories, List<CourseWageProgressionProjection> courseWages) {
     var employment = mapEmploymentMix(mix);
     var breakdown = mapCategoryBreakdown(categories, employment.employmentSpellCount());
-    var released = privacyService.applyPrivacyGuardrail(new EconomicOutcomeSummaryResponse(
+    return new EconomicOutcomeSummaryResponse(
         mapWageProgression(wages), buildSalaryDistribution(salaries), employment, breakdown,
-        mapCourseWageProgression(courseWages)));
-    if (released.categoryBreakdown().stream().anyMatch(row -> row.spellCount() == null)) {
-      // Employment flags can overlap exact category breakdowns. Do not publish one as a
-      // means of deriving a category hidden in the other.
-      var safe = released.employmentMix();
-      return new EconomicOutcomeSummaryResponse(released.wageProgression(), released.salaryDistribution(),
-          new EmploymentMixResponse(safe.employmentSpellCount(), safe.traineeCount(), safe.currentSpellCount(),
-              null, null, null, null, null, null, safe.avgDurationDays(), safe.avgCurrentSpellDurationDays(),
-              null, null, null, null), released.categoryBreakdown(), released.courseWageProgression());
-    }
-    return released;
+        mapCourseWageProgression(courseWages));
   }
 
   private WageProgressionResponse mapWageProgression(WageProgressionProjection p) {

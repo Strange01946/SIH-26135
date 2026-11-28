@@ -150,6 +150,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/trainees/me/employment-history/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["updateTraineeEmployment"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/trainee-unemployment-events/{id}": {
         parameters: {
             query?: never;
@@ -1558,6 +1574,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/trainees/me/employment-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getEmploymentHistory"];
+        put?: never;
+        post: operations["addTraineeEmployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/trainee-unemployment-events": {
         parameters: {
             query?: never;
@@ -2288,6 +2320,22 @@ export interface paths {
         get: operations["employerVacancies"];
         put?: never;
         post: operations["publishEmployerVacancy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/employer/job-postings/{postingId}/hires": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["recordEmployerPostedJobHire"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3649,14 +3697,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/trainees/me/employment-history": {
+    "/api/v1/trainees/me/employment-options": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["getEmploymentHistory"];
+        get: operations["traineeEmploymentOptions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7132,6 +7180,59 @@ export interface components {
             locationName?: string;
             educationLevels?: components["schemas"]["EducationOption"][];
             reportedUpdate?: components["schemas"]["CareerUpdate"];
+        };
+        JobInput: {
+            jobTitle: string;
+            employerName?: string;
+            /** Format: date */
+            startDate: string;
+            /** Format: date */
+            endDate?: string;
+            pay?: number;
+            /** Format: int64 */
+            payFrequencyId: number;
+            /** Format: int64 */
+            enrollmentId?: number;
+            trainingEnrollmentIds?: number[];
+        };
+        /** @description Standard generic envelope for REST API responses */
+        ApiResponseLong: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /**
+             * Format: int64
+             * @description Payload data of type T
+             */
+            data?: number;
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
         };
         UpdateTraineeUnemploymentEventRequest: {
             /** Format: int32 */
@@ -13150,6 +13251,15 @@ export interface components {
             name?: string;
             level?: string;
         };
+        PostedJobHire: {
+            registrationNumber: string;
+            enrollmentNumber?: string;
+            /** Format: date */
+            joiningDate: string;
+            pay: number;
+            /** Format: int64 */
+            payFrequencyId: number;
+        };
         DataQualityScanRequest: {
             /** Format: int64 */
             ruleId?: number;
@@ -14994,6 +15104,15 @@ export interface components {
             total?: number;
             /** Format: int64 */
             certificateId?: number;
+            sessionMarks?: components["schemas"]["TrainingSessionMark"][];
+        };
+        TrainingSessionMark: {
+            /** Format: date-time */
+            startsAt?: string;
+            /** Format: date-time */
+            endsAt?: string;
+            status?: string;
+            remarks?: string;
         };
         /** @description Standard generic envelope for REST API responses */
         ApiResponseTrainingRosterPage: {
@@ -15085,6 +15204,7 @@ export interface components {
             batchCode?: string;
             title?: string;
             batchStatus?: string;
+            attendanceLocked?: boolean;
             sessions?: components["schemas"]["AttendanceSession"][];
         };
         /** @description Standard generic envelope for REST API responses */
@@ -15466,6 +15586,59 @@ export interface components {
             initialAnswers?: components["schemas"]["Answer"][];
         };
         /** @description Standard generic envelope for REST API responses */
+        ApiResponseOptions: {
+            /**
+             * @description Whether the request completed successfully
+             * @example true
+             */
+            success?: boolean;
+            /**
+             * @description Machine-readable status or error code
+             * @example SUCCESS
+             */
+            code?: string;
+            /**
+             * @description Human-readable result or status message
+             * @example Operation completed successfully
+             */
+            message?: string;
+            /** @description Payload data of type T */
+            data?: components["schemas"]["Options"];
+            /**
+             * Format: date-time
+             * @description UTC ISO-8601 timestamp of response generation
+             * @example 2026-11-19T18:00:00Z
+             */
+            timestamp?: string;
+            /**
+             * @description Request URI path
+             * @example /api/v1/trainees
+             */
+            path?: string;
+            /**
+             * @description Unique correlation identifier for request tracing across services
+             * @example c8f9b2a1-0000-4000-a000-000000000001
+             */
+            correlationId?: string;
+        };
+        CompletedTraining: {
+            /** Format: int64 */
+            id?: number;
+            name?: string;
+            batchCode?: string;
+            /** Format: date */
+            completedOn?: string;
+        };
+        Options: {
+            payFrequencies?: components["schemas"]["PayFrequency"][];
+            completedTraining?: components["schemas"]["CompletedTraining"][];
+        };
+        PayFrequency: {
+            /** Format: int64 */
+            id?: number;
+            label?: string;
+        };
+        /** @description Standard generic envelope for REST API responses */
         ApiResponsePagedResponseEmploymentPeriod: {
             /**
              * @description Whether the request completed successfully
@@ -15516,6 +15689,22 @@ export interface components {
             startingPay?: number;
             currency?: string;
             payFrequency?: string;
+            /** Format: int64 */
+            payFrequencyId?: number;
+            /** Format: int64 */
+            enrollmentId?: number;
+            employmentSource?: string;
+            editable?: boolean;
+            relatedTraining?: components["schemas"]["LinkedTraining"][];
+        };
+        LinkedTraining: {
+            /** Format: int64 */
+            id?: number;
+            name?: string;
+            batchCode?: string;
+            /** Format: date */
+            completedOn?: string;
+            primary?: boolean;
         };
         /** @description Standard pagination wrapper enveloped inside ApiResponse */
         PagedResponseEmploymentPeriod: {
@@ -24777,6 +24966,32 @@ export interface operations {
             };
         };
     };
+    updateTraineeEmployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseLong"];
+                };
+            };
+        };
+    };
     getById_5: {
         parameters: {
             query?: never;
@@ -28967,6 +29182,53 @@ export interface operations {
             };
         };
     };
+    getEmploymentHistory: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePagedResponseEmploymentPeriod"];
+                };
+            };
+        };
+    };
+    addTraineeEmployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseLong"];
+                };
+            };
+        };
+    };
     getByTraineeIdAndPeriodNumber: {
         parameters: {
             query: {
@@ -31056,6 +31318,32 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseVacancy"];
+                };
+            };
+        };
+    };
+    recordEmployerPostedJobHire: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                postingId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PostedJobHire"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePlacementToEmploymentTransitionResponse"];
                 };
             };
         };
@@ -33501,12 +33789,9 @@ export interface operations {
             };
         };
     };
-    getEmploymentHistory: {
+    traineeEmploymentOptions: {
         parameters: {
-            query?: {
-                page?: number;
-                size?: number;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -33519,7 +33804,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponsePagedResponseEmploymentPeriod"];
+                    "*/*": components["schemas"]["ApiResponseOptions"];
                 };
             };
         };

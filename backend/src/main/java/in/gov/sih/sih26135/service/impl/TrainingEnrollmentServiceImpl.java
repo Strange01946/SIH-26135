@@ -24,6 +24,7 @@ import in.gov.sih.sih26135.repository.TrainingEnrollmentRepository;
 import in.gov.sih.sih26135.service.TraineeConsentService;
 import in.gov.sih.sih26135.service.TrainingEnrollmentService;
 import in.gov.sih.sih26135.service.TrainingAdmissionService;
+import in.gov.sih.sih26135.service.BatchSessionAttendanceService;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -32,6 +33,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
 @Service
 @Transactional(readOnly = true)
@@ -45,6 +47,7 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
   private final TrainingEnrollmentMapper trainingEnrollmentMapper;
   private final TraineeConsentService traineeConsentService;
   private final TrainingAdmissionService admissions;
+  private final BatchSessionAttendanceService attendance;
 
   @Autowired
   public TrainingEnrollmentServiceImpl(
@@ -54,7 +57,8 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
       RefEnrollmentStatusRepository refEnrollmentStatusRepository,
       RefTrainingDropoutReasonRepository refTrainingDropoutReasonRepository,
       TrainingEnrollmentMapper trainingEnrollmentMapper,
-      TraineeConsentService traineeConsentService, TrainingAdmissionService admissions) {
+      TraineeConsentService traineeConsentService, TrainingAdmissionService admissions,
+      BatchSessionAttendanceService attendance) {
     this.trainingEnrollmentRepository = trainingEnrollmentRepository;
     this.traineeRepository = traineeRepository;
     this.trainingBatchRepository = trainingBatchRepository;
@@ -63,6 +67,7 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
     this.trainingEnrollmentMapper = trainingEnrollmentMapper;
     this.traineeConsentService = traineeConsentService;
     this.admissions = admissions;
+    this.attendance = attendance;
   }
 
   public TrainingEnrollmentServiceImpl(
@@ -74,7 +79,7 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
       TrainingEnrollmentMapper trainingEnrollmentMapper,
       TraineeConsentService traineeConsentService) {
     this(trainingEnrollmentRepository, traineeRepository, trainingBatchRepository, refEnrollmentStatusRepository,
-        refTrainingDropoutReasonRepository, trainingEnrollmentMapper, traineeConsentService, null);
+        refTrainingDropoutReasonRepository, trainingEnrollmentMapper, traineeConsentService, null, null);
   }
 
   public TrainingEnrollmentServiceImpl(
@@ -360,13 +365,17 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
   }
 
   @Override
-  @Transactional
+  @Transactional(isolation = Isolation.READ_COMMITTED)
   public TrainingEnrollmentResponse updateEnrollment(Long id, UpdateTrainingEnrollmentRequest request) {
     if (id == null) {
       throw new BadRequestException("Enrollment ID is required");
     }
     if (request == null) {
       throw new BadRequestException("Training enrollment update request cannot be null");
+    }
+
+    if (request.getActualCompletionDate() != null || request.getEnrollmentStatusId() != null) {
+      requireAttendanceEditable(id);
     }
 
     TrainingEnrollment enrollment = trainingEnrollmentRepository.findById(id)
@@ -434,11 +443,12 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
   }
 
   @Override
-  @Transactional
+  @Transactional(isolation = Isolation.READ_COMMITTED)
   public void deleteEnrollment(Long id) {
     if (id == null) {
       throw new BadRequestException("Enrollment ID is required");
     }
+    requireAttendanceEditable(id);
     TrainingEnrollment enrollment = trainingEnrollmentRepository.findById(id)
         .orElseThrow(() -> new ResourceNotFoundException("TrainingEnrollment", "id"));
 
@@ -447,6 +457,15 @@ public class TrainingEnrollmentServiceImpl implements TrainingEnrollmentService 
       enrollment.setDeletedAt(now);
       enrollment.setUpdatedAt(now);
       trainingEnrollmentRepository.save(enrollment);
+    }
+  }
+
+  private void requireAttendanceEditable(long enrollmentId) {
+    if (attendance != null) {
+      trainingEnrollmentRepository.findBatchIdForEnrollment(enrollmentId).ifPresent(batchId -> {
+        trainingBatchRepository.findByIdForUpdate(batchId);
+        attendance.requireAttendanceEditable(batchId);
+      });
     }
   }
 }

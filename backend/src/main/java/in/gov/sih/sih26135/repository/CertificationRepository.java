@@ -34,6 +34,10 @@ public interface CertificationRepository extends JpaRepository<Certification, Lo
 
   Optional<Certification> findFirstByTrainingEnrollmentId(Long enrollmentId);
 
+  Optional<Certification> findFirstByAssessmentResultIdAndDeletedAtIsNullOrderByIdAsc(Long assessmentResultId);
+
+  Optional<Certification> findFirstByTrainingEnrollmentIdAndDeletedAtIsNullOrderByIdAsc(Long enrollmentId);
+
   boolean existsByAssessmentResultId(Long assessmentResultId);
 
   boolean existsByTrainingEnrollmentId(Long enrollmentId);

@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import { getMisOptions, getMisSnapshot, type MisFilters } from '@/api/misApi';
+import { getMisComparisons, getMisOptions, getMisOverview, type MisFilters } from '@/api/misApi';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { LoadingSpinner } from '@/components/feedback/LoadingSpinner';
-import { ExecutiveKpis, GeographicPanel, TrainingFunnel } from './MisOverview';
+import { useAuth } from '@/context/AuthContext';
+import { ExecutiveKpis, GeographicPanel, TrainingFunnel, type MapMetric } from './MisOverview';
 import {
   CourseOutcomes, EmployerHiring, EmploymentMix, EngagementTypes,
   ProgramMatrix, ProviderLeaderboard, WageGrowthByCourse, WageProgression,
@@ -19,24 +21,36 @@ const sections = {
 type Section = keyof typeof sections;
 
 export default function ExecutiveMisPage() {
+  const { user } = useAuth();
+  const scope = { stateId: user?.stateId ?? undefined, districtId: user?.districtId ?? undefined };
   const [params, setParams] = useSearchParams();
+  const [mapMetric, setMapMetric] = useState<MapMetric>('placementRatePct');
   const value = params.get('view');
   const view = value && Object.prototype.hasOwnProperty.call(sections, value) ? value as Section : 'overview';
   const options = useQuery({
-    queryKey: ['government-mis', 'filters'],
+    queryKey: ['government-mis', 'filters', user?.id],
     queryFn: ({ signal }) => getMisOptions(signal),
     staleTime: 300_000,
     retry: false,
   });
-  const filters = options.data ? loadFilters(params, options.data) : {};
+  const filters = options.data ? loadFilters(params, options.data, scope) : {};
   const specializedParams = new URLSearchParams(params);
   specializedParams.delete('view');
-  const snapshot = useQuery({
-    queryKey: ['government-mis', 'snapshot', filters],
-    queryFn: ({ signal }) => getMisSnapshot(filters, signal),
-    enabled: options.isSuccess,
+  const overview = useQuery({
+    queryKey: ['government-mis', 'overview', user?.id, filters],
+    queryFn: ({ signal }) => getMisOverview(filters, signal),
+    enabled: options.isSuccess && view === 'overview',
+    retry: false,
+    refetchOnWindowFocus: 'always',
+    refetchOnMount: 'always',
+  });
+  const comparisons = useQuery({
+    queryKey: ['government-mis', 'comparisons', user?.id, filters],
+    queryFn: ({ signal }) => getMisComparisons(filters, signal),
+    enabled: options.isSuccess && view !== 'overview',
     retry: false,
   });
+  const report = view === 'overview' ? overview : comparisons;
 
   const setFilter = (key: keyof MisFilters, next: string) => {
     const updated = new URLSearchParams(params);
@@ -63,15 +77,15 @@ export default function ExecutiveMisPage() {
           <h1 className="text-2xl font-semibold sm:text-3xl">Government MIS &amp; executive analytics</h1>
           <p className="mt-1 max-w-2xl text-sm text-blue-100">Track training, placement, retention, and wages across programmes and geographies.</p>
         </div>
-        <Link to={{ pathname: '/analytics/specialized', search: specializedParams.toString() }} className="btn-secondary">
+        {scope.stateId == null && <Link to={{ pathname: '/analytics/specialized', search: specializedParams.toString() }} className="btn-secondary">
           Specialized analytics &amp; exports
-        </Link>
+        </Link>}
       </header>
       {options.isPending && <LoadingSpinner label="Loading reporting filters" />}
       {options.isError && <ErrorState error={options.error} title="Unable to open the government dashboard" onRetry={() => void options.refetch()} />}
       {options.data && (
         <>
-          <FilterStrip options={options.data} filters={filters} setFilter={setFilter}
+          <FilterStrip options={options.data} filters={filters} setFilter={setFilter} scope={scope}
             reset={() => setParams(view === 'overview' ? {} : { view }, { replace: true })} />
           <nav aria-label="Executive analytics views" className="flex flex-wrap gap-2">
             {Object.entries(sections).map(([key, label]) => (
@@ -79,33 +93,34 @@ export default function ExecutiveMisPage() {
                 onClick={() => setView(key as Section)} aria-pressed={view === key}>{label}</button>
             ))}
           </nav>
-          <div aria-busy={snapshot.isFetching} className="space-y-4">
-            {snapshot.isPending ? <div className="card p-6"><LoadingSpinner label="Loading the selected cohort across all analytics" /></div>
-              : snapshot.isError ? <ErrorState error={snapshot.error} title="Unable to load the selected analytics cohort" onRetry={() => void snapshot.refetch()} />
+          <div aria-busy={report.isFetching} className="space-y-4">
+            {report.isPending ? <div className="card p-6"><LoadingSpinner label="Loading the selected reporting cohort" /></div>
+              : report.isError ? <ErrorState error={report.error} title="Unable to load the selected analytics cohort" onRetry={() => void report.refetch()} />
               : view === 'overview' ? (
-                <>
-                  <ExecutiveKpis headline={snapshot.data.headline} />
-                  <TrainingFunnel pipeline={snapshot.data.pipeline} />
-                  <GeographicPanel geography={snapshot.data.geography} options={options.data} filters={filters} />
+                overview.data && <>
+                  <ExecutiveKpis headline={overview.data.headline} />
+                  <TrainingFunnel pipeline={overview.data.pipeline} />
+                  <GeographicPanel geography={overview.data.geography} options={options.data} filters={filters}
+                    metric={mapMetric} onMetricChange={setMapMetric} />
                 </>
-              ) : view === 'programs' ? (
+              ) : comparisons.data && (view === 'programs' ? (
                 <>
-                  <ProgramMatrix programs={snapshot.data.programs} schemes={options.data.schemes} />
-                  <ProviderLeaderboard providers={snapshot.data.providers} quality={snapshot.data.quality} />
-                  <CourseOutcomes courses={snapshot.data.courses} />
+                  <ProgramMatrix programs={comparisons.data.programs} schemes={options.data.schemes} />
+                  <ProviderLeaderboard providers={comparisons.data.providers} quality={comparisons.data.quality} />
+                  <CourseOutcomes courses={comparisons.data.courses} />
                 </>
               ) : view === 'employment' ? (
                 <>
-                  <EmployerHiring employers={snapshot.data.employers} />
-                  <EmploymentMix mix={snapshot.data.economic.employmentMix} />
-                  <EngagementTypes categories={snapshot.data.economic.categoryBreakdown ?? []} />
+                  <EmployerHiring employers={comparisons.data.employers} />
+                  <EmploymentMix mix={comparisons.data.economic.employmentMix} />
+                  <EngagementTypes categories={comparisons.data.economic.categoryBreakdown ?? []} />
                 </>
               ) : (
                 <>
-                  <WageProgression wages={snapshot.data.economic.wageProgression} />
-                  <WageGrowthByCourse rows={snapshot.data.economic.courseWageProgression ?? []} />
+                  <WageProgression wages={comparisons.data.economic.wageProgression} />
+                  <WageGrowthByCourse rows={comparisons.data.economic.courseWageProgression ?? []} />
                 </>
-              )}
+              ))}
           </div>
         </>
       )}

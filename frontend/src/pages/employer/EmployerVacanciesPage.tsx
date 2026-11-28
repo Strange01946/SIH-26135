@@ -1,8 +1,8 @@
 import { useDeferredValue, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  getEmployerVacancies, publishEmployerVacancy, searchEmployerSkills,
-  type EmployerReferences, type VacancyInput,
+  getEmployerVacancies, publishEmployerVacancy, searchEmployerSkills, recordPostedJobHire,
+  type EmployerReferences, type EmployerVacancy, type VacancyInput,
 } from '@/api/employerApi';
 import { Modal } from '@/components/common/Modal';
 import { EmptyState } from '@/components/feedback/EmptyState';
@@ -16,6 +16,7 @@ export function EmployerVacanciesPage() {
   const [search, setSearch] = useState('');
   const keyword = useDeferredValue(search.trim());
   const [open, setOpen] = useState(false);
+  const [hiring, setHiring] = useState<EmployerVacancy>();
   const [receipt, setReceipt] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const queryClient = useQueryClient();
@@ -23,6 +24,20 @@ export function EmployerVacanciesPage() {
   const jobs = useQuery({
     queryKey: ['employer', 'vacancies', page, keyword],
     queryFn: ({ signal }) => getEmployerVacancies(page, signal, keyword),
+  });
+  const hire = useMutation({
+    mutationFn: ({ posting, form }: { posting: EmployerVacancy; form: FormData }) => recordPostedJobHire(posting.id, {
+      registrationNumber: String(form.get('registrationNumber')).trim(),
+      enrollmentNumber: String(form.get('enrollmentNumber')).trim() || undefined,
+      joiningDate: String(form.get('joiningDate')),
+      pay: Number(form.get('pay')),
+      payFrequencyId: Number(form.get('payFrequencyId')),
+    }),
+    onSuccess: async () => {
+      setHiring(undefined);
+      setReceipt('Joining recorded. The placement and employment history are updated.');
+      await queryClient.invalidateQueries({ queryKey: ['employer', 'placements'] });
+    },
   });
 
   return (
@@ -69,6 +84,11 @@ export function EmployerVacanciesPage() {
                   </ul>
                 )}
                 <p className="text-xs text-slate-500">{job.code}</p>
+                {job.status === 'OPEN' && <button type="button" className="btn-outline" onClick={() => {
+                  hire.reset();
+                  setReceipt('');
+                  setHiring(job);
+                }}>Record joining</button>}
               </li>
             ))}
           </ul>
@@ -86,6 +106,33 @@ export function EmployerVacanciesPage() {
             await queryClient.invalidateQueries({ queryKey: ['employer', 'vacancies'] });
           }} />
         )}
+      </Modal>
+      <Modal open={!!hiring} onClose={() => { if (!hire.isPending) setHiring(undefined); }} title="Record candidate joining">
+        {reference.isPending ? <LoadingSpinner label="Loading joining form" /> : reference.isError ? (
+          <ErrorState error={reference.error} title="Unable to load pay frequencies" onRetry={() => void reference.refetch()} />
+        ) : hiring && <form className="space-y-3" onSubmit={event => {
+          event.preventDefault();
+          hire.mutate({ posting: hiring, form: new FormData(event.currentTarget) });
+        }}>
+          <p className="font-semibold">{hiring.title} · {hiring.jobRole}</p>
+          <label className="form-label">Trainee registration number
+            <input className="form-input" name="registrationNumber" maxLength={80} required />
+          </label>
+          <label className="form-label">Training enrollment number (if more than one)
+            <input className="form-input" name="enrollmentNumber" maxLength={80} />
+          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="form-label">Joining date
+              <input className="form-input" name="joiningDate" type="date" max={indiaToday()} required />
+            </label>
+            <label className="form-label">Starting pay ({hiring.currency})
+              <input className="form-input" name="pay" type="number" min="0" max="9999999999.99" step="0.01" required />
+            </label>
+          </div>
+          <EmployerSelect name="payFrequencyId" label="Pay frequency" options={reference.data.payFrequencies} required />
+          {hire.isError && <EmployerFormError error={hire.error} />}
+          <button className="btn-primary" type="submit" disabled={hire.isPending}>{hire.isPending ? 'Saving…' : 'Confirm joining'}</button>
+        </form>}
       </Modal>
     </div>
   );

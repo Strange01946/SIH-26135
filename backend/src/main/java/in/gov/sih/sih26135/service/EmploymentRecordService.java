@@ -11,6 +11,8 @@ public interface EmploymentRecordService {
 
   EmploymentRecordResponse createEmploymentRecord(CreateEmploymentRecordRequest request);
 
+  EmploymentRecordResponse createSelfReportedEmployment(CreateEmploymentRecordRequest request);
+
   EmploymentRecordResponse updateEmploymentRecord(Long id, UpdateEmploymentRecordRequest request);
 
   EmploymentRecordResponse getEmploymentRecordById(Long id);

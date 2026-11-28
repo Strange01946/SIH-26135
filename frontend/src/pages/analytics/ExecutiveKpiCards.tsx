@@ -3,9 +3,9 @@ import { formatMetric, MeasureValue } from './MisUi';
 
 const kpiMeta = {
   enrolled: ['Total enrolled', 'Enrollment records', 'count'],
-  certified: ['Total certified', 'Enrollments with an issued certificate', 'count'],
-  placed: ['Total placed', 'Joined placement records', 'count'],
-  retention6m: ['6-month retention rate', 'Candidates with an observable wage spell', 'percent'],
+  certified: ['Total certified', 'Distinct trainees with an issued certificate', 'count'],
+  placed: ['Total placed', 'Enrollments with a joined placement or a self-reported post-training job', 'count'],
+  retention6m: ['6-month retention rate', 'Candidates with a linked post-training wage job whose six-month milestone has passed', 'percent'],
   activeCenters: ['Active training centers', 'Currently active centers serving the cohort', 'count'],
 } as const;
 

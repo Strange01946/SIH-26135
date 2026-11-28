@@ -18,6 +18,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -562,11 +563,14 @@ public class VenueBookingService {
 
   private static List<SessionRequest> validateSessions(List<SessionRequest> sessions, LocalDateTime now) {
     List<SessionRequest> sorted = sessions.stream().sorted(Comparator.comparing(SessionRequest::startsAt)).toList();
+    LocalDateTime currentMinute = now.truncatedTo(ChronoUnit.MINUTES);
     LocalDateTime previousEnd = null;
     for (SessionRequest session : sorted) {
-      if (!session.startsAt().isAfter(now) || !session.startsAt().isBefore(session.endsAt())
+      if (session.startsAt().isBefore(currentMinute) || !session.startsAt().isBefore(session.endsAt())
+          || !session.endsAt().isAfter(now)
           || session.startsAt().getNano() != 0 || session.endsAt().getNano() != 0) {
-        throw invalid("Enter a future start time and a later end time for each session.", "VENUE_SESSION_TIME_INVALID");
+        throw invalid("Enter a start time in the current minute or later and a future end time after it.",
+            "VENUE_SESSION_TIME_INVALID");
       }
       if (previousEnd != null && session.startsAt().isBefore(previousEnd)) {
         throw invalid("Sessions in the same request cannot overlap.", "VENUE_REQUEST_SESSIONS_OVERLAP");

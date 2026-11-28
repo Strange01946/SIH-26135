@@ -1,5 +1,7 @@
 package in.gov.sih.sih26135.service.impl;
 
+import in.gov.sih.sih26135.config.cache.AnalyticsCacheEvictionService;
+
 import in.gov.sih.sih26135.service.AssessmentDocuments;
 import in.gov.sih.sih26135.service.BatchAssessmentService;
 
@@ -20,12 +22,10 @@ import in.gov.sih.sih26135.entity.RefAssessmentOutcome;
 import in.gov.sih.sih26135.entity.RefCertificateStatus;
 import in.gov.sih.sih26135.entity.RefCertificateVerificationStatus;
 import in.gov.sih.sih26135.entity.RefEnrollmentStatus;
-import in.gov.sih.sih26135.entity.Organization;
 import in.gov.sih.sih26135.entity.Trainee;
 import in.gov.sih.sih26135.entity.TraineeAssessment;
 import in.gov.sih.sih26135.entity.TrainingBatch;
 import in.gov.sih.sih26135.entity.TrainingEnrollment;
-import in.gov.sih.sih26135.entity.TrainingProvider;
 import in.gov.sih.sih26135.entity.User;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
@@ -33,7 +33,6 @@ import in.gov.sih.sih26135.repository.AssessmentRepository;
 import in.gov.sih.sih26135.repository.AssessmentResultRepository;
 import in.gov.sih.sih26135.repository.CertificationRepository;
 import in.gov.sih.sih26135.repository.CourseRepository;
-import in.gov.sih.sih26135.repository.OrganizationRepository;
 import in.gov.sih.sih26135.repository.ProgramRepository;
 import in.gov.sih.sih26135.repository.RefAssessmentOutcomeRepository;
 import in.gov.sih.sih26135.repository.RefCertificateStatusRepository;
@@ -94,8 +93,6 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
   public static final Long CERT_STATUS_EXPIRED_ID = 4L;
 
   public static final Long CERT_VERIF_STATUS_UNVERIFIED_ID = 1L;
-  public static final Long CERT_VERIF_STATUS_PENDING_ID = 2L;
-  public static final Long CERT_VERIF_STATUS_VERIFIED_ID = 3L;
   public static final Long CERT_VERIF_STATUS_REJECTED_ID = 4L;
   public static final Long ENROLLMENT_STATUS_COMPLETED_ID = 3L;
 
@@ -113,11 +110,11 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
   private final RefCertificateStatusRepository refCertificateStatusRepository;
   private final RefCertificateVerificationStatusRepository refCertificateVerificationStatusRepository;
   private final RefEnrollmentStatusRepository refEnrollmentStatusRepository;
-  private final OrganizationRepository organizationRepository;
   private final JdbcTemplate jdbcTemplate;
   private final ObjectMapper objectMapper;
   private final BatchAssessmentService batchAssessments;
   private final AssessmentDocuments documents;
+  private final AnalyticsCacheEvictionService analytics;
 
   public AssessorWorkbenchServiceImpl(
       AssessmentRepository assessmentRepository,
@@ -134,9 +131,9 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       RefCertificateStatusRepository refCertificateStatusRepository,
       RefCertificateVerificationStatusRepository refCertificateVerificationStatusRepository,
       RefEnrollmentStatusRepository refEnrollmentStatusRepository,
-      OrganizationRepository organizationRepository,
       JdbcTemplate jdbcTemplate,
-      ObjectMapper objectMapper, BatchAssessmentService batchAssessments, AssessmentDocuments documents) {
+      ObjectMapper objectMapper, BatchAssessmentService batchAssessments, AssessmentDocuments documents,
+      AnalyticsCacheEvictionService analytics) {
     this.assessmentRepository = assessmentRepository;
     this.traineeAssessmentRepository = traineeAssessmentRepository;
     this.assessmentResultRepository = assessmentResultRepository;
@@ -151,11 +148,11 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
     this.refCertificateStatusRepository = refCertificateStatusRepository;
     this.refCertificateVerificationStatusRepository = refCertificateVerificationStatusRepository;
     this.refEnrollmentStatusRepository = refEnrollmentStatusRepository;
-    this.organizationRepository = organizationRepository;
     this.jdbcTemplate = jdbcTemplate;
     this.objectMapper = objectMapper;
     this.batchAssessments = batchAssessments;
     this.documents = documents;
+    this.analytics = analytics;
   }
 
   @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
@@ -204,85 +201,6 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
     if (a == null && b == null) return true;
     if (a == null || b == null) return false;
     return a.compareTo(b) == 0;
-  }
-
-  @Override
-  public Optional<String> resolveAuthoritativeIssuingBody(Assessment assessment) {
-    if (assessment == null) {
-      return Optional.empty();
-    }
-
-    // 1. Check Training Provider's Parent Organization (Awarding Body / Ministry / Council)
-    if (assessment.getTrainingBatch() != null && assessment.getTrainingBatch().getTrainingProvider() != null) {
-      TrainingProvider provider = assessment.getTrainingBatch().getTrainingProvider();
-      if (provider.getOrganizationId() != null && organizationRepository != null) {
-        Optional<Organization> orgOpt = organizationRepository.findById(provider.getOrganizationId());
-        if (orgOpt.isPresent()) {
-          Organization org = orgOpt.get();
-          if (org.getDeletedAt() == null && Long.valueOf(1L).equals(org.getLifecycleStatusId())) {
-            Long typeId = org.getOrganizationTypeId();
-            // 1: CENTRAL_MINISTRY, 2: STATE_DEPARTMENT, 3: AUTONOMOUS_BODY, 4: SECTOR_SKILL_COUNCIL
-            if (typeId != null && (typeId == 1L || typeId == 2L || typeId == 3L || typeId == 4L)) {
-              if (org.getOrganizationName() != null && !org.getOrganizationName().isBlank()) {
-                return Optional.of(org.getOrganizationName().trim());
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // 2. Check Program Department Organization (e.g. Ministry / Department administering the program)
-    if (assessment.getProgram() != null && assessment.getProgram().getId() != null) {
-      try {
-        List<Map<String, Object>> orgRows = jdbcTemplate.queryForList(
-            "SELECT o.organization_name, o.organization_type_id, o.lifecycle_status_id " +
-            "FROM programs p " +
-            "JOIN departments d ON p.department_id = d.department_id " +
-            "JOIN organizations o ON d.organization_id = o.organization_id " +
-            "WHERE p.program_id = ? AND p.deleted_at IS NULL AND d.deleted_at IS NULL AND o.deleted_at IS NULL",
-            assessment.getProgram().getId()
-        );
-        if (!orgRows.isEmpty()) {
-          Map<String, Object> row = orgRows.get(0);
-          Long typeId = ((Number) row.get("organization_type_id")).longValue();
-          Long lifecycleId = ((Number) row.get("lifecycle_status_id")).longValue();
-          if (lifecycleId == 1L && (typeId == 1L || typeId == 2L || typeId == 3L || typeId == 4L)) {
-            String orgName = (String) row.get("organization_name");
-            if (orgName != null && !orgName.isBlank()) {
-              return Optional.of(orgName.trim());
-            }
-          }
-        }
-      } catch (Exception e) {
-        log.debug("Error checking program department organization: {}", e.getMessage());
-      }
-    }
-
-    // 3. Check registered Sector Skill Council Organization in authoritative organizations table
-    if (assessment.getCourse() != null && assessment.getCourse().getSector() != null) {
-      String sectorName = assessment.getCourse().getSector().getSectorName();
-      if (sectorName != null && !sectorName.isBlank()) {
-        try {
-          List<String> matchingOrgs = jdbcTemplate.queryForList(
-              "SELECT organization_name FROM organizations " +
-              "WHERE organization_type_id = 4 AND lifecycle_status_id = 1 AND deleted_at IS NULL " +
-              "AND (LOWER(organization_name) LIKE LOWER(?) OR LOWER(organization_code) LIKE LOWER(?)) LIMIT 1",
-              String.class,
-              "%" + sectorName.trim() + "%",
-              "%" + sectorName.trim() + "%"
-          );
-          if (!matchingOrgs.isEmpty() && matchingOrgs.get(0) != null && !matchingOrgs.get(0).isBlank()) {
-            return Optional.of(matchingOrgs.get(0).trim());
-          }
-        } catch (Exception e) {
-          log.debug("Error checking sector council organization: {}", e.getMessage());
-        }
-      }
-    }
-
-    // NEVER invent placeholders, display name claims, or fake authority strings
-    return Optional.empty();
   }
 
   @Override
@@ -639,27 +557,16 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
         }
 
         // Check if certificate exists for this result
-        Optional<Certification> certOpt = certificationRepository.findFirstByAssessmentResultId(res.getId());
-        if (certOpt.isEmpty()) {
-          certOpt = certificationRepository.findFirstByTrainingEnrollmentId(enrollmentId);
-        }
+        Optional<Certification> certOpt = findCertificate(res.getId(), enrollmentId, managed);
         if (certOpt.isPresent()) {
           Certification c = certOpt.get();
           certId = c.getId();
           certNumber = c.getCertificateNumber();
           certStatus = c.getCertificateStatus() != null ? c.getCertificateStatus().getStatusCode() : "ISSUED";
-        } else if (Boolean.TRUE.equals(isPass)) {
-          boolean attendanceMet = attendanceRequirementSatisfied(assessment.getCourse(), batchId, enrollmentId, managed);
-          if (!attendanceMet) {
-            certStatus = "PENDING_ELIGIBILITY";
-          } else {
-            Optional<String> authIssuer = resolveAuthoritativeIssuingBody(assessment);
-            if (authIssuer.isEmpty()) {
-              certStatus = "PENDING_ISSUANCE";
-            } else {
-              certStatus = "ELIGIBLE";
-            }
-          }
+        } else if (Boolean.TRUE.equals(isPass) && resultDeclaredAt != null) {
+          boolean eligible = batchAllowsCertification(assessment)
+              && attendanceRequirementSatisfied(assessment.getCourse(), batchId, enrollmentId, managed);
+          certStatus = eligible ? "PENDING_ISSUANCE" : "PENDING_ELIGIBILITY";
         }
       }
 
@@ -848,14 +755,14 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
         throw new BadRequestException("Assessment is already finalized with different marks or outcomes and cannot be modified", "ASSESSMENT_ALREADY_FINALIZED");
       }
 
-      // Check if any passed candidates who previously had pending requirements are NOW eligible!
-      int newlyIssued = issuePendingCertificatesInternal(assessment);
+      int newlyIssued = issuePendingCertificatesInternal(assessment, caller);
       if (newlyIssued > 0) {
+        analytics.evictOnCertificationIssued(this);
         log.info("Idempotent finalize re-evaluation issued {} pending certificates for assessment {}.", newlyIssued, assessmentId);
       }
 
       // Idempotent return without database mutations to finalized marks
-      log.info("Assessment {} is already finalized and identical payload received. Returning idempotent read-only response.", assessmentId);
+      log.info("Assessment {} was already finalized. Its marks are unchanged.", assessmentId);
       AssessorRosterResponse currentRoster = getAssessmentRoster(assessmentId);
       int passed = 0;
       int failed = 0;
@@ -894,7 +801,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
     int certsIssued = 0;
 
     LocalDateTime now = LocalDateTime.now();
-    LocalDate today = LocalDate.now();
+    LocalDate today = managed ? LocalDate.now(java.time.ZoneId.of("Asia/Kolkata")) : LocalDate.now();
 
     RefAssessmentOutcome outcomePending = refAssessmentOutcomeRepository.findById(OUTCOME_PENDING_ID)
         .orElseThrow(() -> new ResourceNotFoundException("RefAssessmentOutcome", "id=" + OUTCOME_PENDING_ID));
@@ -907,8 +814,8 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
 
     RefCertificateStatus statusIssued = refCertificateStatusRepository.findById(CERT_STATUS_ISSUED_ID)
         .orElseThrow(() -> new ResourceNotFoundException("RefCertificateStatus", "id=" + CERT_STATUS_ISSUED_ID));
-    RefCertificateVerificationStatus verifStatusPending = refCertificateVerificationStatusRepository.findById(CERT_VERIF_STATUS_PENDING_ID)
-        .orElseThrow(() -> new ResourceNotFoundException("RefCertificateVerificationStatus", "id=" + CERT_VERIF_STATUS_PENDING_ID));
+    RefCertificateVerificationStatus unverified = refCertificateVerificationStatusRepository.findById(CERT_VERIF_STATUS_UNVERIFIED_ID)
+        .orElseThrow(() -> new ResourceNotFoundException("RefCertificateVerificationStatus", "id=" + CERT_VERIF_STATUS_UNVERIFIED_ID));
     RefEnrollmentStatus statusCompleted = refEnrollmentStatusRepository.findById(ENROLLMENT_STATUS_COMPLETED_ID).orElse(null);
 
     for (CandidateScoreInput input : request.getCandidates()) {
@@ -1061,13 +968,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       Program program = assessment.getProgram();
 
       boolean attendanceMet = attendanceRequirementSatisfied(course, batchId, enrollment.getId(), managed);
-      boolean batchActive = true;
-      if (assessment.getTrainingBatch() != null && assessment.getTrainingBatch().getBatchStatus() != null) {
-        Long batchStatusId = assessment.getTrainingBatch().getBatchStatus().getId();
-        if (batchStatusId == 5L || batchStatusId == 6L) { // CANCELLED (5) or SUSPENDED (6)
-          batchActive = false;
-        }
-      }
+      boolean batchActive = batchAllowsCertification(assessment);
 
       boolean trainingRequirementsCompleted = batchActive && attendanceMet;
 
@@ -1102,48 +1003,33 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
         boolean isTrainingCompleted = enrollment.getEnrollmentStatus() != null
             && enrollment.getEnrollmentStatus().getId() == 3L;
 
-        if (!isTrainingCompleted) {
+        if (!trainingRequirementsCompleted || !isTrainingCompleted) {
           log.info("Candidate {} passed assessment but training completion is pending (batchActive={}, attendanceMet={}). Certificate issuance deferred.",
               traineeId, batchActive, attendanceMet);
         } else {
-          // Check authoritative issuing body
-          Optional<String> authoritativeIssuerOpt = resolveAuthoritativeIssuingBody(assessment);
-          if (authoritativeIssuerOpt.isEmpty()) {
-            log.info("Candidate {} passed and completed training, but authoritative issuing body is pending accreditation. Certificate issuance deferred.",
-                traineeId);
-          } else {
-            // Both training completed AND authoritative issuer established -> ISSUE CERTIFICATE!
-            Optional<Certification> existingCert = certificationRepository.findFirstByAssessmentResultId(savedResult.getId());
-            if (existingCert.isEmpty()) {
-              existingCert = certificationRepository.findFirstByTrainingEnrollmentId(enrollment.getId());
-            }
+          if (findCertificate(savedResult.getId(), enrollment.getId(), managed).isEmpty()) {
+            String courseCode = course != null ? course.getCourseCode() : "CRS";
+            String certNumber = "CERT-" + courseCode + "-" + traineeId + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT);
 
-            if (existingCert.isEmpty()) {
-              String courseCode = course != null ? course.getCourseCode() : "CRS";
-              String certNumber = "CERT-" + courseCode + "-" + traineeId + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT);
-              String issuingBody = authoritativeIssuerOpt.get();
+            Certification cert = new Certification();
+            cert.setCertificateNumber(certNumber);
+            cert.setTrainee(trainee);
+            cert.setTrainingEnrollment(enrollment);
+            cert.setCourse(course);
+            cert.setProgram(program);
+            cert.setAssessmentResult(savedResult);
+            cert.setIssuingBody(caller.getUsername());
+            cert.setIssueDate(today);
+            cert.setCertificateStatus(statusIssued);
+            cert.setCertificateVerificationStatus(unverified);
+            cert.setVerifiedAt(null);
+            cert.setVerifiedByUserId(null);
+            cert.setCreatedAt(now);
+            cert.setUpdatedAt(now);
 
-              Certification cert = new Certification();
-              cert.setCertificateNumber(certNumber);
-              cert.setTrainee(trainee);
-              cert.setTrainingEnrollment(enrollment);
-              cert.setCourse(course);
-              cert.setProgram(program);
-              cert.setAssessmentResult(savedResult);
-              cert.setIssuingBody(issuingBody);
-              cert.setIssueDate(today);
-              cert.setExpiryDate(today.plusYears(5));
-              cert.setCertificateStatus(statusIssued);
-              cert.setCertificateVerificationStatus(verifStatusPending);
-              cert.setVerifiedAt(null);
-              cert.setVerifiedByUserId(null);
-              cert.setCreatedAt(now);
-              cert.setUpdatedAt(now);
-
-              certificationRepository.save(cert);
-              certsIssued++;
-              log.info("Certificate {} issued for trainee {} under authoritative body '{}'.", certNumber, traineeId, issuingBody);
-            }
+            certificationRepository.save(cert);
+            certsIssued++;
+            log.info("Certificate {} issued for trainee {} by user {}.", certNumber, traineeId, caller.getId());
           }
         }
       }
@@ -1161,6 +1047,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
         assessmentRepository.flush();
         batchAssessments.awardTrainingSkills(assessmentId);
       }
+      analytics.evictOnCertificationIssued(this);
       log.info("Assessment {} marked FINALIZED by assessor {}. Total candidates: {}, Passed: {}, Failed: {}, Absent: {}, Certs: {}",
           assessmentId, caller.getId(), totalProcessed, passedCount, failedCount, absentCount, certsIssued);
     }
@@ -1193,7 +1080,11 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       throw new AccessDeniedException("Assessment does not belong to authenticated assessor scope");
     }
 
-    int newlyIssued = issuePendingCertificatesInternal(assessment);
+    if (!LIFECYCLE_FINALIZED_ID.equals(assessment.getLifecycleStatusId())) {
+      throw new BadRequestException("Finalize the assessment before issuing pending certificates.", "ASSESSMENT_NOT_FINALIZED");
+    }
+    int newlyIssued = issuePendingCertificatesInternal(assessment, caller);
+    if (newlyIssued > 0) analytics.evictOnCertificationIssued(this);
     log.info("issuePendingCertificates for assessment {} issued {} new certificates.", assessmentId, newlyIssued);
 
     AssessorRosterResponse currentRoster = getAssessmentRoster(assessmentId);
@@ -1219,7 +1110,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
     );
   }
 
-  private int issuePendingCertificatesInternal(Assessment assessment) {
+  private int issuePendingCertificatesInternal(Assessment assessment, User caller) {
     if (assessment == null) return 0;
     Long batchId = assessment.getTrainingBatch() != null ? assessment.getTrainingBatch().getId() : null;
     if (batchId == null) return 0;
@@ -1227,9 +1118,10 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
 
     List<TrainingEnrollment> batchEnrollments = trainingEnrollmentRepository.findByTrainingBatchIdAndDeletedAtIsNull(batchId);
     LocalDateTime now = LocalDateTime.now();
-    LocalDate today = LocalDate.now();
+    LocalDate today = managed ? LocalDate.now(java.time.ZoneId.of("Asia/Kolkata")) : LocalDate.now();
     RefCertificateStatus statusIssued = refCertificateStatusRepository.findById(CERT_STATUS_ISSUED_ID).orElse(null);
-    RefCertificateVerificationStatus verifStatusPending = refCertificateVerificationStatusRepository.findById(CERT_VERIF_STATUS_PENDING_ID).orElse(null);
+    RefCertificateVerificationStatus unverified = refCertificateVerificationStatusRepository.findById(CERT_VERIF_STATUS_UNVERIFIED_ID)
+        .orElseThrow(() -> new ResourceNotFoundException("RefCertificateVerificationStatus", "id=" + CERT_VERIF_STATUS_UNVERIFIED_ID));
     RefEnrollmentStatus statusCompleted = refEnrollmentStatusRepository.findById(ENROLLMENT_STATUS_COMPLETED_ID).orElse(null);
 
     int newlyIssued = 0;
@@ -1250,24 +1142,12 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
 
       // Only passed candidates
       boolean isPass = res.getAssessmentOutcome() != null && Boolean.TRUE.equals(res.getAssessmentOutcome().getIsPassFlag());
-      if (!isPass) continue;
+      if (!isPass || res.getResultDeclaredAt() == null) continue;
 
       // Check if already has a certificate
-      Optional<Certification> existingCert = certificationRepository.findFirstByAssessmentResultId(res.getId());
-      if (existingCert.isEmpty()) {
-        existingCert = certificationRepository.findFirstByTrainingEnrollmentId(enrollment.getId());
-      }
-      if (existingCert.isPresent()) continue;
+      if (findCertificate(res.getId(), enrollment.getId(), managed).isPresent()) continue;
 
-      // Check attendance & batch
-      boolean attendanceMet = attendanceRequirementSatisfied(course, batchId, enrollment.getId(), managed);
-      boolean batchActive = true;
-      if (assessment.getTrainingBatch() != null && assessment.getTrainingBatch().getBatchStatus() != null) {
-        Long bStatus = assessment.getTrainingBatch().getBatchStatus().getId();
-        if (bStatus == 5L || bStatus == 6L) batchActive = false;
-      }
-
-      if (!batchActive || !attendanceMet) continue;
+      if (!batchAllowsCertification(assessment) || !attendanceRequirementSatisfied(course, batchId, enrollment.getId(), managed)) continue;
 
       // Mark enrollment completed if active
       if (enrollment.getEnrollmentStatus() != null) {
@@ -1284,11 +1164,6 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
         }
       }
 
-      // Check authoritative issuer
-      Optional<String> authIssuerOpt = resolveAuthoritativeIssuingBody(assessment);
-      if (authIssuerOpt.isEmpty()) continue;
-
-      // Issue certificate!
       String courseCode = course != null ? course.getCourseCode() : "CRS";
       String certNumber = "CERT-" + courseCode + "-" + traineeId + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT);
       Certification cert = new Certification();
@@ -1298,11 +1173,10 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       cert.setCourse(course);
       cert.setProgram(program);
       cert.setAssessmentResult(res);
-      cert.setIssuingBody(authIssuerOpt.get());
+      cert.setIssuingBody(caller.getUsername());
       cert.setIssueDate(today);
-      cert.setExpiryDate(today.plusYears(5));
       cert.setCertificateStatus(statusIssued);
-      cert.setCertificateVerificationStatus(verifStatusPending);
+      cert.setCertificateVerificationStatus(unverified);
       cert.setVerifiedAt(null);
       cert.setVerifiedByUserId(null);
       cert.setCreatedAt(now);
@@ -1310,9 +1184,22 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
 
       certificationRepository.save(cert);
       newlyIssued++;
-      log.info("Pending requirement resolved: Certificate {} issued for trainee {} under '{}'.", certNumber, traineeId, authIssuerOpt.get());
+      log.info("Pending certificate {} issued for trainee {} by user {}.", certNumber, traineeId, caller.getId());
     }
     return newlyIssued;
+  }
+
+  private Optional<Certification> findCertificate(Long resultId, Long enrollmentId, boolean managed) {
+    var certificate = certificationRepository.findFirstByAssessmentResultIdAndDeletedAtIsNullOrderByIdAsc(resultId);
+    return managed ? certificate : certificate.or(() ->
+        certificationRepository.findFirstByTrainingEnrollmentIdAndDeletedAtIsNullOrderByIdAsc(enrollmentId));
+  }
+
+  private boolean batchAllowsCertification(Assessment assessment) {
+    var batch = assessment.getTrainingBatch();
+    if (batch == null || batch.getBatchStatus() == null) return true;
+    Long status = batch.getBatchStatus().getId();
+    return !Long.valueOf(5L).equals(status) && !Long.valueOf(6L).equals(status);
   }
 
   private boolean attendanceRequirementSatisfied(Course course, Long batchId, Long enrollmentId, boolean managed) {
@@ -1328,6 +1215,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
     }
 
     Certification cert = certificationRepository.findById(certificationId)
+        .filter(certificate -> certificate.getDeletedAt() == null)
         .orElseThrow(() -> new ResourceNotFoundException("Certification", "id=" + certificationId));
 
     // Access authorization check
@@ -1368,7 +1256,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
     AssessmentResult result = cert.getAssessmentResult();
     if (result != null && result.getTraineeAssessment() != null && result.getTraineeAssessment().getAssessment() != null
         && batchAssessments.managed(result.getTraineeAssessment().getAssessment().getId())) {
-      return documents.result(result.getId()).bytes();
+      return documents.certificate(result.getId(), certificationId).bytes();
     }
 
     String traineeName = trainee != null ? (trainee.getFirstName() + " " + Objects.toString(trainee.getLastName(), "")).trim() : "Candidate";
@@ -1379,16 +1267,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
     String issueDate = cert.getIssueDate() != null ? cert.getIssueDate().format(DateTimeFormatter.ofPattern("dd-MMM-yyyy")) : "N/A";
     String issuingBody = cert.getIssuingBody() != null && !cert.getIssuingBody().isBlank()
         ? cert.getIssuingBody().trim()
-        : null;
-
-    if (issuingBody == null && result != null && result.getTraineeAssessment() != null
-        && result.getTraineeAssessment().getAssessment() != null) {
-      issuingBody = resolveAuthoritativeIssuingBody(result.getTraineeAssessment().getAssessment()).orElse(null);
-    }
-
-    if (issuingBody == null || issuingBody.isBlank()) {
-      throw new BadRequestException("Certificate #" + certificationId + " has no authoritative issuing body recorded", "UNAUTHORIZED_ISSUING_BODY");
-    }
+        : "Issuer not recorded";
 
     String assessmentTitle = "Standard Competency Evaluation";
     if (result != null && result.getTraineeAssessment() != null && result.getTraineeAssessment().getAssessment() != null) {
@@ -1403,7 +1282,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       scoreStr = "Score Achieved: " + result.getScorePercentage().toPlainString() + "% (PASS)";
     }
 
-    String certStatusText = "Credential Status: ACTIVE / ISSUED";
+    String certStatusText = "Credential Status: ISSUED";
     if (cert.getCertificateStatus() != null) {
       Long stId = cert.getCertificateStatus().getId();
       if (Long.valueOf(CERT_STATUS_REVOKED_ID).equals(stId) || "REVOKED".equalsIgnoreCase(cert.getCertificateStatus().getStatusCode())) {
@@ -1415,17 +1294,11 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       }
     }
 
-    String verifStatusText = "Verification Status: PENDING VERIFICATION";
-    if (cert.getCertificateVerificationStatus() != null) {
-      Long vId = cert.getCertificateVerificationStatus().getId();
-      if (Long.valueOf(CERT_VERIF_STATUS_VERIFIED_ID).equals(vId) || "VERIFIED".equalsIgnoreCase(cert.getCertificateVerificationStatus().getStatusCode())) {
-        verifStatusText = "Verification Status: VERIFIED - OFFICIAL REGISTER";
-      } else if (Long.valueOf(CERT_VERIF_STATUS_REJECTED_ID).equals(vId) || "REJECTED".equalsIgnoreCase(cert.getCertificateVerificationStatus().getStatusCode())) {
-        verifStatusText = "Verification Status: REJECTED / INVALID";
-      }
-    }
+    var verification = cert.getCertificateVerificationStatus();
+    String verificationWarning = verification != null && CERT_VERIF_STATUS_REJECTED_ID.equals(verification.getId())
+        ? "Verification rejected" : "";
 
-    return buildPdfDocument(traineeName, regNumber, courseName, courseCode, assessmentTitle, certNumber, issueDate, issuingBody, scoreStr, certStatusText, verifStatusText);
+    return buildPdfDocument(traineeName, regNumber, courseName, courseCode, assessmentTitle, certNumber, issueDate, issuingBody, scoreStr, certStatusText, verificationWarning);
   }
 
   private byte[] buildPdfDocument(
@@ -1439,7 +1312,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
       String issuingBody,
       String scoreStr,
       String certStatusText,
-      String verifStatusText) {
+      String verificationWarning) {
 
     ByteArrayOutputStream out = new ByteArrayOutputStream();
     try {
@@ -1481,7 +1354,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
           "0 -15 Td\n" +
           "(Date of Issuance: %s) Tj\n" +
           "0 -15 Td\n" +
-          "(Issuing Authority: %s) Tj\n" +
+          "(Issued by: %s) Tj\n" +
           "/F1 10 Tf\n" +
           "0 -18 Td\n" +
           "(%s) Tj\n" +
@@ -1499,7 +1372,7 @@ public class AssessorWorkbenchServiceImpl implements AssessorWorkbenchService {
           escapePdfText(issueDate),
           escapePdfText(issuingBody),
           escapePdfText(certStatusText),
-          escapePdfText(verifStatusText)
+          escapePdfText(verificationWarning)
       );
 
       byte[] textBytes = textStream.getBytes(StandardCharsets.US_ASCII);

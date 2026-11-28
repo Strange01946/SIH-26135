@@ -58,6 +58,17 @@ public class EmploymentRecord {
   @JoinColumn(name = "job_role_id")
   private JobRole jobRole;
 
+  @Column(name = "reported_job_title", length = 160)
+  private String reportedJobTitle;
+
+  @Column(name = "reported_employer_name", length = 160)
+  private String reportedEmployerName;
+
+  public String getReportedJobTitle() { return reportedJobTitle; }
+  public void setReportedJobTitle(String title) { reportedJobTitle = title; }
+  public String getReportedEmployerName() { return reportedEmployerName; }
+  public void setReportedEmployerName(String name) { reportedEmployerName = name; }
+
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "engagement_type_id", nullable = false)
   private RefEngagementType engagementType;

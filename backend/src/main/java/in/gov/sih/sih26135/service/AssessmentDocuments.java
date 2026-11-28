@@ -29,13 +29,21 @@ public class AssessmentDocuments {
   }
 
   public Document result(long id) {
+    return document(id, null);
+  }
+
+  public Document certificate(long resultId, long certificationId) {
+    return document(resultId, certificationId);
+  }
+
+  private Document document(long id, Long certificationId) {
     var caller = scope.resolveAuthenticatedUser().orElseThrow(() -> new AccessDeniedException("Sign in to download your document."));
     return jdbc.query("""
         SELECT a.evaluator_user_id,t.user_id,b.provider_id,ar.assessment_result_id,
           CONCAT_WS(' ',t.first_name,NULLIF(t.middle_name,''),NULLIF(t.last_name,'')) candidate,t.registration_number,
           b.batch_code,a.assessment_name,p.provider_name,tc.center_name,b.start_date,b.end_date,
           a.assessment_date,pub.venue,ar.obtained_score,ar.maximum_score,a.pass_score,ar.remarks,ao.outcome_code,
-          cert.certificate_number,cert.issuing_body,cert.issue_date,cert.expiry_date,cs.status_name,vs.status_name verification
+          cert.certificate_number,cert.issuing_body,cert.issue_date,cs.status_name,vs.status_code verification_code
         FROM assessment_results ar JOIN trainee_assessments ta USING (trainee_assessment_id)
         JOIN assessments a USING (assessment_id)
         JOIN trainees t ON t.trainee_id=ta.trainee_id
@@ -45,24 +53,27 @@ public class AssessmentDocuments {
         JOIN ref_assessment_outcome ao USING (assessment_outcome_id)
         LEFT JOIN batch_assessment_publications pub ON pub.assessment_id=a.assessment_id
         LEFT JOIN certifications cert ON cert.certification_id=(SELECT MIN(c.certification_id) FROM certifications c
-          WHERE c.assessment_result_id=ar.assessment_result_id AND c.deleted_at IS NULL)
+          WHERE c.assessment_result_id=ar.assessment_result_id AND c.deleted_at IS NULL
+            AND (? IS NULL OR c.certification_id=?))
         LEFT JOIN ref_certificate_status cs ON cs.certificate_status_id=cert.certificate_status_id
         LEFT JOIN ref_certificate_verification_status vs ON vs.certificate_verification_status_id=cert.certificate_verification_status_id
         WHERE ar.assessment_result_id=? AND ar.result_declared_at IS NOT NULL AND a.deleted_at IS NULL
+          AND (? IS NULL OR (cert.certification_id IS NOT NULL AND ao.outcome_code='PASS'))
         """, (rs, row) -> {
       boolean ownsResult = Objects.equals(caller.getId(), rs.getObject("user_id", Long.class))
           || Objects.equals(caller.getId(), rs.getObject("evaluator_user_id", Long.class))
           || (caller.getTrainingProviderId() != null && caller.getTrainingProviderId().equals(rs.getObject("provider_id", Long.class)));
       if (!ownsResult && !scope.isNationwideAdmin()) throw new AccessDeniedException("This assessment result is outside your scope.");
       return render(rs);
-    }, id).stream().findFirst().orElseThrow(() -> new ResourceNotFoundException("No finalized assessment document is available."));
+    }, certificationId, certificationId, id, certificationId).stream().findFirst()
+        .orElseThrow(() -> new ResourceNotFoundException("No finalized assessment document is available."));
   }
 
   private Document render(ResultSet rs) throws SQLException {
     String outcome = rs.getString("outcome_code");
     String certificate = rs.getString("certificate_number");
     String issuer = rs.getString("issuing_body");
-    boolean competency = "PASS".equals(outcome) && certificate != null && issuer != null && !issuer.isBlank();
+    boolean competency = "PASS".equals(outcome) && certificate != null;
     String title = competency ? "Certificate of Competency" : "Assessment Result";
     var components = componentScores(mapper, rs.getString("remarks"));
     String total = score(rs.getBigDecimal("obtained_score"));
@@ -70,9 +81,9 @@ public class AssessmentDocuments {
     String absent = "ABSENT".equals(outcome) ? "Not assessed" : null;
     String venue = rs.getString("venue") == null ? rs.getString("center_name") : rs.getString("venue");
     String footer = competency
-        ? "Certificate " + certificate + "  |  Issued " + rs.getString("issue_date")
-            + "  |  Expires " + rs.getString("expiry_date") + "  |  " + rs.getString("status_name")
-        : "PASS".equals(outcome) ? "Competency certificate pending eligibility or an eligible issuing body."
+        ? "Certificate " + certificate + "  |  Issued on " + rs.getString("issue_date")
+            + "  |  Status: " + rs.getString("status_name")
+        : "PASS".equals(outcome) ? "Competency certificate pending issuance."
             : "This document records the trainee's assessment outcome.";
     byte[] bytes = LandscapeAssessmentPdf.render(title, outcome, rs.getString("candidate"), rs.getString("registration_number"),
         List.of(new LandscapeAssessmentPdf.Field("TRAINING", rs.getString("assessment_name")),
@@ -84,8 +95,8 @@ public class AssessmentDocuments {
         List.of(absent == null ? score(components.getTheory()) : absent,
             absent == null ? score(components.getPractical()) : absent,
             absent == null ? score(components.getViva()) : absent, absent == null ? total + " / " + maximum : absent),
-        competency ? "Awarding organization: " + issuer : "Result reference: " + rs.getLong("assessment_result_id"),
-        footer, competency && rs.getString("verification") != null ? "Verification: " + rs.getString("verification") : null);
+        competency && issuer != null && !issuer.isBlank() ? "Issued by: " + issuer : "Result reference: " + rs.getLong("assessment_result_id"),
+        footer, competency && "REJECTED".equals(rs.getString("verification_code")) ? "Verification rejected" : null);
     return new Document((competency ? "Certificate_" : "Assessment_Result_") + rs.getLong("assessment_result_id") + ".pdf", bytes);
   }
 

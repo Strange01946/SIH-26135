@@ -89,7 +89,7 @@ class GeographicDashboardServiceTest {
 
       // National macro rates
       assertThat(response.overallCompletionRatePct()).isEqualByComparingTo(new BigDecimal("80.00"));
-      assertThat(response.overallCertificationRatePct()).isEqualByComparingTo(new BigDecimal("75.33"));
+      assertThat(response.overallCertificationRatePct()).isEqualByComparingTo(new BigDecimal("79.02"));
       assertThat(response.overallPlacementRatePct()).isEqualByComparingTo(new BigDecimal("60.00"));
       assertThat(response.overallEmploymentRatePct()).isEqualByComparingTo(new BigDecimal("50.67"));
 

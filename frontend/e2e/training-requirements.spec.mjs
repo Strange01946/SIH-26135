@@ -1,5 +1,6 @@
 import { expect, test } from './support/browser.mjs';
 import { sql } from './support/database.mjs';
+import { setTimeout as delay } from 'node:timers/promises';
 
 const api = '/api/v1/training-requirements';
 const venues = '/api/v1/venue-bookings';
@@ -62,7 +63,7 @@ test('government publishes a fixed center and the award reserves exactly the acc
   const center = await createCentre(request, nationalAdmin, run, 'main', run.state, run.district);
   const otherCenter = await createCentre(request, nationalAdmin, run, 'state', run.state, sameStateDistrict);
   const outsideCenter = await createCentre(request, nationalAdmin, run, 'other', outsideState, outsideDistrict);
-  const publication = publish(run, center, 'main');
+  const publication = { ...publish(run, center, 'main'), earliestDate: day(0) };
   const secondaryId = sql("SELECT education_level_id FROM ref_education_level WHERE education_code='SECONDARY';");
   const prerequisites = 'Basic Java syntax is recommended.';
   const offer = { startDate: day(10), endDate: day(11), dailyStartTime: '10:00', dailyEndTime: '12:00' };
@@ -244,6 +245,41 @@ test('government publishes a fixed center and the award reserves exactly the acc
   expect((await current()).requirement.bookingId).toBe(moved.booking.id);
   expect((await availability()).map(({ startsAt, endsAt }) => ({ startsAt, endsAt })))
     .toEqual([independent.sessions[0], postponedSlot]);
+});
+
+test('a same-day government training slot can begin in the current IST minute', async ({ request, smoke }) => {
+  const { run } = smoke;
+  const format = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  });
+
+  // Give the live HTTP requests time to complete before the clock moves to the next minute.
+  const elapsed = Date.now() % 60_000;
+  if (elapsed > 45_000) await delay(60_000 - elapsed + 100);
+  const now = Date.now();
+  const [today, currentMinute] = format.format(new Date(now)).split(' ');
+  const reviewer = await headers(request, run, 'district');
+  const center = await createCentre(request, reviewer, run, 'current', run.state, run.district);
+  const endTime = '23:59:59';
+  const created = await body(await request.post(api + '/government', { headers: reviewer, data: {
+    ...publish(run, center, 'current'), earliestDate: today, latestDate: today,
+    dailyStartTime: '00:00', dailyEndTime: endTime,
+  } }), 201);
+  const provider = await headers(request, run, 'provider');
+  const proposal = await body(await request.post(api + '/' + created.id + '/applications', { headers: provider, data: {
+    startDate: today, endDate: today, dailyStartTime: currentMinute, dailyEndTime: endTime,
+  } }), 201);
+  const awarded = await body(await request.post(api + '/government/' + created.id + '/select', { headers: reviewer, data: {
+    applicationId: proposal.id,
+  } }), 200);
+  const booking = await body(await request.get(venues + '/' + awarded.bookingId, { headers: reviewer }), 200);
+  expect(booking.sessions).toMatchObject([{ startsAt: today + 'T' + currentMinute + ':00', endsAt: today + 'T' + endTime }]);
+
+  const [previousDay, previousMinute] = format.format(new Date(now - 60_000)).split(' ');
+  await expectError(await request.post(venues + '/venues/' + center.id + '/blackouts', { headers: reviewer, data: {
+    startsAt: previousDay + 'T' + previousMinute, endsAt: today + 'T' + endTime, reason: 'Maintenance',
+  } }), 400, 'VENUE_SESSION_TIME_INVALID');
 });
 
 test('competing government awards cannot reserve the same center slot twice', async ({ request, smoke }) => {

@@ -301,7 +301,45 @@ export function getOwnSurveySubmission(id: number, signal?: AbortSignal) {
   return apiGet<FollowupSubmissionDetail>(`${FOLLOWUP_SURVEYS}/submissions/${id}`, { signal });
 }
 
-export type EmploymentPeriod = SurveySchemas['EmploymentPeriod'] & { id: number };
+export type EmploymentPeriod = Omit<SurveySchemas['EmploymentPeriod'], 'relatedTraining'> & {
+  id: number;
+  payFrequencyId?: number;
+  enrollmentId?: number;
+  employmentSource?: string;
+  editable?: boolean;
+  relatedTraining?: LinkedEmploymentTraining[];
+};
+
+export interface LinkedEmploymentTraining {
+  id: number;
+  name: string;
+  batchCode?: string;
+  completedOn?: string;
+  primary: boolean;
+}
+
+export interface TraineeJobInput {
+  jobTitle: string;
+  employerName?: string;
+  startDate: string;
+  endDate?: string;
+  pay?: number;
+  payFrequencyId: number;
+  enrollmentId?: number;
+  trainingEnrollmentIds?: number[];
+}
+
+export function getTraineeEmploymentOptions(signal?: AbortSignal) {
+  return apiGet<{
+    payFrequencies: { id: number; label: string }[];
+    completedTraining: { id: number; name: string; batchCode?: string; completedOn: string }[];
+  }>('/api/v1/trainees/me/employment-options', { signal });
+}
+
+export function saveTraineeEmployment(input: TraineeJobInput, id?: number) {
+  const path = '/api/v1/trainees/me/employment-history';
+  return id ? apiPut<TraineeJobInput, number>(`${path}/${id}`, input) : apiPost<TraineeJobInput, number>(path, input);
+}
 
 export function getEmploymentHistory(page: number, signal?: AbortSignal) {
   return apiGetPaged<EmploymentPeriod>('/api/v1/trainees/me/employment-history', { params: { page }, signal });

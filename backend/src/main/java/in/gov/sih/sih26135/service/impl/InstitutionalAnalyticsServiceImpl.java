@@ -35,24 +35,16 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
 
   private final InstitutionalAnalyticsRepository institutionalAnalyticsRepository;
   private final WorkflowSecurityScopeValidator scopeValidator;
-  private final in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService privacyService;
   private in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate;
 
   @org.springframework.beans.factory.annotation.Autowired
   public InstitutionalAnalyticsServiceImpl(
       InstitutionalAnalyticsRepository institutionalAnalyticsRepository,
-      WorkflowSecurityScopeValidator scopeValidator,
-      in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService privacyService) {
+      WorkflowSecurityScopeValidator scopeValidator) {
     this.institutionalAnalyticsRepository = java.util.Objects.requireNonNull(institutionalAnalyticsRepository, "InstitutionalAnalyticsRepository is required");
     this.scopeValidator = java.util.Objects.requireNonNull(scopeValidator, "WorkflowSecurityScopeValidator is required");
-    this.privacyService = privacyService != null ? privacyService : new in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService();
   }
 
-  public InstitutionalAnalyticsServiceImpl(
-      InstitutionalAnalyticsRepository institutionalAnalyticsRepository,
-      WorkflowSecurityScopeValidator scopeValidator) {
-    this(institutionalAnalyticsRepository, scopeValidator, new in.gov.sih.sih26135.service.privacy.AnalyticsPrivacySuppressionService());
-  }
 
   @org.springframework.beans.factory.annotation.Autowired(required = false)
   public void setCacheDelegate(in.gov.sih.sih26135.config.cache.AnalyticsCacheDelegate cacheDelegate) {
@@ -98,7 +90,7 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
       ));
     }
 
-    return LeaderboardResponse.of(RANKING_METRIC, privacyService.applyPrivacyGuardrailsToProviders(items));
+    return LeaderboardResponse.of(RANKING_METRIC, items);
   }
 
   @Override
@@ -163,7 +155,7 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
       ));
     }
 
-    return LeaderboardResponse.of(RANKING_METRIC, privacyService.applyPrivacyGuardrailsToCourses(items));
+    return LeaderboardResponse.of(RANKING_METRIC, items);
   }
 
   @Override
@@ -186,8 +178,7 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
     if (criteria == null || criteria.isEmpty()) {
       return getProviderLeaderboard();
     }
-    scopeValidator.validateNationwideScope();
-    scopeValidator.validateAnalyticsFilterScope(criteria);
+    scopeValidator.applyGovernmentMisScope(criteria);
     if (cacheDelegate != null) {
       return cacheDelegate.getProviderLeaderboard(criteria, () -> computeFilteredProviderLeaderboard(criteria));
     }
@@ -224,7 +215,7 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
       ));
     }
 
-    return LeaderboardResponse.of(RANKING_METRIC, privacyService.applyPrivacyGuardrailsToProviders(items));
+    return LeaderboardResponse.of(RANKING_METRIC, items);
   }
 
   @Override
@@ -232,8 +223,7 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
     if (criteria == null || criteria.isEmpty()) {
       return getCourseLeaderboard();
     }
-    scopeValidator.validateNationwideScope();
-    scopeValidator.validateAnalyticsFilterScope(criteria);
+    scopeValidator.applyGovernmentMisScope(criteria);
     if (cacheDelegate != null) {
       return cacheDelegate.getCourseEmployabilityScorecard(criteria, () -> computeFilteredCourseLeaderboard(criteria));
     }
@@ -289,7 +279,7 @@ public class InstitutionalAnalyticsServiceImpl implements InstitutionalAnalytics
       ));
     }
 
-    return LeaderboardResponse.of(RANKING_METRIC, privacyService.applyPrivacyGuardrailsToCourses(items));
+    return LeaderboardResponse.of(RANKING_METRIC, items);
   }
 
   @Override

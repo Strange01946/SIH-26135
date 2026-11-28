@@ -136,7 +136,18 @@ test('nationwide directory supports MIS filters and district drilldown outside D
   await expect(state.locator('option')).toHaveCount(directory.states.length + 1);
   await expect(district.getByRole('option', { name: 'Pune · Maharashtra', exact: true })).toHaveCount(1);
   await state.selectOption(pune.state);
+  const metric = page.getByLabel('Map metric');
+  await metric.selectOption('certificationRatePct');
   await district.selectOption(pune.district);
+  await expect(metric).toHaveValue('certificationRatePct');
+  const puneState = page.getByRole('button', { name: /^Maharashtra · (No data|Suppressed|\d)/ });
+  const [filteredResponse] = await Promise.all([smoke.waitApi('GET', '/api/v1/dashboards/states/' + pune.state), puneState.click()]);
+  expect(filteredResponse.status()).toBe(200);
+  expect(new URL(filteredResponse.url()).searchParams.get('districtId')).toBe(pune.district);
+  const filteredDistricts = page.getByRole('dialog', { name: 'Maharashtra district outcomes' });
+  await expect(filteredDistricts.getByRole('rowheader')).toHaveText(['Pune']);
+  await page.keyboard.press('Escape');
+  await expect(filteredDistricts).toHaveCount(0);
   await state.selectOption(karaikal.state);
   await expect(district).toHaveValue('');
   await expect(district.getByRole('option', { name: 'Karaikal', exact: true })).toHaveCount(1);

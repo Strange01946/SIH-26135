@@ -1,4 +1,4 @@
-import { apiDownload, apiGet, apiPost } from './client';
+import { apiClient, apiGet, apiPost } from './client';
 import type { components } from './generated/api.types';
 
 type PublishBatchAssessmentRequest = components['schemas']['PublishBatchAssessmentRequest'];
@@ -42,6 +42,7 @@ export interface BatchAssessmentCandidate {
   appeared: boolean | null;
   present: number;
   trainingSessions: number;
+  sessionMarks?: { startsAt: string; endsAt: string; status?: string | null; remarks?: string | null }[];
   resultId?: number;
   outcome?: string;
   theory?: number;
@@ -83,11 +84,16 @@ export const getPublishedBatch = (id: number) => apiGet<BatchAssessmentReview>(`
 export const getOwnAssessmentAppointments = () => apiGet<BatchAssessmentAppointment[]>('/api/v1/trainees/me/batch-assessments');
 
 export async function downloadAssessmentDocument(resultId: number): Promise<void> {
-  const file = await apiDownload(`/api/v1/assessment-results/${resultId}/document`, { headers: { Accept: 'application/pdf' } });
-  const url = URL.createObjectURL(file);
+  const response = await apiClient.get<Blob>(`/api/v1/assessment-results/${resultId}/document`, {
+    responseType: 'blob',
+    headers: { Accept: 'application/pdf' },
+  });
+  const disposition = String(response.headers['content-disposition'] ?? '');
+  const filename = /filename="?((?:Assessment_Result|Certificate)_\d+\.pdf)"?/i.exec(disposition)?.[1];
+  const url = URL.createObjectURL(response.data);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `assessment-${resultId}.pdf`;
+  link.download = filename ?? `Assessment_Result_${resultId}.pdf`;
   document.body.appendChild(link);
   link.click();
   link.remove();

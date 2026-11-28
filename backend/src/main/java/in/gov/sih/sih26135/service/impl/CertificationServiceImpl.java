@@ -1,5 +1,6 @@
 package in.gov.sih.sih26135.service.impl;
 
+import in.gov.sih.sih26135.config.cache.AnalyticsCacheEvictionService;
 import in.gov.sih.sih26135.dto.request.CreateCertificationRequest;
 import in.gov.sih.sih26135.dto.request.UpdateCertificationRequest;
 import in.gov.sih.sih26135.dto.response.CertificationResponse;
@@ -7,7 +8,6 @@ import in.gov.sih.sih26135.entity.Assessment;
 import in.gov.sih.sih26135.entity.AssessmentResult;
 import in.gov.sih.sih26135.entity.Certification;
 import in.gov.sih.sih26135.entity.Course;
-import in.gov.sih.sih26135.entity.Organization;
 import in.gov.sih.sih26135.entity.Program;
 import in.gov.sih.sih26135.entity.RefCertificateStatus;
 import in.gov.sih.sih26135.entity.RefCertificateVerificationStatus;
@@ -15,7 +15,6 @@ import in.gov.sih.sih26135.entity.RefEnrollmentStatus;
 import in.gov.sih.sih26135.entity.Trainee;
 import in.gov.sih.sih26135.entity.TraineeAssessment;
 import in.gov.sih.sih26135.entity.TrainingEnrollment;
-import in.gov.sih.sih26135.entity.TrainingProvider;
 import in.gov.sih.sih26135.exception.BadRequestException;
 import in.gov.sih.sih26135.exception.ConflictException;
 import in.gov.sih.sih26135.exception.ResourceNotFoundException;
@@ -23,7 +22,6 @@ import in.gov.sih.sih26135.mapper.CertificationMapper;
 import in.gov.sih.sih26135.repository.AssessmentResultRepository;
 import in.gov.sih.sih26135.repository.CertificationRepository;
 import in.gov.sih.sih26135.repository.CourseRepository;
-import in.gov.sih.sih26135.repository.OrganizationRepository;
 import in.gov.sih.sih26135.repository.ProgramRepository;
 import in.gov.sih.sih26135.repository.RefCertificateStatusRepository;
 import in.gov.sih.sih26135.repository.RefCertificateVerificationStatusRepository;
@@ -36,13 +34,15 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -62,9 +62,18 @@ public class CertificationServiceImpl implements CertificationService {
   private final RefCertificateVerificationStatusRepository refCertificateVerificationStatusRepository;
   private final UserRepository userRepository;
   private final CertificationMapper certificationMapper;
-  private final OrganizationRepository organizationRepository;
   private final RefEnrollmentStatusRepository refEnrollmentStatusRepository;
   private final JdbcTemplate jdbcTemplate;
+  private AnalyticsCacheEvictionService analytics;
+
+  @Autowired
+  public void setAnalyticsCacheEvictionService(AnalyticsCacheEvictionService analytics) {
+    this.analytics = analytics;
+  }
+
+  private void refreshCertificationMetrics() {
+    if (analytics != null) analytics.evictOnCertificationIssued(this);
+  }
 
   public CertificationServiceImpl(
       CertificationRepository certificationRepository,
@@ -89,7 +98,6 @@ public class CertificationServiceImpl implements CertificationService {
         userRepository,
         certificationMapper,
         null,
-        null,
         null);
   }
 
@@ -105,7 +113,6 @@ public class CertificationServiceImpl implements CertificationService {
       RefCertificateVerificationStatusRepository refCertificateVerificationStatusRepository,
       UserRepository userRepository,
       CertificationMapper certificationMapper,
-      @Autowired(required = false) OrganizationRepository organizationRepository,
       @Autowired(required = false) RefEnrollmentStatusRepository refEnrollmentStatusRepository,
       @Autowired(required = false) JdbcTemplate jdbcTemplate) {
     this.certificationRepository = certificationRepository;
@@ -118,7 +125,6 @@ public class CertificationServiceImpl implements CertificationService {
     this.refCertificateVerificationStatusRepository = refCertificateVerificationStatusRepository;
     this.userRepository = userRepository;
     this.certificationMapper = certificationMapper;
-    this.organizationRepository = organizationRepository;
     this.refEnrollmentStatusRepository = refEnrollmentStatusRepository;
     this.jdbcTemplate = jdbcTemplate;
   }
@@ -354,13 +360,8 @@ public class CertificationServiceImpl implements CertificationService {
         }
       }
 
-      // Authoritative issuer check
       if (request.getIssuingBody() == null || request.getIssuingBody().isBlank()) {
-        Optional<String> authIssuerOpt = resolveAuthoritativeIssuer(assessment);
-        if (authIssuerOpt.isEmpty()) {
-          throw new BadRequestException("Cannot issue certification: No accredited authoritative issuing body established", "AUTHORIZED_ISSUER_REQUIRED");
-        }
-        request.setIssuingBody(authIssuerOpt.get());
+        request.setIssuingBody(authenticatedIssuer());
       }
 
       // Transition active enrollment to completed
@@ -452,6 +453,7 @@ public class CertificationServiceImpl implements CertificationService {
     certification.setUpdatedAt(now);
 
     Certification saved = certificationRepository.save(certification);
+    refreshCertificationMetrics();
     return certificationMapper.toResponse(saved);
   }
 
@@ -529,6 +531,7 @@ public class CertificationServiceImpl implements CertificationService {
     cert.setUpdatedAt(now);
 
     Certification saved = certificationRepository.save(cert);
+    refreshCertificationMetrics();
     return certificationMapper.toResponse(saved);
   }
 
@@ -546,6 +549,7 @@ public class CertificationServiceImpl implements CertificationService {
       cert.setDeletedAt(now);
       cert.setUpdatedAt(now);
       certificationRepository.save(cert);
+      refreshCertificationMetrics();
     }
   }
 
@@ -600,12 +604,6 @@ public class CertificationServiceImpl implements CertificationService {
       throw new BadRequestException("Cannot issue certification: Mandatory attendance requirement not satisfied", "INSUFFICIENT_ATTENDANCE");
     }
 
-    // Resolve authoritative issuer
-    Optional<String> authIssuerOpt = resolveAuthoritativeIssuer(assessment);
-    if (authIssuerOpt.isEmpty()) {
-      throw new BadRequestException("Cannot issue certification: No accredited authoritative issuing body established", "AUTHORIZED_ISSUER_REQUIRED");
-    }
-
     // Mark enrollment completed if active
     LocalDate today = LocalDate.now();
     LocalDateTime now = LocalDateTime.now();
@@ -627,7 +625,8 @@ public class CertificationServiceImpl implements CertificationService {
     String certNum = "CERT-" + courseCode + "-" + attempt.getTrainee().getId() + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT);
 
     RefCertificateStatus statusIssued = refCertificateStatusRepository.findById(1L).orElseThrow();
-    RefCertificateVerificationStatus verifStatusPending = refCertificateVerificationStatusRepository.findById(2L).orElseThrow();
+    RefCertificateVerificationStatus unverified = refCertificateVerificationStatusRepository.findByStatusCode("UNVERIFIED")
+        .orElseThrow(() -> new ResourceNotFoundException("RefCertificateVerificationStatus", "code=UNVERIFIED"));
 
     Certification cert = new Certification();
     cert.setCertificateNumber(certNum);
@@ -636,15 +635,15 @@ public class CertificationServiceImpl implements CertificationService {
     cert.setCourse(course);
     cert.setProgram(assessment.getProgram());
     cert.setAssessmentResult(result);
-    cert.setIssuingBody(authIssuerOpt.get());
+    cert.setIssuingBody(authenticatedIssuer());
     cert.setIssueDate(today);
-    cert.setExpiryDate(today.plusYears(5));
     cert.setCertificateStatus(statusIssued);
-    cert.setCertificateVerificationStatus(verifStatusPending);
+    cert.setCertificateVerificationStatus(unverified);
     cert.setCreatedAt(now);
     cert.setUpdatedAt(now);
 
     Certification saved = certificationRepository.save(cert);
+    refreshCertificationMetrics();
     return certificationMapper.toResponse(saved);
   }
 
@@ -671,66 +670,12 @@ public class CertificationServiceImpl implements CertificationService {
     return rate >= 0.70;
   }
 
-  private Optional<String> resolveAuthoritativeIssuer(Assessment assessment) {
-    if (assessment == null) return Optional.empty();
-
-    if (assessment.getTrainingBatch() != null && assessment.getTrainingBatch().getTrainingProvider() != null) {
-      TrainingProvider provider = assessment.getTrainingBatch().getTrainingProvider();
-      if (provider.getOrganizationId() != null && organizationRepository != null) {
-        Optional<Organization> orgOpt = organizationRepository.findById(provider.getOrganizationId());
-        if (orgOpt.isPresent()) {
-          Organization org = orgOpt.get();
-          if (org.getDeletedAt() == null && Long.valueOf(1L).equals(org.getLifecycleStatusId())) {
-            Long typeId = org.getOrganizationTypeId();
-            if (typeId != null && (typeId == 1L || typeId == 2L || typeId == 3L || typeId == 4L)) {
-              if (org.getOrganizationName() != null && !org.getOrganizationName().isBlank()) {
-                return Optional.of(org.getOrganizationName().trim());
-              }
-            }
-          }
-        }
-      }
+  private String authenticatedIssuer() {
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    if (authentication == null || !authentication.isAuthenticated()
+        || authentication instanceof AnonymousAuthenticationToken) {
+      return null;
     }
-
-    if (assessment.getProgram() != null && assessment.getProgram().getId() != null && jdbcTemplate != null) {
-      try {
-        List<Map<String, Object>> orgRows = jdbcTemplate.queryForList(
-            "SELECT o.organization_name, o.organization_type_id, o.lifecycle_status_id " +
-            "FROM programs p JOIN departments d ON p.department_id = d.department_id " +
-            "JOIN organizations o ON d.organization_id = o.organization_id " +
-            "WHERE p.program_id = ? AND p.deleted_at IS NULL AND d.deleted_at IS NULL AND o.deleted_at IS NULL",
-            assessment.getProgram().getId()
-        );
-        if (!orgRows.isEmpty()) {
-          Map<String, Object> row = orgRows.get(0);
-          Long typeId = ((Number) row.get("organization_type_id")).longValue();
-          Long lifecycleId = ((Number) row.get("lifecycle_status_id")).longValue();
-          if (lifecycleId == 1L && (typeId == 1L || typeId == 2L || typeId == 3L || typeId == 4L)) {
-            String orgName = (String) row.get("organization_name");
-            if (orgName != null && !orgName.isBlank()) {
-              return Optional.of(orgName.trim());
-            }
-          }
-        }
-      } catch (Exception ignored) {}
-    }
-
-    if (assessment.getCourse() != null && assessment.getCourse().getSector() != null && jdbcTemplate != null) {
-      String sectorName = assessment.getCourse().getSector().getSectorName();
-      if (sectorName != null && !sectorName.isBlank()) {
-        try {
-          List<String> matchingOrgs = jdbcTemplate.queryForList(
-              "SELECT organization_name FROM organizations WHERE organization_type_id = 4 AND lifecycle_status_id = 1 AND deleted_at IS NULL " +
-              "AND (LOWER(organization_name) LIKE LOWER(?) OR LOWER(organization_code) LIKE LOWER(?)) LIMIT 1",
-              String.class, "%" + sectorName.trim() + "%", "%" + sectorName.trim() + "%"
-          );
-          if (!matchingOrgs.isEmpty() && matchingOrgs.get(0) != null && !matchingOrgs.get(0).isBlank()) {
-            return Optional.of(matchingOrgs.get(0).trim());
-          }
-        } catch (Exception ignored) {}
-      }
-    }
-
-    return Optional.empty();
+    return authentication.getName();
   }
 }

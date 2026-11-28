@@ -196,14 +196,14 @@ class GeographicDashboardIntegrationTest {
 
       // Structural grain invariants
       assertThat(district.completedCount()).isLessThanOrEqualTo(district.enrollmentCount());
-      assertThat(district.certifiedCount()).isLessThanOrEqualTo(district.enrollmentCount());
+      assertThat(district.certifiedCount()).isLessThanOrEqualTo(district.traineeCount());
 
       // Percentages are BigDecimal scale 2 or null when denominator is 0
       if (district.enrollmentCount() > 0L) {
         BigDecimal expectedCompletionRate = AnalyticsCalculationUtils.calculatePercentage(
             district.completedCount(), district.enrollmentCount());
         BigDecimal expectedCertificationRate = AnalyticsCalculationUtils.calculatePercentage(
-            district.certifiedCount(), district.enrollmentCount());
+            district.certifiedCount(), district.traineeCount());
         BigDecimal expectedPlacementRate = AnalyticsCalculationUtils.calculatePercentage(
             district.joinedPlacementCount(), district.enrollmentCount());
         BigDecimal expectedEmploymentRate = AnalyticsCalculationUtils.calculatePercentage(
@@ -254,6 +254,9 @@ class GeographicDashboardIntegrationTest {
     long sumStateCertified = overview.stateSummaries().stream()
         .mapToLong(StatePerformanceResponse::certifiedCount)
         .sum();
+    long sumStateTrainees = overview.stateSummaries().stream()
+        .mapToLong(StatePerformanceResponse::traineeCount)
+        .sum();
 
     assertThat(overview.totalEnrollments()).isEqualTo(sumStateEnrollments);
     assertThat(overview.totalCompleted()).isEqualTo(sumStateCompleted);
@@ -264,7 +267,7 @@ class GeographicDashboardIntegrationTest {
       BigDecimal expectedCompletionRate = AnalyticsCalculationUtils.calculatePercentage(
           overview.totalCompleted(), overview.totalEnrollments());
       BigDecimal expectedCertificationRate = AnalyticsCalculationUtils.calculatePercentage(
-          overview.totalCertified(), overview.totalEnrollments());
+          overview.totalCertified(), sumStateTrainees);
       BigDecimal expectedPlacementRate = AnalyticsCalculationUtils.calculatePercentage(
           overview.totalJoinedPlacement(), overview.totalEnrollments());
       BigDecimal expectedEmploymentRate = AnalyticsCalculationUtils.calculatePercentage(

@@ -25,6 +25,9 @@ function TraineeBatchAssessments() {
       {appointment.resultId ? <>
         <p className="text-sm font-semibold">Outcome: {appointment.outcome}</p>
         {appointment.theory != null && <p className="text-sm">Theory {appointment.theory} · Practical {appointment.practical} · Viva {appointment.viva} · Total {appointment.total}</p>}
+        {appointment.outcome === 'PASS' && !appointment.certificateId && (
+          <p className="text-sm text-amber-800">Certificate pending issuance. Your assessment result is available.</p>
+        )}
         <AssessmentDocumentButton resultId={appointment.resultId} certificate={!!appointment.certificateId} />
       </> : <p className="text-sm">{appointment.status === 'OPEN' ? 'Awaiting assessor assignment'
         : appointment.completedAt ? 'Assessment completed. Results pending.' : 'Assessment scheduled'}</p>}
@@ -173,6 +176,7 @@ export const TraineeAssessmentsPage: React.FC = () => {
     queryKey: ['trainee', 'certifications', traineeId],
     queryFn: () => getTraineeCertifications(traineeId!),
     enabled: Boolean(traineeId),
+    refetchInterval: 15_000,
     retry: false,
   });
 
@@ -225,7 +229,7 @@ export const TraineeAssessmentsPage: React.FC = () => {
           success: false,
           message:
             result.message ||
-            `Digital certificate #${cert.certificateNumber} is verified, but PDF export service is not enabled on this environment.`,
+            'Unable to download the certificate PDF.',
         });
       }
     } catch (err: any) {
@@ -255,7 +259,7 @@ export const TraineeAssessmentsPage: React.FC = () => {
               NCVET Assessments &amp; Certified Credentials
             </h2>
             <p className="text-xs text-gov-neutral-500">
-              Assessment scores, outcomes, and certificates issued by eligible training programmes.
+              Assessment scores, outcomes, and certificates issued by your assessor.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -336,29 +340,28 @@ export const TraineeAssessmentsPage: React.FC = () => {
                         Program: {cert.programName || '—'}
                       </p>
                     </div>
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
-                      {cert.certificateVerificationStatusName || cert.certificateVerificationStatusCode || 'Verification status unavailable'}
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded border shrink-0 ${
+                      cert.certificateStatusCode === 'ISSUED'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-gov-neutral-50 text-gov-neutral-700 border-gov-neutral-200'
+                    }`}>
+                      {cert.certificateStatusName || cert.certificateStatusCode || 'Status unavailable'}
                     </span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-gov-neutral-200 text-xs text-gov-neutral-600">
                     <div>
-                      <span className="font-medium text-gov-neutral-500">Issuing Body:</span>{' '}
+                      <span className="font-medium text-gov-neutral-500">Issued by</span>{' '}
                       <span className="font-semibold">{cert.issuingBody || '—'}</span>
                     </div>
                     <div>
-                      <span className="font-medium text-gov-neutral-500">Issue Date:</span>{' '}
+                      <span className="font-medium text-gov-neutral-500">Issued on</span>{' '}
                       <span>{cert.issueDate ? new Date(cert.issueDate).toLocaleDateString() : '—'}</span>
                     </div>
-                    <div>
-                      <span className="font-medium text-gov-neutral-500">Validity:</span>{' '}
-                      <span>{cert.expiryDate ? new Date(cert.expiryDate).toLocaleDateString() : 'Lifetime'}</span>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gov-neutral-500">Status:</span>{' '}
-                      <span>{cert.certificateStatusName || cert.certificateStatusCode || '—'}</span>
-                    </div>
                   </div>
+                  {cert.certificateVerificationStatusCode === 'REJECTED' && (
+                    <p className="mt-2 text-xs font-semibold text-red-800">Verification rejected</p>
+                  )}
                 </div>
 
                 <div className="mt-5 pt-3 border-t border-gov-neutral-200 flex items-center justify-between">
@@ -374,7 +377,7 @@ export const TraineeAssessmentsPage: React.FC = () => {
                     {downloadingCertId === cert.id ? (
                       <>
                         <LoadingSpinner size="sm" />
-                        <span>Verifying...</span>
+                          <span>Downloading…</span>
                       </>
                     ) : (
                       <>

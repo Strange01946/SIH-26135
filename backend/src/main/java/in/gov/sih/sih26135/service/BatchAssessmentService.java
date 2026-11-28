@@ -180,7 +180,7 @@ public class BatchAssessmentService {
 
   public Review assessorReview(long id) {
     var state = publication(id);
-    requireAssessor(state);
+    if (!"OPEN".equals(state.view().status())) requireAssessor(state);
     return new Review(state.view(), candidates(state));
   }
 
@@ -318,31 +318,46 @@ public class BatchAssessmentService {
   }
 
   private List<Candidate> candidates(State state) {
-    return jdbc.query("WITH slots AS (" + BatchSessionAttendanceService.SCHEDULE + """
-        AND v.batch_id=?), attendance AS (
-          SELECT e.enrollment_id,COUNT(*) sessions,COALESCE(SUM(s.status_code='PRESENT'),0) present_days
-          FROM training_enrollments e JOIN slots slot
-        """ + SESSION_MARK + """
-          WHERE e.batch_id=? GROUP BY e.enrollment_id
-        )
+    var marks = trainingSessionMarks(state.view());
+    return jdbc.query("""
         SELECT t.trainee_id,CONCAT_WS(' ',t.first_name,NULLIF(t.middle_name,''),NULLIF(t.last_name,'')) full_name,
           t.registration_number,ta.appeared_flag,ar.assessment_result_id,ao.outcome_code,ar.obtained_score,ar.remarks,
           (SELECT MIN(c.certification_id) FROM certifications c WHERE c.assessment_result_id=ar.assessment_result_id
-             AND c.deleted_at IS NULL) certificate_id,
-          mark.present_days,mark.sessions
+             AND c.deleted_at IS NULL) certificate_id
         FROM trainee_assessments ta JOIN trainees t USING (trainee_id)
-        LEFT JOIN attendance mark ON mark.enrollment_id=ta.enrollment_id
         LEFT JOIN assessment_results ar ON ar.trainee_assessment_id=ta.trainee_assessment_id AND ar.result_declared_at IS NOT NULL
         LEFT JOIN ref_assessment_outcome ao USING (assessment_outcome_id)
         WHERE ta.assessment_id=? ORDER BY full_name,t.registration_number
         """, (rs, row) -> {
       var scores = AssessmentDocuments.componentScores(mapper, rs.getString("remarks"));
-      return new Candidate(rs.getLong("trainee_id"), rs.getString("full_name"), rs.getString("registration_number"),
+      long traineeId = rs.getLong("trainee_id");
+      var sessions = marks.getOrDefault(traineeId, List.of());
+      int present = (int) sessions.stream().filter(session -> "PRESENT".equals(session.status())).count();
+      return new Candidate(traineeId, rs.getString("full_name"), rs.getString("registration_number"),
           state.view().checkedIn() ? rs.getBoolean("appeared_flag") : null,
-          rs.getInt("present_days"), rs.getInt("sessions"), rs.getObject("assessment_result_id", Long.class),
+          present, sessions.size(), rs.getObject("assessment_result_id", Long.class),
           rs.getString("outcome_code"), scores.getTheory(), scores.getPractical(), scores.getViva(),
-          rs.getBigDecimal("obtained_score"), rs.getObject("certificate_id", Long.class));
-    }, state.view().batchId(), state.view().batchId(), state.view().assessmentId());
+          rs.getBigDecimal("obtained_score"), rs.getObject("certificate_id", Long.class), sessions);
+    }, state.view().assessmentId());
+  }
+
+  private Map<Long, List<TrainingSessionMark>> trainingSessionMarks(Publication publication) {
+    return jdbc.query("WITH slots AS (" + BatchSessionAttendanceService.SCHEDULE + """
+        AND v.batch_id=?)
+        SELECT ta.trainee_id,slot.starts_at,slot.ends_at,s.status_code,ar.remarks
+        FROM trainee_assessments ta JOIN training_enrollments e USING (enrollment_id)
+        JOIN slots slot
+        """ + SESSION_MARK + """
+        WHERE ta.assessment_id=? ORDER BY slot.starts_at,slot.session_id
+        """, rs -> {
+      Map<Long, List<TrainingSessionMark>> marks = new java.util.HashMap<>();
+      while (rs.next()) {
+        marks.computeIfAbsent(rs.getLong("trainee_id"), key -> new java.util.ArrayList<>())
+            .add(new TrainingSessionMark(rs.getObject("starts_at", LocalDateTime.class),
+                rs.getObject("ends_at", LocalDateTime.class), rs.getString("status_code"), rs.getString("remarks")));
+      }
+      return marks;
+    }, publication.batchId(), publication.assessmentId());
   }
 
   private Readiness readiness(Batch batch) {

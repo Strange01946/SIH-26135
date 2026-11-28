@@ -5,6 +5,7 @@ import in.gov.sih.sih26135.dto.assessor.CandidateScoreInput;
 import in.gov.sih.sih26135.dto.assessor.SaveAssessmentScoresRequest;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,7 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>Finalization logic:
  *     <ul>
  *       <li>Failing candidates: FAIL outcome, no certification.</li>
- *       <li>Passing candidates: PASS outcome, authoritative Certification issued (ISSUED, VERIFIED), enrollment COMPLETED.</li>
+ *       <li>Passing candidates: PASS outcome, certificate issued (ISSUED), enrollment COMPLETED.</li>
  *     </ul>
  *   </li>
  *   <li>Finalized assessment immutability (cannot modify once finalized).</li>
@@ -562,7 +563,7 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     Long certId = cert1Ids.get(0);
     trackedCertificationIds.add(certId);
 
-    // Verify certificate details: status = ISSUED (1), verification = PENDING (2), verified_at = null
+    // Issuance is complete with no expiry or separate verification request.
     Integer certStatus = jdbcTemplate.queryForObject(
         "SELECT certificate_status_id FROM certifications WHERE certification_id = ?",
         Integer.class, certId);
@@ -571,7 +572,9 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     Integer certVerif = jdbcTemplate.queryForObject(
         "SELECT certificate_verification_status_id FROM certifications WHERE certification_id = ?",
         Integer.class, certId);
-    assertThat(certVerif).isEqualTo(2); // 2 = PENDING (pending verification)
+    assertThat(certVerif).isEqualTo(1); // UNVERIFIED
+    assertThat(jdbcTemplate.queryForObject(
+        "SELECT expiry_date FROM certifications WHERE certification_id = ?", LocalDate.class, certId)).isNull();
 
     Object verifiedAt = jdbcTemplate.queryForObject(
         "SELECT verified_at FROM certifications WHERE certification_id = ?",
@@ -581,7 +584,7 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     String issuingBody = jdbcTemplate.queryForObject(
         "SELECT issuing_body FROM certifications WHERE certification_id = ?",
         String.class, certId);
-    assertThat(issuingBody).isEqualTo("Skill Org " + runToken);
+    assertThat(issuingBody).isEqualTo("assessor1_" + runToken);
 
     // Verify candidate 1 enrollment status = 3 (COMPLETED)
     Integer enr1Status = jdbcTemplate.queryForObject(
@@ -1263,8 +1266,8 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
   }
 
   @Test
-  @DisplayName("18. Authoritative issuing body resolved accurately without fabricated claims")
-  void testAuthoritativeIssuingBodyResolution() {
+  @DisplayName("18. The certificate records the authenticated issuer")
+  void testRecordsTheAuthenticatedIssuer() {
     CandidateScoreInput c1 = new CandidateScoreInput();
     c1.setTraineeId(trainee1Id);
     c1.setEnrollmentId(enrollment1Id);
@@ -1294,21 +1297,17 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     String issuingBody = jdbcTemplate.queryForObject(
         "SELECT issuing_body FROM certifications WHERE trainee_id = ? AND enrollment_id = ?",
         String.class, trainee1Id, enrollment1Id);
-    assertThat(issuingBody).isNotNull();
-    // Must contain parent organization name
-    assertThat(issuingBody).contains("Skill Org " + runToken);
-    // Must NOT contain fabricated fallback
-    assertThat(issuingBody).doesNotContain("National Skill Development Authority");
+    assertThat(issuingBody).isEqualTo("assessor1_" + runToken);
 
     Long verifStatusId = jdbcTemplate.queryForObject(
         "SELECT certificate_verification_status_id FROM certifications WHERE trainee_id = ? AND enrollment_id = ?",
         Long.class, trainee1Id, enrollment1Id);
-    assertThat(verifStatusId).isEqualTo(2L); // PENDING verification status
+    assertThat(verifStatusId).isEqualTo(1L); // UNVERIFIED
   }
 
   @Test
-  @DisplayName("19. PASS candidate with no authorized issuer: PASS persisted, no certificate issued, status PENDING_ISSUANCE")
-  void testPassWithNoAuthorizedIssuer() throws Exception {
+  @DisplayName("19. The assessor issues a certificate without an awarding organization")
+  void testPassWithoutAnAwardingOrganization() throws Exception {
     // Set organization_type_id to 5 (TRAINING_PROVIDER - not an accredited awarding body)
     jdbcTemplate.update("UPDATE organizations SET organization_type_id = 5 WHERE organization_id = ?", fixtureOrgId);
 
@@ -1353,13 +1352,12 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
         Long.class, enrollment1Id);
     assertThat(enr1Status).isEqualTo(3L);
 
-    // 3. ZERO certificates created (no invented authority, no placeholder)
     List<Long> certIds = jdbcTemplate.queryForList(
         "SELECT certification_id FROM certifications WHERE trainee_id = ? AND enrollment_id = ?",
         Long.class, trainee1Id, enrollment1Id);
-    assertThat(certIds).isEmpty();
+    assertThat(certIds).hasSize(1);
+    trackedCertificationIds.add(certIds.get(0));
 
-    // 4. Assessor roster reflects PENDING_ISSUANCE
     ResponseEntity<String> rosterResp = restTemplate.exchange(
         getBaseUrl("/api/v1/assessor/assessments/" + assignedAssessmentId + "/roster"),
         HttpMethod.GET,
@@ -1377,8 +1375,8 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     }
     assertThat(cand1).isNotNull();
     assertThat(cand1.get("isPassFlag").asBoolean()).isTrue();
-    assertThat(cand1.get("certificateId").isNull()).isTrue();
-    assertThat(cand1.get("certificateStatusCode").asText()).isEqualTo("PENDING_ISSUANCE");
+    assertThat(cand1.get("certificateId").asLong()).isEqualTo(certIds.get(0));
+    assertThat(cand1.get("certificateStatusCode").asText()).isEqualTo("ISSUED");
   }
 
   @Test
@@ -1631,7 +1629,7 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
         Long.class, enrollment1Id);
     assertThat(enr1Status).isEqualTo(3L);
 
-    // 5. Certificate is now ISSUED with authentic issuing body!
+    // The certificate records the issuing assessor.
     List<Long> issuedCerts = jdbcTemplate.queryForList(
         "SELECT certification_id FROM certifications WHERE trainee_id = ? AND enrollment_id = ?",
         Long.class, trainee1Id, enrollment1Id);
@@ -1641,6 +1639,6 @@ public class AssessorWorkbenchIntegrationTest extends BaseJourneyIntegrationTest
     String issuingBody = jdbcTemplate.queryForObject(
         "SELECT issuing_body FROM certifications WHERE certification_id = ?",
         String.class, issuedCerts.get(0));
-    assertThat(issuingBody).isEqualTo("Skill Org " + runToken);
+    assertThat(issuingBody).isEqualTo("assessor1_" + runToken);
   }
 }

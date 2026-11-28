@@ -29,6 +29,7 @@ import { StaffCareerSkills } from '@/components/career/CareerSkillsPanel';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { completeBatchAssessment, getPublishedBatch } from '@/api/batchAssessmentApi';
 import { AssessmentDocumentButton, BatchAssessmentSummary } from '@/components/assessment/BatchAssessmentSummary';
+import { TrainingAttendance } from '@/components/assessment/TrainingAttendance';
 
 interface CandidateRowState {
   appeared: boolean;
@@ -118,6 +119,7 @@ export function AssessorScoringPage(): React.JSX.Element {
     queryKey: publishedBatchKey, queryFn: () => getPublishedBatch(assessmentId),
     enabled: !!roster?.managedBatch,
   });
+  const trainingAttendance = new Map(publishedBatch.data?.candidates.map(candidate => [candidate.traineeId, candidate]));
   const completion = useMutation({
     mutationFn: () => completeBatchAssessment(assessmentId),
     onSuccess: async (publication) => {
@@ -350,7 +352,7 @@ export function AssessorScoringPage(): React.JSX.Element {
 
   const [issuingPending, setIssuingPending] = useState(false);
   const hasPendingCertificates = useMemo(() => {
-    return computedCandidates.some((c) => c.outcomePreview === 'PASS' && !c.certificateNumber);
+    return computedCandidates.some((c) => c.certificateStatusCode === 'PENDING_ISSUANCE' && !c.certificateNumber);
   }, [computedCandidates]);
 
   const handleIssuePending = async () => {
@@ -358,11 +360,19 @@ export function AssessorScoringPage(): React.JSX.Element {
     setError(null);
     setSuccessMessage(null);
     try {
+      const issuedBefore = new Set(roster?.candidates.map((candidate) => candidate.certificateId));
       const resp = await issuePendingCertificates(assessmentId);
-      setSuccessMessage(
-        `Pending candidate requirements evaluated! ${resp.certificatesIssued} total certificates issued.`,
-      );
       await loadRoster();
+      const newlyIssued = resp.results.filter((candidate) =>
+        candidate.certificateId && !issuedBefore.has(candidate.certificateId),
+      ).length;
+      if (newlyIssued > 0) {
+        setSuccessMessage(newlyIssued === 1 ? '1 certificate issued.' : `${newlyIssued} certificates issued.`);
+      } else if (resp.results.some((candidate) => candidate.certificateStatusCode === 'PENDING_ISSUANCE')) {
+        setError('No certificates were issued. The pending results are still available to download.');
+      } else {
+        setSuccessMessage('There are no certificates ready to issue.');
+      }
     } catch (err: any) {
       setError(err?.message || 'Failed to issue pending certificates.');
     } finally {
@@ -436,7 +446,7 @@ export function AssessorScoringPage(): React.JSX.Element {
               onClick={handleIssuePending}
               disabled={issuingPending}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white transition shadow-sm disabled:opacity-50"
-              title="Re-evaluate pending candidate requirements and issue certificates"
+              title="Issue certificates for eligible candidates"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${issuingPending ? 'animate-spin' : ''}`} />
               Issue Pending Certificates
@@ -469,7 +479,7 @@ export function AssessorScoringPage(): React.JSX.Element {
           <CheckCircle2 className="h-6 w-6 text-emerald-600 flex-shrink-0 mt-0.5" />
           <div>
             <h3 className="text-sm font-bold text-emerald-900">
-              Assessment Finalized &amp; Authoritatively Certified
+              Assessment Finalized
             </h3>
             <p className="text-xs text-emerald-700 mt-0.5">
               Scores are finalized. Each candidate’s certificate status appears in the roster.
@@ -562,7 +572,7 @@ export function AssessorScoringPage(): React.JSX.Element {
               <div className="text-lg font-bold text-gray-600">{roster?.managedBatch && !roster.checkedIn ? '—' : stats.absent}</div>
             </div>
             <div className="bg-emerald-50/50 rounded-lg p-2.5 border border-emerald-100">
-              <span className="text-[11px] text-emerald-700">Passing (Est.)</span>
+              <span className="text-[11px] text-emerald-700">{isFinalized ? 'Passed' : 'Passing (Est.)'}</span>
               <div className="text-lg font-bold text-emerald-800">{stats.passed}</div>
             </div>
             <div className="bg-rose-50/50 rounded-lg p-2.5 border border-rose-100">
@@ -604,7 +614,8 @@ export function AssessorScoringPage(): React.JSX.Element {
                 <tr>
                   <th scope="col" className="px-4 py-3">#</th>
                   <th scope="col" className="px-4 py-3">Candidate Details</th>
-                  <th scope="col" className="px-4 py-3 text-center">Attendance</th>
+                  {roster?.managedBatch && <th scope="col" className="px-4 py-3">Training attendance</th>}
+                  <th scope="col" className="px-4 py-3 text-center">{roster?.managedBatch ? 'Evaluation status' : 'Attendance'}</th>
                   <th scope="col" className="px-4 py-3 w-32">
                     Theory <span className="text-gray-400 font-normal">(/ {theoryMax})</span>
                   </th>
@@ -620,7 +631,9 @@ export function AssessorScoringPage(): React.JSX.Element {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
-                {computedCandidates.map((c, idx) => (
+                {computedCandidates.map((c, idx) => {
+                  const attendance = trainingAttendance.get(c.traineeId);
+                  return (
                   <tr
                     key={c.traineeId}
                     className={`hover:bg-gray-50/60 transition ${
@@ -638,12 +651,12 @@ export function AssessorScoringPage(): React.JSX.Element {
                       </div>
                     </td>
 
+                    {roster?.managedBatch && <td className="px-4 py-3.5 text-xs">
+                      {attendance ? <TrainingAttendance candidate={attendance} /> : publishedBatch.isPending ? 'Loading…' : 'Unavailable'}
+                    </td>}
                     <td className="px-4 py-3.5 text-center">
                       <span className="text-xs font-semibold">
                         {roster?.managedBatch ? (roster.checkedIn ? c.appeared ? 'Eligible for scoring' : 'Not evaluated' : 'Pending evaluation') : c.appeared ? 'Present' : 'Absent'}
-                        {publishedBatch.data?.candidates.filter((candidate) => candidate.traineeId === c.traineeId).map((candidate) => (
-                          <span key={candidate.traineeId} className="block font-normal text-gray-600">{candidate.present} / {candidate.trainingSessions} training sessions</span>
-                        ))}
                       </span>
                     </td>
 
@@ -794,7 +807,7 @@ export function AssessorScoringPage(): React.JSX.Element {
                           >
                             {c.isPassFlag
                               ? (c.certificateStatusCode === 'PENDING_ELIGIBILITY'
-                                  ? 'Pending Attendance'
+                                  ? 'Pending Training Eligibility'
                                   : 'Pending Issuance')
                               : 'No Certificate'}
                           </span>
@@ -812,7 +825,8 @@ export function AssessorScoringPage(): React.JSX.Element {
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -46,6 +46,7 @@ export function TraineeSurveys({ traineeId }: { traineeId: number }) {
   return (
     <section className="card space-y-4 p-4 sm:p-6" aria-labelledby="followup-surveys-heading">
       <h2 id="followup-surveys-heading" className="text-lg font-bold text-navy">Post-training follow-up surveys</h2>
+      <p className="text-sm text-gray-600">Follow-up is optional. Use <a className="underline" href="#career-milestones-heading">Employment history</a> to record a job at any time.</p>
       <p className="text-sm text-gray-600">
         Share changes in work, income or skills. Your answers are stored as self-reported outcomes for follow-up.
       </p>

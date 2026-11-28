@@ -21,140 +21,6 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class GeographicDashboardRepository {
 
-  private static final String Q06_SQL = """
-      SELECT
-        d.district_id AS districtId,
-        d.district_code AS districtCode,
-        d.district_name AS districtName,
-        st.state_id AS stateId,
-        st.state_code AS stateCode,
-        st.state_name AS stateName,
-        v.enrollment_count AS enrollmentCount,
-        v.trainee_count AS traineeCount,
-        v.completed_count AS completedCount,
-        v.certified_count AS certifiedCount,
-        v.joined_placement_count AS joinedPlacementCount,
-        v.employed_count AS employedCount,
-        v.completion_rate_pct AS completionRatePct,
-        v.certification_rate_pct AS certificationRatePct,
-        v.placement_rate_pct AS placementRatePct,
-        v.employment_rate_pct AS employmentRatePct
-      FROM vw_district_outcome_summary v
-      JOIN districts d ON d.district_id = v.district_id
-      JOIN states st ON st.state_id = d.state_id
-      ORDER BY v.employment_rate_pct IS NULL, v.employment_rate_pct ASC, v.enrollment_count DESC
-      """;
-
-  private static final String DISTRICTS_BY_STATE_SQL = """
-      SELECT
-        d.district_id AS districtId,
-        d.district_code AS districtCode,
-        d.district_name AS districtName,
-        st.state_id AS stateId,
-        st.state_code AS stateCode,
-        st.state_name AS stateName,
-        COALESCE(v.enrollment_count, 0) AS enrollmentCount,
-        COALESCE(v.trainee_count, 0) AS traineeCount,
-        COALESCE(v.completed_count, 0) AS completedCount,
-        COALESCE(v.certified_count, 0) AS certifiedCount,
-        COALESCE(v.joined_placement_count, 0) AS joinedPlacementCount,
-        COALESCE(v.employed_count, 0) AS employedCount,
-        v.completion_rate_pct AS completionRatePct,
-        v.certification_rate_pct AS certificationRatePct,
-        v.placement_rate_pct AS placementRatePct,
-        v.employment_rate_pct AS employmentRatePct
-      FROM districts d
-      JOIN states st ON st.state_id = d.state_id
-      LEFT JOIN vw_district_outcome_summary v ON v.district_id = d.district_id
-      WHERE st.state_id = ? AND d.deleted_at IS NULL
-      ORDER BY v.employment_rate_pct IS NULL, v.employment_rate_pct ASC, enrollmentCount DESC
-      """;
-
-  private static final String DISTRICT_BY_ID_SQL = """
-      SELECT
-        d.district_id AS districtId,
-        d.district_code AS districtCode,
-        d.district_name AS districtName,
-        st.state_id AS stateId,
-        st.state_code AS stateCode,
-        st.state_name AS stateName,
-        COALESCE(v.enrollment_count, 0) AS enrollmentCount,
-        COALESCE(v.trainee_count, 0) AS traineeCount,
-        COALESCE(v.completed_count, 0) AS completedCount,
-        COALESCE(v.certified_count, 0) AS certifiedCount,
-        COALESCE(v.joined_placement_count, 0) AS joinedPlacementCount,
-        COALESCE(v.employed_count, 0) AS employedCount,
-        v.completion_rate_pct AS completionRatePct,
-        v.certification_rate_pct AS certificationRatePct,
-        v.placement_rate_pct AS placementRatePct,
-        v.employment_rate_pct AS employmentRatePct
-      FROM districts d
-      JOIN states st ON st.state_id = d.state_id
-      LEFT JOIN vw_district_outcome_summary v ON v.district_id = d.district_id
-      WHERE d.district_id = ? AND d.deleted_at IS NULL
-      """;
-
-  private static final String STATE_SUMMARIES_SQL = """
-      SELECT
-        st.state_id AS stateId,
-        st.state_code AS stateCode,
-        st.state_name AS stateName,
-        COUNT(DISTINCT d.district_id) AS districtCount,
-        COALESCE(SUM(v.enrollment_count), 0) AS enrollmentCount,
-        COALESCE(SUM(v.trainee_count), 0) AS traineeCount,
-        COALESCE(SUM(v.completed_count), 0) AS completedCount,
-        COALESCE(SUM(v.certified_count), 0) AS certifiedCount,
-        COALESCE(SUM(v.joined_placement_count), 0) AS joinedPlacementCount,
-        COALESCE(SUM(v.employed_count), 0) AS employedCount,
-        ROUND(SUM(v.completed_count) / NULLIF(SUM(v.enrollment_count), 0) * 100, 2) AS completionRatePct,
-        ROUND(SUM(v.certified_count) / NULLIF(SUM(v.enrollment_count), 0) * 100, 2) AS certificationRatePct,
-        ROUND(SUM(v.joined_placement_count) / NULLIF(SUM(v.enrollment_count), 0) * 100, 2) AS placementRatePct,
-        ROUND(SUM(v.employed_count) / NULLIF(SUM(v.enrollment_count), 0) * 100, 2) AS employmentRatePct,
-        COALESCE(tc.center_count, 0) AS trainingCenterCount
-      FROM states st
-      LEFT JOIN districts d ON d.state_id = st.state_id AND d.deleted_at IS NULL
-      LEFT JOIN vw_district_outcome_summary v ON v.district_id = d.district_id
-      LEFT JOIN (
-        SELECT state_id, COUNT(*) AS center_count
-        FROM training_centers
-        WHERE deleted_at IS NULL
-        GROUP BY state_id
-      ) tc ON tc.state_id = st.state_id
-      WHERE st.deleted_at IS NULL
-      GROUP BY st.state_id, st.state_code, st.state_name, tc.center_count
-      ORDER BY employmentRatePct IS NULL, employmentRatePct DESC, enrollmentCount DESC
-      """;
-
-  private static final String STATE_SUMMARY_BY_ID_SQL = """
-      SELECT
-        st.state_id AS stateId,
-        st.state_code AS stateCode,
-        st.state_name AS stateName,
-        COUNT(DISTINCT d.district_id) AS districtCount,
-        COALESCE(SUM(v.enrollment_count), 0) AS enrollmentCount,
-        COALESCE(SUM(v.trainee_count), 0) AS traineeCount,
-        COALESCE(SUM(v.completed_count), 0) AS completedCount,
-        COALESCE(SUM(v.certified_count), 0) AS certifiedCount,
-        COALESCE(SUM(v.joined_placement_count), 0) AS joinedPlacementCount,
-        COALESCE(SUM(v.employed_count), 0) AS employedCount,
-        ROUND(SUM(v.completed_count) / NULLIF(SUM(v.enrollment_count), 0) * 100, 2) AS completionRatePct,
-        ROUND(SUM(v.certified_count) / NULLIF(SUM(v.enrollment_count), 0) * 100, 2) AS certificationRatePct,
-        ROUND(SUM(v.joined_placement_count) / NULLIF(SUM(v.enrollment_count), 0) * 100, 2) AS placementRatePct,
-        ROUND(SUM(v.employed_count) / NULLIF(SUM(v.enrollment_count), 0) * 100, 2) AS employmentRatePct,
-        COALESCE(tc.center_count, 0) AS trainingCenterCount
-      FROM states st
-      LEFT JOIN districts d ON d.state_id = st.state_id AND d.deleted_at IS NULL
-      LEFT JOIN vw_district_outcome_summary v ON v.district_id = d.district_id
-      LEFT JOIN (
-        SELECT state_id, COUNT(*) AS center_count
-        FROM training_centers
-        WHERE deleted_at IS NULL
-        GROUP BY state_id
-      ) tc ON tc.state_id = st.state_id
-      WHERE st.state_id = ? AND st.deleted_at IS NULL
-      GROUP BY st.state_id, st.state_code, st.state_name, tc.center_count
-      """;
-
   private static final String TRAINING_CENTERS_BY_DISTRICT_SQL = """
       SELECT
         center_id AS centerId,
@@ -252,86 +118,55 @@ public class GeographicDashboardRepository {
    * and enrollment count descending.
    */
   public List<DistrictPerformanceProjection> getFormalQ06DistrictOutcomes() {
-    return jdbcTemplate.query(Q06_SQL, DISTRICT_ROW_MAPPER);
+    return getFormalQ06DistrictOutcomes(null);
   }
 
   /**
    * Retrieves all districts belonging to a specific state, including districts with zero enrollments.
    */
   public List<DistrictPerformanceProjection> getDistrictsByStateId(Long stateId) {
-    return jdbcTemplate.query(DISTRICTS_BY_STATE_SQL, DISTRICT_ROW_MAPPER, stateId);
+    return getDistrictsByStateId(stateId, null);
   }
 
   /**
    * Retrieves performance details for a specific district.
    */
   public DistrictPerformanceProjection getDistrictById(Long districtId) {
-    List<DistrictPerformanceProjection> results = jdbcTemplate.query(
-        DISTRICT_BY_ID_SQL, DISTRICT_ROW_MAPPER, districtId);
-    return results.isEmpty() ? null : results.get(0);
+    return getDistrictById(districtId, null);
   }
 
   /**
-   * Retrieves nationwide state performance summaries rolled up from district outcomes.
+   * Retrieves nationwide state performance summaries grouped by trainee state.
    */
   public List<StatePerformanceProjection> getStateSummaries() {
-    return jdbcTemplate.query(STATE_SUMMARIES_SQL, STATE_ROW_MAPPER);
+    return queryStateSummaries(null, null);
   }
 
   /**
    * Retrieves outcome summary for a single state.
    */
   public StatePerformanceProjection getStateSummaryById(Long stateId) {
-    List<StatePerformanceProjection> results = jdbcTemplate.query(
-        STATE_SUMMARY_BY_ID_SQL, STATE_ROW_MAPPER, stateId);
-    return results.isEmpty() ? null : results.get(0);
+    return queryStateSummaries(stateId, null).stream().findFirst().orElse(null);
   }
 
   /**
    * Q06: District outcome performance matrix with optional multi-dimensional filters.
    */
   public List<DistrictPerformanceProjection> getFormalQ06DistrictOutcomes(AnalyticsFilterCriteria criteria) {
-    if (criteria == null || criteria.isEmpty()) {
-      return getFormalQ06DistrictOutcomes();
-    }
-    AnalyticsQueryFilterBuilder.FilterPredicateResult filter =
-        AnalyticsQueryFilterBuilder.buildEnrollmentFactPredicates(criteria, "v");
-    String sql = """
-        SELECT
-          d.district_id AS districtId,
-          d.district_code AS districtCode,
-          d.district_name AS districtName,
-          st.state_id AS stateId,
-          st.state_code AS stateCode,
-          st.state_name AS stateName,
-          COUNT(*) AS enrollmentCount,
-          COUNT(DISTINCT v.trainee_id) AS traineeCount,
-          SUM(v.is_completed_flag) AS completedCount,
-          SUM(v.has_issued_certificate_flag) AS certifiedCount,
-          SUM(v.has_joined_placement_flag) AS joinedPlacementCount,
-          SUM(v.has_employment_flag) AS employedCount,
-          ROUND(SUM(v.is_completed_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS completionRatePct,
-          ROUND(SUM(v.has_issued_certificate_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS certificationRatePct,
-          ROUND(SUM(v.has_joined_placement_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS placementRatePct,
-          ROUND(SUM(v.has_employment_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS employmentRatePct
-        FROM vw_enrollment_outcome_fact v
-        JOIN districts d ON d.district_id = v.trainee_district_id
-        JOIN states st ON st.state_id = d.state_id
-        WHERE 1=1
-        """ + filter.getSqlFragment() + """
-        GROUP BY d.district_id, d.district_code, d.district_name, st.state_id, st.state_code, st.state_name
-        ORDER BY employmentRatePct IS NULL, employmentRatePct ASC, enrollmentCount DESC
-        """;
-    return jdbcTemplate.query(sql, DISTRICT_ROW_MAPPER, filter.getParameters().toArray());
+    return queryDistricts(null, null, criteria, true);
   }
 
-  /**
-   * Retrieves all districts belonging to a specific state with optional multi-dimensional filters.
-   */
+  /** Retrieves state districts, including districts with zero matching enrollments. */
   public List<DistrictPerformanceProjection> getDistrictsByStateId(Long stateId, AnalyticsFilterCriteria criteria) {
-    if (criteria == null || criteria.isEmpty()) {
-      return getDistrictsByStateId(stateId);
-    }
+    return queryDistricts(stateId, criteria == null ? null : criteria.getDistrictId(), criteria, false);
+  }
+
+  public DistrictPerformanceProjection getDistrictById(Long districtId, AnalyticsFilterCriteria criteria) {
+    return queryDistricts(null, districtId, criteria, false).stream().findFirst().orElse(null);
+  }
+
+  private List<DistrictPerformanceProjection> queryDistricts(Long stateId, Long districtId,
+      AnalyticsFilterCriteria criteria, boolean onlyEnrolledDistricts) {
     AnalyticsQueryFilterBuilder.FilterPredicateResult filter =
         AnalyticsQueryFilterBuilder.buildEnrollmentFactPredicates(criteria, "v");
     String sql = """
@@ -357,91 +192,49 @@ public class GeographicDashboardRepository {
         LEFT JOIN (
           SELECT
             v.trainee_district_id AS district_id,
+            v.trainee_state_id AS state_id,
             COUNT(*) AS enrollment_count,
             COUNT(DISTINCT v.trainee_id) AS trainee_count,
             SUM(v.is_completed_flag) AS completed_count,
-            SUM(v.has_issued_certificate_flag) AS certified_count,
+            COUNT(DISTINCT IF(v.has_issued_certificate_flag = 1, v.trainee_id, NULL)) AS certified_count,
             SUM(v.has_joined_placement_flag) AS joined_placement_count,
             SUM(v.has_employment_flag) AS employed_count,
             ROUND(SUM(v.is_completed_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS completion_rate_pct,
-            ROUND(SUM(v.has_issued_certificate_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS certification_rate_pct,
+            ROUND(COUNT(DISTINCT IF(v.has_issued_certificate_flag = 1, v.trainee_id, NULL))
+              / NULLIF(COUNT(DISTINCT v.trainee_id), 0) * 100, 2) AS certification_rate_pct,
             ROUND(SUM(v.has_joined_placement_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS placement_rate_pct,
             ROUND(SUM(v.has_employment_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS employment_rate_pct
           FROM vw_enrollment_outcome_fact v
           WHERE 1=1
         """ + filter.getSqlFragment() + """
-          GROUP BY v.trainee_district_id
-        ) v ON v.district_id = d.district_id
-        WHERE st.state_id = ? AND d.deleted_at IS NULL
+          GROUP BY v.trainee_district_id, v.trainee_state_id
+        ) v ON v.district_id = d.district_id AND v.state_id = st.state_id
+        WHERE st.deleted_at IS NULL AND d.deleted_at IS NULL
+          AND (? IS NULL OR st.state_id = ?) AND (? IS NULL OR d.district_id = ?)
+          AND (? = FALSE OR v.enrollment_count IS NOT NULL)
         ORDER BY v.employment_rate_pct IS NULL, v.employment_rate_pct ASC, enrollmentCount DESC
         """;
-    List<Object> allParams = new ArrayList<>(filter.getParameters());
-    allParams.add(stateId);
-    return jdbcTemplate.query(sql, DISTRICT_ROW_MAPPER, allParams.toArray());
+    List<Object> params = new ArrayList<>(filter.getParameters());
+    params.add(stateId);
+    params.add(stateId);
+    params.add(districtId);
+    params.add(districtId);
+    params.add(onlyEnrolledDistricts);
+    return jdbcTemplate.query(sql, DISTRICT_ROW_MAPPER, params.toArray());
   }
 
   /**
-   * Retrieves performance details for a specific district with optional multi-dimensional filters.
-   */
-  public DistrictPerformanceProjection getDistrictById(Long districtId, AnalyticsFilterCriteria criteria) {
-    if (criteria == null || criteria.isEmpty()) {
-      return getDistrictById(districtId);
-    }
-    AnalyticsQueryFilterBuilder.FilterPredicateResult filter =
-        AnalyticsQueryFilterBuilder.buildEnrollmentFactPredicates(criteria, "v");
-    String sql = """
-        SELECT
-          d.district_id AS districtId,
-          d.district_code AS districtCode,
-          d.district_name AS districtName,
-          st.state_id AS stateId,
-          st.state_code AS stateCode,
-          st.state_name AS stateName,
-          COALESCE(v.enrollment_count, 0) AS enrollmentCount,
-          COALESCE(v.trainee_count, 0) AS traineeCount,
-          COALESCE(v.completed_count, 0) AS completedCount,
-          COALESCE(v.certified_count, 0) AS certifiedCount,
-          COALESCE(v.joined_placement_count, 0) AS joinedPlacementCount,
-          COALESCE(v.employed_count, 0) AS employedCount,
-          v.completion_rate_pct AS completionRatePct,
-          v.certification_rate_pct AS certificationRatePct,
-          v.placement_rate_pct AS placementRatePct,
-          v.employment_rate_pct AS employmentRatePct
-        FROM districts d
-        JOIN states st ON st.state_id = d.state_id
-        LEFT JOIN (
-          SELECT
-            v.trainee_district_id AS district_id,
-            COUNT(*) AS enrollment_count,
-            COUNT(DISTINCT v.trainee_id) AS trainee_count,
-            SUM(v.is_completed_flag) AS completed_count,
-            SUM(v.has_issued_certificate_flag) AS certified_count,
-            SUM(v.has_joined_placement_flag) AS joined_placement_count,
-            SUM(v.has_employment_flag) AS employed_count,
-            ROUND(SUM(v.is_completed_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS completion_rate_pct,
-            ROUND(SUM(v.has_issued_certificate_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS certification_rate_pct,
-            ROUND(SUM(v.has_joined_placement_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS placement_rate_pct,
-            ROUND(SUM(v.has_employment_flag) / NULLIF(COUNT(*), 0) * 100, 2) AS employment_rate_pct
-          FROM vw_enrollment_outcome_fact v
-          WHERE 1=1
-        """ + filter.getSqlFragment() + """
-          GROUP BY v.trainee_district_id
-        ) v ON v.district_id = d.district_id
-        WHERE d.district_id = ? AND d.deleted_at IS NULL
-        """;
-    List<Object> allParams = new ArrayList<>(filter.getParameters());
-    allParams.add(districtId);
-    List<DistrictPerformanceProjection> results = jdbcTemplate.query(sql, DISTRICT_ROW_MAPPER, allParams.toArray());
-    return results.isEmpty() ? null : results.get(0);
-  }
-
-  /**
-   * Retrieves nationwide state performance summaries rolled up from district outcomes with optional filters.
+   * Retrieves nationwide state performance summaries grouped by trainee state with optional filters.
    */
   public List<StatePerformanceProjection> getStateSummaries(AnalyticsFilterCriteria criteria) {
     if (criteria == null || criteria.isEmpty()) {
       return getStateSummaries();
     }
+    return queryStateSummaries(criteria.getStateId(), criteria);
+  }
+
+  private List<StatePerformanceProjection> queryStateSummaries(Long stateId, AnalyticsFilterCriteria criteria) {
+    Long districtId = criteria == null ? null : criteria.getDistrictId();
     AnalyticsQueryFilterBuilder.FilterPredicateResult filter =
         AnalyticsQueryFilterBuilder.buildEnrollmentFactPredicates(criteria, "v");
     String sql = """
@@ -449,102 +242,73 @@ public class GeographicDashboardRepository {
           st.state_id AS stateId,
           st.state_code AS stateCode,
           st.state_name AS stateName,
-          COUNT(DISTINCT d.district_id) AS districtCount,
-          COALESCE(SUM(v.enrollment_count), 0) AS enrollmentCount,
-          COALESCE(SUM(v.trainee_count), 0) AS traineeCount,
-          COALESCE(SUM(v.completed_count), 0) AS completedCount,
-          COALESCE(SUM(v.certified_count), 0) AS certifiedCount,
-          COALESCE(SUM(v.joined_placement_count), 0) AS joinedPlacementCount,
-          COALESCE(SUM(v.employed_count), 0) AS employedCount,
-          ROUND(SUM(v.completed_count) / NULLIF(SUM(v.enrollment_count), 0) * 100, 2) AS completionRatePct,
-          ROUND(SUM(v.certified_count) / NULLIF(SUM(v.enrollment_count), 0) * 100, 2) AS certificationRatePct,
-          ROUND(SUM(v.joined_placement_count) / NULLIF(SUM(v.enrollment_count), 0) * 100, 2) AS placementRatePct,
-          ROUND(SUM(v.employed_count) / NULLIF(SUM(v.enrollment_count), 0) * 100, 2) AS employmentRatePct,
+          COALESCE(d.district_count, 0) AS districtCount,
+          COALESCE(v.enrollment_count, 0) AS enrollmentCount,
+          COALESCE(v.trainee_count, 0) AS traineeCount,
+          COALESCE(v.completed_count, 0) AS completedCount,
+          COALESCE(v.certified_count, 0) AS certifiedCount,
+          COALESCE(v.joined_placement_count, 0) AS joinedPlacementCount,
+          COALESCE(v.employed_count, 0) AS employedCount,
+          ROUND(v.completed_count / NULLIF(v.enrollment_count, 0) * 100, 2) AS completionRatePct,
+          ROUND(v.certified_count / NULLIF(v.trainee_count, 0) * 100, 2) AS certificationRatePct,
+          ROUND(v.joined_placement_count / NULLIF(v.enrollment_count, 0) * 100, 2) AS placementRatePct,
+          ROUND(v.employed_count / NULLIF(v.enrollment_count, 0) * 100, 2) AS employmentRatePct,
           COALESCE(tc.center_count, 0) AS trainingCenterCount
         FROM states st
-        LEFT JOIN districts d ON d.state_id = st.state_id AND d.deleted_at IS NULL
+        LEFT JOIN (
+          SELECT state_id, COUNT(*) AS district_count FROM districts
+          WHERE deleted_at IS NULL AND (? IS NULL OR district_id = ?) GROUP BY state_id
+        ) d ON d.state_id = st.state_id
         LEFT JOIN (
           SELECT
-            v.trainee_district_id AS district_id,
+            v.trainee_state_id AS state_id,
             COUNT(*) AS enrollment_count,
             COUNT(DISTINCT v.trainee_id) AS trainee_count,
             SUM(v.is_completed_flag) AS completed_count,
-            SUM(v.has_issued_certificate_flag) AS certified_count,
+            COUNT(DISTINCT IF(v.has_issued_certificate_flag = 1, v.trainee_id, NULL)) AS certified_count,
             SUM(v.has_joined_placement_flag) AS joined_placement_count,
             SUM(v.has_employment_flag) AS employed_count
           FROM vw_enrollment_outcome_fact v
           WHERE 1=1
         """ + filter.getSqlFragment() + """
-          GROUP BY v.trainee_district_id
-        ) v ON v.district_id = d.district_id
+          GROUP BY v.trainee_state_id
+        ) v ON v.state_id = st.state_id
         LEFT JOIN (
           SELECT state_id, COUNT(*) AS center_count
           FROM training_centers
-          WHERE deleted_at IS NULL
+          WHERE deleted_at IS NULL AND (? IS NULL OR district_id = ?)
           GROUP BY state_id
         ) tc ON tc.state_id = st.state_id
-        WHERE st.deleted_at IS NULL
-        GROUP BY st.state_id, st.state_code, st.state_name, tc.center_count
+        WHERE st.deleted_at IS NULL AND (? IS NULL OR st.state_id = ?)
         ORDER BY employmentRatePct IS NULL, employmentRatePct DESC, enrollmentCount DESC
         """;
-    return jdbcTemplate.query(sql, STATE_ROW_MAPPER, filter.getParameters().toArray());
+    List<Object> params = new ArrayList<>();
+    params.add(districtId);
+    params.add(districtId);
+    params.addAll(filter.getParameters());
+    params.add(districtId);
+    params.add(districtId);
+    params.add(stateId);
+    params.add(stateId);
+    return jdbcTemplate.query(sql, STATE_ROW_MAPPER, params.toArray());
   }
 
-  /**
-   * Retrieves outcome summary for a single state with optional multi-dimensional filters.
-   */
   public StatePerformanceProjection getStateSummaryById(Long stateId, AnalyticsFilterCriteria criteria) {
     if (criteria == null || criteria.isEmpty()) {
       return getStateSummaryById(stateId);
     }
-    AnalyticsQueryFilterBuilder.FilterPredicateResult filter =
-        AnalyticsQueryFilterBuilder.buildEnrollmentFactPredicates(criteria, "v");
-    String sql = """
-        SELECT
-          st.state_id AS stateId,
-          st.state_code AS stateCode,
-          st.state_name AS stateName,
-          COUNT(DISTINCT d.district_id) AS districtCount,
-          COALESCE(SUM(v.enrollment_count), 0) AS enrollmentCount,
-          COALESCE(SUM(v.trainee_count), 0) AS traineeCount,
-          COALESCE(SUM(v.completed_count), 0) AS completedCount,
-          COALESCE(SUM(v.certified_count), 0) AS certifiedCount,
-          COALESCE(SUM(v.joined_placement_count), 0) AS joinedPlacementCount,
-          COALESCE(SUM(v.employed_count), 0) AS employedCount,
-          ROUND(SUM(v.completed_count) / NULLIF(SUM(v.enrollment_count), 0) * 100, 2) AS completionRatePct,
-          ROUND(SUM(v.certified_count) / NULLIF(SUM(v.enrollment_count), 0) * 100, 2) AS certificationRatePct,
-          ROUND(SUM(v.joined_placement_count) / NULLIF(SUM(v.enrollment_count), 0) * 100, 2) AS placementRatePct,
-          ROUND(SUM(v.employed_count) / NULLIF(SUM(v.enrollment_count), 0) * 100, 2) AS employmentRatePct,
-          COALESCE(tc.center_count, 0) AS trainingCenterCount
-        FROM states st
-        LEFT JOIN districts d ON d.state_id = st.state_id AND d.deleted_at IS NULL
-        LEFT JOIN (
-          SELECT
-            v.trainee_district_id AS district_id,
-            COUNT(*) AS enrollment_count,
-            COUNT(DISTINCT v.trainee_id) AS trainee_count,
-            SUM(v.is_completed_flag) AS completed_count,
-            SUM(v.has_issued_certificate_flag) AS certified_count,
-            SUM(v.has_joined_placement_flag) AS joined_placement_count,
-            SUM(v.has_employment_flag) AS employed_count
-          FROM vw_enrollment_outcome_fact v
-          WHERE 1=1
-        """ + filter.getSqlFragment() + """
-          GROUP BY v.trainee_district_id
-        ) v ON v.district_id = d.district_id
-        LEFT JOIN (
-          SELECT state_id, COUNT(*) AS center_count
-          FROM training_centers
-          WHERE deleted_at IS NULL
-          GROUP BY state_id
-        ) tc ON tc.state_id = st.state_id
-        WHERE st.state_id = ? AND st.deleted_at IS NULL
-        GROUP BY st.state_id, st.state_code, st.state_name, tc.center_count
-        """;
-    List<Object> allParams = new ArrayList<>(filter.getParameters());
-    allParams.add(stateId);
-    List<StatePerformanceProjection> results = jdbcTemplate.query(sql, STATE_ROW_MAPPER, allParams.toArray());
-    return results.isEmpty() ? null : results.get(0);
+    return queryStateSummaries(stateId, criteria).stream().findFirst().orElse(null);
+  }
+
+  public long countDistrictsWithoutTrainingCenters(AnalyticsFilterCriteria criteria) {
+    Long state = criteria.getStateId();
+    Long district = criteria.getDistrictId();
+    Long count = jdbcTemplate.queryForObject("""
+        SELECT COUNT(*) FROM districts d WHERE d.deleted_at IS NULL
+          AND (? IS NULL OR d.state_id = ?) AND (? IS NULL OR d.district_id = ?)
+          AND NOT EXISTS (SELECT 1 FROM training_centers tc WHERE tc.district_id = d.district_id AND tc.deleted_at IS NULL)
+        """, Long.class, state, state, district, district);
+    return count == null ? 0L : count;
   }
 
   /**
